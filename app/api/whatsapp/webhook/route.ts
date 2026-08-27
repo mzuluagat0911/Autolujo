@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import crypto from "node:crypto";
-import { sendText } from "@/lib/whatsapp/client";
+import { sendText, downloadMedia } from "@/lib/whatsapp/client";
+import { leerComprobante } from "@/lib/ai/comprobante";
 
 export const runtime = "nodejs";
 
@@ -74,11 +75,50 @@ async function procesar(payload: WebhookPayload) {
       // v1: eco de confirmación. Luego: rutear a intención (pago / consulta).
       await sendText(from, `✅ Recibí: "${msg.text?.body ?? ""}"`);
     } else if (msg.type === "image") {
-      // v1: acuse. Luego: descargar media → visión → conciliación.
-      await sendText(from, "📷 Recibí tu comprobante. Lo estoy revisando…");
+      await procesarComprobante(from, msg.image);
     } else {
       await sendText(from, "Recibí tu mensaje. En breve te respondo.");
     }
+  }
+}
+
+// Descarga la imagen del comprobante, la lee con visión y responde lo leído.
+// (Prueba de lectura — la conciliación contra el contrato viene después.)
+async function procesarComprobante(
+  from: string,
+  image?: { id?: string; mime_type?: string },
+) {
+  const mediaId = image?.id;
+  if (!mediaId) {
+    await sendText(from, "📷 Recibí una imagen pero no pude abrirla. Reenvíala, por favor.");
+    return;
+  }
+
+  await sendText(from, "📷 Recibí tu comprobante, dame un segundo…");
+
+  try {
+    const bytes = await downloadMedia(mediaId);
+    const c = await leerComprobante(bytes, image?.mime_type ?? "image/jpeg");
+
+    const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : "no lo vi claro";
+    const lineas = [
+      "🧾 Esto leí del comprobante:",
+      `• Monto: ${monto}`,
+      `• Fecha: ${c.fecha ?? "—"}`,
+      `• Referencia: ${c.referencia ?? "—"}`,
+      `• Banco: ${c.banco ?? "—"}`,
+      `• Confianza: ${c.confianza}`,
+    ];
+    if (c.confianza !== "alta") {
+      lineas.push("", "⚠️ No quedé 100% seguro. Confírmame el monto, por favor.");
+    }
+    await sendText(from, lineas.join("\n"));
+  } catch (e) {
+    console.error("[whatsapp/webhook] error leyendo comprobante:", e);
+    await sendText(
+      from,
+      "😕 No pude leer el comprobante esta vez. Reenvíalo o escríbeme el monto y la referencia.",
+    );
   }
 }
 

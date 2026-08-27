@@ -1,14 +1,82 @@
 @import "tailwindcss";
 
 @theme {
-  --color-paper: #faf8f6;
+  --font-sans: var(--font-brand-sans), system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: var(--font-brand-serif), Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* ---- Superficies y texto (tema claro por defecto) ---- */
+  --color-paper: #f6f5f3;
   --color-surface: #ffffff;
-  --color-ink: #1c1917;
-  --color-muted: #6e655e;
-  --color-line: #e8e2dc;
-  --color-brand: #ce3b2a;
-  --color-brand-wash: #fbedea;
-  --color-good: #2f7d5b;
+  --color-surface-2: #fbfaf9;
+  --color-ink: #141414;
+  --color-muted: #6b6a67;
+  --color-faint: #9a9895;
+  --color-line: #e7e5e1;
+  --color-line-strong: #d8d5cf;
+
+  /* ---- Dorado (detalle de marca) ---- */
+  --color-gold: #a87f2e;
+  --color-gold-soft: #c9a24b;
+  --color-gold-wash: #f7f0e0;
+  /* alias retrocompat */
+  --color-brand: #a87f2e;
+  --color-brand-wash: #f7f0e0;
+
+  /* ---- Colores de estado (semánticos, separados del dorado) ---- */
+  --color-good: #2f7d53;
+  --color-warn: #b9791b;
+  --color-crit: #b23b32;
+
+  /* ---- Barra lateral (negra fija en ambos temas) ---- */
+  --color-side-bg: #0b0b0b;
+  --color-side-surface: #171717;
+  --color-side-ink: #ededea;
+  --color-side-muted: #8b8985;
+  --color-side-line: #242423;
+  --color-side-active: #c9a24b;
+}
+
+/* ---- Tema oscuro: OS por defecto (sin data-theme) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-paper: #0b0b0b;
+    --color-surface: #151515;
+    --color-surface-2: #1b1b1a;
+    --color-ink: #f1f0ed;
+    --color-muted: #9c9a95;
+    --color-faint: #6f6d68;
+    --color-line: #262625;
+    --color-line-strong: #34332f;
+    --color-gold: #cba457;
+    --color-gold-soft: #d9b667;
+    --color-gold-wash: #241f14;
+    --color-brand: #cba457;
+    --color-brand-wash: #241f14;
+    --color-good: #56b183;
+    --color-warn: #d59a3a;
+    --color-crit: #db6157;
+  }
+}
+
+/* ---- Tema oscuro: elección explícita ---- */
+:root[data-theme="dark"] {
+  --color-paper: #0b0b0b;
+  --color-surface: #151515;
+  --color-surface-2: #1b1b1a;
+  --color-ink: #f1f0ed;
+  --color-muted: #9c9a95;
+  --color-faint: #6f6d68;
+  --color-line: #262625;
+  --color-line-strong: #34332f;
+  --color-gold: #cba457;
+  --color-gold-soft: #d9b667;
+  --color-gold-wash: #241f14;
+  --color-brand: #cba457;
+  --color-brand-wash: #241f14;
+  --color-good: #56b183;
+  --color-warn: #d59a3a;
+  --color-crit: #db6157;
 }
 
 html,
@@ -16,4 +84,17 @@ body {
   background: var(--color-paper);
   color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--color-gold-soft);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
 }
