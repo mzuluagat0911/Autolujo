@@ -1,8 +1,7 @@
 # Auto Lujo · Cartera — Plan de construcción
 
 Motor de cartera con IA para Inversiones Auto Lujo Panamá. Fase 1: agente de
-cartera + wizard administrativo. Cliente paga la infraestructura; Picante
-desarrolla e implementa. Proyecto: US$3.500, ~3 meses.
+cartera + wizard administrativo. Proyecto: US$3.500, ~3 meses.
 
 ## Arquitectura
 - **Wizard/admin:** Next.js (App Router) + TypeScript + Tailwind → Vercel.

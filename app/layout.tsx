@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Auto Lujo · Cartera",
-  description: "Motor de cartera con IA — Picante",
+  description: "Motor de cartera con IA — Inversiones Auto Lujo Panamá",
 };
 
 export default function RootLayout({

@@ -54,9 +54,9 @@ export default async function Home() {
       <header className="flex items-center justify-between border-b border-line pb-5">
         <div className="flex items-center gap-2.5">
           <span className="inline-block h-2.5 w-2.5 rounded-full bg-brand" />
-          <span className="text-[15px] font-bold tracking-tight">PICANTE</span>
+          <span className="text-[15px] font-bold tracking-tight">Auto Lujo</span>
           <span className="text-muted">·</span>
-          <span className="text-[15px] text-muted">Auto Lujo — Cartera</span>
+          <span className="text-[15px] text-muted">Cartera</span>
         </div>
         <span className="font-mono text-xs text-muted">Wizard administrativo</span>
       </header>
