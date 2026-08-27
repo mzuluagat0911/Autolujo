@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 type Empresa = {
   id: string;
   codigo: string;

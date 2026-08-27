@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 type Stats = {
   ok: boolean;
   empresas: number;
@@ -82,11 +84,12 @@ export default async function Home() {
             <li className="flex gap-3">
               <span className="font-mono font-bold text-brand">2.</span>
               <span>
-                Crea{" "}
+                Agrega las variables de Supabase en Vercel (Settings →
+                Environment Variables) o en{" "}
                 <code className="rounded bg-brand-wash px-1.5 py-0.5 font-mono text-[13px] text-brand">
                   .env.local
                 </code>{" "}
-                con tus claves de Supabase (ver{" "}
+                para desarrollo local (ver{" "}
                 <code className="font-mono text-[13px]">.env.example</code>).
               </span>
             </li>
