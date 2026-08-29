@@ -58,9 +58,10 @@ export default async function ConversacionesPage() {
       ) : (
         <div className="mt-4 divide-y divide-line overflow-hidden rounded-2xl bg-surface ring-1 ring-line/60">
           {convs.map((c) => {
-            const carro = c.vehiculo
-              ? `${c.vehiculo.empresa?.codigo ? c.vehiculo.empresa.codigo + " · " : ""}${c.vehiculo.numero}`
-              : c.etiqueta ?? null;
+            const titulo = c.vehiculo
+              ? `${c.vehiculo.empresa?.codigo ? c.vehiculo.empresa.codigo + " · " : ""}Carro ${c.vehiculo.numero}`
+              : c.etiqueta ?? "Sin carro asignado";
+            const tieneCarro = Boolean(c.vehiculo || c.etiqueta);
             return (
               <Link
                 key={c.id}
@@ -68,13 +69,11 @@ export default async function ConversacionesPage() {
                 className="flex items-center gap-4 px-5 py-4 transition hover:bg-paper/60"
               >
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink font-mono text-xs font-bold text-paper">
-                  {carro ? "🚗" : "?"}
+                  {tieneCarro ? "🚗" : "?"}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="font-semibold">
-                      {carro ? `Carro ${c.vehiculo?.numero ?? c.etiqueta}` : "Sin carro asignado"}
-                    </span>
+                    <span className="font-semibold">{titulo}</span>
                     {c.cliente?.nombre && (
                       <span className="truncate text-sm text-muted">· {c.cliente.nombre}</span>
                     )}

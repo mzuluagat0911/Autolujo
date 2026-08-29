@@ -134,17 +134,21 @@ async function procesarComprobante(conversacionId: string, from: string, msg: Wh
     // Registrar el comprobante entrante (con su imagen en Storage) — idempotente.
     await registrarMensaje({
       conversacionId, direccion: "in", tipo: "image",
-      texto: "📷 Comprobante", waMessageId: msg.id, pagoId: res.pagoId,
+      texto: "📷 Comprobante", mediaUrl: res.comprobantePath,
+      waMessageId: msg.id, pagoId: res.pagoId,
     });
 
     const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : "no lo vi claro";
+    const conf = c.confianza === "alta" ? "alta ✅" : c.confianza === "media" ? "media 🟡" : "baja 🔴";
     const lineas = [
       "🧾 Esto leí del comprobante:",
       `• Monto: ${monto}`,
       `• Fecha: ${c.fecha ?? "—"}`,
       `• Referencia: ${c.referencia ?? "—"}`,
       `• Banco: ${c.banco ?? "—"}`,
+      `• Cuenta destino: ${c.cuenta_destino ?? "—"}`,
       `• Carro: ${c.numero_carro ?? "no vi el # de carro"}`,
+      `• Confianza lectura: ${conf}`,
     ];
     if (res.resolucion.estado === "ok") {
       lineas.push("", "✅ Registrado. Lo validamos y te confirmo el saldo.");

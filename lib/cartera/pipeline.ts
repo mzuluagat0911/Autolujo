@@ -156,6 +156,7 @@ export async function resolverContratoPorCarro(numeroCarro: string | null): Prom
 
 type ResultadoPago = {
   pagoId: string;
+  comprobantePath: string;
   resolucion: ResolucionCarro;
   estadoConciliacion: "pendiente" | "manual";
 };
@@ -210,5 +211,5 @@ export async function procesarPagoComprobante(opts: {
       .eq("id", conversacion.id);
   }
 
-  return { pagoId: pago.id as string, resolucion, estadoConciliacion };
+  return { pagoId: pago.id as string, comprobantePath: path, resolucion, estadoConciliacion };
 }
