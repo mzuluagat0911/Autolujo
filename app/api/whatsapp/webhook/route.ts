@@ -6,8 +6,11 @@ import {
   obtenerConversacion,
   registrarMensaje,
   procesarPagoComprobante,
-  mensajeYaExiste,
+  reclamarMensajeEntrante,
+  completarMensaje,
+  historialReciente,
 } from "@/lib/cartera/pipeline";
+import { responderAgente } from "@/lib/ai/agente";
 
 export const runtime = "nodejs";
 
@@ -84,39 +87,65 @@ async function procesar(payload: WebhookPayload) {
 }
 
 // Responde y deja registrado el mensaje saliente en la conversación.
+// Si el envío falla, deja el ERROR guardado en la conversación para diagnóstico.
 async function responder(conversacionId: string, from: string, texto: string, pagoId?: string) {
-  await sendText(from, texto);
-  await registrarMensaje({ conversacionId, direccion: "out", texto, pagoId: pagoId ?? null });
+  try {
+    await sendText(from, texto);
+    await registrarMensaje({ conversacionId, direccion: "out", texto, pagoId: pagoId ?? null });
+  } catch (e) {
+    const err = e instanceof Error ? e.message : String(e);
+    console.error("[whatsapp/webhook] sendText falló:", err);
+    await registrarMensaje({
+      conversacionId, direccion: "out", tipo: "system",
+      texto: `⚠️ ENVÍO FALLÓ: ${err}`,
+    });
+  }
 }
 
 async function manejarMensaje(msg: WhatsAppMessage) {
   const from = msg.from as string;
-
-  // Idempotencia: Meta reintenta; no reprocesar el mismo mensaje.
-  if (await mensajeYaExiste(msg.id)) return;
-
   const conv = await obtenerConversacion(from);
 
+  const texto =
+    msg.type === "text" ? msg.text?.body ?? "" :
+    msg.type === "image" ? "📷 Comprobante" : `[${msg.type ?? "mensaje"}]`;
+
+  // Candado de idempotencia: reclama el mensaje ANTES de trabajo pesado.
+  // Si Meta reintenta, el segundo choca con el unique y sale sin reprocesar.
+  const mensajeId = await reclamarMensajeEntrante({
+    conversacionId: conv.id, waMessageId: msg.id,
+    tipo: msg.type === "image" ? "image" : "text", texto,
+  });
+  if (!mensajeId) return; // duplicado (reintento de Meta)
+
   if (msg.type === "text") {
-    await registrarMensaje({
-      conversacionId: conv.id, direccion: "in", tipo: "text",
-      texto: msg.text?.body ?? "", waMessageId: msg.id,
-    });
-    await responder(conv.id, from, `✅ Recibí: "${msg.text?.body ?? ""}"`);
+    // Agente conversacional: responde con el modelo de texto (no eco).
+    let respuesta: string;
+    try {
+      const historial = await historialReciente(conv.id, 10);
+      const contexto = conv.etiqueta ? `El cliente está vinculado al ${conv.etiqueta}.` : undefined;
+      respuesta = await responderAgente({ historial, contexto });
+    } catch (e) {
+      console.error("[whatsapp/webhook] agente falló:", e);
+      respuesta = "Recibí tu mensaje 🙌. En un momento te respondo.";
+    }
+    await responder(conv.id, from, respuesta);
   } else if (msg.type === "image") {
-    await procesarComprobante(conv.id, from, msg);
+    await procesarComprobante(conv, from, msg, mensajeId);
   } else {
-    await registrarMensaje({
-      conversacionId: conv.id, direccion: "in", tipo: "text",
-      texto: `[${msg.type ?? "mensaje"}]`, waMessageId: msg.id,
-    });
     await responder(conv.id, from, "Recibí tu mensaje. En breve te respondo.");
   }
 }
 
 // Descarga el comprobante, lo lee con visión, lo sube a Storage, resuelve el
 // contrato por # de carro, registra el pago y responde lo leído.
-async function procesarComprobante(conversacionId: string, from: string, msg: WhatsAppMessage) {
+async function procesarComprobante(
+  conv: { id: string; wa_numero: string; cliente_id: string | null; vehiculo_id: string | null; contrato_id: string | null; etiqueta: string | null },
+  from: string,
+  msg: WhatsAppMessage,
+  mensajeId: string,
+) {
+  const conversacionId = conv.id;
   const image = msg.image;
   const mediaId = image?.id;
   if (!mediaId) {
@@ -125,18 +154,13 @@ async function procesarComprobante(conversacionId: string, from: string, msg: Wh
   }
   const mime = image?.mime_type ?? "image/jpeg";
 
-  const conv = await obtenerConversacion(from);
   try {
     const bytes = await downloadMedia(mediaId);
     const c = await leerComprobante(bytes, mime);
     const res = await procesarPagoComprobante({ conversacion: conv, comprobante: c, bytes, mime });
 
-    // Registrar el comprobante entrante (con su imagen en Storage) — idempotente.
-    await registrarMensaje({
-      conversacionId, direccion: "in", tipo: "image",
-      texto: "📷 Comprobante", mediaUrl: res.comprobantePath,
-      waMessageId: msg.id, pagoId: res.pagoId,
-    });
+    // Completar el mensaje reclamado con la imagen en Storage + el pago.
+    await completarMensaje(mensajeId, { mediaUrl: res.comprobantePath, pagoId: res.pagoId });
 
     const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : "no lo vi claro";
     const conf = c.confianza === "alta" ? "alta ✅" : c.confianza === "media" ? "media 🟡" : "baja 🔴";

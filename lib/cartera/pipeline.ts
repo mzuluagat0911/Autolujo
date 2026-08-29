@@ -43,16 +43,49 @@ export async function obtenerConversacion(waNumero: string): Promise<Conversacio
   return creada as Conversacion;
 }
 
-/** ¿Ya registramos este mensaje de Meta? (idempotencia antes de trabajo pesado). */
-export async function mensajeYaExiste(waMessageId?: string | null): Promise<boolean> {
-  if (!waMessageId) return false;
+/**
+ * Reclama un mensaje entrante como "en proceso" usando el UNIQUE de
+ * wa_message_id como candado. Si Meta reintenta el webhook, el segundo intento
+ * choca con el unique y devuelve null → no se reprocesa (no duplica pagos).
+ * Devuelve el id del mensaje si lo reclamó, o null si ya existía.
+ */
+export async function reclamarMensajeEntrante(opts: {
+  conversacionId: string;
+  waMessageId?: string | null;
+  tipo: "text" | "image";
+  texto: string;
+}): Promise<string | null> {
   const sb = createServerSupabase();
-  const { data } = await sb
+  const { data, error } = await sb
     .from("mensajes")
+    .insert({
+      conversacion_id: opts.conversacionId,
+      direccion: "in",
+      tipo: opts.tipo,
+      texto: opts.texto,
+      wa_message_id: opts.waMessageId ?? null,
+    })
     .select("id")
-    .eq("wa_message_id", waMessageId)
-    .maybeSingle();
-  return !!data;
+    .single();
+  if (error) return null; // violación de unique (wa_message_id) → duplicado
+
+  await sb
+    .from("conversaciones")
+    .update({ ultimo_mensaje_at: new Date().toISOString(), ultimo_texto: opts.texto.slice(0, 140) })
+    .eq("id", opts.conversacionId);
+  return data.id as string;
+}
+
+/** Completa un mensaje ya reclamado (ej. la imagen del comprobante y el pago). */
+export async function completarMensaje(
+  mensajeId: string,
+  patch: { mediaUrl?: string | null; pagoId?: string | null },
+): Promise<void> {
+  const sb = createServerSupabase();
+  await sb
+    .from("mensajes")
+    .update({ media_url: patch.mediaUrl ?? null, pago_id: patch.pagoId ?? null })
+    .eq("id", mensajeId);
 }
 
 /** Registra un mensaje y actualiza el resumen de la conversación. */
@@ -98,6 +131,24 @@ export async function registrarMensaje(opts: {
     .eq("id", opts.conversacionId);
 
   return { nuevo: true };
+}
+
+/** Últimos mensajes de la conversación (para darle memoria al agente). */
+export async function historialReciente(
+  conversacionId: string,
+  limite = 10,
+): Promise<{ direccion: "in" | "out"; texto: string }[]> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("mensajes")
+    .select("direccion, texto, tipo")
+    .eq("conversacion_id", conversacionId)
+    .order("created_at", { ascending: false })
+    .limit(limite);
+  const filas = ((data ?? []) as { direccion: "in" | "out"; texto: string | null; tipo: string }[])
+    .filter((m) => m.tipo !== "system" && m.texto)
+    .reverse();
+  return filas.map((m) => ({ direccion: m.direccion, texto: m.texto as string }));
 }
 
 /** Sube la imagen del comprobante al bucket privado. Devuelve el path. */
