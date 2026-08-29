@@ -9,6 +9,7 @@ type Resumen = {
   contratos: number;
   vehiculos: number;
   pagosPend: number;
+  cobradoHoy: number;
   saldoTotal: number;
   error: string | null;
 };
@@ -16,14 +17,18 @@ type Resumen = {
 async function getResumen(): Promise<Resumen> {
   try {
     const sb = createServerSupabase();
-    const [clientes, contratos, vehiculos, pagosPend, saldos] = await Promise.all([
+    const hoy = new Date().toISOString().slice(0, 10);
+    const [clientes, contratos, vehiculos, pagosPend, cobrado, saldos] = await Promise.all([
       sb.from("clientes").select("*", { count: "exact", head: true }),
       sb.from("contratos").select("*", { count: "exact", head: true }),
       sb.from("vehiculos").select("*", { count: "exact", head: true }),
+      // "Por conciliar" = pendiente + manual (lo que espera acción del equipo).
       sb
         .from("pagos")
         .select("*", { count: "exact", head: true })
-        .eq("estado_conciliacion", "pendiente"),
+        .in("estado_conciliacion", ["pendiente", "manual"]),
+      // Cobrado hoy = conciliado con fecha de hoy.
+      sb.from("pagos").select("monto").eq("estado_conciliacion", "conciliado").eq("fecha", hoy),
       sb.from("vw_saldo_contrato").select("saldo_actual"),
     ]);
     const firstErr =
@@ -33,12 +38,17 @@ async function getResumen(): Promise<Resumen> {
       (acc: number, r: { saldo_actual: number | null }) => acc + Number(r.saldo_actual ?? 0),
       0,
     );
+    const cobradoHoy = (cobrado.data ?? []).reduce(
+      (acc: number, r: { monto: number | null }) => acc + Number(r.monto ?? 0),
+      0,
+    );
     return {
       ok: true,
       clientes: clientes.count ?? 0,
       contratos: contratos.count ?? 0,
       vehiculos: vehiculos.count ?? 0,
       pagosPend: pagosPend.count ?? 0,
+      cobradoHoy,
       saldoTotal,
       error: null,
     };
@@ -49,6 +59,7 @@ async function getResumen(): Promise<Resumen> {
       contratos: 0,
       vehiculos: 0,
       pagosPend: 0,
+      cobradoHoy: 0,
       saldoTotal: 0,
       error: e instanceof Error ? e.message : "Error",
     };
@@ -98,7 +109,7 @@ export default async function ResumenPage() {
               hint="Total por cobrar en toda la flota"
             />
             <div className="grid grid-cols-2 gap-4">
-              <Kpi label="Cobrado hoy" value={<Money amount={0} />} hint="Conciliado del día" />
+              <Kpi label="Cobrado hoy" value={<Money amount={r.cobradoHoy} />} hint="Conciliado del día" />
               <Kpi
                 label="Pagos por conciliar"
                 value={r.pagosPend}

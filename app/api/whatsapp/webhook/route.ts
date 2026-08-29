@@ -9,8 +9,13 @@ import {
   reclamarMensajeEntrante,
   completarMensaje,
   historialReciente,
+  marcarEscalada,
+  marcarNecesitaHumano,
+  type Conversacion,
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
+
+type Conv = Conversacion;
 
 export const runtime = "nodejs";
 
@@ -118,29 +123,40 @@ async function manejarMensaje(msg: WhatsAppMessage) {
   });
   if (!mensajeId) return; // duplicado (reintento de Meta)
 
+  // Si una persona del equipo tomó el chat, el agente NO responde.
+  // Solo marcamos que hay un mensaje nuevo esperando respuesta.
+  if (conv.modo === "humano") {
+    await marcarNecesitaHumano(conv.id);
+    return;
+  }
+
   if (msg.type === "text") {
-    // Agente conversacional: responde con el modelo de texto (no eco).
-    let respuesta: string;
-    try {
-      const historial = await historialReciente(conv.id, 10);
-      const contexto = conv.etiqueta ? `El cliente está vinculado al ${conv.etiqueta}.` : undefined;
-      respuesta = await responderAgente({ historial, contexto });
-    } catch (e) {
-      console.error("[whatsapp/webhook] agente falló:", e);
-      respuesta = "Recibí tu mensaje 🙌. En un momento te respondo.";
-    }
-    await responder(conv.id, from, respuesta);
+    await responderConAgente(conv, from);
   } else if (msg.type === "image") {
     await procesarComprobante(conv, from, msg, mensajeId);
   } else {
-    await responder(conv.id, from, "Recibí tu mensaje. En breve te respondo.");
+    await responder(conv.id, from, "¡Gracias por escribir! En un momento te respondo por aquí 🙌");
+  }
+}
+
+// El agente conversa; si el caso lo amerita, escala a una persona del equipo.
+async function responderConAgente(conv: Conv, from: string) {
+  try {
+    const historial = await historialReciente(conv.id, 10);
+    const contexto = conv.etiqueta ? `El cliente está vinculado al ${conv.etiqueta}.` : undefined;
+    const r = await responderAgente({ historial, contexto });
+    if (r.pasar_a_humano) await marcarEscalada(conv.id, r.motivo ?? null);
+    await responder(conv.id, from, r.mensaje);
+  } catch (e) {
+    console.error("[whatsapp/webhook] agente falló:", e);
+    await responder(conv.id, from, "¡Gracias por escribir! En un momento te respondo por aquí 🙌");
   }
 }
 
 // Descarga el comprobante, lo lee con visión, lo sube a Storage, resuelve el
 // contrato por # de carro, registra el pago y responde lo leído.
 async function procesarComprobante(
-  conv: { id: string; wa_numero: string; cliente_id: string | null; vehiculo_id: string | null; contrato_id: string | null; etiqueta: string | null },
+  conv: Conv,
   from: string,
   msg: WhatsAppMessage,
   mensajeId: string,
@@ -162,33 +178,25 @@ async function procesarComprobante(
     // Completar el mensaje reclamado con la imagen en Storage + el pago.
     await completarMensaje(mensajeId, { mediaUrl: res.comprobantePath, pagoId: res.pagoId });
 
-    const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : "no lo vi claro";
-    const conf = c.confianza === "alta" ? "alta ✅" : c.confianza === "media" ? "media 🟡" : "baja 🔴";
-    const lineas = [
-      "🧾 Esto leí del comprobante:",
-      `• Monto: ${monto}`,
-      `• Fecha: ${c.fecha ?? "—"}`,
-      `• Referencia: ${c.referencia ?? "—"}`,
-      `• Banco: ${c.banco ?? "—"}`,
-      `• Cuenta destino: ${c.cuenta_destino ?? "—"}`,
-      `• Carro: ${c.numero_carro ?? "no vi el # de carro"}`,
-      `• Confianza lectura: ${conf}`,
-    ];
-    if (res.resolucion.estado === "ok") {
-      lineas.push("", "✅ Registrado. Lo validamos y te confirmo el saldo.");
+    // Respuesta HUMANA al cliente (los datos técnicos quedan en el panel, no se los mandamos).
+    const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : null;
+    let respuesta: string;
+    if (!monto || c.confianza === "baja") {
+      // No confirmamos un monto dudoso: mejor validarlo.
+      respuesta = "¡Gracias! 🙌 Recibí tu comprobante, dame un momentito para validarlo y te confirmo.";
+    } else if (res.resolucion.estado === "ok") {
+      respuesta = `¡Listo! Recibí tu pago de ${monto} del ${res.resolucion.etiqueta ?? "carro"} ✅ Ya lo registro. ¡Gracias por tu pago puntual!`;
     } else if (res.resolucion.estado === "sin_carro") {
-      lineas.push("", "🚗 ¿A qué número de carro corresponde este pago?");
-    } else if (res.resolucion.estado === "sin_contrato") {
-      lineas.push("", "⚠️ No encontré un contrato activo para ese carro. Lo revisa el equipo.");
+      respuesta = `¡Gracias! Recibí tu comprobante de ${monto} 💪 ¿Me confirmas el número de carro para aplicarlo bien?`;
     } else {
-      lineas.push("", "⚠️ Recibido. Lo está revisando el equipo.");
+      respuesta = `¡Gracias! Recibí tu comprobante de ${monto}. Déjame validarlo y en un momento te confirmo 🙌`;
     }
-    await responder(conversacionId, from, lineas.join("\n"), res.pagoId);
+    await responder(conversacionId, from, respuesta, res.pagoId);
   } catch (e) {
     console.error("[whatsapp/webhook] error procesando comprobante:", e);
     await responder(
       conversacionId, from,
-      "😕 No pude leer el comprobante esta vez. Reenvíalo o escríbeme el monto y la referencia.",
+      "¡Gracias por escribir! Tuve un detallito abriendo la imagen 🙈 ¿Me la reenvías, porfa?",
     );
   }
 }

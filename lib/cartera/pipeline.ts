@@ -7,21 +7,24 @@ import type { Comprobante } from "@/lib/ai/comprobante";
 
 const BUCKET = "comprobantes";
 
-type Conversacion = {
+export type Conversacion = {
   id: string;
   wa_numero: string;
   cliente_id: string | null;
   vehiculo_id: string | null;
   contrato_id: string | null;
   etiqueta: string | null;
+  modo: "agente" | "humano";
 };
+
+const SEL_CONV = "id, wa_numero, cliente_id, vehiculo_id, contrato_id, etiqueta, modo";
 
 /** Busca (o crea) la conversación de un número de WhatsApp. */
 export async function obtenerConversacion(waNumero: string): Promise<Conversacion> {
   const sb = createServerSupabase();
   const { data: existente } = await sb
     .from("conversaciones")
-    .select("id, wa_numero, cliente_id, vehiculo_id, contrato_id, etiqueta")
+    .select(SEL_CONV)
     .eq("wa_numero", waNumero)
     .maybeSingle();
   if (existente) return existente as Conversacion;
@@ -37,10 +40,49 @@ export async function obtenerConversacion(waNumero: string): Promise<Conversacio
   const { data: creada, error } = await sb
     .from("conversaciones")
     .insert({ wa_numero: waNumero, cliente_id: cli?.id ?? null })
-    .select("id, wa_numero, cliente_id, vehiculo_id, contrato_id, etiqueta")
+    .select(SEL_CONV)
     .single();
   if (error) throw error;
   return creada as Conversacion;
+}
+
+/** ¿La ventana de 24h está abierta? (el cliente escribió en las últimas 24h). */
+export function ventanaAbierta(ultimoEntranteAt: string | null | undefined): boolean {
+  if (!ultimoEntranteAt) return false;
+  return Date.now() - new Date(ultimoEntranteAt).getTime() < 24 * 60 * 60 * 1000;
+}
+
+/** El equipo toma el chat: el agente deja de responder en esta conversación. */
+export async function tomarChat(conversacionId: string): Promise<void> {
+  const sb = createServerSupabase();
+  await sb
+    .from("conversaciones")
+    .update({ modo: "humano", necesita_humano: false })
+    .eq("id", conversacionId);
+}
+
+/** El equipo devuelve el chat al agente. */
+export async function devolverAlAgente(conversacionId: string): Promise<void> {
+  const sb = createServerSupabase();
+  await sb
+    .from("conversaciones")
+    .update({ modo: "agente", necesita_humano: false, motivo_escalada: null })
+    .eq("id", conversacionId);
+}
+
+/** Marca que la conversación necesita a una persona (escalada del agente). */
+export async function marcarEscalada(conversacionId: string, motivo: string | null): Promise<void> {
+  const sb = createServerSupabase();
+  await sb
+    .from("conversaciones")
+    .update({ modo: "humano", necesita_humano: true, motivo_escalada: motivo })
+    .eq("id", conversacionId);
+}
+
+/** Marca que hay un mensaje nuevo del cliente esperando a la persona que lleva el chat. */
+export async function marcarNecesitaHumano(conversacionId: string): Promise<void> {
+  const sb = createServerSupabase();
+  await sb.from("conversaciones").update({ necesita_humano: true }).eq("id", conversacionId);
 }
 
 /**
@@ -69,9 +111,14 @@ export async function reclamarMensajeEntrante(opts: {
     .single();
   if (error) return null; // violación de unique (wa_message_id) → duplicado
 
+  const ahora = new Date().toISOString();
   await sb
     .from("conversaciones")
-    .update({ ultimo_mensaje_at: new Date().toISOString(), ultimo_texto: opts.texto.slice(0, 140) })
+    .update({
+      ultimo_mensaje_at: ahora,
+      ultimo_entrante_at: ahora, // el cliente escribió → abre/renueva la ventana de 24h
+      ultimo_texto: opts.texto.slice(0, 140),
+    })
     .eq("id", opts.conversacionId);
   return data.id as string;
 }
@@ -97,6 +144,7 @@ export async function registrarMensaje(opts: {
   mediaUrl?: string | null;
   waMessageId?: string | null;
   pagoId?: string | null;
+  enviadoPor?: string | null;
 }): Promise<{ nuevo: boolean }> {
   const sb = createServerSupabase();
 
@@ -118,6 +166,7 @@ export async function registrarMensaje(opts: {
     media_url: opts.mediaUrl ?? null,
     wa_message_id: opts.waMessageId ?? null,
     pago_id: opts.pagoId ?? null,
+    enviado_por: opts.enviadoPor ?? null,
   });
 
   const resumen =

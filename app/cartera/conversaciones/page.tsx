@@ -12,6 +12,8 @@ type Conversacion = {
   ultimo_mensaje_at: string | null;
   no_leidos: number;
   estado: string;
+  modo: "agente" | "humano";
+  necesita_humano: boolean;
   cliente: { nombre: string } | null;
   vehiculo: { numero: string; empresa: { codigo: string } | null } | null;
 };
@@ -28,8 +30,9 @@ async function getData() {
     const { data, error } = await sb
       .from("conversaciones")
       .select(
-        "id, wa_numero, etiqueta, ultimo_texto, ultimo_mensaje_at, no_leidos, estado, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo))",
+        "id, wa_numero, etiqueta, ultimo_texto, ultimo_mensaje_at, no_leidos, estado, modo, necesita_humano, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo))",
       )
+      .order("necesita_humano", { ascending: false })
       .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false });
     if (error) throw error;
     return { convs: (data as unknown as Conversacion[]) ?? [], error: null as string | null };
@@ -72,19 +75,20 @@ export default async function ConversacionesPage() {
                   {tieneCarro ? "🚗" : "?"}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold">{titulo}</span>
                     {c.cliente?.nombre && (
                       <span className="truncate text-sm text-muted">· {c.cliente.nombre}</span>
+                    )}
+                    {c.necesita_humano && <StatusChip tone="warn">🔔 Necesita respuesta</StatusChip>}
+                    {c.modo === "humano" && !c.necesita_humano && (
+                      <StatusChip tone="neutral">🙋 Humano</StatusChip>
                     )}
                   </div>
                   <p className="truncate text-sm text-muted">{c.ultimo_texto ?? "—"}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
                   <span className="font-mono text-[11px] text-muted">{tiempo(c.ultimo_mensaje_at)}</span>
-                  {c.no_leidos > 0 && (
-                    <StatusChip tone="warn">{c.no_leidos}</StatusChip>
-                  )}
                 </div>
               </Link>
             );
