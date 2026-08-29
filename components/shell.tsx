@@ -20,6 +20,7 @@ const NAV: Group[] = [
     section: "Operación",
     items: [
       { label: "Cartera", href: "/cartera", status: "active" },
+      { label: "Conversaciones", href: "/cartera/conversaciones", status: "active" },
       { label: "Comercial y Atención", href: "/comercial", status: "pronto" },
       { label: "Operaciones", href: "/operaciones", status: "pronto" },
       { label: "Seguros", href: "/seguros", status: "pronto" },

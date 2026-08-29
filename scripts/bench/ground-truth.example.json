@@ -1,0 +1,17 @@
+{
+  "_instrucciones": "Copia este archivo a ground-truth.json y llénalo. La clave es el nombre EXACTO del archivo de imagen en scripts/bench/comprobantes/. Pon el valor real que se ve en cada comprobante. referencia, banco y numero_carro son opcionales (déjalos si no aplican).",
+  "pago-ejemplo-1.jpg": {
+    "monto": 35.00,
+    "fecha": "2026-08-20",
+    "referencia": "123456789",
+    "banco": "Banco General",
+    "numero_carro": "144"
+  },
+  "pago-ejemplo-2.png": {
+    "monto": 120.50,
+    "fecha": "2026-08-21",
+    "referencia": "987654321",
+    "banco": "Banistmo",
+    "numero_carro": "1725"
+  }
+}
