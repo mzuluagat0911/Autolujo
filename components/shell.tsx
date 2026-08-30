@@ -10,38 +10,33 @@ type Group = { section: string | null; items: Item[] };
 
 const NAV: Group[] = [
   {
+    // Home de la plataforma: el pulso de todo el negocio.
     section: null,
     items: [
       { label: "Resumen", href: "/admin", status: "active" },
-      { label: "Agentes", href: "/agentes", status: "pronto" },
     ],
   },
   {
-    section: "Operación",
+    // MÓDULO CARTERA (el primero que construimos) — su tablero + herramientas.
+    section: "Cartera",
     items: [
-      { label: "Cartera", href: "/cartera", status: "active" },
+      { label: "Panel de cartera", href: "/cartera", status: "active" },
       { label: "Conversaciones", href: "/cartera/conversaciones", status: "active" },
       { label: "Pagos por conciliar", href: "/cartera/pagos", status: "active" },
+      { label: "Extractos bancarios", href: "/cartera/extractos", status: "active" },
+      { label: "Carros", href: "/cartera/vehiculos", status: "active" },
+      { label: "Clientes", href: "/cartera/clientes", status: "active" },
+      { label: "Tarifario", href: "/cartera/tarifario", status: "active" },
+    ],
+  },
+  {
+    // Los demás módulos del negocio — la visión de la plataforma.
+    section: "Módulos del negocio",
+    items: [
       { label: "Comercial y Atención", href: "/comercial", status: "pronto" },
       { label: "Operaciones", href: "/operaciones", status: "pronto" },
       { label: "Seguros", href: "/seguros", status: "pronto" },
       { label: "Administrativo", href: "/administrativo", status: "pronto" },
-    ],
-  },
-  {
-    section: "Directorio",
-    items: [
-      { label: "Clientes", href: "/cartera/clientes", status: "active" },
-      { label: "Flota / Vehículos", href: "/cartera/vehiculos", status: "active" },
-      { label: "Contratos", href: "/contratos", status: "pronto" },
-    ],
-  },
-  {
-    section: "Datos",
-    items: [
-      { label: "Extractos bancarios", href: "/cartera/extractos", status: "active" },
-      { label: "Tarifario", href: "/cartera/tarifario", status: "active" },
-      { label: "Reglas", href: "/reglas", status: "pronto" },
     ],
   },
   {
