@@ -39,7 +39,7 @@ const NAV: Group[] = [
   {
     section: "Datos",
     items: [
-      { label: "Extractos bancarios", href: "/extractos", status: "pronto" },
+      { label: "Extractos bancarios", href: "/cartera/extractos", status: "active" },
       { label: "Tarifario", href: "/cartera/tarifario", status: "active" },
       { label: "Reglas", href: "/reglas", status: "pronto" },
     ],
