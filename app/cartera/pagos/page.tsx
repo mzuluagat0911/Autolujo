@@ -55,18 +55,18 @@ export default async function PagosPage() {
   const resueltos = pagos.filter((p) => !POR_CONCILIAR.includes(p.estado_conciliacion));
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10 sm:px-10">
+    <div className="pb-16">
       <PageHeader
         eyebrow="Cartera"
-        title="Pagos por conciliar"
-        subtitle="Cada comprobante que recibe el agente cae aquí. Revisa lo que leyó y confírmalo o recházalo."
+        title="Pagos"
+        subtitle="Cada comprobante que recibe el agente cae aquí."
       />
 
       {error && (
-        <p className="mt-6 rounded-xl bg-surface p-4 font-mono text-xs text-muted ring-1 ring-line/60">{error}</p>
+        <p className="mt-6 rounded-lg bg-surface p-4 font-mono text-xs text-muted ring-1 ring-line">{error}</p>
       )}
 
-      <h2 className="mt-8 font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+      <h2 className="mt-8 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
         {porConciliar.length} por revisar
       </h2>
 
@@ -75,15 +75,15 @@ export default async function PagosPage() {
           <PagoCard key={p.id} p={p} accionable />
         ))}
         {porConciliar.length === 0 && !error && (
-          <p className="rounded-2xl bg-surface px-5 py-10 text-center text-muted ring-1 ring-line/60">
-            Nada por conciliar. Cuando entre un comprobante por WhatsApp, aparecerá aquí. ✅
+          <p className="rounded-lg bg-surface px-5 py-10 text-center text-sm font-light text-muted ring-1 ring-line">
+            Nada por conciliar. Cuando entre un comprobante por WhatsApp, aparecerá aquí.
           </p>
         )}
       </div>
 
       {resueltos.length > 0 && (
         <>
-          <h2 className="mt-12 font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+          <h2 className="mt-12 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
             Resueltos recientes
           </h2>
           <div className="mt-4 space-y-3 opacity-80">
@@ -99,7 +99,7 @@ export default async function PagosPage() {
 
 function PagoCard({ p, accionable }: { p: Pago; accionable?: boolean }) {
   return (
-    <div className="overflow-hidden rounded-2xl bg-surface ring-1 ring-line/60">
+    <div className="overflow-hidden rounded-lg bg-surface ring-1 ring-line">
       <div className="flex flex-col gap-4 p-5 sm:flex-row">
         {/* Comprobante */}
         {p.signedUrl ? (
@@ -108,8 +108,8 @@ function PagoCard({ p, accionable }: { p: Pago; accionable?: boolean }) {
             <img src={p.signedUrl} alt="Comprobante" className="h-28 w-28 rounded-lg object-cover ring-1 ring-line/60" />
           </a>
         ) : (
-          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-lg bg-paper text-2xl ring-1 ring-line/60">
-            🧾
+          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md bg-paper text-xs font-medium tracking-wide text-muted ring-1 ring-line">
+            Sin imagen
           </div>
         )}
 
@@ -139,15 +139,15 @@ function PagoCard({ p, accionable }: { p: Pago; accionable?: boolean }) {
               <form action={resolverPago}>
                 <input type="hidden" name="pago_id" value={p.id} />
                 <input type="hidden" name="accion" value="conciliar" />
-                <button className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper transition hover:opacity-90">
-                  ✓ Conciliar
+                <button className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-surface transition hover:bg-black">
+                  Conciliar
                 </button>
               </form>
               <form action={resolverPago}>
                 <input type="hidden" name="pago_id" value={p.id} />
                 <input type="hidden" name="accion" value="rechazar" />
-                <button className="rounded-lg bg-surface px-4 py-2 text-sm font-medium text-crit ring-1 ring-crit/30 transition hover:bg-crit/5">
-                  ✕ Rechazar
+                <button className="rounded-md bg-surface px-4 py-2 text-sm font-medium text-crit ring-1 ring-crit/30 transition hover:bg-crit/5">
+                  Rechazar
                 </button>
               </form>
             </div>

@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { PageHeader } from "@/components/kit";
 
 export const dynamic = "force-dynamic";
 
@@ -30,14 +30,12 @@ export default async function EmpresasPage() {
   const { data, error } = await getEmpresas();
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      <Link href="/" className="font-mono text-xs text-muted hover:text-brand">
-        ← Volver
-      </Link>
-      <h1 className="mt-4 text-2xl font-bold tracking-tight">Empresas</h1>
-      <p className="mt-1 text-sm text-muted">
-        Las 3 empresas del grupo. La numeración de carros no se repite entre ellas.
-      </p>
+    <div className="pb-16">
+      <PageHeader
+        eyebrow="Configuración"
+        title="Empresas"
+        subtitle="Las tres empresas del grupo. La numeración de carros no se repite entre ellas."
+      />
 
       {error ? (
         <p className="mt-8 rounded-lg border border-line bg-surface p-4 font-mono text-xs text-muted">
@@ -76,6 +74,6 @@ export default async function EmpresasPage() {
           </table>
         </div>
       )}
-    </main>
+    </div>
   );
 }

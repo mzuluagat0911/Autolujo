@@ -55,7 +55,7 @@ export default async function TarifarioPage() {
   ];
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10 sm:px-10">
+    <div className="pb-16">
       <PageHeader
         eyebrow="Cartera"
         title="Tarifario"
@@ -76,7 +76,7 @@ export default async function TarifarioPage() {
         </FormCard>
       </div>
 
-      <h2 className="mt-10 font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+      <h2 className="mt-10 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
         {tarifas.length} tarifa{tarifas.length === 1 ? "" : "s"}
       </h2>
 

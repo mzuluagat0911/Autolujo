@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 const INPUT =
-  "rounded-lg bg-surface-2 px-3 py-2 text-sm ring-1 ring-line/60 outline-none focus:ring-2 focus:ring-gold/70";
+  "rounded-md bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none transition placeholder:text-faint focus:ring-gold";
 
 export function Field({
   label,
@@ -20,7 +20,7 @@ export function Field({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="font-mono text-[11px] uppercase tracking-wide text-muted">{label}</span>
+      <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">{label}</span>
       <input
         name={name}
         required={required}
@@ -50,7 +50,7 @@ export function Select({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="font-mono text-[11px] uppercase tracking-wide text-muted">{label}</span>
+      <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">{label}</span>
       <select name={name} required={required} defaultValue={defaultValue} className={INPUT}>
         {placeholder && (
           <option value="" disabled>
@@ -71,7 +71,7 @@ export function SubmitButton({ children }: { children: ReactNode }) {
   return (
     <button
       type="submit"
-      className="rounded-lg bg-ink px-5 py-2.5 text-sm font-semibold text-surface transition hover:opacity-90"
+      className="rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-black"
     >
       {children}
     </button>
@@ -82,7 +82,7 @@ export function FormCard({ action, children }: { action: (fd: FormData) => void;
   return (
     <form
       action={action}
-      className="grid grid-cols-1 gap-4 rounded-2xl bg-surface p-6 ring-1 ring-line/60 shadow-[0_1px_2px_rgba(20,20,20,0.04)] sm:grid-cols-2 lg:grid-cols-3"
+      className="grid grid-cols-1 gap-4 rounded-lg bg-surface p-6 ring-1 ring-line sm:grid-cols-2 lg:grid-cols-3"
     >
       {children}
     </form>

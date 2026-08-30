@@ -1,28 +1,15 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-// ---------------------------------------------------------------------------
-// GrilleRule — motivo de marca: la parrilla dorada del logo, en miniatura.
-// Firma recurrente que le da identidad propia a la plataforma.
-// ---------------------------------------------------------------------------
-export function GrilleRule({ className = "" }: { className?: string }) {
-  return (
-    <span className={`inline-flex flex-col gap-[3px] ${className}`} aria-hidden="true">
-      <span className="block h-[2px] w-5 rounded-full bg-gold/85" />
-      <span className="block h-[2px] w-7 rounded-full bg-gold/55" />
-      <span className="block h-[2px] w-4 rounded-full bg-gold/35" />
-    </span>
-  );
+export function GoldRule({ className = "" }: { className?: string }) {
+  return <span className={`block h-[2px] w-12 bg-gold ${className}`} aria-hidden="true" />;
 }
 
-// ---------------------------------------------------------------------------
-// Money — cifra en dólares con "USD" pequeño y muted, número protagonista.
-// ---------------------------------------------------------------------------
 export function Money({ amount, className = "" }: { amount: number; className?: string }) {
   const n = new Intl.NumberFormat("es-PA", { maximumFractionDigits: 0 }).format(amount);
   return (
     <span className={`tabular-nums ${className}`}>
-      <span className="mr-1.5 align-[0.35em] text-[0.42em] font-semibold uppercase tracking-wide text-muted">
+      <span className="mr-1.5 align-[0.4em] font-sans text-[0.32em] font-medium tracking-[0.18em] text-gold">
         USD
       </span>
       {n}
@@ -30,9 +17,7 @@ export function Money({ amount, className = "" }: { amount: number; className?: 
   );
 }
 
-// ---------------------------------------------------------------------------
-// PageHeader — eyebrow con puntos "· ·", título serif, subtítulo. Sin borde.
-// ---------------------------------------------------------------------------
+/** Mástil negro a sangre — el gesto de marca, no un H1 genérico. */
 export function PageHeader({
   eyebrow,
   title,
@@ -45,26 +30,31 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 pb-2">
-      <div>
-        {eyebrow && (
-          <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.22em] text-gold">
-            · {eyebrow} ·
-          </div>
-        )}
-        <h1 className="font-serif text-3xl font-bold tracking-tight sm:text-[34px]">
-          {title}
-        </h1>
-        {subtitle && <p className="mt-2 text-sm text-muted">{subtitle}</p>}
+    <header className="relative -mx-5 mb-10 bg-ink px-5 py-10 text-surface sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12 lg:py-14">
+      <div
+        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold to-transparent"
+        aria-hidden
+      />
+      <div className="flex flex-wrap items-end justify-between gap-6">
+        <div className="max-w-2xl">
+          {eyebrow && (
+            <p className="mb-4 text-[11px] font-medium uppercase tracking-[0.28em] text-gold">
+              {eyebrow}
+            </p>
+          )}
+          <h1 className="font-serif text-4xl font-bold leading-[0.95] tracking-tight sm:text-5xl lg:text-[3.5rem]">
+            {title}
+          </h1>
+          {subtitle && (
+            <p className="mt-4 max-w-lg text-[15px] font-light leading-relaxed text-white/55">{subtitle}</p>
+          )}
+        </div>
+        {action}
       </div>
-      {action}
-    </div>
+    </header>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Band — sección de dominio con el motivo parrilla + estado.
-// ---------------------------------------------------------------------------
 export function Band({
   title,
   status = "active",
@@ -75,12 +65,10 @@ export function Band({
   children: ReactNode;
 }) {
   return (
-    <section className={status === "pronto" ? "opacity-75" : undefined}>
-      <div className="mb-4 flex items-center gap-3">
-        <GrilleRule />
-        <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">
-          {title}
-        </h2>
+    <section className={status === "pronto" ? "opacity-55" : undefined}>
+      <div className="mb-5 flex items-baseline gap-4">
+        <h2 className="font-serif text-2xl font-bold tracking-tight">{title}</h2>
+        <span className="h-px flex-1 bg-line" />
         {status === "pronto" ? <ProntoBadge /> : <ActivoBadge />}
       </div>
       {children}
@@ -90,30 +78,19 @@ export function Band({
 
 export function ProntoBadge() {
   return (
-    <span className="rounded-full border border-gold/40 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-gold">
-      Activando
-    </span>
+    <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.2em] text-gold">En preparación</span>
   );
 }
 
 function ActivoBadge() {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-good/30 px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-good">
+    <span className="inline-flex shrink-0 items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-good">
       <span className="h-1.5 w-1.5 rounded-full bg-good" />
-      Activo
+      En marcha
     </span>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Card — superficie base: elevación sutil + hairline, en vez de borde duro.
-// ---------------------------------------------------------------------------
-const CARD =
-  "rounded-xl bg-surface p-4 ring-1 ring-line/60 shadow-[0_1px_2px_rgba(20,20,20,0.04)]";
-
-// ---------------------------------------------------------------------------
-// Kpi — stat tile. size="hero" para el número protagonista (serif + dorado).
-// ---------------------------------------------------------------------------
 export function Kpi({
   label,
   value,
@@ -129,44 +106,31 @@ export function Kpi({
 }) {
   if (size === "hero") {
     return (
-      <div className="flex h-full flex-col rounded-2xl bg-surface p-6 ring-1 ring-line/60 shadow-[0_2px_16px_rgba(20,20,20,0.05)]">
-        <GrilleRule className="mb-5" />
-        <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
-          {label}
-        </div>
-        <div className="mt-auto pt-4 font-serif text-[40px] font-bold leading-none tracking-tight text-gold">
+      <div className="relative overflow-hidden bg-ink px-7 py-8 text-surface">
+        <div className="absolute left-0 top-0 h-full w-[3px] bg-gold" />
+        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-gold">{label}</p>
+        <div className="mt-6 font-serif text-5xl font-bold leading-none tracking-tight lg:text-6xl">
           {value}
         </div>
-        {hint && <div className="mt-3 text-sm text-muted">{hint}</div>}
+        {hint && <p className="mt-4 text-sm font-light text-white/45">{hint}</p>}
       </div>
     );
   }
 
   const color =
-    tone === "warn"
-      ? "text-warn"
-      : tone === "crit"
-        ? "text-crit"
-        : tone === "pronto"
-          ? "text-faint"
-          : "text-ink";
+    tone === "warn" ? "text-warn" : tone === "crit" ? "text-crit" : tone === "pronto" ? "text-faint" : "text-ink";
 
   return (
-    <div className={CARD}>
-      <div className="font-mono text-[11px] uppercase tracking-[0.16em] text-muted">
-        {label}
-      </div>
-      <div className={`mt-1.5 text-2xl font-semibold tabular-nums tracking-tight ${color}`}>
+    <div className="border-t border-line pt-4">
+      <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted">{label}</div>
+      <div className={`mt-2 font-serif text-3xl font-bold tabular-nums tracking-tight ${color}`}>
         {tone === "pronto" ? "—" : value}
       </div>
-      {hint && <div className="mt-1 text-xs text-faint">{hint}</div>}
+      {hint && <div className="mt-1 text-xs font-light text-faint">{hint}</div>}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// StatusChip — pastilla de estado (punto + texto; nunca solo color).
-// ---------------------------------------------------------------------------
 export function StatusChip({
   tone,
   children,
@@ -175,47 +139,29 @@ export function StatusChip({
   children: ReactNode;
 }) {
   const map: Record<string, string> = {
-    good: "text-good border-good/30 bg-good/5",
-    warn: "text-warn border-warn/30 bg-warn/5",
-    crit: "text-crit border-crit/30 bg-crit/5",
-    gold: "text-gold border-gold/30 bg-gold/5",
-    neutral: "text-muted border-line-strong bg-surface-2",
-  };
-  const dot: Record<string, string> = {
-    good: "bg-good",
-    warn: "bg-warn",
-    crit: "bg-crit",
-    gold: "bg-gold",
-    neutral: "bg-faint",
+    good: "text-good border-good/35",
+    warn: "text-warn border-warn/35",
+    crit: "text-crit border-crit/35",
+    gold: "text-gold border-gold/40",
+    neutral: "text-muted border-line",
   };
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium ${map[tone]}`}
-    >
-      <span className={`h-1.5 w-1.5 rounded-full ${dot[tone]}`} />
+    <span className={`inline-flex items-center border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] ${map[tone]}`}>
       {children}
     </span>
   );
 }
 
-// ---------------------------------------------------------------------------
-// EmptyState — vacío con el motivo parrilla, que guía.
-// ---------------------------------------------------------------------------
 export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="rounded-xl bg-surface-2 px-5 py-10 text-center ring-1 ring-line/50">
-      <div className="mb-4 flex justify-center">
-        <GrilleRule />
-      </div>
-      <p className="text-sm font-medium">{title}</p>
-      {hint && <p className="mx-auto mt-1 max-w-sm text-xs text-muted">{hint}</p>}
+    <div className="border border-dashed border-line px-6 py-12 text-center">
+      <GoldRule className="mx-auto mb-5" />
+      <p className="font-serif text-lg font-bold">{title}</p>
+      {hint && <p className="mx-auto mt-2 max-w-sm text-sm font-light text-muted">{hint}</p>}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// SubCard — acceso a un sub-módulo (home de un dominio).
-// ---------------------------------------------------------------------------
 export function SubCard({
   href,
   title,
@@ -229,22 +175,22 @@ export function SubCard({
 }) {
   if (status === "pronto") {
     return (
-      <div className={`${CARD} p-5 opacity-60`}>
-        <div className="flex items-center gap-2">
-          <span className="font-semibold">{title}</span>
+      <div className="border-t border-line py-6 opacity-50">
+        <div className="flex items-center justify-between gap-2">
+          <span className="font-serif text-xl font-bold">{title}</span>
           <ProntoBadge />
         </div>
-        <p className="mt-1 text-sm text-muted">{desc}</p>
+        <p className="mt-1 text-sm font-light text-muted">{desc}</p>
       </div>
     );
   }
   return (
-    <Link
-      href={href}
-      className="group rounded-xl bg-surface p-5 ring-1 ring-line/60 shadow-[0_1px_2px_rgba(20,20,20,0.04)] transition hover:ring-gold/50"
-    >
-      <div className="font-semibold transition group-hover:text-gold">{title}</div>
-      <p className="mt-1 text-sm text-muted">{desc}</p>
+    <Link href={href} className="group block border-t border-line py-6 transition">
+      <div className="flex items-baseline justify-between gap-4">
+        <span className="font-serif text-xl font-bold group-hover:text-gold">{title}</span>
+        <span className="text-gold opacity-0 transition group-hover:opacity-100">→</span>
+      </div>
+      <p className="mt-1 text-sm font-light text-muted">{desc}</p>
     </Link>
   );
 }

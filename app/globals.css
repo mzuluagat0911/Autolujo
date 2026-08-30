@@ -1,79 +1,72 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: var(--font-brand-sans), system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-serif: var(--font-brand-serif), Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-brand-sans), system-ui, sans-serif;
+  --font-serif: var(--font-brand-serif), Georgia, serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* ---- Superficies y texto (tema claro por defecto) ---- */
-  --color-paper: #f6f5f3;
-  --color-surface: #ffffff;
-  --color-surface-2: #fbfaf9;
-  --color-ink: #141414;
-  --color-muted: #6b6a67;
-  --color-faint: #9a9895;
-  --color-line: #e7e5e1;
-  --color-line-strong: #d8d5cf;
+  --color-paper: #ebe6da;
+  --color-surface: #f7f3ea;
+  --color-surface-2: #efe9db;
+  --color-ink: #000000;
+  --color-muted: #5c5850;
+  --color-faint: #8a857a;
+  --color-line: #d6d0c2;
+  --color-line-strong: #c4bdaf;
 
-  /* ---- Dorado (detalle de marca) ---- */
-  --color-gold: #a87f2e;
-  --color-gold-soft: #c9a24b;
-  --color-gold-wash: #f7f0e0;
-  /* alias retrocompat */
-  --color-brand: #a87f2e;
-  --color-brand-wash: #f7f0e0;
+  --color-gold: #c9a44a;
+  --color-gold-soft: #dcc07a;
+  --color-gold-wash: #efe3c4;
+  --color-brand: #c9a44a;
+  --color-brand-wash: #efe3c4;
 
-  /* ---- Colores de estado (semánticos, separados del dorado) ---- */
-  --color-good: #2f7d53;
-  --color-warn: #b9791b;
+  --color-good: #3d8f62;
+  --color-warn: #c48920;
   --color-crit: #b23b32;
 
-  /* ---- Barra lateral (negra fija en ambos temas) ---- */
-  --color-side-bg: #0b0b0b;
-  --color-side-surface: #171717;
-  --color-side-ink: #ededea;
-  --color-side-muted: #8b8985;
-  --color-side-line: #242423;
-  --color-side-active: #c9a24b;
+  --color-side-bg: #000000;
+  --color-side-surface: #0c0c0c;
+  --color-side-ink: #ffffff;
+  --color-side-muted: #9a9a9a;
+  --color-side-line: #1a1a1a;
+  --color-side-active: #c9a44a;
 }
 
-/* ---- Tema oscuro: OS por defecto (sin data-theme) ---- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-paper: #0b0b0b;
-    --color-surface: #151515;
-    --color-surface-2: #1b1b1a;
-    --color-ink: #f1f0ed;
-    --color-muted: #9c9a95;
-    --color-faint: #6f6d68;
-    --color-line: #262625;
-    --color-line-strong: #34332f;
-    --color-gold: #cba457;
-    --color-gold-soft: #d9b667;
-    --color-gold-wash: #241f14;
-    --color-brand: #cba457;
-    --color-brand-wash: #241f14;
+    --color-paper: #050505;
+    --color-surface: #101010;
+    --color-surface-2: #161616;
+    --color-ink: #f4efe4;
+    --color-muted: #9a958c;
+    --color-faint: #6a665e;
+    --color-line: #242424;
+    --color-line-strong: #333;
+    --color-gold: #d4b56a;
+    --color-gold-soft: #e2c888;
+    --color-gold-wash: #2a2212;
+    --color-brand: #d4b56a;
+    --color-brand-wash: #2a2212;
     --color-good: #56b183;
     --color-warn: #d59a3a;
     --color-crit: #db6157;
   }
 }
 
-/* ---- Tema oscuro: elección explícita ---- */
 :root[data-theme="dark"] {
-  --color-paper: #0b0b0b;
-  --color-surface: #151515;
-  --color-surface-2: #1b1b1a;
-  --color-ink: #f1f0ed;
-  --color-muted: #9c9a95;
-  --color-faint: #6f6d68;
-  --color-line: #262625;
-  --color-line-strong: #34332f;
-  --color-gold: #cba457;
-  --color-gold-soft: #d9b667;
-  --color-gold-wash: #241f14;
-  --color-brand: #cba457;
-  --color-brand-wash: #241f14;
+  --color-paper: #050505;
+  --color-surface: #101010;
+  --color-surface-2: #161616;
+  --color-ink: #f4efe4;
+  --color-muted: #9a958c;
+  --color-faint: #6a665e;
+  --color-line: #242424;
+  --color-line-strong: #333;
+  --color-gold: #d4b56a;
+  --color-gold-soft: #e2c888;
+  --color-gold-wash: #2a2212;
+  --color-brand: #d4b56a;
+  --color-brand-wash: #2a2212;
   --color-good: #56b183;
   --color-warn: #d59a3a;
   --color-crit: #db6157;
@@ -88,8 +81,8 @@ body {
 }
 
 *:focus-visible {
-  outline: 2px solid var(--color-gold-soft);
-  outline-offset: 2px;
+  outline: 2px solid var(--color-gold);
+  outline-offset: 3px;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -12,7 +12,7 @@ const NAV: Group[] = [
   {
     section: null,
     items: [
-      { label: "Resumen", href: "/", status: "active" },
+      { label: "Resumen", href: "/admin", status: "active" },
       { label: "Agentes", href: "/agentes", status: "pronto" },
     ],
   },
@@ -58,49 +58,51 @@ function isActive(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(href + "/");
 }
 
+// Rutas públicas (sin menú ni chrome de la app): landing y páginas legales.
+const RUTAS_PUBLICAS = ["/", "/privacidad", "/terminos"];
+
 export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const [open, setOpen] = useState(false); // sidebar móvil
+  const [open, setOpen] = useState(false);
 
-  // cerrar el drawer al navegar
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
 
-  const activeLabel =
-    NAV.flatMap((g) => g.items)
-      .filter((i) => i.status === "active" && isActive(pathname, i.href))
-      .sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "AutoLujo";
+  // Páginas públicas: sin barra lateral ni topbar.
+  if (RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + "/"))) {
+    return <div className="min-h-screen bg-paper">{children}</div>;
+  }
 
   return (
-    <div className="flex min-h-screen">
-      {/* Overlay móvil */}
+    <div className="flex min-h-screen bg-paper">
       {open && (
         <button
           aria-label="Cerrar menú"
           onClick={() => setOpen(false)}
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          className="fixed inset-0 z-30 bg-black/70 md:hidden"
         />
       )}
 
-      {/* Sidebar */}
       <aside
-        className={`fixed z-40 flex h-screen w-64 flex-col bg-side-bg text-side-ink transition-transform md:sticky md:top-0 md:translate-x-0 ${
+        className={`fixed z-40 flex h-screen w-[17.5rem] flex-col bg-black text-white transition-transform md:sticky md:top-0 md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-20 items-center justify-center border-b border-gold/15 bg-black px-4">
+        <div className="relative px-6 pb-8 pt-8">
+          <div className="absolute left-0 top-8 h-10 w-[3px] bg-gold" />
           <Brand />
         </div>
-        <nav className="flex-1 overflow-y-auto px-3 py-4">
+
+        <nav className="flex-1 overflow-y-auto px-4 pb-8">
           {NAV.map((group, gi) => (
-            <div key={gi} className={gi > 0 ? "mt-6" : undefined}>
+            <div key={gi} className={gi > 0 ? "mt-8" : undefined}>
               {group.section && (
-                <div className="px-3 pb-2 font-mono text-[10px] uppercase tracking-[0.15em] text-side-muted">
+                <div className="mb-3 px-3 text-[10px] font-medium uppercase tracking-[0.28em] text-gold/80">
                   {group.section}
                 </div>
               )}
-              <ul className="space-y-0.5">
+              <ul>
                 {group.items.map((item) => (
                   <li key={item.href}>
                     <NavRow item={item} active={isActive(pathname, item.href)} />
@@ -110,34 +112,26 @@ export function Shell({ children }: { children: ReactNode }) {
             </div>
           ))}
         </nav>
-        <div className="border-t border-side-line px-5 py-4">
-          <div className="text-xs text-side-muted">Inversiones Auto Lujo Panamá</div>
+
+        <div className="flex items-center justify-between border-t border-white/10 px-5 py-4">
+          <div>
+            <p className="text-[11px] font-medium tracking-wide text-white">Administrador</p>
+            <p className="text-[10px] font-light uppercase tracking-[0.18em] text-white/40">
+              Siempre seguro
+            </p>
+          </div>
+          <ThemeToggle />
         </div>
       </aside>
 
-      {/* Columna principal */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex h-16 items-center gap-3 border-b border-line bg-surface/90 px-4 backdrop-blur sm:px-6">
-          <button
-            aria-label="Abrir menú"
-            onClick={() => setOpen(true)}
-            className="rounded-lg border border-line p-2 md:hidden"
-          >
+        <div className="flex h-12 items-center bg-black px-4 md:hidden">
+          <button aria-label="Abrir menú" onClick={() => setOpen(true)} className="p-2 text-white">
             <MenuIcon />
           </button>
-          <span className="hidden font-mono text-[11px] uppercase tracking-[0.22em] text-gold md:inline">
-            · {activeLabel} ·
-          </span>
-          <div className="flex-1" />
-          <ThemeToggle />
-          <div className="flex items-center gap-2 rounded-full border border-line py-1 pl-1 pr-3">
-            <span className="grid h-7 w-7 place-items-center rounded-full bg-ink font-mono text-xs font-bold text-surface">
-              AL
-            </span>
-            <span className="hidden text-sm text-muted sm:inline">Administrador</span>
-          </div>
-        </header>
-        <main className="min-w-0 flex-1">{children}</main>
+          <span className="ml-2 font-serif text-sm text-white">AutoLujo</span>
+        </div>
+        <main className="min-w-0 flex-1 px-5 sm:px-8 lg:px-12">{children}</main>
       </div>
     </div>
   );
@@ -146,23 +140,20 @@ export function Shell({ children }: { children: ReactNode }) {
 function NavRow({ item, active }: { item: Item; active: boolean }) {
   if (item.status === "pronto") {
     return (
-      <div className="flex cursor-default items-center justify-between rounded-lg px-3 py-2 text-sm text-side-muted/70">
+      <div className="flex cursor-default items-center justify-between px-3 py-2 text-[13px] font-light text-white/28">
         <span>{item.label}</span>
-        <span className="font-mono text-[9px] uppercase tracking-wider text-side-active/60">
-          pronto
-        </span>
+        <span className="text-[8px] uppercase tracking-[0.16em] text-gold/50">Pronto</span>
       </div>
     );
   }
   return (
     <Link
       href={item.href}
-      className={`flex items-center gap-2 rounded-lg border-l-2 px-3 py-2 text-sm transition ${
-        active
-          ? "border-side-active bg-side-active/10 font-medium text-side-ink"
-          : "border-transparent text-side-muted hover:bg-white/5 hover:text-side-ink"
+      className={`relative flex items-center px-3 py-2 text-[13px] transition ${
+        active ? "font-medium text-gold" : "font-light text-white/60 hover:text-white"
       }`}
     >
+      {active && <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 bg-gold" />}
       {item.label}
     </Link>
   );
@@ -181,9 +172,7 @@ function ThemeToggle() {
     const initial =
       saved === "dark" || saved === "light"
         ? (saved as "light" | "dark")
-        : window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light";
+        : "light";
     setTheme(initial);
     document.documentElement.dataset.theme = initial;
   }, []);
@@ -203,7 +192,7 @@ function ThemeToggle() {
     <button
       aria-label="Cambiar tema"
       onClick={toggle}
-      className="rounded-lg border border-line p-2 text-muted transition hover:text-ink"
+      className="p-1.5 text-white/40 transition hover:text-gold"
     >
       {theme === "dark" ? <SunIcon /> : <MoonIcon />}
     </button>
@@ -212,23 +201,23 @@ function ThemeToggle() {
 
 function MenuIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
     </svg>
   );
 }
 function MoonIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" strokeLinejoin="round" />
     </svg>
   );
 }
 function SunIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       <circle cx="12" cy="12" r="4" />
-      <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" strokeLinecap="round" />
+      <path d="M12 2v2M12 20v2M2 12h2M20 12h2" strokeLinecap="round" />
     </svg>
   );
 }

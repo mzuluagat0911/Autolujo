@@ -1,5 +1,5 @@
-import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { PageHeader } from "@/components/kit";
 import { createCliente } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -32,14 +32,12 @@ export default async function ClientesPage() {
   const { data, error } = await getClientes();
 
   return (
-    <main className="mx-auto max-w-5xl px-6 py-12">
-      <Link href="/" className="font-mono text-xs text-muted hover:text-brand">
-        ← Volver
-      </Link>
-      <h1 className="mt-4 text-2xl font-bold tracking-tight">Clientes</h1>
-      <p className="mt-1 text-sm text-muted">
-        Alta y consulta de clientes. El WhatsApp debe ir en formato internacional (+507…).
-      </p>
+    <div className="pb-16">
+      <PageHeader
+        eyebrow="Directorio"
+        title="Clientes"
+        subtitle="Alta y consulta. El WhatsApp va en formato internacional (+507…)."
+      />
 
       {/* Formulario de alta */}
       <form
@@ -103,7 +101,7 @@ export default async function ClientesPage() {
           </table>
         </div>
       )}
-    </main>
+    </div>
   );
 }
 

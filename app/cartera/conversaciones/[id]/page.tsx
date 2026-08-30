@@ -95,55 +95,54 @@ export default async function ConversacionDetalle({ params }: { params: Promise<
   const esHumano = conv.modo === "humano";
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8 sm:px-10">
+    <div className="mx-auto max-w-3xl pb-16">
       <Link href="/cartera/conversaciones" className="text-sm text-muted hover:text-ink">← Conversaciones</Link>
 
       {/* Cabecera */}
-      <div className="mt-4 rounded-2xl bg-surface p-5 ring-1 ring-line/60">
+      <div className="mt-4 rounded-lg bg-surface p-5 ring-1 ring-line">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold">{carro}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="font-serif text-xl font-bold">{carro}</h1>
               {esHumano ? (
-                <StatusChip tone="warn">🙋 Lo llevas tú</StatusChip>
+                <StatusChip tone="warn">Lo llevas tú</StatusChip>
               ) : (
                 <StatusChip tone="good">Agente activo</StatusChip>
               )}
             </div>
-            <p className="mt-1 text-sm text-muted">
+            <p className="mt-1 text-sm font-light text-muted">
               {conv.cliente?.nombre ?? "Cliente sin vincular"}
               {conv.cliente?.cedula ? ` · ${conv.cliente.cedula}` : ""} · +{conv.wa_numero}
             </p>
           </div>
           <div className="text-right">
-            <p className="font-mono text-[11px] uppercase tracking-wide text-muted">Saldo contrato</p>
-            <p className="text-lg font-semibold tabular-nums">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">Saldo contrato</p>
+            <p className="mt-1 font-serif text-xl font-bold tabular-nums">
               {saldo != null ? `$${saldo.toLocaleString("es-PA", { minimumFractionDigits: 2 })}` : "—"}
             </p>
           </div>
         </div>
 
-        {/* Escalada */}
         {conv.necesita_humano && (
-          <div className="mt-3 rounded-xl bg-warn/5 px-4 py-3 text-sm ring-1 ring-warn/30">
-            🔔 <b>Necesita respuesta.</b> {conv.motivo_escalada ? `Motivo: ${conv.motivo_escalada}` : "Un mensaje del cliente está esperando."}
+          <div className="mt-3 rounded-md bg-gold-wash px-4 py-3 text-sm ring-1 ring-gold/25">
+            <b className="font-medium">Necesita respuesta.</b>{" "}
+            {conv.motivo_escalada ? `Motivo: ${conv.motivo_escalada}` : "Un mensaje del cliente está esperando."}
           </div>
         )}
 
-        {/* Control: tomar / devolver */}
         <div className="mt-4 flex items-center gap-2">
           {esHumano ? (
             <form action={accionDevolverAgente}>
               <input type="hidden" name="conversacion_id" value={conv.id} />
-              <button className="rounded-lg bg-surface px-4 py-2 text-sm font-medium text-ink ring-1 ring-line transition hover:bg-paper">
-                ↩︎ Devolver al agente
+              <button className="rounded-md bg-surface px-4 py-2 text-sm font-medium text-ink ring-1 ring-line transition hover:bg-paper">
+                Devolver al agente
               </button>
             </form>
           ) : (
             <form action={accionTomarChat}>
               <input type="hidden" name="conversacion_id" value={conv.id} />
-              <button className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-paper transition hover:opacity-90">
-                🙋 Tomar chat
+              <button className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-surface transition hover:bg-black">
+                Tomar chat
               </button>
             </form>
           )}
@@ -157,12 +156,12 @@ export default async function ConversacionDetalle({ params }: { params: Promise<
           return (
             <div key={m.id} className={`flex ${out ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[78%] rounded-2xl px-4 py-2.5 text-sm ring-1 ${
+                className={`max-w-[78%] rounded-lg px-4 py-2.5 text-sm ${
                   m.tipo === "system"
-                    ? "bg-crit/5 text-crit ring-crit/20"
+                    ? "bg-crit/5 text-crit ring-1 ring-crit/20"
                     : out
-                      ? "bg-ink text-paper ring-ink"
-                      : "bg-surface text-ink ring-line/60"
+                      ? "bg-ink text-surface"
+                      : "bg-surface text-ink ring-1 ring-line"
                 }`}
               >
                 {m.signedUrl && (
@@ -170,7 +169,7 @@ export default async function ConversacionDetalle({ params }: { params: Promise<
                   <img src={m.signedUrl} alt="Comprobante" className="mb-2 max-h-64 rounded-lg" />
                 )}
                 {m.texto && <p className="whitespace-pre-wrap">{m.texto}</p>}
-                <p className={`mt-1 text-right font-mono text-[10px] ${out ? "text-paper/60" : "text-muted"}`}>
+                <p className={`mt-1 text-right text-[10px] tabular-nums ${out ? "text-surface/55" : "text-muted"}`}>
                   {out && m.enviado_por ? `${m.enviado_por} · ` : ""}
                   {hora(m.created_at)}
                 </p>
@@ -182,15 +181,15 @@ export default async function ConversacionDetalle({ params }: { params: Promise<
       </div>
 
       {/* Caja de responder */}
-      <div className="mt-6 rounded-2xl bg-surface p-4 ring-1 ring-line/60">
+      <div className="mt-6 rounded-lg bg-surface p-4 ring-1 ring-line">
         {!esHumano && (
-          <p className="mb-2 text-xs text-muted">
-            💡 El agente está manejando este chat. Dale <b>“Tomar chat”</b> arriba para escribir tú.
+          <p className="mb-2 text-xs font-light text-muted">
+            El agente está manejando este chat. Toma el chat arriba para escribir tú.
           </p>
         )}
         {esHumano && !abierta && (
-          <p className="mb-2 rounded-lg bg-warn/5 px-3 py-2 text-xs text-muted ring-1 ring-warn/30">
-            ⏳ Ventana de 24h cerrada. El cliente debe escribirte primero para poder responder por texto.
+          <p className="mb-2 rounded-md bg-gold-wash px-3 py-2 text-xs text-muted ring-1 ring-gold/25">
+            Ventana de 24h cerrada. El cliente debe escribirte primero para poder responder por texto.
           </p>
         )}
         <form action={enviarRespuestaHumana} className="flex items-end gap-2">
@@ -200,11 +199,11 @@ export default async function ConversacionDetalle({ params }: { params: Promise<
             rows={2}
             placeholder={esHumano ? "Escribe tu respuesta…" : "Toma el chat para escribir"}
             disabled={!esHumano || !abierta}
-            className="flex-1 resize-none rounded-xl bg-paper px-4 py-2.5 text-sm ring-1 ring-line/60 focus:outline-none focus:ring-2 focus:ring-ink/20 disabled:opacity-50"
+            className="flex-1 resize-none rounded-md bg-paper px-4 py-2.5 text-sm ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-gold/50 disabled:opacity-50"
           />
           <button
             disabled={!esHumano || !abierta}
-            className="rounded-xl bg-ink px-5 py-2.5 text-sm font-medium text-paper transition hover:opacity-90 disabled:opacity-40"
+            className="rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-black disabled:opacity-40"
           >
             Enviar
           </button>

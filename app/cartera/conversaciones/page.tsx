@@ -45,34 +45,34 @@ export default async function ConversacionesPage() {
   const { convs, error } = await getData();
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-10 sm:px-10">
+    <div className="pb-16">
       <PageHeader
         eyebrow="Cartera"
         title="Conversaciones"
-        subtitle="Los chats del agente con cada arrendatario, etiquetados por carro. Aquí el equipo ve y controla todo."
+        subtitle="Chats del agente con cada arrendatario, etiquetados por carro."
       />
 
-      <h2 className="mt-8 font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+      <h2 className="mt-8 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
         {convs.length} conversación{convs.length === 1 ? "" : "es"}
       </h2>
 
       {error ? (
-        <p className="mt-4 rounded-xl bg-surface p-4 font-mono text-xs text-muted ring-1 ring-line/60">{error}</p>
+        <p className="mt-4 rounded-lg bg-surface p-4 font-mono text-xs text-muted ring-1 ring-line">{error}</p>
       ) : (
-        <div className="mt-4 divide-y divide-line overflow-hidden rounded-2xl bg-surface ring-1 ring-line/60">
+        <div className="mt-4 divide-y divide-line overflow-hidden rounded-lg bg-surface ring-1 ring-line">
           {convs.map((c) => {
             const titulo = c.vehiculo
               ? `${c.vehiculo.empresa?.codigo ? c.vehiculo.empresa.codigo + " · " : ""}Carro ${c.vehiculo.numero}`
               : c.etiqueta ?? "Sin carro asignado";
-            const tieneCarro = Boolean(c.vehiculo || c.etiqueta);
+            const placa = c.vehiculo?.numero ?? (c.etiqueta ? c.etiqueta.replace(/\D/g, "").slice(0, 4) || "—" : "—");
             return (
               <Link
                 key={c.id}
                 href={`/cartera/conversaciones/${c.id}`}
-                className="flex items-center gap-4 px-5 py-4 transition hover:bg-paper/60"
+                className="flex items-center gap-4 px-5 py-4 transition hover:bg-surface-2"
               >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-ink font-mono text-xs font-bold text-paper">
-                  {tieneCarro ? "🚗" : "?"}
+                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-ink font-serif text-[13px] font-bold text-gold">
+                  {placa}
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -80,15 +80,15 @@ export default async function ConversacionesPage() {
                     {c.cliente?.nombre && (
                       <span className="truncate text-sm text-muted">· {c.cliente.nombre}</span>
                     )}
-                    {c.necesita_humano && <StatusChip tone="warn">🔔 Necesita respuesta</StatusChip>}
+                    {c.necesita_humano && <StatusChip tone="warn">Necesita respuesta</StatusChip>}
                     {c.modo === "humano" && !c.necesita_humano && (
-                      <StatusChip tone="neutral">🙋 Humano</StatusChip>
+                      <StatusChip tone="neutral">Humano</StatusChip>
                     )}
                   </div>
                   <p className="truncate text-sm text-muted">{c.ultimo_texto ?? "—"}</p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-1">
-                  <span className="font-mono text-[11px] text-muted">{tiempo(c.ultimo_mensaje_at)}</span>
+                  <span className="text-[11px] tabular-nums text-muted">{tiempo(c.ultimo_mensaje_at)}</span>
                 </div>
               </Link>
             );

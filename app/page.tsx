@@ -1,203 +1,130 @@
-import { createServerSupabase } from "@/lib/supabase/server";
-import { PageHeader, Band, Kpi, Money, StatusChip, EmptyState } from "@/components/kit";
+import Link from "next/link";
 
-export const dynamic = "force-dynamic";
-
-type Resumen = {
-  ok: boolean;
-  clientes: number;
-  contratos: number;
-  vehiculos: number;
-  pagosPend: number;
-  cobradoHoy: number;
-  saldoTotal: number;
-  error: string | null;
+export const metadata = {
+  title: "Auto Lujo Panamá · Renta de autos con opción de compra",
+  description:
+    "Arrendamiento diario de autos con opción de compra en Panamá. Maneja hoy, hazlo tuyo mañana — sin banco.",
 };
 
-async function getResumen(): Promise<Resumen> {
-  try {
-    const sb = createServerSupabase();
-    const hoy = new Date().toISOString().slice(0, 10);
-    const [clientes, contratos, vehiculos, pagosPend, cobrado, saldos] = await Promise.all([
-      sb.from("clientes").select("*", { count: "exact", head: true }),
-      sb.from("contratos").select("*", { count: "exact", head: true }),
-      sb.from("vehiculos").select("*", { count: "exact", head: true }),
-      // "Por conciliar" = pendiente + manual (lo que espera acción del equipo).
-      sb
-        .from("pagos")
-        .select("*", { count: "exact", head: true })
-        .in("estado_conciliacion", ["pendiente", "manual"]),
-      // Cobrado hoy = conciliado con fecha de hoy.
-      sb.from("pagos").select("monto").eq("estado_conciliacion", "conciliado").eq("fecha", hoy),
-      sb.from("vw_saldo_contrato").select("saldo_actual"),
-    ]);
-    const firstErr =
-      clientes.error ?? contratos.error ?? vehiculos.error ?? pagosPend.error ?? saldos.error;
-    if (firstErr) throw firstErr;
-    const saldoTotal = (saldos.data ?? []).reduce(
-      (acc: number, r: { saldo_actual: number | null }) => acc + Number(r.saldo_actual ?? 0),
-      0,
-    );
-    const cobradoHoy = (cobrado.data ?? []).reduce(
-      (acc: number, r: { monto: number | null }) => acc + Number(r.monto ?? 0),
-      0,
-    );
-    return {
-      ok: true,
-      clientes: clientes.count ?? 0,
-      contratos: contratos.count ?? 0,
-      vehiculos: vehiculos.count ?? 0,
-      pagosPend: pagosPend.count ?? 0,
-      cobradoHoy,
-      saldoTotal,
-      error: null,
-    };
-  } catch (e) {
-    return {
-      ok: false,
-      clientes: 0,
-      contratos: 0,
-      vehiculos: 0,
-      pagosPend: 0,
-      cobradoHoy: 0,
-      saldoTotal: 0,
-      error: e instanceof Error ? e.message : "Error",
-    };
-  }
-}
+const WHATSAPP = "https://wa.me/50769964199"; // contacto comercial (editable)
 
-const HOY = new Intl.DateTimeFormat("es-PA", {
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-}).format(new Date());
+export default function Landing() {
+  return (
+    <div className="min-h-screen bg-paper text-ink">
+      {/* Header */}
+      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 sm:px-10">
+        <span className="font-serif text-xl font-bold tracking-tight">
+          Auto Lujo <span className="text-gold">Panamá</span>
+        </span>
+        <nav className="flex items-center gap-6 text-sm">
+          <a href="#como" className="hidden text-muted transition hover:text-ink sm:inline">Cómo funciona</a>
+          <a href="#contacto" className="hidden text-muted transition hover:text-ink sm:inline">Contacto</a>
+          <Link
+            href="/admin"
+            className="rounded-lg bg-ink px-4 py-2 font-medium text-paper transition hover:bg-black"
+          >
+            Administrador
+          </Link>
+        </nav>
+      </header>
 
-export default async function ResumenPage() {
-  const r = await getResumen();
-
-  if (!r.ok) {
-    return (
-      <div className="mx-auto max-w-6xl px-6 py-10 sm:px-10">
-        <PageHeader eyebrow="Plataforma" title="Resumen" subtitle="El pulso de todo el negocio" />
-        <div className="mt-8 rounded-2xl bg-surface p-8 ring-1 ring-line/60">
-          <h2 className="font-serif text-lg font-semibold">No se pudo leer la base de datos</h2>
-          <p className="mt-2 text-sm text-muted">
-            Revisa que el schema esté aplicado en Supabase y las variables de entorno.
+      {/* Hero */}
+      <section className="relative overflow-hidden bg-black text-white">
+        <div className="absolute left-0 top-0 h-full w-[3px] bg-gold" />
+        <div className="mx-auto max-w-6xl px-6 py-24 sm:px-10 sm:py-32">
+          <p className="font-mono text-xs uppercase tracking-[0.28em] text-gold">Renta con opción de compra</p>
+          <h1 className="mt-5 max-w-3xl font-serif text-4xl font-bold leading-tight sm:text-6xl">
+            Maneja hoy. <span className="text-gold">Hazlo tuyo</span> mañana.
+          </h1>
+          <p className="mt-6 max-w-xl text-lg text-white/70">
+            Arrendamiento diario de autos con opción de compra en Panamá. Sin banco, sin trámites
+            eternos. Pagas tu cuota diaria y avanzas hacia tu propio carro.
           </p>
-          <p className="mt-4 rounded-lg bg-surface-2 p-3 font-mono text-xs text-muted">{r.error}</p>
+          <div className="mt-9 flex flex-wrap gap-3">
+            <a
+              href={WHATSAPP}
+              className="rounded-xl bg-gold px-6 py-3 font-semibold text-black transition hover:opacity-90"
+            >
+              Quiero un carro
+            </a>
+            <a
+              href="#como"
+              className="rounded-xl px-6 py-3 font-semibold text-white ring-1 ring-white/25 transition hover:bg-white/5"
+            >
+              Cómo funciona
+            </a>
+          </div>
         </div>
-      </div>
-    );
-  }
+      </section>
 
-  return (
-    <div className="mx-auto max-w-6xl px-6 py-10 sm:px-10">
-      <PageHeader
-        eyebrow="Plataforma"
-        title="Resumen"
-        subtitle={`El pulso de todo el negocio · ${HOY}`}
-      />
-
-      <div className="mt-10 space-y-12">
-        {/* ---------------- CARTERA (héroe + secundarios) ---------------- */}
-        <Band title="Cartera" status="active">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.15fr_2fr]">
-            <Kpi
-              size="hero"
-              label="Saldo en cartera"
-              value={<Money amount={r.saldoTotal} />}
-              hint="Total por cobrar en toda la flota"
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <Kpi label="Cobrado hoy" value={<Money amount={r.cobradoHoy} />} hint="Conciliado del día" />
-              <Kpi
-                label="Pagos por conciliar"
-                value={r.pagosPend}
-                tone={r.pagosPend > 0 ? "warn" : "default"}
-                hint="Comprobantes por revisar"
-              />
-              <Kpi label="Contratos activos" value={r.contratos} hint={`${r.vehiculos} vehículos`} />
-              <Kpi label="Clientes" value={r.clientes} hint="En cartera" />
+      {/* Value props */}
+      <section className="mx-auto max-w-6xl px-6 py-20 sm:px-10">
+        <div className="grid gap-6 sm:grid-cols-3">
+          {[
+            { t: "Sin banco", d: "Nada de créditos ni papeleo interminable. El acuerdo es directo con nosotros." },
+            { t: "Cuota diaria", d: "Pagas por día, de lunes a sábado. Domingos libres. Puntual, con descuento." },
+            { t: "El carro será tuyo", d: "Al completar tu plan y estar al día, el vehículo se traspasa a tu nombre." },
+          ].map((v) => (
+            <div key={v.t} className="rounded-2xl bg-surface p-6 ring-1 ring-line">
+              <div className="h-[3px] w-10 bg-gold" />
+              <h3 className="mt-4 font-serif text-xl font-bold">{v.t}</h3>
+              <p className="mt-2 text-sm leading-relaxed text-muted">{v.d}</p>
             </div>
-          </div>
-          <div className="mt-4">
-            {r.pagosPend > 0 ? (
-              <div className="rounded-xl bg-warn/5 px-5 py-4 text-sm ring-1 ring-warn/30">
-                Tienes <b>{r.pagosPend}</b> pago(s) esperando conciliación.
+          ))}
+        </div>
+      </section>
+
+      {/* Cómo funciona */}
+      <section id="como" className="bg-surface">
+        <div className="mx-auto max-w-6xl px-6 py-20 sm:px-10">
+          <p className="font-mono text-xs uppercase tracking-[0.28em] text-gold">Cómo funciona</p>
+          <h2 className="mt-4 font-serif text-3xl font-bold">Tres pasos y estás manejando</h2>
+          <div className="mt-10 grid gap-8 sm:grid-cols-3">
+            {[
+              { n: "01", t: "Escríbenos", d: "Nos contactas por WhatsApp y te contamos las condiciones y la flota disponible." },
+              { n: "02", t: "Firmas y recibes", d: "Con tu abono inicial firmas el contrato y te entregamos el carro listo para trabajar." },
+              { n: "03", t: "Pagas y avanzas", d: "Envías tu comprobante diario por WhatsApp. Nosotros lo registramos al instante." },
+            ].map((s) => (
+              <div key={s.n}>
+                <span className="font-serif text-3xl font-bold text-gold">{s.n}</span>
+                <h3 className="mt-2 font-serif text-lg font-bold">{s.t}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-muted">{s.d}</p>
               </div>
-            ) : (
-              <EmptyState
-                title="Nada pendiente por conciliar"
-                hint="Cuando un cliente envíe un comprobante por WhatsApp, aparecerá aquí para revisar."
-              />
-            )}
+            ))}
           </div>
-        </Band>
+        </div>
+      </section>
 
-        {/* ---------------- COMERCIAL ---------------- */}
-        <Band title="Comercial y Atención" status="pronto">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <Kpi label="Leads nuevos" value="" tone="pronto" />
-            <Kpi label="Sin seguimiento" value="" tone="pronto" />
-            <Kpi label="Citas agendadas" value="" tone="pronto" />
-            <Kpi label="Conversión" value="" tone="pronto" />
+      {/* Contacto */}
+      <section id="contacto" className="mx-auto max-w-6xl px-6 py-20 text-center sm:px-10">
+        <h2 className="font-serif text-3xl font-bold">¿Listo para tu carro?</h2>
+        <p className="mx-auto mt-3 max-w-md text-muted">
+          Escríbenos por WhatsApp y un asesor te atiende con toda la información.
+        </p>
+        <a
+          href={WHATSAPP}
+          className="mt-7 inline-block rounded-xl bg-ink px-8 py-3 font-semibold text-paper transition hover:bg-black"
+        >
+          Contáctanos por WhatsApp
+        </a>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-black text-white/70">
+        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-12 sm:flex-row sm:items-center sm:justify-between sm:px-10">
+          <div>
+            <span className="font-serif text-lg font-bold text-white">
+              Auto Lujo <span className="text-gold">Panamá</span>
+            </span>
+            <p className="mt-1 text-xs">© 2026 Inversiones Auto Lujo Panamá. Todos los derechos reservados.</p>
           </div>
-        </Band>
-
-        {/* ---------------- OPERACIONES ---------------- */}
-        <Band title="Operaciones" status="pronto">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <Kpi label="Novedades abiertas" value="" tone="pronto" />
-            <Kpi label="Flota activa" value="" tone="pronto" />
-            <Kpi label="En taller" value="" tone="pronto" />
-            <Kpi label="Mantenimientos por km" value="" tone="pronto" />
-          </div>
-        </Band>
-
-        {/* ---------------- SEGUROS ---------------- */}
-        <Band title="Seguros" status="pronto">
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <Kpi label="Reclamaciones activas" value="" tone="pronto" />
-            <Kpi label="Audiencias próximas" value="" tone="pronto" />
-            <Kpi label="Resoluciones por retirar" value="" tone="pronto" />
-            <Kpi label="Aseguradoras" value="" tone="pronto" />
-          </div>
-        </Band>
-
-        {/* ---------------- STACK DE AGENTES ---------------- */}
-        <Band title="Stack de agentes" status="active">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <AgentCard nombre="Cartera" estado="activo" nota="Recibe y responde por WhatsApp" />
-            <AgentCard nombre="Comercial y Atención" estado="activando" />
-            <AgentCard nombre="Operaciones" estado="activando" />
-            <AgentCard nombre="Seguros" estado="activando" />
-          </div>
-        </Band>
-      </div>
-    </div>
-  );
-}
-
-function AgentCard({
-  nombre,
-  estado,
-  nota,
-}: {
-  nombre: string;
-  estado: "activo" | "activando";
-  nota?: string;
-}) {
-  return (
-    <div className="rounded-xl bg-surface p-4 ring-1 ring-line/60 shadow-[0_1px_2px_rgba(20,20,20,0.04)]">
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-medium">{nombre}</span>
-        {estado === "activo" ? (
-          <StatusChip tone="good">Activo</StatusChip>
-        ) : (
-          <StatusChip tone="gold">Activando</StatusChip>
-        )}
-      </div>
-      <p className="mt-2 text-xs text-muted">{nota ?? "Módulo en preparación"}</p>
+          <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <Link href="/privacidad" className="transition hover:text-white">Política de Privacidad</Link>
+            <Link href="/terminos" className="transition hover:text-white">Condiciones del Servicio</Link>
+            <Link href="/admin" className="transition hover:text-white">Administrador</Link>
+          </nav>
+        </div>
+      </footer>
     </div>
   );
 }

@@ -31,7 +31,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es" className={`${brandSerif.variable} ${brandSans.variable}`}>
-      <body className="min-h-screen antialiased">
+      <body className="min-h-screen font-sans font-light antialiased">
         <Shell>{children}</Shell>
       </body>
     </html>

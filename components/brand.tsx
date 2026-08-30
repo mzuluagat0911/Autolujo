@@ -13,7 +13,7 @@ export function Brand() {
         src="/logo.png"
         alt="AutoLujo S.A"
         onError={() => setFailed(true)}
-        className="h-14 w-auto max-w-[210px] object-contain"
+        className="h-[4.5rem] w-auto max-w-[200px] object-contain brightness-110"
       />
     );
   }
@@ -25,7 +25,7 @@ export function Brand() {
         <div className="font-serif text-[17px] font-semibold tracking-tight text-side-ink">
           AutoLujo <span className="text-side-active">S.A</span>
         </div>
-        <div className="mt-1 font-mono text-[9px] uppercase tracking-[0.2em] text-side-muted">
+        <div className="mt-1 text-[9px] font-light uppercase tracking-[0.2em] text-side-muted">
           Siempre seguro
         </div>
       </div>
