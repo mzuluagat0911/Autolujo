@@ -112,15 +112,29 @@ export async function reclamarMensajeEntrante(opts: {
   if (error) return null; // violación de unique (wa_message_id) → duplicado
 
   const ahora = new Date().toISOString();
+  // no_leidos: se incrementa en SQL para evitar condiciones de carrera.
+  const { data: conv } = await sb
+    .from("conversaciones")
+    .select("no_leidos")
+    .eq("id", opts.conversacionId)
+    .maybeSingle();
+  const noLeidos = Number((conv as { no_leidos?: number } | null)?.no_leidos ?? 0) + 1;
   await sb
     .from("conversaciones")
     .update({
       ultimo_mensaje_at: ahora,
       ultimo_entrante_at: ahora, // el cliente escribió → abre/renueva la ventana de 24h
       ultimo_texto: opts.texto.slice(0, 140),
+      no_leidos: noLeidos,
     })
     .eq("id", opts.conversacionId);
   return data.id as string;
+}
+
+/** El equipo abrió el chat: limpia el contador de no leídos. */
+export async function marcarLeida(conversacionId: string): Promise<void> {
+  const sb = createServerSupabase();
+  await sb.from("conversaciones").update({ no_leidos: 0 }).eq("id", conversacionId);
 }
 
 /** Completa un mensaje ya reclamado (ej. la imagen del comprobante y el pago). */
