@@ -49,8 +49,8 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
   const [selectedId, setSelectedId] = useState<string | null>(seleccionInicial?.id ?? null);
   const [detalle, setDetalle] = useState<ConversacionDetalle | null>(seleccionInicial ?? null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
-  const [error, setError] = useState<string | null>(errorInicial ?? null);
-  const [flash, setFlash] = useState<string | null>(null);
+  const [configError] = useState<string | null>(errorInicial ?? null);
+  const [toast, setToast] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 
   // Sync URL without full navigation friction on desktop.
   useEffect(() => {
@@ -97,15 +97,19 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
     };
   }, [selectedId]);
 
+  function showToast(tone: "ok" | "err", text: string) {
+    setToast({ tone, text });
+    window.setTimeout(() => setToast(null), 3200);
+  }
+
   async function abrir(id: string) {
     if (id === selectedId && detalle) return;
     setSelectedId(id);
     setCargandoDetalle(true);
-    setError(null);
     const { detalle: d, error: err } = await cargarDetalle(id);
     setCargandoDetalle(false);
     if (err) {
-      setError(err);
+      showToast("err", err);
       return;
     }
     setDetalle(d);
@@ -194,6 +198,11 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
+            {configError && (
+              <div className="m-3 rounded-md bg-crit/10 px-3 py-2.5 text-xs text-crit ring-1 ring-crit/20">
+                {configError}
+              </div>
+            )}
             {filtradas.map((c) => (
               <ConvRow
                 key={c.id}
@@ -202,7 +211,7 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
                 onSelect={() => void abrir(c.id)}
               />
             ))}
-            {filtradas.length === 0 && (
+            {filtradas.length === 0 && !configError && (
               <p className="px-5 py-12 text-center text-sm text-muted">
                 {convs.length === 0
                   ? "Aún no hay conversaciones. Cuando un cliente escriba al WhatsApp, aparecerá aquí."
@@ -245,10 +254,7 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
                 if (d) setDetalle(d);
                 setConvs(next);
               }}
-              onFlash={(msg) => {
-                setFlash(msg);
-                window.setTimeout(() => setFlash(null), 3200);
-              }}
+              onFlash={(msg) => showToast("ok", msg)}
               onLocalPatch={(patch) => {
                 setDetalle((prev) => (prev ? { ...prev, ...patch } : prev));
                 setConvs((prev) =>
@@ -271,13 +277,13 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
         </section>
       </div>
 
-      {(error || flash) && (
+      {toast && (
         <div
           className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md px-4 py-2.5 text-sm shadow-lg ${
-            error ? "bg-crit text-white" : "bg-ink text-surface"
+            toast.tone === "err" ? "bg-crit text-white" : "bg-ink text-surface"
           }`}
         >
-          {error ?? flash}
+          {toast.text}
         </div>
       )}
     </div>
