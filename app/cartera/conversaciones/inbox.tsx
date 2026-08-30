@@ -19,6 +19,10 @@ import {
 } from "./actions";
 import type { ConversacionDetalle, ConversacionLista, FiltroBandeja, Mensaje } from "./types";
 import {
+  demoDetalle,
+  demoRespuestaAgente,
+} from "./demo-data";
+import {
   formatSaldo,
   horaMensaje,
   placaConv,
@@ -40,9 +44,15 @@ type Props = {
   inicial: ConversacionLista[];
   errorInicial?: string | null;
   seleccionInicial?: ConversacionDetalle | null;
+  demo?: boolean;
 };
 
-export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }: Props) {
+export function InboxConversaciones({
+  inicial,
+  errorInicial,
+  seleccionInicial,
+  demo = false,
+}: Props) {
   const [convs, setConvs] = useState(inicial);
   const [filtro, setFiltro] = useState<FiltroBandeja>("todas");
   const [q, setQ] = useState("");
@@ -52,29 +62,31 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
   const [configError] = useState<string | null>(errorInicial ?? null);
   const [toast, setToast] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
 
-  // Sync URL without full navigation friction on desktop.
+  // Sync URL (preserva ?demo=1).
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const url = selectedId
+    const base = selectedId
       ? `/cartera/conversaciones/${selectedId}`
       : "/cartera/conversaciones";
-    if (window.location.pathname !== url) {
+    const url = demo ? `${base}?demo=1` : base;
+    if (window.location.pathname + window.location.search !== url) {
       window.history.replaceState(null, "", url);
     }
-  }, [selectedId]);
+  }, [selectedId, demo]);
 
-  // Marcar leída al abrir.
+  // Marcar leída al abrir (solo datos reales).
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || demo) return;
     void accionMarcarLeida(selectedId).then(() => {
       setConvs((prev) =>
         prev.map((c) => (c.id === selectedId ? { ...c, no_leidos: 0 } : c)),
       );
     });
-  }, [selectedId]);
+  }, [selectedId, demo]);
 
-  // Polling suave de bandeja + detalle abierto.
+  // Polling suave (solo datos reales).
   useEffect(() => {
+    if (demo) return;
     let cancelled = false;
     const tick = async () => {
       const { convs: next, error: err } = await cargarBandeja();
@@ -95,7 +107,7 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selectedId]);
+  }, [selectedId, demo]);
 
   function showToast(tone: "ok" | "err", text: string) {
     setToast({ tone, text });
@@ -105,6 +117,12 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
   async function abrir(id: string) {
     if (id === selectedId && detalle) return;
     setSelectedId(id);
+    if (demo) {
+      const d = demoDetalle(id);
+      setDetalle(d);
+      setConvs((prev) => prev.map((c) => (c.id === id ? { ...c, no_leidos: 0 } : c)));
+      return;
+    }
     setCargandoDetalle(true);
     const { detalle: d, error: err } = await cargarDetalle(id);
     setCargandoDetalle(false);
@@ -148,6 +166,13 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
           </div>
         </div>
       </header>
+
+      {demo && (
+        <div className="shrink-0 border-b border-gold/30 bg-gold-wash px-5 py-2 text-center text-xs text-muted sm:px-6">
+          <span className="font-medium text-ink">Modo demo</span> — conversaciones de ejemplo. En
+          producción los mensajes llegan en vivo desde WhatsApp y el agente responde automáticamente.
+        </div>
+      )}
 
       <div className="flex min-h-0 flex-1">
         {/* Lista */}
@@ -213,9 +238,20 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
             ))}
             {filtradas.length === 0 && !configError && (
               <p className="px-5 py-12 text-center text-sm text-muted">
-                {convs.length === 0
-                  ? "Aún no hay conversaciones. Cuando un cliente escriba al WhatsApp, aparecerá aquí."
-                  : "Nada coincide con este filtro."}
+                {convs.length === 0 ? (
+                  <>
+                    Aún no hay conversaciones. Cuando un cliente escriba al WhatsApp, aparecerá aquí.
+                    <br />
+                    <a
+                      href="/cartera/conversaciones?demo=1"
+                      className="mt-3 inline-block text-gold underline-offset-2 hover:underline"
+                    >
+                      Ver demo con conversaciones de ejemplo →
+                    </a>
+                  </>
+                ) : (
+                  "Nada coincide con este filtro."
+                )}
               </p>
             )}
           </div>
@@ -245,8 +281,14 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
           {selectedId && detalle && (
             <ChatPanel
               detalle={detalle}
+              demo={demo}
               onBack={cerrarDetalle}
               onRefresh={async () => {
+                if (demo) {
+                  const d = demoDetalle(detalle.id);
+                  if (d) setDetalle(d);
+                  return;
+                }
                 const [{ detalle: d }, { convs: next }] = await Promise.all([
                   cargarDetalle(detalle.id),
                   cargarBandeja(),
@@ -269,6 +311,16 @@ export function InboxConversaciones({ inicial, errorInicial, seleccionInicial }:
                           ultimo_mensaje_at: patch.ultimo_mensaje_at ?? c.ultimo_mensaje_at,
                         }
                       : c,
+                  ),
+                );
+              }}
+              onDemoAgentReply={(msgs, ultimo) => {
+                setDetalle((prev) =>
+                  prev ? { ...prev, mensajes: msgs, ultimo_texto: ultimo, ultimo_mensaje_at: new Date().toISOString() } : prev,
+                );
+                setConvs((prev) =>
+                  prev.map((c) =>
+                    c.id === detalle.id ? { ...c, ultimo_texto: ultimo, ultimo_mensaje_at: new Date().toISOString() } : c,
                   ),
                 );
               }}
@@ -366,22 +418,38 @@ function ConvRow({
 
 function ChatPanel({
   detalle,
+  demo,
   onBack,
   onRefresh,
   onFlash,
   onLocalPatch,
+  onDemoAgentReply,
 }: {
   detalle: ConversacionDetalle;
+  demo?: boolean;
   onBack: () => void;
   onRefresh: () => Promise<void>;
   onFlash: (msg: string) => void;
   onLocalPatch: (patch: Partial<ConversacionDetalle> & Partial<ConversacionLista>) => void;
+  onDemoAgentReply?: (msgs: Mensaje[], ultimo: string) => void;
 }) {
   const esHumano = detalle.modo === "humano";
   const [pending, startTransition] = useTransition();
   const [accionError, setAccionError] = useState<string | null>(null);
+  const [agenteEscribiendo, setAgenteEscribiendo] = useState(false);
 
   function runAccion(fn: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, labelOk: string) {
+    if (demo) {
+      setAccionError(null);
+      const tomar = fn === accionTomarChat;
+      onLocalPatch({
+        modo: tomar ? "humano" : "agente",
+        necesita_humano: false,
+        motivo_escalada: tomar ? detalle.motivo_escalada : null,
+      });
+      onFlash(labelOk);
+      return;
+    }
     const fd = new FormData();
     fd.set("conversacion_id", detalle.id);
     setAccionError(null);
@@ -394,6 +462,42 @@ function ChatPanel({
       onFlash(labelOk);
       await onRefresh();
     });
+  }
+
+  function simularCliente(texto: string) {
+    if (!demo || esHumano) return;
+    const ahora = new Date().toISOString();
+    const msgIn: Mensaje = {
+      id: `demo-in-${Date.now()}`,
+      direccion: "in",
+      tipo: "text",
+      texto,
+      media_url: null,
+      enviado_por: null,
+      created_at: ahora,
+    };
+    const msgs = [...detalle.mensajes, msgIn];
+    onLocalPatch({
+      mensajes: msgs,
+      ultimo_texto: texto.slice(0, 140),
+      ultimo_mensaje_at: ahora,
+      ultimo_entrante_at: ahora,
+    });
+    setAgenteEscribiendo(true);
+    window.setTimeout(() => {
+      const respuesta = demoRespuestaAgente(texto);
+      const msgOut: Mensaje = {
+        id: `demo-out-${Date.now()}`,
+        direccion: "out",
+        tipo: "text",
+        texto: respuesta,
+        media_url: null,
+        enviado_por: null,
+        created_at: new Date().toISOString(),
+      };
+      setAgenteEscribiendo(false);
+      onDemoAgentReply?.([...msgs, msgOut], respuesta.slice(0, 140));
+    }, 1400);
   }
 
   return (
@@ -463,12 +567,38 @@ function ChatPanel({
         <div className="shrink-0 bg-crit/10 px-4 py-2 text-sm text-crit sm:px-5">{accionError}</div>
       )}
 
-      <Thread mensajes={detalle.mensajes} />
+      <Thread mensajes={detalle.mensajes} agenteEscribiendo={agenteEscribiendo} />
+
+      {demo && !esHumano && (
+        <div className="shrink-0 border-t border-line bg-paper px-4 py-2 sm:px-5">
+          <p className="mb-2 text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+            Simular cliente (demo)
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[
+              "¿Cuánto debo hoy?",
+              "Te mando el comprobante en un rato",
+              "Gracias por la info",
+            ].map((t) => (
+              <button
+                key={t}
+                type="button"
+                disabled={agenteEscribiendo}
+                onClick={() => simularCliente(t)}
+                className="rounded-md bg-surface px-2.5 py-1.5 text-xs text-muted ring-1 ring-line transition hover:text-ink disabled:opacity-40"
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <Composer
         conversacionId={detalle.id}
         esHumano={esHumano}
         ventanaAbierta={detalle.ventana_abierta}
+        demo={demo}
         onSent={async (texto) => {
           const ahora = new Date().toISOString();
           const optimistic: Mensaje = {
@@ -487,7 +617,7 @@ function ChatPanel({
             ultimo_texto: texto.slice(0, 140),
             ultimo_mensaje_at: ahora,
           });
-          await onRefresh();
+          if (!demo) await onRefresh();
         }}
         onError={setAccionError}
       />
@@ -495,7 +625,13 @@ function ChatPanel({
   );
 }
 
-function Thread({ mensajes }: { mensajes: Mensaje[] }) {
+function Thread({
+  mensajes,
+  agenteEscribiendo = false,
+}: {
+  mensajes: Mensaje[];
+  agenteEscribiendo?: boolean;
+}) {
   const bottomRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -533,13 +669,27 @@ function Thread({ mensajes }: { mensajes: Mensaje[] }) {
                   out && !system ? "text-surface/55" : "text-muted"
                 }`}
               >
-                {out && m.enviado_por ? `${m.enviado_por} · ` : ""}
+                {out && !system
+                  ? `${m.enviado_por ? m.enviado_por : "Agente"} · `
+                  : ""}
                 {horaMensaje(m.created_at)}
               </p>
             </div>
           </div>
         );
       })}
+      {agenteEscribiendo && (
+        <div className="flex justify-end">
+          <div className="rounded-lg bg-ink/80 px-4 py-2.5 text-sm text-surface">
+            <span className="inline-flex gap-1">
+              <span className="animate-pulse">●</span>
+              <span className="animate-pulse [animation-delay:150ms]">●</span>
+              <span className="animate-pulse [animation-delay:300ms]">●</span>
+            </span>
+            <span className="ml-2 text-xs text-surface/70">Agente escribiendo…</span>
+          </div>
+        </div>
+      )}
       {mensajes.length === 0 && (
         <p className="py-16 text-center text-sm text-muted">Sin mensajes todavía.</p>
       )}
@@ -552,12 +702,14 @@ function Composer({
   conversacionId,
   esHumano,
   ventanaAbierta,
+  demo,
   onSent,
   onError,
 }: {
   conversacionId: string;
   esHumano: boolean;
   ventanaAbierta: boolean;
+  demo?: boolean;
   onSent: (texto: string) => Promise<void>;
   onError: (msg: string | null) => void;
 }) {
@@ -569,6 +721,11 @@ function Composer({
     const body = (raw ?? texto).trim();
     if (!body || !puede) return;
     onError(null);
+    if (demo) {
+      setTexto("");
+      void onSent(body);
+      return;
+    }
     const fd = new FormData();
     fd.set("conversacion_id", conversacionId);
     fd.set("texto", body);
