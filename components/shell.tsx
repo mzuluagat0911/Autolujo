@@ -21,6 +21,7 @@ const NAV: Group[] = [
     section: "Cartera",
     items: [
       { label: "Panel de cartera", href: "/cartera", status: "active" },
+      { label: "Estado de cuenta", href: "/cartera/estados-cuenta", status: "active" },
       { label: "Conversaciones", href: "/cartera/conversaciones", status: "active" },
       { label: "Pagos por conciliar", href: "/cartera/pagos", status: "active" },
       { label: "Extractos bancarios", href: "/cartera/extractos", status: "active" },

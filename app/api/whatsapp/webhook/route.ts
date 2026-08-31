@@ -11,9 +11,12 @@ import {
   historialReciente,
   marcarEscalada,
   marcarNecesitaHumano,
+  resumenContrato,
   type Conversacion,
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
+import { transcribirAudio } from "@/lib/ai/transcribir";
+import { estadoCuentaContrato, money } from "@/lib/cartera/estado-cuenta";
 
 type Conv = Conversacion;
 
@@ -113,7 +116,8 @@ async function manejarMensaje(msg: WhatsAppMessage) {
 
   const texto =
     msg.type === "text" ? msg.text?.body ?? "" :
-    msg.type === "image" ? "📷 Comprobante" : `[${msg.type ?? "mensaje"}]`;
+    msg.type === "image" ? "📷 Comprobante" :
+    msg.type === "audio" ? "🎤 Nota de voz" : `[${msg.type ?? "mensaje"}]`;
 
   // Candado de idempotencia: reclama el mensaje ANTES de trabajo pesado.
   // Si Meta reintenta, el segundo choca con el unique y sale sin reprocesar.
@@ -134,6 +138,8 @@ async function manejarMensaje(msg: WhatsAppMessage) {
     await responderConAgente(conv, from);
   } else if (msg.type === "image") {
     await procesarComprobante(conv, from, msg, mensajeId);
+  } else if (msg.type === "audio") {
+    await procesarAudio(conv, from, msg, mensajeId);
   } else {
     await responder(conv.id, from, "¡Gracias por escribir! En un momento te respondo por aquí 🙌");
   }
@@ -143,10 +149,36 @@ async function manejarMensaje(msg: WhatsAppMessage) {
 async function responderConAgente(conv: Conv, from: string) {
   try {
     const historial = await historialReciente(conv.id, 10);
-    const contexto = conv.etiqueta ? `El cliente está vinculado al ${conv.etiqueta}.` : undefined;
+    // Contexto con cifras REALES si la conversación está vinculada a un contrato.
+    let contexto = conv.etiqueta ? `El cliente está vinculado al ${conv.etiqueta}.` : undefined;
+    if (conv.contrato_id) {
+      const resumen = await resumenContrato(conv.contrato_id);
+      if (resumen) contexto = resumen;
+    }
     const r = await responderAgente({ historial, contexto });
     if (r.pasar_a_humano) await marcarEscalada(conv.id, r.motivo ?? null);
     await responder(conv.id, from, r.mensaje);
+  } catch (e) {
+    console.error("[whatsapp/webhook] agente falló:", e);
+    await responder(conv.id, from, "¡Gracias por escribir! En un momento te respondo por aquí 🙌");
+  }
+}
+
+// Descarga la nota de voz, la transcribe y deja que el agente responda al texto.
+async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, mensajeId: string) {
+  const mediaId = msg.audio?.id;
+  if (!mediaId) {
+    await responder(conv.id, from, "🎤 Recibí tu audio pero no pude abrirlo. ¿Me lo reenvías o me escribes?");
+    return;
+  }
+  try {
+    const bytes = await downloadMedia(mediaId);
+    const transcript = await transcribirAudio(bytes, msg.audio?.mime_type ?? "audio/ogg");
+    if (transcript) {
+      // Guarda la transcripción en el hilo (para el panel y para el agente).
+      await completarMensaje(mensajeId, { texto: `🎤 ${transcript}` });
+    }
+    await responderConAgente(conv, from);
   } catch (e) {
     console.error("[whatsapp/webhook] agente falló:", e);
     await responder(conv.id, from, "¡Gracias por escribir! En un momento te respondo por aquí 🙌");
@@ -178,14 +210,25 @@ async function procesarComprobante(
     // Completar el mensaje reclamado con la imagen en Storage + el pago.
     await completarMensaje(mensajeId, { mediaUrl: res.comprobantePath, pagoId: res.pagoId });
 
-    // Respuesta HUMANA al cliente (los datos técnicos quedan en el panel, no se los mandamos).
+    // Respuesta HUMANA al cliente, COMPARANDO el pago contra lo que debía.
     const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : null;
     let respuesta: string;
     if (!monto || c.confianza === "baja") {
       // No confirmamos un monto dudoso: mejor validarlo.
       respuesta = "¡Gracias! 🙌 Recibí tu comprobante, dame un momentito para validarlo y te confirmo.";
-    } else if (res.resolucion.estado === "ok") {
-      respuesta = `¡Listo! Recibí tu pago de ${monto} del ${res.resolucion.etiqueta ?? "carro"} ✅ Ya lo registro. ¡Gracias por tu pago puntual!`;
+    } else if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
+      // El sistema sabe cuánto debía → comparamos.
+      const est = await estadoCuentaContrato(res.resolucion.contratoId);
+      const carro = res.resolucion.etiqueta ?? "carro";
+      const nombre = est?.templateVars[0] ? `, ${est.templateVars[0]}` : "";
+      const debia = est?.cuenta ?? 0; // saldo base (sin recargo)
+      if (est && c.monto! + 0.01 >= debia) {
+        respuesta = `¡Listo${nombre}! Recibí tu pago de ${monto} del ${carro} ✅ Quedas al día por hoy. ¡Gracias por tu puntualidad! 🙌`;
+      } else if (est) {
+        respuesta = `¡Gracias${nombre}! Recibí ${monto} del ${carro}. Te queda un saldo de ${money(debia - c.monto!)} para completar hoy. Cualquier cosa nos dices 🙌`;
+      } else {
+        respuesta = `¡Listo! Recibí tu pago de ${monto} del ${carro} ✅ Ya lo registro. ¡Gracias!`;
+      }
     } else if (res.resolucion.estado === "sin_carro") {
       respuesta = `¡Gracias! Recibí tu comprobante de ${monto} 💪 ¿Me confirmas el número de carro para aplicarlo bien?`;
     } else {
@@ -210,6 +253,7 @@ type WhatsAppMessage = {
   type?: string;
   text?: { body?: string };
   image?: { id?: string; mime_type?: string };
+  audio?: { id?: string; mime_type?: string; voice?: boolean };
 };
 
 type WebhookPayload = {

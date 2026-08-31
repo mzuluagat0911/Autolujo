@@ -19,7 +19,28 @@ export type Conversacion = {
 
 const SEL_CONV = "id, wa_numero, cliente_id, vehiculo_id, contrato_id, etiqueta, modo";
 
-/** Busca (o crea) la conversación de un número de WhatsApp. */
+/** Contrato ACTIVO de un cliente → para vincular la conversación (teléfono → contrato). */
+async function resolverContratoDeCliente(
+  clienteId: string,
+): Promise<{ contratoId: string; vehiculoId: string | null; etiqueta: string | null } | null> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("contratos")
+    .select("id, vehiculo:vehiculos(id, numero)")
+    .eq("cliente_id", clienteId)
+    .eq("estado", "activo")
+    .limit(1)
+    .maybeSingle();
+  if (!data) return null;
+  const veh = data.vehiculo as unknown as { id: string; numero: string } | null;
+  return {
+    contratoId: data.id as string,
+    vehiculoId: veh?.id ?? null,
+    etiqueta: veh ? `Carro ${veh.numero}` : null,
+  };
+}
+
+/** Busca (o crea) la conversación de un número, vinculándola al cliente y su contrato. */
 export async function obtenerConversacion(waNumero: string): Promise<Conversacion> {
   const sb = createServerSupabase();
   const { data: existente } = await sb
@@ -27,9 +48,22 @@ export async function obtenerConversacion(waNumero: string): Promise<Conversacio
     .select(SEL_CONV)
     .eq("wa_numero", waNumero)
     .maybeSingle();
-  if (existente) return existente as Conversacion;
+  if (existente) {
+    const c = existente as Conversacion;
+    // Backfill: si ya tiene cliente pero aún no contrato, vincúlalo ahora.
+    if (c.cliente_id && !c.contrato_id) {
+      const r = await resolverContratoDeCliente(c.cliente_id);
+      if (r) {
+        await sb.from("conversaciones")
+          .update({ contrato_id: r.contratoId, vehiculo_id: r.vehiculoId, etiqueta: r.etiqueta })
+          .eq("id", c.id);
+        return { ...c, contrato_id: r.contratoId, vehiculo_id: r.vehiculoId, etiqueta: r.etiqueta };
+      }
+    }
+    return c;
+  }
 
-  // Intento vincular a un cliente por su whatsapp/teléfono.
+  // Nueva conversación: vincular cliente por whatsapp/teléfono + su contrato activo.
   const { data: cli } = await sb
     .from("clientes")
     .select("id")
@@ -37,13 +71,41 @@ export async function obtenerConversacion(waNumero: string): Promise<Conversacio
     .limit(1)
     .maybeSingle();
 
+  let contratoId: string | null = null;
+  let vehiculoId: string | null = null;
+  let etiqueta: string | null = null;
+  if (cli?.id) {
+    const r = await resolverContratoDeCliente(cli.id);
+    if (r) { contratoId = r.contratoId; vehiculoId = r.vehiculoId; etiqueta = r.etiqueta; }
+  }
+
   const { data: creada, error } = await sb
     .from("conversaciones")
-    .insert({ wa_numero: waNumero, cliente_id: cli?.id ?? null })
+    .insert({ wa_numero: waNumero, cliente_id: cli?.id ?? null, contrato_id: contratoId, vehiculo_id: vehiculoId, etiqueta })
     .select(SEL_CONV)
     .single();
   if (error) throw error;
   return creada as Conversacion;
+}
+
+/** Resumen del contrato para el CONTEXTO del agente (cifras reales, no inventadas). */
+export async function resumenContrato(contratoId: string): Promise<string | null> {
+  const sb = createServerSupabase();
+  const { data: c } = await sb
+    .from("contratos")
+    .select("letra_diaria, vehiculo:vehiculos(numero)")
+    .eq("id", contratoId)
+    .maybeSingle();
+  if (!c) return null;
+  const { data: s } = await sb
+    .from("vw_saldo_contrato")
+    .select("saldo_actual")
+    .eq("contrato_id", contratoId)
+    .maybeSingle();
+  const saldo = Math.max(Number((s as { saldo_actual: number } | null)?.saldo_actual ?? 0), 0);
+  const carro = (c.vehiculo as unknown as { numero: string } | null)?.numero ?? "";
+  const letra = Number(c.letra_diaria);
+  return `Datos reales del cliente (úsalos SOLO si pregunta cuánto debe; no inventes otras cifras): Carro ${carro} · Saldo pendiente: $${saldo} · Letra diaria: $${letra}.`;
 }
 
 /** ¿La ventana de 24h está abierta? (el cliente escribió en las últimas 24h). */
@@ -137,16 +199,18 @@ export async function marcarLeida(conversacionId: string): Promise<void> {
   await sb.from("conversaciones").update({ no_leidos: 0 }).eq("id", conversacionId);
 }
 
-/** Completa un mensaje ya reclamado (ej. la imagen del comprobante y el pago). */
+/** Completa un mensaje ya reclamado (imagen del comprobante, pago o transcripción). */
 export async function completarMensaje(
   mensajeId: string,
-  patch: { mediaUrl?: string | null; pagoId?: string | null },
+  patch: { mediaUrl?: string | null; pagoId?: string | null; texto?: string },
 ): Promise<void> {
   const sb = createServerSupabase();
-  await sb
-    .from("mensajes")
-    .update({ media_url: patch.mediaUrl ?? null, pago_id: patch.pagoId ?? null })
-    .eq("id", mensajeId);
+  const upd: Record<string, unknown> = {};
+  if (patch.mediaUrl !== undefined) upd.media_url = patch.mediaUrl;
+  if (patch.pagoId !== undefined) upd.pago_id = patch.pagoId;
+  if (patch.texto !== undefined) upd.texto = patch.texto;
+  if (Object.keys(upd).length === 0) return;
+  await sb.from("mensajes").update(upd).eq("id", mensajeId);
 }
 
 /** Registra un mensaje y actualiza el resumen de la conversación. */
@@ -289,7 +353,19 @@ export async function procesarPagoComprobante(opts: {
   const { conversacion, comprobante, bytes, mime } = opts;
 
   const path = await subirComprobante(bytes, mime);
-  const resolucion = await resolverContratoPorCarro(comprobante.numero_carro);
+  let resolucion = await resolverContratoPorCarro(comprobante.numero_carro);
+
+  // Fallback teléfono→contrato: si no cuadró por # de carro pero la conversación
+  // ya está vinculada a un contrato (por el número del cliente), aplícalo ahí.
+  if (resolucion.estado !== "ok" && conversacion.contrato_id) {
+    resolucion = {
+      vehiculoId: conversacion.vehiculo_id,
+      contratoId: conversacion.contrato_id,
+      clienteId: conversacion.cliente_id,
+      etiqueta: conversacion.etiqueta,
+      estado: "ok",
+    };
+  }
 
   // Si resolvió un solo contrato activo → queda pendiente de conciliación.
   // Si no (sin carro / sin contrato / ambiguo) → revisión manual.
