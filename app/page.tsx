@@ -10,31 +10,40 @@ const WHATSAPP = "https://wa.me/50769964199"; // contacto comercial (editable)
 
 export default function Landing() {
   return (
-    <div className="min-h-screen bg-paper text-ink">
+    <div className="min-h-screen bg-white text-black">
       {/* Header */}
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-6 py-6 sm:px-10">
-        <span className="font-serif text-xl font-bold tracking-tight">
-          Auto Lujo <span className="text-gold">Panamá</span>
-        </span>
-        <nav className="flex items-center gap-6 text-sm">
-          <a href="#como" className="hidden text-muted transition hover:text-ink sm:inline">Cómo funciona</a>
-          <a href="#contacto" className="hidden text-muted transition hover:text-ink sm:inline">Contacto</a>
-          <Link
-            href="/admin"
-            className="rounded-lg bg-ink px-4 py-2 font-medium text-paper transition hover:bg-black"
-          >
-            Administrador
-          </Link>
-        </nav>
+      <header className="bg-black">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3 sm:px-10">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="Auto Lujo Panamá" className="h-12 w-auto" />
+          <nav className="flex items-center gap-6 text-sm">
+            <a href="#como" className="text-white/70 transition hover:text-white">Cómo funciona</a>
+            <a href="#contacto" className="text-white/70 transition hover:text-white">Contacto</a>
+          </nav>
+        </div>
       </header>
 
-      {/* Hero */}
+      {/* Hero con video de fondo */}
       <section className="relative overflow-hidden bg-black text-white">
-        <div className="absolute left-0 top-0 h-full w-[3px] bg-gold" />
-        <div className="mx-auto max-w-6xl px-6 py-24 sm:px-10 sm:py-32">
+        {/* Video banner principal */}
+        <video
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="auto"
+          className="absolute inset-0 h-full w-full object-cover opacity-70"
+        >
+          <source src="/6331328-uhd_4096_2160_24fps.mp4" type="video/mp4" />
+        </video>
+        {/* Degradado para legibilidad del texto (filtro más suave) */}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-black/10" />
+        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-black to-transparent" />
+        <div className="absolute left-0 top-0 z-10 h-full w-[3px] bg-gold" />
+        <div className="relative z-10 mx-auto max-w-6xl px-6 py-28 sm:px-10 sm:py-40">
           <p className="font-mono text-xs uppercase tracking-[0.28em] text-gold">Renta con opción de compra</p>
           <h1 className="mt-5 max-w-3xl font-serif text-4xl font-bold leading-tight sm:text-6xl">
-            Maneja hoy. <span className="text-gold">Hazlo tuyo</span> mañana.
+            Lleva <span className="text-gold">TU CARRO</span> sin APC.
           </h1>
           <p className="mt-6 max-w-xl text-lg text-white/70">
             Arrendamiento diario de autos con opción de compra en Panamá. Sin banco, sin trámites
@@ -57,25 +66,50 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Value props */}
-      <section className="mx-auto max-w-6xl px-6 py-20 sm:px-10">
-        <div className="grid gap-6 sm:grid-cols-3">
-          {[
-            { t: "Sin banco", d: "Nada de créditos ni papeleo interminable. El acuerdo es directo con nosotros." },
-            { t: "Cuota diaria", d: "Pagas por día, de lunes a sábado. Domingos libres. Puntual, con descuento." },
-            { t: "El carro será tuyo", d: "Al completar tu plan y estar al día, el vehículo se traspasa a tu nombre." },
-          ].map((v) => (
-            <div key={v.t} className="rounded-2xl bg-surface p-6 ring-1 ring-line">
-              <div className="h-[3px] w-10 bg-gold" />
-              <h3 className="mt-4 font-serif text-xl font-bold">{v.t}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{v.d}</p>
-            </div>
-          ))}
+      {/* Beneficios */}
+      <section className="bg-black text-white">
+        <div className="mx-auto max-w-6xl px-6 py-20 sm:px-10">
+          <p className="text-center font-mono text-xs uppercase tracking-[0.28em] text-gold">
+            Modelos 2022 – 2026
+          </p>
+          <h2 className="mx-auto mt-3 max-w-2xl text-center font-serif text-3xl font-bold sm:text-4xl">
+            Beneficios que te llevan <span className="text-gold">más lejos</span>
+          </h2>
+
+          <div className="mt-14 grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              { icon: "🛡️", label: "Respaldo y garantía" },
+              { icon: "🔧", label: "Hasta 18 meses de mantenimiento gratis" },
+              { icon: "🎂", label: "Cumpleaños libres" },
+              { icon: "📋", label: "Planes flexibles con letras diarias" },
+              { icon: "💲", label: "Abonos iniciales económicos" },
+              { icon: "👥", label: "Plan referido" },
+            ].map((b) => (
+              <div key={b.label} className="flex flex-col items-center text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full text-2xl ring-2 ring-gold/50 shadow-[0_0_24px_rgba(212,175,55,0.15)]">
+                  {b.icon}
+                </div>
+                <p className="mt-4 text-[11px] font-semibold uppercase leading-tight tracking-wide text-white/85">
+                  {b.label}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* No miramos APC */}
+        <div className="border-y border-gold/30 bg-gold/[0.06] py-7 text-center">
+          <p className="font-serif text-3xl font-bold sm:text-4xl">
+            ¡NO MIRAMOS <span className="text-gold">APC</span>!
+          </p>
+          <p className="mt-2 text-sm text-white/60">
+            Te aprobamos sin revisar tu historial de crédito.
+          </p>
         </div>
       </section>
 
       {/* Cómo funciona */}
-      <section id="como" className="bg-surface">
+      <section id="como" className="border-t border-black/10 bg-white">
         <div className="mx-auto max-w-6xl px-6 py-20 sm:px-10">
           <p className="font-mono text-xs uppercase tracking-[0.28em] text-gold">Cómo funciona</p>
           <h2 className="mt-4 font-serif text-3xl font-bold">Tres pasos y estás manejando</h2>
@@ -88,7 +122,7 @@ export default function Landing() {
               <div key={s.n}>
                 <span className="font-serif text-3xl font-bold text-gold">{s.n}</span>
                 <h3 className="mt-2 font-serif text-lg font-bold">{s.t}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-muted">{s.d}</p>
+                <p className="mt-2 text-sm leading-relaxed text-black/60">{s.d}</p>
               </div>
             ))}
           </div>
@@ -98,12 +132,12 @@ export default function Landing() {
       {/* Contacto */}
       <section id="contacto" className="mx-auto max-w-6xl px-6 py-20 text-center sm:px-10">
         <h2 className="font-serif text-3xl font-bold">¿Listo para tu carro?</h2>
-        <p className="mx-auto mt-3 max-w-md text-muted">
+        <p className="mx-auto mt-3 max-w-md text-black/60">
           Escríbenos por WhatsApp y un asesor te atiende con toda la información.
         </p>
         <a
           href={WHATSAPP}
-          className="mt-7 inline-block rounded-xl bg-ink px-8 py-3 font-semibold text-paper transition hover:bg-black"
+          className="mt-7 inline-block rounded-xl bg-black px-8 py-3 font-semibold text-white transition hover:opacity-90"
         >
           Contáctanos por WhatsApp
         </a>
@@ -113,15 +147,13 @@ export default function Landing() {
       <footer className="bg-black text-white/70">
         <div className="mx-auto flex max-w-6xl flex-col gap-6 px-6 py-12 sm:flex-row sm:items-center sm:justify-between sm:px-10">
           <div>
-            <span className="font-serif text-lg font-bold text-white">
-              Auto Lujo <span className="text-gold">Panamá</span>
-            </span>
-            <p className="mt-1 text-xs">© 2026 Inversiones Auto Lujo Panamá. Todos los derechos reservados.</p>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt="Auto Lujo Panamá" className="h-16 w-auto" />
+            <p className="mt-3 text-xs">© 2026 Inversiones Auto Lujo Panamá. Todos los derechos reservados.</p>
           </div>
           <nav className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
             <Link href="/privacidad" className="transition hover:text-white">Política de Privacidad</Link>
             <Link href="/terminos" className="transition hover:text-white">Condiciones del Servicio</Link>
-            <Link href="/admin" className="transition hover:text-white">Administrador</Link>
           </nav>
         </div>
       </footer>
