@@ -93,7 +93,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
   const sb = createServerSupabase();
   const { data: c } = await sb
     .from("contratos")
-    .select("letra_diaria, vehiculo:vehiculos(numero)")
+    .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero)")
     .eq("id", contratoId)
     .maybeSingle();
   if (!c) return null;
@@ -102,10 +102,32 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     .select("saldo_actual")
     .eq("contrato_id", contratoId)
     .maybeSingle();
+
   const saldo = Math.max(Number((s as { saldo_actual: number } | null)?.saldo_actual ?? 0), 0);
   const carro = (c.vehiculo as unknown as { numero: string } | null)?.numero ?? "";
-  const letra = Number(c.letra_diaria);
-  return `Datos reales del cliente (úsalos SOLO si pregunta cuánto debe; no inventes otras cifras): Carro ${carro} · Saldo pendiente: $${saldo} · Letra diaria: $${letra}.`;
+  const puntual = Number(c.letra_diaria);                       // cuota pagando puntual (con descuento)
+  const desc = Number(c.descuento_puntual ?? 0);
+  const sinDesc = puntual + desc;                               // cuota si NO paga puntual
+  const m = (n: number) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
+  const domingos = c.cobra_domingo
+    ? `SÍ cobra los domingos (cuota domingo ${m(Number(c.cuota_domingo) || puntual)})`
+    : "NO cobra los domingos (domingos libres)";
+
+  // Números YA calculados por el código. El agente solo los comunica, no recalcula.
+  return [
+    `DATOS EXACTOS del contrato de ESTE cliente (usa SOLO estos números; nunca inventes ni estimes otros):`,
+    `- Carro: ${carro}`,
+    `- Saldo pendiente acumulado a HOY: ${m(saldo)}. IMPORTANTE: este saldo YA incluye la cuota de hoy — NUNCA la vuelvas a sumar.`,
+    `- Cuota diaria pagando PUNTUAL (antes de las 7:00 p.m.): ${m(puntual)}.`,
+    `- Cuota diaria SIN descuento (si no paga a tiempo): ${m(sinDesc)}.`,
+    `- Domingos: ${domingos}.`,
+    ``,
+    `CÓMO CALCULAR (sé consistente, solo suma estos números):`,
+    `- Si NO paga hoy, la cuota de hoy se cobra SIN descuento (${m(sinDesc)}).`,
+    `- "¿Cuánto pago mañana si no pago hoy?" = saldo (${m(saldo)}) + cuota de mañana. Si mañana paga puntual, la de mañana es ${m(puntual)}.`,
+    `- "¿Cuánto es la cuota de hoy + la de mañana?" (sin el acumulado) = ${m(sinDesc)} (hoy sin descuento) + ${m(puntual)} (mañana puntual).`,
+    `- Nunca dupliques la cuota de hoy: o está en el saldo, o la sumas aparte, pero no ambas.`,
+  ].join("\n");
 }
 
 /** ¿La ventana de 24h está abierta? (el cliente escribió en las últimas 24h). */
