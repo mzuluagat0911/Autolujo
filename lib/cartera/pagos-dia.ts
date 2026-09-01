@@ -8,6 +8,9 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { rangoDiaPanama, esPagoPuntual } from "./fecha";
+import { cuotaDeFecha, type TerminosCuota } from "./cuota";
+import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
+import { cubrioCuotaDelDia } from "./cifras";
 
 /** Estados que ya cuentan como dinero recibido. */
 export const PAGADO = ["conciliado", "manual"] as const;
@@ -29,19 +32,81 @@ export async function contratosConPagoEnDia(fecha: string): Promise<Set<string>>
   );
 }
 
-/** Contratos que pagaron PUNTUAL ese día (antes de las 7:00 p.m.). */
-export async function contratosConPagoPuntualEnDia(fecha: string): Promise<Set<string>> {
+/** Suma de abonos validados del día (antes o después de las 7). */
+export async function montosDelDiaPorContrato(fecha: string): Promise<Map<string, number>> {
   const sb = createServerSupabase();
   const { desde, hasta } = rangoDiaPanama(fecha);
   const { data } = await sb
     .from("pagos")
-    .select("contrato_id, pagado_at")
+    .select("contrato_id, monto")
     .in("estado_conciliacion", ["conciliado", "manual"])
     .gte("pagado_at", desde.toISOString())
     .lt("pagado_at", hasta.toISOString());
+  const out = new Map<string, number>();
+  for (const p of (data ?? []) as { contrato_id: string | null; monto: number }[]) {
+    if (!p.contrato_id) continue;
+    out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + Number(p.monto));
+  }
+  return out;
+}
+
+/** Suma de abonos de hoy hechos ANTES de las 7:00 p.m. */
+export async function montosPuntualesPorContrato(
+  fecha: string,
+): Promise<Map<string, number>> {
+  const sb = createServerSupabase();
+  const { desde, hasta } = rangoDiaPanama(fecha);
+  const { data } = await sb
+    .from("pagos")
+    .select("contrato_id, monto, pagado_at")
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .gte("pagado_at", desde.toISOString())
+    .lt("pagado_at", hasta.toISOString());
+  const out = new Map<string, number>();
+  for (const p of (data ?? []) as { contrato_id: string | null; monto: number; pagado_at: string }[]) {
+    if (!p.contrato_id || !esPagoPuntual(p.pagado_at, fecha)) continue;
+    out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + Number(p.monto));
+  }
+  return out;
+}
+
+/** Cuota del día + arreglo(s) = lo que hay que cubrir antes de las 7 para no perder los $5. */
+export async function metasPuntualPorContrato(fecha: string): Promise<Map<string, number>> {
+  const sb = createServerSupabase();
+  const [{ data: contratos }, { data: acuerdos }] = await Promise.all([
+    sb
+      .from("contratos")
+      .select("id, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+      .eq("estado", "activo"),
+    sb
+      .from("acuerdos")
+      .select("id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion")
+      .eq("activo", true),
+  ]);
+
+  const porContrato = new Map<string, AcuerdoActivo[]>();
+  for (const a of (acuerdos ?? []) as (AcuerdoActivo & { contrato_id: string })[]) {
+    const list = porContrato.get(a.contrato_id) ?? [];
+    list.push(a);
+    porContrato.set(a.contrato_id, list);
+  }
+
+  const out = new Map<string, number>();
+  for (const c of (contratos ?? []) as (TerminosCuota & { id: string })[]) {
+    out.set(c.id, cuotaDeFecha(c, fecha) + acuerdoHoyDe(porContrato.get(c.id) ?? [], fecha));
+  }
+  return out;
+}
+
+/** Contratos que SÍ cubrieron lo del día con abonos antes de las 7:00 p.m. */
+export async function contratosQueCubrieronElDia(fecha: string): Promise<Set<string>> {
+  const [montos, metas] = await Promise.all([
+    montosPuntualesPorContrato(fecha),
+    metasPuntualPorContrato(fecha),
+  ]);
   const out = new Set<string>();
-  for (const p of (data ?? []) as { contrato_id: string | null; pagado_at: string }[]) {
-    if (p.contrato_id && esPagoPuntual(p.pagado_at, fecha)) out.add(p.contrato_id);
+  for (const [id, meta] of metas) {
+    if (cubrioCuotaDelDia(montos.get(id) ?? 0, meta)) out.add(id);
   }
   return out;
 }
@@ -124,24 +189,28 @@ export async function pagosRecientesContrato(
   }));
 }
 
-/** Para un solo contrato: ¿pagó hoy? ¿fue puntual? */
+/** Para un solo contrato: ¿pagó hoy? ¿cuánto, y cuánto fue antes de las 7? */
 export async function pagoHoyContrato(
   contratoId: string,
   fecha: string,
-): Promise<{ pagoHoy: boolean; pagoPuntual: boolean }> {
+): Promise<{ pagoHoy: boolean; pagado: number; pagadoPuntual: number }> {
   const sb = createServerSupabase();
   const { desde, hasta } = rangoDiaPanama(fecha);
   const { data } = await sb
     .from("pagos")
-    .select("pagado_at")
+    .select("monto, pagado_at")
     .eq("contrato_id", contratoId)
     .in("estado_conciliacion", ["conciliado", "manual"])
     .gte("pagado_at", desde.toISOString())
     .lt("pagado_at", hasta.toISOString())
-    .limit(20);
-  const filas = (data ?? []) as { pagado_at: string }[];
-  return {
-    pagoHoy: filas.length > 0,
-    pagoPuntual: filas.some((p) => esPagoPuntual(p.pagado_at, fecha)),
-  };
+    .limit(50);
+  const filas = (data ?? []) as { monto: number; pagado_at: string }[];
+  let pagado = 0;
+  let pagadoPuntual = 0;
+  for (const p of filas) {
+    const n = Number(p.monto) || 0;
+    pagado += n;
+    if (esPagoPuntual(p.pagado_at, fecha)) pagadoPuntual += n;
+  }
+  return { pagoHoy: pagado > 0.009, pagado, pagadoPuntual };
 }

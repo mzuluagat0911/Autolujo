@@ -53,6 +53,18 @@ const CASOS: Caso[] = [
   { nombre: "saldo cero sin respaldo", mensaje: "No debes nada por ahora.", espera: "saldo_cero" },
   { nombre: "mensaje vacío", mensaje: "   ", espera: "vacio" },
 
+  // --- Evasiones que el corpus original no cubría ----------------------------
+  { nombre: "gracias por enviarnos el comprobante", mensaje: "¡Gracias por enviarnos el comprobante!", espera: "frase" },
+  { nombre: "recibimos tu transferencia", mensaje: "Recibimos tu transferencia, ya quedó.", espera: "frase" },
+  { nombre: "el dinero ya entró", mensaje: "El dinero ya entró a la cuenta.", espera: "frase" },
+  { nombre: "el pago ya cruzó", mensaje: "Tu pago ya cruzó con el banco.", espera: "frase" },
+  { nombre: "dice que es ChatGPT", mensaje: "Soy ChatGPT, del equipo de Auto Lujo.", espera: "frase" },
+  { nombre: "cifra con B/.", mensaje: "Tu saldo es B/. 210.", espera: "cifra" },
+  { nombre: "cifra con USD", mensaje: "Debes USD 210 hoy.", espera: "cifra" },
+  { nombre: "cifra con $ al final", mensaje: "El total es 210$.", espera: "cifra" },
+  { nombre: "paz y salvo sin $0", mensaje: "Quedas paz y salvo.", espera: "saldo_cero" },
+  { nombre: "B/. válido del contexto", mensaje: "Hoy te toca B/. 185.", espera: null },
+
   // --- Debe ESCALAR pero dejar salir el mensaje ------------------------------
   { nombre: "promesa sin escalar", mensaje: "Déjame confirmarlo y en un momento te escribo por aquí.", espera: "promesa" },
 

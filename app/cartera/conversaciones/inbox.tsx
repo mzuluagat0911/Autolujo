@@ -18,6 +18,7 @@ import {
   enviarRespuestaHumana,
 } from "./actions";
 import type { ConversacionDetalle, ConversacionLista, FiltroBandeja, Mensaje } from "./types";
+import { NOMBRE_AGENTE } from "@/lib/ai/identidad";
 import {
   demoDetalle,
   demoRespuestaAgente,
@@ -669,7 +670,7 @@ function Thread({
                 }`}
               >
                 {out && !system
-                  ? `${m.enviado_por ? m.enviado_por : "Agente"} · `
+                  ? `${m.enviado_por ? m.enviado_por : NOMBRE_AGENTE} · `
                   : ""}
                 {horaMensaje(m.created_at)}
               </p>
@@ -685,7 +686,7 @@ function Thread({
               <span className="animate-pulse [animation-delay:150ms]">●</span>
               <span className="animate-pulse [animation-delay:300ms]">●</span>
             </span>
-            <span className="ml-2 text-xs text-surface/70">Agente escribiendo…</span>
+            <span className="ml-2 text-xs text-surface/70">{NOMBRE_AGENTE} escribiendo…</span>
           </div>
         </div>
       )}

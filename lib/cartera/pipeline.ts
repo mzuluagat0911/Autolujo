@@ -225,18 +225,20 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       : `- Hoy NO corre cuota (día libre para este contrato).`,
     est.pagoHoy
       ? est.pagoPuntual
-        ? `- Este cliente YA pagó hoy PUNTUAL (antes de las 7:00 p.m.). El pago YA está descontado del saldo.`
-        : `- Este cliente pagó hoy DESPUÉS del corte (sin descuento de ese día). El pago YA está descontado del saldo.`
+        ? `- Este cliente YA cubrió lo de hoy PUNTUAL (antes de las 7:00 p.m.), posiblemente en varios abonos. Eso YA está descontado del saldo.`
+        : `- Este cliente abonó hoy ${m(est.pagadoHoy)} pero NO cubrió lo del día (cuota ${m(est.cuotaHoy)}${est.acuerdoHoy ? ` + arreglo ${m(est.acuerdoHoy)}` : ""}). Pierde el descuento de $${est.penalidad} de ESE día. El resto se arrastra.`
       : est.pendiente
         ? `- Este cliente mandó comprobante hoy por ${m(est.pendienteMonto)} y está EN VALIDACIÓN. AÚN NO está descontado del saldo. NO le digas que ya pagó ni que queda al día.`
         : `- Hoy NO tiene ningún pago validado todavía.`,
     ``,
-    `CIFRAS YA CALCULADAS POR EL SISTEMA — dalas TAL CUAL. Está PROHIBIDO que sumes,`,
-    `restes o estimes por tu cuenta: si la cifra no está en esta lista, no la des.`,
+    `CÓMO SE ARMA EL TOTAL (dáselo así, concepto por concepto, y al final el total):`,
+    `- Desglose: ${est.desglose}.`,
     `- Lo que debe pagar HOY: ${m(est.totalHoy)}.`,
-    yaCorte || est.pagoHoy || est.pendiente
+    `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
+    `  no cubrió cuota + arreglo, pierde el descuento de ese día y el resto se va a mañana.`,
+    yaCorte || est.pagoPuntual || est.pendiente
       ? `- Ese monto ya considera la situación de hoy.`
-      : `- Si paga hoy DESPUÉS de las 7:00 p.m.: ${m(est.totalHoyTarde)}.`,
+      : `- Si a las 7 p.m. no ha cubierto lo de hoy: ${m(est.totalHoyTarde)}.`,
     est.cuotaManana > 0
       ? `- Si NO paga hoy y paga mañana: ${m(est.totalManana)}.`
       : `- Mañana no corre cuota nueva; si no paga hoy, mañana seguiría en ${m(est.totalHoyTarde)}.`,

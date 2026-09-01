@@ -23,17 +23,22 @@ const MENSAJE_SEGURO = "Déjame revisar eso bien y en un momento te escribo por 
 const PROHIBIDAS: { re: RegExp; que: string }[] = [
   { re: /\brecib[íi]\s+(tu|el|su)\s+comprobante\b/i, que: "da por recibido un comprobante" },
   { re: /\bgracias\s+por\s+(el|tu|su)\s+comprobante\b/i, que: "da por recibido un comprobante" },
+  { re: /\bgracias\s+por\s+(enviarnos|enviar|mandarnos|mandar)\s+(el|tu|su)\s+comprobante\b/i, que: "da por recibido un comprobante" },
+  { re: /\brecib(imos|[íi])\s+(tu|el|su)\s+(pago|transferencia|captura)\b/i, que: "da por recibido un pago" },
+  { re: /\b(el|tu|su)\s+dinero\s+ya\s+(entr[oó]|est[aá]|lleg[oó])(?:\s|[.,!?]|$)/i, que: "da un pago por aplicado" },
+  { re: /\b(el|tu|su)\s+pago\s+ya\s+(lleg[oó]|entr[oó]|cruz[oó])(?:\s|[.,!?]|$)/i, que: "da un pago por aplicado" },
   { re: /\bqued(as|a|ó|o)\s+al\s+d[íi]a\b/i, que: "declara al cliente al día" },
   { re: /\bya\s+(lo\s+|te\s+lo\s+)?(registr[éa]mos|registr[ée]|aplicamos|apliqu[ée]|acreditamos|abonamos)\b/i, que: "da un pago por aplicado" },
   { re: /\b(tu|el|su)\s+pago\s+(ya\s+)?(est[áa]|qued[óo]|fue)\s+(registrado|aplicado|acreditado|confirmado|validado)\b/i, que: "da un pago por aplicado" },
   { re: /\bpago\s+(ya\s+)?(aplicado|acreditado|validado\s+correctamente)\b/i, que: "da un pago por aplicado" },
   { re: /\b(soy|somos)\s+(un[ao]?\s+)?(bot|robot|asistente\s+virtual|inteligencia\s+artificial|ia|modelo\s+de)\b/i, que: "revela que es IA" },
+  { re: /\b(soy|somos)\s+(chatgpt|claude|gemini|gpt-?\d*)\b/i, que: "revela que es IA" },
   { re: /\b(chatbot|respuesta\s+autom[áa]tica|mensaje\s+autom[áa]tico)\b/i, que: "revela que es automático" },
   { re: /🤖/u, que: "revela que es IA" },
 ];
 
 /** "No debes nada" solo es válido si el sistema realmente calculó $0. */
-const SALDO_CERO = /\bno\s+(debes|tienes\s+que\s+pagar)\s+nada\b|\best[áa]s\s+al\s+d[íi]a\b/i;
+const SALDO_CERO = /\bno\s+(debes|tienes\s+que\s+pagar)\s+nada\b|\best[áa]s\s+al\s+d[íi]a\b|\bpaz\s+y\s+salvo\b/i;
 
 /**
  * Promesa de que alguien va a responder después. Necesita las dos piezas —un
@@ -43,13 +48,17 @@ const SALDO_CERO = /\bno\s+(debes|tienes\s+que\s+pagar)\s+nada\b|\best[áa]s\s+a
 const TEMPORAL = /\b(en\s+un\s+momento|en\s+breve|en\s?seguida|m[áa]s\s+tarde|ya\s+mismo|pronto|apenas|en\s+cuanto|ahorita)\b/i;
 const CONTACTO = /\b(te|le)\s+(escrib|confirm|avis|respond|contact|llam)\w*|\bse\s+(comunican?|contactan?)\b/i;
 
-/** Cifras de dinero de un texto, como números. Acepta "$35", "$1,250.50", "35 dólares". */
-function montos(texto: string): number[] {
+/**
+ * Cifras de dinero de un texto. Acepta "$35", "$1,250.50", "35 dólares",
+ * "USD 35", "B/. 35", "35$". No toma números sueltos (carro 144, las 7:00).
+ */
+export function montosDelTexto(texto: string): number[] {
   const out: number[] = [];
-  const re = /\$\s?(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:d[óo]lares|balboas|usd)\b/gi;
+  const re =
+    /(?:\$|usd|b\/\.?|b\.)\s*(\d[\d,]*(?:\.\d{1,2})?)|(\d[\d,]*(?:\.\d{1,2})?)\s*(?:d[óo]lares|balboas|usd)\b|(\d[\d,]*(?:\.\d{1,2})?)\s*\$/gi;
   let m: RegExpExecArray | null;
   while ((m = re.exec(texto))) {
-    const n = Number((m[1] ?? m[2]).replace(/,/g, ""));
+    const n = Number((m[1] ?? m[2] ?? m[3]).replace(/,/g, ""));
     if (Number.isFinite(n)) out.push(Math.round(n * 100) / 100);
   }
   return out;
@@ -93,13 +102,13 @@ export function revisarRespuesta(respuesta: RespuestaAgente, contexto?: string):
     if (re.test(mensaje)) return bloquear("frase", `El agente ${que}: "${recorte}"`);
   }
 
-  const permitidos = new Set(montos(ctx));
+  const permitidos = new Set(montosDelTexto(ctx));
 
   if (SALDO_CERO.test(mensaje) && !permitidos.has(0)) {
     return bloquear("saldo_cero", `El agente dijo que no debe nada, pero el sistema no calculó $0: "${recorte}"`);
   }
 
-  const inventadas = montos(mensaje).filter((n) => !permitidos.has(n));
+  const inventadas = montosDelTexto(mensaje).filter((n) => !permitidos.has(n));
   if (inventadas.length > 0) {
     return bloquear(
       "cifra",

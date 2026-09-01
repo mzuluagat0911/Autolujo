@@ -11,7 +11,7 @@ import {
   diaSemana, sumarDias, diasEntre, esDomingo,
 } from "@/lib/cartera/fecha";
 import { cuotaDeFecha, tarifaPlena, penalidadDe, type TerminosCuota } from "@/lib/cartera/cuota";
-import { calcularCifras, type EntradaCifras } from "@/lib/cartera/cifras";
+import { calcularCifras, cubrioCuotaDelDia, type EntradaCifras } from "@/lib/cartera/cifras";
 
 let fallos = 0;
 function check(nombre: string, obtenido: unknown, esperado: unknown) {
@@ -119,6 +119,44 @@ check("pagó $30 y la renta aún no existe: saldo negativo cancela la cuota", pa
 check("max(saldo,0) ANTES de sumar la cuota habría cobrado de más", pagoSinRenta.cuenta, 0);
 
 check("domingo libre no cobra ni recarga", calcularCifras(base({ hoy: "2026-09-06", corte: true, saldo: 0 })).totalHoy, 0);
+
+const sabado = calcularCifras(base({
+  hoy: "2026-09-05",
+  terminos: { letra_diaria: 30, descuento_puntual: 5, cobra_domingo: true, cuota_domingo: 15 },
+  saldo: 30,
+}));
+check("sábado: si no paga, mañana suma el domingo pactado", sabado.totalManana, 50);
+check("y avisa el domingo en el desglose", sabado.domingo, 15);
+
+const sabadoLibre = calcularCifras(base({ hoy: "2026-09-05", saldo: 30 }));
+check("sábado con domingo libre: mañana no suma cuota", sabadoLibre.totalManana, sabadoLibre.totalHoyTarde);
+check("y no anuncia domingo", sabadoLibre.domingo, null);
+
+console.log("\n· Varios abonos y pago parcial");
+check("20+20 cubre una cuota de 30", cubrioCuotaDelDia(40, 30), true);
+check("20 no cubre 30", cubrioCuotaDelDia(20, 30), false);
+check("20 cubre 20", cubrioCuotaDelDia(20, 20), true);
+check("sin cuota del día, no exige abono", cubrioCuotaDelDia(0, 0), true);
+
+const parcial = calcularCifras(base({
+  saldo: 10, pagoHoy: true, pagoPuntual: false, pagadoHoy: 20,
+}));
+check("abonó $20 de $30: todavía debe $10", parcial.totalHoy, 10);
+check("y si no completa antes de las 7, son $15", parcial.totalHoyTarde, 15);
+check("el desglose trae la cuota y lo pagado", parcial.lineas.some((l) => l.concepto === "cuota de hoy" && l.monto === 30), true);
+check("y resta lo pagado hoy", parcial.lineas.some((l) => l.concepto === "pagado hoy" && l.monto === -20), true);
+
+const mananaTrasParcial = calcularCifras(base({
+  hoy: "2026-09-02", saldo: 45, pagoHoy: false, pagoPuntual: false, pagadoHoy: 0,
+}));
+check("al día siguiente: $15 arrastrados + $30 de hoy = $45", mananaTrasParcial.totalHoy, 45);
+check("el saldo anterior se ve aparte", mananaTrasParcial.pendienteAnterior, 15);
+
+const conArreglo = calcularCifras(base({
+  acuerdoHoy: 5, faltaAcuerdo: 5, saldo: 30,
+}));
+check("con arreglo de $5 el total de hoy es $35", conArreglo.totalHoy, 35);
+check("y el desglose nombra el arreglo", conArreglo.lineas.some((l) => l.concepto === "arreglo" && l.monto === 5), true);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

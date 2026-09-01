@@ -23,11 +23,13 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, sumarDias, pasoCorte, diasEntre } from "./fecha";
 import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
 import {
-  contratosConPagoPuntualEnDia,
+  contratosQueCubrieronElDia,
   contratosConComprobantePendienteEnDia,
   comprobantePendienteContrato,
   pagoHoyContrato,
 } from "./pagos-dia";
+import { cubrioCuotaDelDia } from "./cifras";
+import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
 
 /** Días hacia atrás que el job intenta rellenar si el cron no corrió. */
 const MAX_DIAS_ATRAS = 7;
@@ -154,7 +156,7 @@ export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRec
   if (error) throw error;
 
   const [pagaronPuntual, conPendiente, conRecargo, conRenta] = await Promise.all([
-    contratosConPagoPuntualEnDia(fecha),
+    contratosQueCubrieronElDia(fecha),
     graciaVigente(fecha) ? contratosConComprobantePendienteEnDia(fecha) : new Set<string>(),
     contratosConRecargo(fecha),
     sb.from("cargos").select("contrato_id").eq("fecha", fecha).eq("tipo", "renta"),
@@ -214,7 +216,7 @@ export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRec
  *
  * El recargo NO va cuando:
  *   - el día no tiene cuota (domingo libre) o no está devengado todavía,
- *   - hubo un pago puntual (antes de las 7 p.m.),
+ *   - la SUMA de abonos de hoy antes de las 7 cubre cuota + arreglo,
  *   - sigue habiendo un comprobante de ese día sin validar,
  *   - el día aún está abierto (es hoy y no han dado las 7 p.m.).
  */
@@ -243,17 +245,23 @@ export async function recalcularRecargo(
 
   if ((rentaRes.data ?? []).length === 0) return borrar();
 
-  const [{ pagoPuntual }, { pendiente }] = await Promise.all([
+  const [{ pagadoPuntual }, { pendiente }, acuerdosRes] = await Promise.all([
     pagoHoyContrato(contratoId, fecha),
     comprobantePendienteContrato(contratoId, fecha),
+    sb.from("acuerdos").select("id, saldo, cuota_diaria, cuota_domingo, descripcion")
+      .eq("contrato_id", contratoId).eq("activo", true),
   ]);
   const diaAbierto = fecha === hoyPanama() && !pasoCorte();
   const enGracia = pendiente && graciaVigente(fecha);
 
-  if (pagoPuntual || enGracia || diaAbierto) return borrar();
+  const c = contratoRes.data as TerminosCuota | null;
+  const acuerdoHoy = acuerdoHoyDe((acuerdosRes.data ?? []) as AcuerdoActivo[], fecha);
+  const meta = (c ? cuotaDeFecha(c, fecha) : 0) + acuerdoHoy;
+  const cubrio = cubrioCuotaDelDia(pagadoPuntual, meta);
+
+  if (cubrio || enGracia || diaAbierto) return borrar();
   if (multaId) return "sin_cambio";
 
-  const c = contratoRes.data as TerminosCuota | null;
   const penalidad = c ? penalidadDe(c) : 0;
   if (penalidad <= 0) return "sin_cambio";
 
