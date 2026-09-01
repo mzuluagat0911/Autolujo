@@ -90,7 +90,7 @@ export default async function PanelCartera() {
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Acceso href="/cartera/conversaciones" titulo="Conversaciones" desc="Los chats del agente con cada arrendatario" />
               <Acceso href="/cartera/pagos" titulo="Pagos por conciliar" desc="Comprobantes recibidos, por confirmar" />
-              <Acceso href="/cartera/extractos" titulo="Extractos bancarios" desc="Sube el extracto y cuadra los pagos" />
+              <Acceso href="/cartera/extractos" titulo="Conciliación" desc="Pago en oficina o extracto bancario por empresa" />
               <Acceso href="/cartera/vehiculos" titulo="Carros" desc="La flota por empresa" />
               <Acceso href="/cartera/clientes" titulo="Clientes" desc="Directorio de arrendatarios" />
               <Acceso href="/cartera/tarifario" titulo="Tarifario" desc="Letra diaria por modelo" />

@@ -59,8 +59,8 @@ export default async function PagosPage() {
     <div className="pb-16">
       <PageHeader
         eyebrow="Cartera"
-        title="Pagos"
-        subtitle="Cada comprobante que recibe el agente cae aquí."
+        title="Pagos por conciliar"
+        subtitle="Comprobantes que llegan por WhatsApp. El pago de oficina y el extracto están en Conciliación."
       />
 
       {error && (

@@ -11,6 +11,10 @@ export async function conciliarExtracto(
   _prev: ResultadoConciliacion | null,
   formData: FormData,
 ): Promise<ResultadoConciliacion> {
+  const empresaId = String(formData.get("empresa_id") ?? "").trim();
+  if (!empresaId) {
+    return { ...VACIO, error: "Elige la empresa de este extracto." };
+  }
   const file = formData.get("archivo");
   if (!(file instanceof File) || file.size === 0) {
     return { ...VACIO, error: "Sube el PDF del extracto." };
@@ -20,8 +24,9 @@ export async function conciliarExtracto(
   }
   try {
     const buf = Buffer.from(await file.arrayBuffer());
-    const res = await procesarExtractoPDF(buf, "Equipo");
+    const res = await procesarExtractoPDF(buf, "Equipo", empresaId);
     revalidatePath("/admin");
+    revalidatePath("/cartera");
     revalidatePath("/cartera/pagos");
     revalidatePath("/cartera/extractos");
     return res;

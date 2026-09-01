@@ -61,8 +61,10 @@ function extraerNombre(desc: string): string | null {
 }
 
 /** Parsea el PDF del extracto en movimientos estructurados. */
-export async function parseExtracto(buffer: Buffer): Promise<{
-  empresaCodigo: string | null;
+export async function parseExtracto(
+  buffer: Buffer,
+  empresaCodigo: string,
+): Promise<{
   titular: string;
   movimientos: MovParse[];
 }> {
@@ -70,14 +72,6 @@ export async function parseExtracto(buffer: Buffer): Promise<{
   const { text } = await extractText(pdf, { mergePages: true });
 
   const titular = (/Titular:\s*([^\n]+)/i.exec(text)?.[1] ?? "").trim();
-  const tU = titular.toUpperCase();
-  const empresaCodigo = tU.includes("GOLD")
-    ? "GOLD"
-    : tU.includes("KOWUA")
-      ? "KOWUA"
-      : /LUJO|AUTO/.test(tU)
-        ? "AUTOLUJO"
-        : null;
 
   const start = text.indexOf("Últimos movimientos");
   const body = start >= 0 ? text.slice(start) : text;
@@ -100,12 +94,13 @@ export async function parseExtracto(buffer: Buffer): Promise<{
       nombre: extraerNombre(desc),
     });
   }
-  return { empresaCodigo, titular, movimientos };
+  return { titular, movimientos };
 }
 
 export type ResultadoConciliacion = {
   ok: boolean;
   error?: string;
+  aviso?: string;
   empresa: string | null;
   total: number;
   aplicados: number;
@@ -122,20 +117,29 @@ export type ResultadoConciliacion = {
   }[];
 };
 
+const VACIO: ResultadoConciliacion = {
+  ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [],
+};
+
 /** Procesa el PDF completo: parsea, concilia y persiste. */
 export async function procesarExtractoPDF(
   buffer: Buffer,
   cargadoPor: string,
+  empresaId: string,
 ): Promise<ResultadoConciliacion> {
-  const { empresaCodigo, movimientos } = await parseExtracto(buffer);
-  if (!empresaCodigo) {
-    return { ok: false, error: "No pude identificar la empresa del extracto (titular).", empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [] };
+  if (!empresaId) {
+    return { ...VACIO, error: "Elige la empresa de este extracto." };
   }
   const sb = createServerSupabase();
 
-  const emp = await sb.from("empresas").select("id").eq("codigo", empresaCodigo).maybeSingle();
-  const empresaId = emp.data?.id;
-  if (!empresaId) return { ok: false, error: `Empresa ${empresaCodigo} no existe.`, empresa: empresaCodigo, total: 0, aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [] };
+  const emp = await sb.from("empresas").select("id, codigo, nombre").eq("id", empresaId).maybeSingle();
+  const empresa = emp.data as { id: string; codigo: string; nombre: string } | null;
+  if (!empresa) return { ...VACIO, error: "Esa empresa no existe." };
+
+  const { titular, movimientos } = await parseExtracto(buffer, empresa.codigo);
+  if (movimientos.length === 0) {
+    return { ...VACIO, empresa: empresa.codigo, error: "No encontré movimientos en el PDF. ¿Es el de “Últimos movimientos” de Banco General?" };
+  }
 
   // Contratos activos de la empresa con su carro, cliente y letra
   const { data: contratos } = await sb
@@ -154,20 +158,53 @@ export async function procesarExtractoPDF(
     if (c.cliente?.nombre) porNombre.set(canonNombre(c.cliente.nombre), { contratoId: c.id, letra: Number(c.letra_diaria) });
   }
 
+  const { data: cuenta } = await sb
+    .from("cuentas_bancarias")
+    .select("id")
+    .eq("empresa_id", empresa.id)
+    .ilike("tipo", "AHORROS")
+    .limit(1)
+    .maybeSingle();
+
+  let aviso: string | undefined;
+  if (titular) {
+    const tU = titular.toUpperCase();
+    const delPdf = tU.includes("GOLD")
+      ? "GOLD"
+      : tU.includes("KOWUA")
+        ? "KOWUA"
+        : /LUJO|AUTO/.test(tU)
+          ? "AUTOLUJO"
+          : null;
+    if (delPdf && delPdf !== empresa.codigo) {
+      aviso = `El PDF parece de ${delPdf} (titular “${titular}”) y tú elegiste ${empresa.codigo}. Concilié contra los carros de ${empresa.codigo}.`;
+    }
+  }
+
   // Cabecera del extracto
   const fechaExtracto = movimientos.find((m) => m.fecha)?.fecha ?? new Date().toISOString().slice(0, 10);
   const { data: extracto } = await sb
     .from("extractos_bancarios")
-    .insert({ empresa_id: empresaId, banco: "Banco General", fecha: fechaExtracto, cargado_por: cargadoPor })
+    .insert({
+      empresa_id: empresa.id,
+      cuenta_bancaria_id: (cuenta as { id: string } | null)?.id ?? null,
+      banco: "Banco General",
+      fecha: fechaExtracto,
+      cargado_por: cargadoPor,
+    })
     .select("id").single();
   const extractoId = extracto!.id as string;
 
-  const res: ResultadoConciliacion = { ok: true, empresa: empresaCodigo, total: movimientos.length, aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [] };
+  const res: ResultadoConciliacion = {
+    ok: true, aviso, empresa: empresa.codigo, total: movimientos.length,
+    aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [],
+  };
 
   for (const mov of movimientos) {
     let match: { contratoId: string; letra: number } | undefined;
     let via: "carro" | "nombre" | null = null;
-    if (mov.numeroCarro && porCarro.has(mov.numeroCarro)) { match = porCarro.get(mov.numeroCarro); via = "carro"; }
+    const carroKey = mov.numeroCarro ? canonCarro(mov.numeroCarro) : "";
+    if (carroKey && porCarro.has(carroKey)) { match = porCarro.get(carroKey); via = "carro"; }
     else if (mov.nombre) {
       const nombreKey = canonNombre(mov.nombre);
       // match por nombre exacto o por inclusión (nombre del banco contiene el del cliente o viceversa)

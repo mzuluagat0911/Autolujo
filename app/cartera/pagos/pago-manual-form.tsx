@@ -5,8 +5,8 @@ import { registrarPagoManual, type ResultadoPagoManual } from "./actions";
 
 const HOY = new Date().toISOString().slice(0, 10);
 
-export function PagoManualForm() {
-  const [abierto, setAbierto] = useState(false);
+export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefecto?: boolean }) {
+  const [abierto, setAbierto] = useState(abiertoPorDefecto);
   const [estado, accion, pendiente] = useActionState<ResultadoPagoManual | null, FormData>(
     registrarPagoManual,
     null,
