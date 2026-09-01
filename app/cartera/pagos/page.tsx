@@ -1,6 +1,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader, StatusChip, Money } from "@/components/kit";
 import { resolverPago } from "./actions";
+import { PagoManualForm } from "./pago-manual-form";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +66,10 @@ export default async function PagosPage() {
       {error && (
         <p className="mt-6 rounded-lg bg-surface p-4 font-mono text-xs text-muted ring-1 ring-line">{error}</p>
       )}
+
+      <div className="mt-6">
+        <PagoManualForm />
+      </div>
 
       <h2 className="mt-8 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
         {porConciliar.length} por revisar

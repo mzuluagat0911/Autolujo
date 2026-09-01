@@ -136,5 +136,7 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
 
   return ((contratos.data ?? []) as unknown as ContratoRow[])
     .map((c) => construir(c, saldoMap.get(c.id) ?? 0, pagaronHoy.has(c.id), hoy))
+    // No le cobres a quien YA pagó hoy (transferencia conciliada o pago en oficina).
+    .filter((e) => !e.pagoHoy)
     .sort((a, b) => b.totalHoy - a.totalHoy);
 }

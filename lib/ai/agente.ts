@@ -1,6 +1,7 @@
 import { generateObject } from "ai";
 import { z } from "zod";
 import { modeloTexto } from "./provider";
+import { mediosDePagoTexto } from "@/lib/cartera/medios-pago";
 
 // El agente conversacional de cartera. Habla como una persona real del equipo.
 // NO calcula dinero (eso lo hace el código); solo conversa y decide si escalar.
@@ -84,7 +85,8 @@ export async function responderAgente(opts: {
     role: (m.direccion === "in" ? "user" : "assistant") as "user" | "assistant",
     content: m.texto,
   }));
-  const system = opts.contexto ? `${SISTEMA}\n\nCONTEXTO DEL CLIENTE:\n${opts.contexto}` : SISTEMA;
+  const base = `${SISTEMA}\n\n${mediosDePagoTexto()}`;
+  const system = opts.contexto ? `${base}\n\nCONTEXTO DEL CLIENTE:\n${opts.contexto}` : base;
 
   const { object } = await generateObject({
     model: modeloTexto(),
