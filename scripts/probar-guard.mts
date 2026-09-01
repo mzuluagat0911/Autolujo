@@ -1,11 +1,11 @@
 // Casos del guard de salida del agente. Sin red ni base de datos.
-//   node --experimental-strip-types scripts/probar-guard.ts
+//   npm run probar
 //
 // Lo que se está protegiendo: que no salga una cifra que el sistema no calculó,
 // y que un mensaje legítimo NO se bloquee (escalar silencia al agente, así que
 // un falso positivo deja mudo a un cliente).
 
-import { revisarRespuesta } from "../lib/ai/guard.ts";
+import { revisarRespuesta } from "@/lib/ai/guard";
 
 const CTX = [
   "- Hoy es martes 1 de septiembre. Son las 14:20.",

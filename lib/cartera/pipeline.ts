@@ -6,7 +6,8 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
 import { hoyPanama, horaPanama, pasoCorte, fechaConDia, sumarDias, fechaContable } from "@/lib/cartera/fecha";
-import { cuotaDeFecha, ultimoDiaDevengado, type TerminosCuota } from "@/lib/cartera/devengo";
+import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "@/lib/cartera/cuota";
+import { ultimoDiaDevengado } from "@/lib/cartera/devengo";
 import { pagoHoyContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
 import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
@@ -218,8 +219,8 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     cobra_domingo: c.cobra_domingo as boolean | null,
     cuota_domingo: c.cuota_domingo as number | null,
   };
-  const puntual = Number(c.letra_diaria);           // cuota pagando puntual (con descuento)
-  const penalidad = Number(c.descuento_puntual ?? 0); // se pierde el descuento tras el corte
+  const puntual = Number(c.letra_diaria);   // cuota pagando puntual (con descuento)
+  const penalidad = penalidadDe(terminos);  // se pierde el descuento tras el corte
   const cuotaHoy = cuotaDeFecha(terminos, hoy);
   const cuotaManana = cuotaDeFecha(terminos, manana);
 

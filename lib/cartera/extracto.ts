@@ -5,7 +5,8 @@
 
 import { extractText, getDocumentProxy } from "unpdf";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama, instantePanama } from "./fecha";
+import { hoyPanama, instantePanama, fechaContable } from "./fecha";
+import { recalcularRecargo } from "./devengo";
 
 const MESES: Record<string, string> = {
   ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
@@ -201,6 +202,9 @@ export async function procesarExtractoPDF(
     aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [],
   };
 
+  // "contratoId|fecha" de los días cuyo recargo hay que revisar al terminar.
+  const porRecalcular = new Set<string>();
+
   for (const mov of movimientos) {
     let match: { contratoId: string; letra: number } | undefined;
     let via: "carro" | "nombre" | null = null;
@@ -220,13 +224,14 @@ export async function procesarExtractoPDF(
     if (match) {
       // dedup: ¿hay un comprobante pendiente/manual del mismo contrato por monto similar?
       const { data: pend } = await sb
-        .from("pagos").select("id, monto")
+        .from("pagos").select("id, monto, pagado_at")
         .eq("contrato_id", match.contratoId)
         .in("estado_conciliacion", ["pendiente", "manual"]);
       const existente = (pend ?? []).find((p) => Math.abs(Number(p.monto) - mov.monto) < 0.5);
       if (existente) {
         await sb.from("pagos").update({ estado_conciliacion: "conciliado" }).eq("id", existente.id);
         pagoId = existente.id;
+        porRecalcular.add(`${match.contratoId}|${existente.pagado_at ? fechaContable(existente.pagado_at) : (mov.fecha ?? hoyPanama())}`);
       } else {
         // El extracto solo trae fecha, no hora → se asume post-corte (sin descuento).
         const fechaMov = mov.fecha ?? hoyPanama();
@@ -254,6 +259,17 @@ export async function procesarExtractoPDF(
     });
 
     res.detalle.push({ fecha: mov.fecha, descripcion: mov.descripcion, monto: mov.monto, carro: mov.numeroCarro, via, estado });
+  }
+
+  // El pago ya está confirmado por el banco: si esa noche se le puso recargo
+  // (o se le difirió), ahora se decide con la hora real del comprobante.
+  for (const clave of porRecalcular) {
+    const [contratoId, fecha] = clave.split("|");
+    try {
+      await recalcularRecargo(contratoId, fecha);
+    } catch (e) {
+      console.error("[extracto] no pude recalcular el recargo de", clave, e);
+    }
   }
 
   return res;

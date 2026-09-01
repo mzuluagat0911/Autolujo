@@ -9,7 +9,8 @@ import {
   ventanaAbierta,
 } from "@/lib/cartera/pipeline";
 import { money } from "@/lib/cartera/estado-cuenta";
-import { hoyPanama, pagadoAtDesdeForm, horaPanama } from "@/lib/cartera/fecha";
+import { recalcularRecargo } from "@/lib/cartera/devengo";
+import { hoyPanama, pagadoAtDesdeForm, horaPanama, fechaContable } from "@/lib/cartera/fecha";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { sendText } from "@/lib/whatsapp/client";
 
@@ -32,10 +33,24 @@ export async function resolverPago(formData: FormData): Promise<void> {
   const patch: Record<string, unknown> = { estado_conciliacion: nuevoEstado };
   if (contratoId) patch.contrato_id = contratoId;
 
-  const { error } = await sb.from("pagos").update(patch).eq("id", pagoId);
+  const { data: pago, error } = await sb
+    .from("pagos")
+    .update(patch)
+    .eq("id", pagoId)
+    .select("contrato_id, pagado_at")
+    .maybeSingle();
   if (error) throw new Error(error.message);
 
+  // Mientras el comprobante estuvo pendiente, el recargo de ese día quedó
+  // congelado. Ya hay desenlace: si el pago era bueno se confirma la gracia,
+  // si era malo entra el recargo que se le perdonó esa noche.
+  const p = pago as { contrato_id: string | null; pagado_at: string | null } | null;
+  if (p?.contrato_id && p.pagado_at) {
+    await recalcularRecargo(p.contrato_id, fechaContable(p.pagado_at));
+  }
+
   revalidatePath("/cartera/pagos");
+  revalidatePath("/cartera");
   revalidatePath("/");
 }
 
@@ -98,6 +113,10 @@ export async function registrarPagoManual(
     notas: `Pago presencial en oficina — ${metodoLabel}. Registrado por el equipo.`,
   });
   if (error) return { ok: false, msg: error.message };
+
+  // Si pagó en oficina antes de las 7 p.m. pero el equipo lo registró después,
+  // el cron ya le habría puesto el recargo. Se recalcula con la hora real.
+  await recalcularRecargo(r.contratoId as string, fecha);
 
   // 4) Que el agente quede enterado + avisar al cliente si se puede.
   let avisado = false;

@@ -69,6 +69,12 @@ export function sumarDias(fecha: string, dias: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** Días completos entre dos fechas "YYYY-MM-DD" (b − a). */
+export function diasEntre(a: string, b: string): number {
+  const ms = new Date(`${b}T12:00:00Z`).getTime() - new Date(`${a}T12:00:00Z`).getTime();
+  return Math.round(ms / 86_400_000);
+}
+
 /** "29 de agosto" */
 export function fechaLarga(fecha: string): string {
   const [, mes, dia] = fecha.split("-").map(Number);

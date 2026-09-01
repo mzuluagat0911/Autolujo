@@ -7,24 +7,45 @@
 //
 // Regla de negocio (confirmada): si NO paga un día, ese día queda a tarifa
 // plena (letra + descuento perdido). Varios días de atraso = varios días a
-// tarifa plena. El día de HOY arranca a letra puntual a las 7:30 a.m.; si a
-// las 7:00 p.m. no pagó, se suma el recargo como cargo `multa` aparte.
+// tarifa plena.
+//
+// CÓMO se representa esa regla importa: el cargo `renta` es SIEMPRE la cuota
+// base, y el descuento perdido va SIEMPRE aparte como cargo `multa`. Nunca se
+// hornea la tarifa plena dentro de la renta. Un cargo de $35 no se puede
+// descomponer después; $30 + $5 sí. Eso es lo que permite:
+//   - diferir el recargo cuando el cliente mandó comprobante y falta conciliar,
+//   - revertirlo si el pago resulta bueno, o aplicarlo si resulta malo,
+//   - explicarle al cliente de dónde sale cada dólar de su saldo.
 //
 // Determinista e idempotente: uq_cargo_renta_dia (0008) + chequeo de multa.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama, diaSemana, sumarDias, rangoDiaPanama, esPagoPuntual } from "./fecha";
+import { hoyPanama, sumarDias, pasoCorte, diasEntre } from "./fecha";
+import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
+import {
+  contratosConPagoPuntualEnDia,
+  contratosConComprobantePendienteEnDia,
+  comprobantePendienteContrato,
+  pagoHoyContrato,
+} from "./pagos-dia";
 
 /** Días hacia atrás que el job intenta rellenar si el cron no corrió. */
 const MAX_DIAS_ATRAS = 7;
 
-/** Términos del contrato que determinan cuánto se cobra cada día. */
-export type TerminosCuota = {
-  letra_diaria: number;
-  descuento_puntual: number | null;
-  cobra_domingo: boolean | null;
-  cuota_domingo: number | null;
-};
+/**
+ * Cuántos días se le perdona el recargo a un comprobante sin validar.
+ *
+ * Sin vencimiento, un comprobante que nadie resuelve difiere el recargo para
+ * siempre y basta con mandar una imagen cualquiera cada tarde para no pagarlo
+ * nunca. Pasado el plazo el recargo entra; si el pago se concilia después,
+ * `recalcularRecargo` lo vuelve a quitar. Se corrige solo en ambas direcciones.
+ */
+const DIAS_GRACIA_COMPROBANTE = 3;
+
+/** ¿Un comprobante pendiente de esa fecha todavía congela el recargo? */
+function graciaVigente(fecha: string, hoy = hoyPanama()): boolean {
+  return diasEntre(fecha, hoy) <= DIAS_GRACIA_COMPROBANTE;
+}
 
 type ContratoDevengo = TerminosCuota & {
   id: string;
@@ -42,45 +63,9 @@ export type ResultadoRecargo = {
   fecha: string;
   creados: number;
   yaTenian: number;
+  /** Con comprobante sin validar: el recargo espera al desenlace. */
+  diferidos: number;
 };
-
-/**
- * Cuota base del día (con descuento puntual). 0 = ese día no se cobra.
- * Entre semana es la letra diaria; el domingo solo si el contrato lo pactó.
- */
-export function cuotaDeFecha(c: TerminosCuota, fecha: string): number {
-  if (diaSemana(fecha) === 0) {
-    if (!c.cobra_domingo) return 0;
-    return Math.max(Number(c.cuota_domingo) || Number(c.letra_diaria) || 0, 0);
-  }
-  return Math.max(Number(c.letra_diaria) || 0, 0);
-}
-
-/** Tarifa plena: pierde el descuento por no pagar a tiempo ese día. */
-export function tarifaPlena(c: TerminosCuota, fecha: string): number {
-  const base = cuotaDeFecha(c, fecha);
-  if (base <= 0) return 0;
-  return base + Math.max(Number(c.descuento_puntual ?? 0), 0);
-}
-
-/**
- * Monto del cargo `renta` al devengar un día.
- * - HOY (día abierto): solo la letra puntual; el recargo va aparte a las 7 p.m.
- * - Días pasados con pago PUNTUAL (antes de las 7 p.m.): letra puntual.
- * - Días pasados sin pago o con pago TARDE: tarifa plena.
- */
-export function montoDevengoRenta(
-  c: TerminosCuota,
-  fecha: string,
-  hoy: string,
-  pagoEseDia: "puntual" | "tarde" | null,
-): number {
-  const base = cuotaDeFecha(c, fecha);
-  if (base <= 0) return 0;
-  if (fecha === hoy) return base;
-  if (pagoEseDia === "puntual") return base;
-  return tarifaPlena(c, fecha);
-}
 
 /**
  * Fecha mínima desde la que se puede devengar. Protege el `saldo_inicial`
@@ -89,31 +74,6 @@ export function montoDevengoRenta(
 function devengoDesde(): string | null {
   const v = (process.env.DEVENGO_DESDE ?? "").trim();
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
-}
-
-/** Por contrato: ¿pagó puntual, tarde o no pagó ese día? (según pagado_at) */
-async function estadoPagoDelDia(
-  fecha: string,
-): Promise<Map<string, "puntual" | "tarde">> {
-  const sb = createServerSupabase();
-  const { desde, hasta } = rangoDiaPanama(fecha);
-  const { data } = await sb
-    .from("pagos")
-    .select("contrato_id, pagado_at")
-    .in("estado_conciliacion", ["conciliado", "manual"])
-    .gte("pagado_at", desde.toISOString())
-    .lt("pagado_at", hasta.toISOString());
-
-  const map = new Map<string, "puntual" | "tarde">();
-  for (const p of (data ?? []) as { contrato_id: string | null; pagado_at: string }[]) {
-    if (!p.contrato_id) continue;
-    if (esPagoPuntual(p.pagado_at, fecha)) {
-      map.set(p.contrato_id, "puntual");
-    } else if (!map.has(p.contrato_id)) {
-      map.set(p.contrato_id, "tarde");
-    }
-  }
-  return map;
 }
 
 /** Contratos que ya tienen multa por pago tardío en esa fecha. */
@@ -128,10 +88,12 @@ async function contratosConRecargo(fecha: string): Promise<Set<string>> {
   return new Set(((data ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id));
 }
 
-/** Crea los cargos de renta que falten para una fecha concreta. */
+/**
+ * Crea los cargos de renta que falten para una fecha concreta.
+ * Siempre a cuota base: el recargo lo pone `aplicarRecargosDelDia`.
+ */
 export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
   const sb = createServerSupabase();
-  const hoy = hoyPanama();
 
   const { data: contratos, error } = await sb
     .from("contratos")
@@ -139,12 +101,10 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     .eq("estado", "activo");
   if (error) throw error;
 
-  const [existentes, pagosDelDia] = await Promise.all([
-    sb.from("cargos").select("contrato_id").eq("fecha", fecha).eq("tipo", "renta"),
-    estadoPagoDelDia(fecha),
-  ]);
+  const { data: existentes } = await sb
+    .from("cargos").select("contrato_id").eq("fecha", fecha).eq("tipo", "renta");
   const yaTiene = new Set(
-    ((existentes.data ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id),
+    ((existentes ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id),
   );
 
   const res: ResultadoDevengo = { fecha, creados: 0, yaEstaban: 0, sinCuota: 0 };
@@ -153,14 +113,13 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
   for (const c of ((contratos ?? []) as unknown as ContratoDevengo[])) {
     if (c.fecha_inicio && c.fecha_inicio > fecha) continue;
     if (yaTiene.has(c.id)) { res.yaEstaban++; continue; }
-    const monto = montoDevengoRenta(c, fecha, hoy, pagosDelDia.get(c.id) ?? null);
+    const monto = cuotaDeFecha(c, fecha);
     if (monto <= 0) { res.sinCuota++; continue; }
-    const plena = monto > cuotaDeFecha(c, fecha);
     filas.push({
       contrato_id: c.id,
       fecha,
       tipo: "renta",
-      concepto: plena ? "Cuota diaria (sin descuento)" : "Cuota diaria",
+      concepto: "Cuota diaria",
       monto,
     });
   }
@@ -194,8 +153,9 @@ export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRec
     .eq("estado", "activo");
   if (error) throw error;
 
-  const [pagosDelDia, conRecargo, conRenta] = await Promise.all([
-    estadoPagoDelDia(fecha),
+  const [pagaronPuntual, conPendiente, conRecargo, conRenta] = await Promise.all([
+    contratosConPagoPuntualEnDia(fecha),
+    graciaVigente(fecha) ? contratosConComprobantePendienteEnDia(fecha) : new Set<string>(),
     contratosConRecargo(fecha),
     sb.from("cargos").select("contrato_id").eq("fecha", fecha).eq("tipo", "renta"),
   ]);
@@ -203,16 +163,19 @@ export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRec
     ((conRenta.data ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id),
   );
 
-  const res: ResultadoRecargo = { fecha, creados: 0, yaTenian: 0 };
+  const res: ResultadoRecargo = { fecha, creados: 0, yaTenian: 0, diferidos: 0 };
   const filas: Record<string, unknown>[] = [];
 
   for (const c of ((contratos ?? []) as unknown as ContratoDevengo[])) {
     if (c.fecha_inicio && c.fecha_inicio > fecha) continue;
     if (!tieneRenta.has(c.id)) continue; // domingo libre u otro día sin cuota
-    if (pagosDelDia.get(c.id) === "puntual") continue;
+    if (pagaronPuntual.has(c.id)) continue;
+    // Mandó comprobante y nadie lo ha validado: el recargo espera. Si el pago
+    // resulta malo, `recalcularRecargo` lo aplica retroactivo.
+    if (conPendiente.has(c.id)) { res.diferidos++; continue; }
     if (conRecargo.has(c.id)) { res.yaTenian++; continue; }
 
-    const penalidad = Math.max(Number(c.descuento_puntual ?? 0), 0);
+    const penalidad = penalidadDe(c);
     if (penalidad <= 0) continue;
 
     filas.push({
@@ -242,39 +205,105 @@ export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRec
 }
 
 /**
+ * Recalcula el recargo de UN contrato en UN día, y lo crea o lo borra según
+ * corresponda. Es la contraparte del diferimiento: sin esto, un comprobante
+ * falso le compraría al cliente una noche gratis.
+ *
+ * Se llama cada vez que cambia el desenlace de un pago de ese día: al
+ * conciliarlo, al rechazarlo, o al registrar un pago en oficina.
+ *
+ * El recargo NO va cuando:
+ *   - el día no tiene cuota (domingo libre) o no está devengado todavía,
+ *   - hubo un pago puntual (antes de las 7 p.m.),
+ *   - sigue habiendo un comprobante de ese día sin validar,
+ *   - el día aún está abierto (es hoy y no han dado las 7 p.m.).
+ */
+export async function recalcularRecargo(
+  contratoId: string,
+  fecha: string,
+): Promise<"creado" | "borrado" | "sin_cambio"> {
+  const sb = createServerSupabase();
+
+  const [rentaRes, multaRes, contratoRes] = await Promise.all([
+    sb.from("cargos").select("id").eq("contrato_id", contratoId)
+      .eq("fecha", fecha).eq("tipo", "renta").limit(1),
+    sb.from("cargos").select("id").eq("contrato_id", contratoId)
+      .eq("fecha", fecha).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE").limit(1),
+    sb.from("contratos")
+      .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+      .eq("id", contratoId).maybeSingle(),
+  ]);
+
+  const multaId = (multaRes.data ?? [])[0]?.id as string | undefined;
+  const borrar = async (): Promise<"borrado" | "sin_cambio"> => {
+    if (!multaId) return "sin_cambio";
+    await sb.from("cargos").delete().eq("id", multaId);
+    return "borrado";
+  };
+
+  if ((rentaRes.data ?? []).length === 0) return borrar();
+
+  const [{ pagoPuntual }, { pendiente }] = await Promise.all([
+    pagoHoyContrato(contratoId, fecha),
+    comprobantePendienteContrato(contratoId, fecha),
+  ]);
+  const diaAbierto = fecha === hoyPanama() && !pasoCorte();
+  const enGracia = pendiente && graciaVigente(fecha);
+
+  if (pagoPuntual || enGracia || diaAbierto) return borrar();
+  if (multaId) return "sin_cambio";
+
+  const c = contratoRes.data as TerminosCuota | null;
+  const penalidad = c ? penalidadDe(c) : 0;
+  if (penalidad <= 0) return "sin_cambio";
+
+  const { error } = await sb.from("cargos").insert({
+    contrato_id: contratoId,
+    fecha,
+    tipo: "multa",
+    concepto_codigo: "PAGO_TARDE",
+    concepto: "Pago después de las 7 PM",
+    monto: penalidad,
+  });
+  return error ? "sin_cambio" : "creado";
+}
+
+/**
  * Devenga el día de hoy y, si el cron se saltó días, rellena hacia atrás
  * hasta MAX_DIAS_ATRAS sin pasar de DEVENGO_DESDE.
  *
- * Antes de devengar hoy, cierra ayer (recargo si no pagó) por si el cron de
- * las 7 p.m. no corrió.
+ * Cada día PASADO se cierra además con su recargo: si el cron de las 7 p.m. no
+ * corrió esa noche, el día quedaría cobrado a cuota puntual para siempre.
+ * Hoy no se cierra aquí — su corte todavía no ha llegado.
  */
 export async function devengarPendientes(): Promise<{
   hoy: string;
   dias: ResultadoDevengo[];
-  recargoAyer: ResultadoRecargo;
+  recargos: ResultadoRecargo[];
   creados: number;
 }> {
   const hoy = hoyPanama();
-  const ayer = sumarDias(hoy, -1);
   const desde = devengoDesde();
 
-  const recargoAyer = await aplicarRecargosDelDia(ayer);
-
-  const fechas: string[] = [];
+  const pasadas: string[] = [];
   for (let i = MAX_DIAS_ATRAS; i >= 1; i--) {
     const f = sumarDias(hoy, -i);
-    if (desde && f >= desde) fechas.push(f);
+    if (desde && f >= desde) pasadas.push(f);
   }
-  fechas.push(hoy);
 
+  // La renta primero: el recargo solo aplica a días que ya tienen cuota.
   const dias: ResultadoDevengo[] = [];
-  for (const f of fechas) dias.push(await devengarDia(f));
+  for (const f of [...pasadas, hoy]) dias.push(await devengarDia(f));
+
+  const recargos: ResultadoRecargo[] = [];
+  for (const f of pasadas) recargos.push(await aplicarRecargosDelDia(f));
 
   return {
     hoy,
     dias,
-    recargoAyer,
-    creados: dias.reduce((a, d) => a + d.creados, 0) + recargoAyer.creados,
+    recargos,
+    creados:
+      dias.reduce((a, d) => a + d.creados, 0) + recargos.reduce((a, r) => a + r.creados, 0),
   };
 }
 
