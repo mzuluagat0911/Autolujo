@@ -211,6 +211,16 @@ export async function completarMensaje(
   if (patch.texto !== undefined) upd.texto = patch.texto;
   if (Object.keys(upd).length === 0) return;
   await sb.from("mensajes").update(upd).eq("id", mensajeId);
+
+  if (patch.texto) {
+    const { data: row } = await sb.from("mensajes").select("conversacion_id").eq("id", mensajeId).maybeSingle();
+    if (row?.conversacion_id) {
+      await sb
+        .from("conversaciones")
+        .update({ ultimo_texto: patch.texto.slice(0, 140) })
+        .eq("id", row.conversacion_id);
+    }
+  }
 }
 
 /** Registra un mensaje y actualiza el resumen de la conversación. */

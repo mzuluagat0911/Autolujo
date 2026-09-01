@@ -21,6 +21,7 @@ import { estadoCuentaContrato, money } from "@/lib/cartera/estado-cuenta";
 type Conv = Conversacion;
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 // ---------------------------------------------------------------------------
 // GET — verificación del webhook (handshake de Meta).
@@ -114,16 +115,17 @@ async function manejarMensaje(msg: WhatsAppMessage) {
   const from = msg.from as string;
   const conv = await obtenerConversacion(from);
 
+  const tipo = tipoMensaje(msg);
   const texto =
-    msg.type === "text" ? msg.text?.body ?? "" :
-    msg.type === "image" ? "📷 Comprobante" :
-    msg.type === "audio" ? "🎤 Nota de voz" : `[${msg.type ?? "mensaje"}]`;
+    tipo === "text" ? msg.text?.body ?? "" :
+    tipo === "image" ? "📷 Comprobante" :
+    tipo === "audio" ? "🎤 Nota de voz" : `[${msg.type ?? "mensaje"}]`;
 
   // Candado de idempotencia: reclama el mensaje ANTES de trabajo pesado.
   // Si Meta reintenta, el segundo choca con el unique y sale sin reprocesar.
   const mensajeId = await reclamarMensajeEntrante({
     conversacionId: conv.id, waMessageId: msg.id,
-    tipo: msg.type === "image" ? "image" : "text", texto,
+    tipo: tipo === "image" ? "image" : "text", texto,
   });
   if (!mensajeId) return; // duplicado (reintento de Meta)
 
@@ -134,21 +136,39 @@ async function manejarMensaje(msg: WhatsAppMessage) {
     return;
   }
 
-  if (msg.type === "text") {
+  if (tipo === "text") {
     await responderConAgente(conv, from);
-  } else if (msg.type === "image") {
+  } else if (tipo === "image") {
     await procesarComprobante(conv, from, msg, mensajeId);
-  } else if (msg.type === "audio") {
+  } else if (tipo === "audio") {
     await procesarAudio(conv, from, msg, mensajeId);
   } else {
     await responder(conv.id, from, "¡Gracias por escribir! En un momento te respondo por aquí 🙌");
   }
 }
 
+function tipoMensaje(msg: WhatsAppMessage): "text" | "image" | "audio" | "otro" {
+  if (msg.type === "text" || msg.text?.body) return "text";
+  if (msg.type === "image" || msg.image?.id) return "image";
+  // Cloud API: notas de voz = type "audio". A veces llega voice/ptt.
+  if (msg.type === "audio" || msg.type === "voice" || msg.type === "ptt" || msg.audio?.id) {
+    return "audio";
+  }
+  return "otro";
+}
+
 // El agente conversa; si el caso lo amerita, escala a una persona del equipo.
-async function responderConAgente(conv: Conv, from: string) {
+async function responderConAgente(conv: Conv, from: string, extraTurno?: { direccion: "in" | "out"; texto: string }) {
   try {
     const historial = await historialReciente(conv.id, 10);
+    if (extraTurno) {
+      const last = historial[historial.length - 1];
+      if (last?.direccion === "in" && /nota de voz/i.test(last.texto)) {
+        last.texto = extraTurno.texto;
+      } else {
+        historial.push(extraTurno);
+      }
+    }
     // Contexto con cifras REALES si la conversación está vinculada a un contrato.
     let contexto = conv.etiqueta ? `El cliente está vinculado al ${conv.etiqueta}.` : undefined;
     if (conv.contrato_id) {
@@ -168,20 +188,21 @@ async function responderConAgente(conv: Conv, from: string) {
 async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, mensajeId: string) {
   const mediaId = msg.audio?.id;
   if (!mediaId) {
-    await responder(conv.id, from, "🎤 Recibí tu audio pero no pude abrirlo. ¿Me lo reenvías o me escribes?");
+    await responder(conv.id, from, "Recibí tu audio pero no pude abrirlo. ¿Me lo escribes o me lo reenvías?");
     return;
   }
   try {
     const bytes = await downloadMedia(mediaId);
     const transcript = await transcribirAudio(bytes, msg.audio?.mime_type ?? "audio/ogg");
-    if (transcript) {
-      // Guarda la transcripción en el hilo (para el panel y para el agente).
-      await completarMensaje(mensajeId, { texto: `🎤 ${transcript}` });
-    }
-    await responderConAgente(conv, from);
+    await completarMensaje(mensajeId, { texto: transcript });
+    await responderConAgente(conv, from, { direccion: "in", texto: transcript });
   } catch (e) {
-    console.error("[whatsapp/webhook] agente falló:", e);
-    await responder(conv.id, from, "¡Gracias por escribir! En un momento te respondo por aquí 🙌");
+    console.error("[whatsapp/webhook] transcribir audio falló:", e);
+    await responder(
+      conv.id,
+      from,
+      "Te escuché, pero no pude entender bien el audio. ¿Me lo escribes en un mensajito?",
+    );
   }
 }
 
@@ -250,7 +271,7 @@ async function procesarComprobante(
 type WhatsAppMessage = {
   id?: string;
   from?: string;
-  type?: string;
+  type?: string | "text" | "image" | "audio" | "voice" | "ptt";
   text?: { body?: string };
   image?: { id?: string; mime_type?: string };
   audio?: { id?: string; mime_type?: string; voice?: boolean };
