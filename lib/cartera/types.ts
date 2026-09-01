@@ -22,17 +22,21 @@ export type ConfigReglas = {
 };
 
 // Una obligación pendiente del día (lo que el cliente debe cubrir).
+export type TipoObligacion = "acuerdo" | "saldo_anterior" | "recargo" | "cuenta_diaria";
+
 export type Obligacion = {
-  tipo: "acuerdo" | "cuenta_diaria";
-  prioridad: number; // menor = se cubre primero (acuerdo antes que cuenta)
-  monto: number; // monto debido de esta obligación
-  ref?: string; // id del acuerdo, opcional
+  tipo: TipoObligacion;
+  prioridad: number; // menor = se cubre primero
+  monto: number;
+  ref?: string; // id del acuerdo
+  etiqueta?: string;
 };
 
 export type AsignacionPago = {
-  tipo: Obligacion["tipo"];
+  tipo: TipoObligacion;
   ref?: string;
   aplicado: number;
+  etiqueta?: string;
 };
 
 export type ResultadoPago = {

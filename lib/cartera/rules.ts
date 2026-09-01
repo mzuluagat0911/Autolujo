@@ -66,7 +66,12 @@ export function distribuirPago(monto: number, obligaciones: Obligacion[]): Resul
     if (restante <= 0) break;
     const aplicado = Math.min(restante, redondear(o.monto));
     if (aplicado > 0) {
-      asignaciones.push({ tipo: o.tipo, ref: o.ref, aplicado: redondear(aplicado) });
+      asignaciones.push({
+        tipo: o.tipo,
+        ref: o.ref,
+        aplicado: redondear(aplicado),
+        etiqueta: o.etiqueta,
+      });
       restante = redondear(restante - aplicado);
     }
   }

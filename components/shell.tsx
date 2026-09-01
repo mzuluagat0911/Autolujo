@@ -4,6 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Brand } from "./brand";
+import {
+  AlertasAsesorProvider,
+  AlertasCampana,
+  useAlertasCount,
+} from "./alertas-asesor";
 
 type Item = { label: string; href: string; status: "active" | "pronto" };
 type Group = { section: string | null; items: Item[] };
@@ -71,6 +76,7 @@ export function Shell({ children }: { children: ReactNode }) {
   }
 
   return (
+    <AlertasAsesorProvider>
     <div className="flex min-h-screen bg-paper">
       {open && (
         <button
@@ -116,7 +122,12 @@ export function Shell({ children }: { children: ReactNode }) {
               Siempre seguro
             </p>
           </div>
-          <ThemeToggle />
+          <div className="flex items-center gap-1">
+            <div className="hidden md:block">
+              <AlertasCampana variant="side" />
+            </div>
+            <ThemeToggle />
+          </div>
         </div>
       </aside>
 
@@ -126,14 +137,20 @@ export function Shell({ children }: { children: ReactNode }) {
             <MenuIcon />
           </button>
           <span className="ml-2 font-serif text-sm text-white">AutoLujo</span>
+          <div className="ml-auto">
+            <AlertasCampana variant="mobile" />
+          </div>
         </div>
         <main className="min-w-0 flex-1 px-5 sm:px-8 lg:px-12">{children}</main>
       </div>
     </div>
+    </AlertasAsesorProvider>
   );
 }
 
 function NavRow({ item, active }: { item: Item; active: boolean }) {
+  const esperando = useAlertasCount();
+  const badge = item.href === "/cartera/conversaciones" ? esperando : 0;
   if (item.status === "pronto") {
     return (
       <div className="flex cursor-default items-center justify-between px-3 py-2 text-[13px] font-light text-white/28">
@@ -145,12 +162,17 @@ function NavRow({ item, active }: { item: Item; active: boolean }) {
   return (
     <Link
       href={item.href}
-      className={`relative flex items-center px-3 py-2 text-[13px] transition ${
+      className={`relative flex items-center gap-2 px-3 py-2 text-[13px] transition ${
         active ? "font-medium text-gold" : "font-light text-white/60 hover:text-white"
       }`}
     >
       {active && <span className="absolute left-0 top-1/2 h-4 w-[2px] -translate-y-1/2 bg-gold" />}
-      {item.label}
+      <span className="flex-1">{item.label}</span>
+      {badge > 0 && (
+        <span className="rounded-full bg-ambar px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">
+          {badge > 9 ? "9+" : badge}
+        </span>
+      )}
     </Link>
   );
 }

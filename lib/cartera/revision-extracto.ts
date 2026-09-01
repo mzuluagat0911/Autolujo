@@ -4,6 +4,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { instantePanama } from "./fecha";
 import { recalcularRecargo } from "./devengo";
+import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import { canonCarro, fechaCubrePago, montoExacto } from "./cruce";
 
 export type ResultadoRevision = { ok: boolean; error?: string };
@@ -226,6 +227,12 @@ export async function aplicarMovimientoExtracto(opts: {
     await recalcularRecargo(contrato.id, mov.fecha);
   } catch (e) {
     console.error("[revision-extracto] recargo", e);
+  }
+
+  try {
+    await aplicarPagoEnObligaciones(pagoId);
+  } catch (e) {
+    console.error("[revision-extracto] waterfall", e);
   }
 
   return { ok: true };

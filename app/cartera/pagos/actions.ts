@@ -10,6 +10,7 @@ import {
 } from "@/lib/cartera/pipeline";
 import { money } from "@/lib/cartera/estado-cuenta";
 import { recalcularRecargo } from "@/lib/cartera/devengo";
+import { aplicarPagoEnObligaciones, revertirPagoEnObligaciones, textoComoSeAplico } from "@/lib/cartera/aplicar-pago";
 import { hoyPanama, pagadoAtDesdeForm, horaPanama, fechaContable } from "@/lib/cartera/fecha";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { sendText } from "@/lib/whatsapp/client";
@@ -33,6 +34,10 @@ export async function resolverPago(formData: FormData): Promise<void> {
   const patch: Record<string, unknown> = { estado_conciliacion: nuevoEstado };
   if (contratoId) patch.contrato_id = contratoId;
 
+  if (nuevoEstado === "rechazado") {
+    await revertirPagoEnObligaciones(pagoId);
+  }
+
   const { data: pago, error } = await sb
     .from("pagos")
     .update(patch)
@@ -47,6 +52,13 @@ export async function resolverPago(formData: FormData): Promise<void> {
   const p = pago as { contrato_id: string | null; pagado_at: string | null } | null;
   if (p?.contrato_id && p.pagado_at) {
     await recalcularRecargo(p.contrato_id, fechaContable(p.pagado_at));
+  }
+  if (nuevoEstado === "conciliado") {
+    try {
+      await aplicarPagoEnObligaciones(pagoId);
+    } catch (e) {
+      console.error("[pagos] waterfall", e);
+    }
   }
 
   revalidatePath("/cartera/pagos");
@@ -100,7 +112,7 @@ export async function registrarPagoManual(
 
   // 3) Registrar el pago (manual → ya cuenta en el saldo, sin conciliar).
   const metodoLabel = metodo === "efectivo" ? "efectivo" : "tarjeta (datáfono)";
-  const { error } = await sb.from("pagos").insert({
+  const { data: pagoInsert, error } = await sb.from("pagos").insert({
     contrato_id: r.contratoId,
     cliente_id: r.clienteId,
     fecha,
@@ -111,12 +123,20 @@ export async function registrarPagoManual(
     origen: "manual",
     estado_conciliacion: "manual",
     notas: `Pago presencial en oficina — ${metodoLabel}. Registrado por el equipo.`,
-  });
+  }).select("id").single();
   if (error) return { ok: false, msg: error.message };
+  const pagoId = (pagoInsert as { id: string }).id;
 
   // Si pagó en oficina antes de las 7 p.m. pero el equipo lo registró después,
   // el cron ya le habría puesto el recargo. Se recalcula con la hora real.
   await recalcularRecargo(r.contratoId as string, fecha);
+  let como = "";
+  try {
+    const aplicado = await aplicarPagoEnObligaciones(pagoId);
+    if (aplicado) como = textoComoSeAplico(aplicado, money);
+  } catch (e) {
+    console.error("[pagos] waterfall manual", e);
+  }
 
   // 4) Que el agente quede enterado + avisar al cliente si se puede.
   let avisado = false;
@@ -128,12 +148,15 @@ export async function registrarPagoManual(
         conversacionId: conv.id,
         direccion: "out",
         tipo: "system",
-        texto: `Pago en oficina registrado: ${money(monto)} en ${metodoLabel} (Carro ${carro}).`,
+        texto: `Pago en oficina registrado: ${money(monto)} en ${metodoLabel} (Carro ${carro}).${como ? ` ${como}` : ""}`,
       });
 
+      const cierre = como
+        ? `${como} Quedó en el Carro ${carro}.`
+        : `Ya quedó registrado en tu cuenta del Carro ${carro}.`;
       const texto = nombre
-        ? `¡Listo, ${nombre}! Recibimos tu pago de ${money(monto)} en la oficina (${metodoLabel}). Ya quedó registrado en tu cuenta del Carro ${carro}. ¡Gracias! 🙌`
-        : `Recibimos tu pago de ${money(monto)} en la oficina (${metodoLabel}). Ya quedó registrado en tu cuenta del Carro ${carro}. ¡Gracias! 🙌`;
+        ? `¡Listo, ${nombre}! Recibimos tu pago de ${money(monto)} en la oficina (${metodoLabel}). ${cierre} ¡Gracias! 🙌`
+        : `Recibimos tu pago de ${money(monto)} en la oficina (${metodoLabel}). ${cierre} ¡Gracias! 🙌`;
 
       const { data: vent } = await sb
         .from("conversaciones")

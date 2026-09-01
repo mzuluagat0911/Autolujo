@@ -7,11 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "probar": "npm run probar:fechas && npm run probar:guard && npm run probar:cruce && npm run probar:vacios",
+    "probar": "npm run probar:fechas && npm run probar:guard && npm run probar:cruce && npm run probar:vacios && npm run probar:aplicar && npm run probar:aviso",
+    "probar:aviso": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-aviso.mts",
     "probar:fechas": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-fechas.mts",
     "probar:guard": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-guard.mts",
     "probar:cruce": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-cruce.mts",
-    "probar:vacios": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-vacios-agente.mts"
+    "probar:vacios": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-vacios-agente.mts",
+    "probar:aplicar": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-aplicar.mts"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",

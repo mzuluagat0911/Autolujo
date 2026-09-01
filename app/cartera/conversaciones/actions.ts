@@ -179,3 +179,45 @@ export async function cargarDetalle(
     return { detalle: null, error: e instanceof Error ? e.message : "Error" };
   }
 }
+
+export type AlertaEscalada = {
+  id: string;
+  titulo: string;
+  motivo: string | null;
+  desde: string | null;
+  preview: string | null;
+};
+
+/** Chats que Marcela (o el sistema) pasó a una persona y nadie ha tomado. */
+export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
+  try {
+    const sb = createServerSupabase();
+    const { data, error } = await sb
+      .from("conversaciones")
+      .select(
+        "id, etiqueta, motivo_escalada, escalada_at, ultimo_texto, cliente:clientes(nombre), vehiculo:vehiculos(numero)",
+      )
+      .eq("necesita_humano", true)
+      .order("escalada_at", { ascending: true, nullsFirst: false });
+    if (error) throw error;
+    return ((data ?? []) as unknown as {
+      id: string;
+      etiqueta: string | null;
+      motivo_escalada: string | null;
+      escalada_at: string | null;
+      ultimo_texto: string | null;
+      cliente: { nombre: string } | null;
+      vehiculo: { numero: string } | null;
+    }[]).map((c) => ({
+      id: c.id,
+      titulo: c.vehiculo?.numero
+        ? `Carro ${c.vehiculo.numero}`
+        : c.etiqueta ?? c.cliente?.nombre ?? "Cliente",
+      motivo: c.motivo_escalada,
+      desde: c.escalada_at,
+      preview: c.ultimo_texto,
+    }));
+  } catch {
+    return [];
+  }
+}

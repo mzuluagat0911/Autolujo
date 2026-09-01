@@ -18,6 +18,8 @@ import {
   comprobantePendienteContrato,
   montosDelDiaPorContrato,
   contratosQueCubrieronElDia,
+  aplicadoArregloHoyContrato,
+  aplicadoArregloHoyPorContrato,
 } from "./pagos-dia";
 import { ultimoDiaDevengado } from "./devengo";
 import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
@@ -149,7 +151,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   if (!c) return null;
   const row = c as unknown as ContratoRow;
 
-  const [s, pago, multa, devengadoHasta, pend, acuerdosMap] = await Promise.all([
+  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado] = await Promise.all([
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
     pagoHoyContrato(contratoId, hoy),
     sb.from("cargos").select("id").eq("contrato_id", contratoId).eq("fecha", hoy)
@@ -157,10 +159,11 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     ultimoDiaDevengado(contratoId),
     comprobantePendienteContrato(contratoId, hoy),
     acuerdosActivos(),
+    aplicadoArregloHoyContrato(contratoId, hoy),
   ]);
 
   const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
-  const acuerdoHoy = acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy);
+  const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy), arregloAplicado);
   const meta = cuotaDeFecha(terminosDe(row), hoy) + acuerdoHoy;
   const pagoPuntual = cubrioCuotaDelDia(pago.pagadoPuntual, meta);
   const cifras = calcularCifras({
@@ -212,7 +215,7 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
   const hoy = hoyPanama();
   const corte = pasoCorte();
 
-  const [contratos, saldos, multasHoy, pagaronHoy, cubrieron, pendientes, lastRenta, pagadoMap, acuerdosMap] =
+  const [contratos, saldos, multasHoy, pagaronHoy, cubrieron, pendientes, lastRenta, pagadoMap, acuerdosMap, arregloMap] =
     await Promise.all([
       sb.from("contratos").select(SEL).eq("estado", "activo"),
       sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual"),
@@ -224,6 +227,7 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
       ultimoDevengoPorContrato(hoy),
       montosDelDiaPorContrato(hoy),
       acuerdosActivos(),
+      aplicadoArregloHoyPorContrato(hoy),
     ]);
 
   const saldoMap = new Map<string, number>();
@@ -234,7 +238,7 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
 
   return ((contratos.data ?? []) as unknown as ContratoRow[])
     .map((c) => {
-      const acuerdoHoy = acuerdoHoyDe(acuerdosMap.get(c.id) ?? [], hoy);
+      const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(c.id) ?? [], hoy), arregloMap.get(c.id) ?? 0);
       const pagoHoy = pagaronHoy.has(c.id);
       const pagoPuntual = cubrieron.has(c.id);
       const pendiente = pendientes.has(c.id);

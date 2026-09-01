@@ -11,6 +11,7 @@ import { rangoDiaPanama, esPagoPuntual } from "./fecha";
 import { cuotaDeFecha, type TerminosCuota } from "./cuota";
 import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
 import { cubrioCuotaDelDia } from "./cifras";
+import type { AsignacionPago, ResultadoPago } from "./types";
 
 /** Estados que ya cuentan como dinero recibido. */
 export const PAGADO = ["conciliado", "manual"] as const;
@@ -162,7 +163,63 @@ export type PagoReciente = {
   pagado_at: string;
   estado: string;
   origen: string | null;
+  asignaciones: AsignacionPago[];
 };
+
+function parseAsignacionesPago(raw: unknown): AsignacionPago[] {
+  if (!raw || typeof raw !== "object") return [];
+  if (Array.isArray(raw)) return raw as AsignacionPago[];
+  const o = raw as ResultadoPago;
+  return Array.isArray(o.asignaciones) ? o.asignaciones : [];
+}
+
+/** Cuánto de los abonos validados de hoy ya se fue al arreglo. */
+export async function aplicadoArregloHoyPorContrato(
+  fecha: string,
+): Promise<Map<string, number>> {
+  const sb = createServerSupabase();
+  const { desde, hasta } = rangoDiaPanama(fecha);
+  const { data, error } = await sb
+    .from("pagos")
+    .select("contrato_id, asignaciones")
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .gte("pagado_at", desde.toISOString())
+    .lt("pagado_at", hasta.toISOString());
+  if (error) return new Map();
+  const out = new Map<string, number>();
+  for (const p of (data ?? []) as { contrato_id: string | null; asignaciones: unknown }[]) {
+    if (!p.contrato_id) continue;
+    const n = parseAsignacionesPago(p.asignaciones)
+      .filter((a) => a.tipo === "acuerdo")
+      .reduce((s, a) => s + Number(a.aplicado || 0), 0);
+    if (n > 0.009) out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + n);
+  }
+  return out;
+}
+
+export async function aplicadoArregloHoyContrato(
+  contratoId: string,
+  fecha: string,
+): Promise<number> {
+  const sb = createServerSupabase();
+  const { desde, hasta } = rangoDiaPanama(fecha);
+  const { data, error } = await sb
+    .from("pagos")
+    .select("asignaciones")
+    .eq("contrato_id", contratoId)
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .gte("pagado_at", desde.toISOString())
+    .lt("pagado_at", hasta.toISOString());
+  if (error) return 0;
+  return ((data ?? []) as { asignaciones: unknown }[]).reduce((s, p) => {
+    return (
+      s +
+      parseAsignacionesPago(p.asignaciones)
+        .filter((a) => a.tipo === "acuerdo")
+        .reduce((x, a) => x + Number(a.aplicado || 0), 0)
+    );
+  }, 0);
+}
 
 /** Últimos pagos del contrato, de cualquier estado (el agente necesita verlos). */
 export async function pagosRecientesContrato(
@@ -170,22 +227,33 @@ export async function pagosRecientesContrato(
   limite = 5,
 ): Promise<PagoReciente[]> {
   const sb = createServerSupabase();
-  const { data } = await sb
+  let q = await sb
     .from("pagos")
-    .select("monto, pagado_at, estado_conciliacion, origen")
+    .select("monto, pagado_at, estado_conciliacion, origen, asignaciones")
     .eq("contrato_id", contratoId)
     .order("pagado_at", { ascending: false })
     .limit(limite);
+  if (q.error && /asignaciones/i.test(q.error.message)) {
+    q = await sb
+      .from("pagos")
+      .select("monto, pagado_at, estado_conciliacion, origen")
+      .eq("contrato_id", contratoId)
+      .order("pagado_at", { ascending: false })
+      .limit(limite);
+  }
+  const data = q.data;
   return ((data ?? []) as {
     monto: number;
     pagado_at: string;
     estado_conciliacion: string;
     origen: string | null;
+    asignaciones: unknown;
   }[]).map((p) => ({
     monto: Number(p.monto),
     pagado_at: p.pagado_at,
     estado: p.estado_conciliacion,
     origen: p.origen,
+    asignaciones: parseAsignacionesPago(p.asignaciones),
   }));
 }
 

@@ -9,6 +9,7 @@ import { hoyPanama, horaPanama, pasoCorte, fechaConDia, sumarDias, fechaContable
 import { estadoCuentaContrato, money } from "@/lib/cartera/estado-cuenta";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
+import { aplicarPagoEnObligaciones, textoComoSeAplico } from "./aplicar-pago";
 import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
 
 const BUCKET = "comprobantes";
@@ -230,30 +231,42 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       : est.pendiente
         ? `- Este cliente mandó comprobante hoy por ${m(est.pendienteMonto)} y está EN VALIDACIÓN. AÚN NO está descontado del saldo. NO le digas que ya pagó ni que queda al día.`
         : `- Hoy NO tiene ningún pago validado todavía.`,
-    ``,
-    `CÓMO SE ARMA EL TOTAL (dáselo así, concepto por concepto, y al final el total):`,
-    `- Desglose: ${est.desglose}.`,
-    `- Lo que debe pagar HOY: ${m(est.totalHoy)}.`,
-    `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
-    `  no cubrió cuota + arreglo, pierde el descuento de ese día y el resto se va a mañana.`,
-    yaCorte || est.pagoPuntual || est.pendiente
-      ? `- Ese monto ya considera la situación de hoy.`
-      : `- Si a las 7 p.m. no ha cubierto lo de hoy: ${m(est.totalHoyTarde)}.`,
-    est.cuotaManana > 0
-      ? `- Si NO paga hoy y paga mañana: ${m(est.totalManana)}.`
-      : `- Mañana no corre cuota nueva; si no paga hoy, mañana seguiría en ${m(est.totalHoyTarde)}.`,
-    `- Ese total sale de sumar las cuotas diarias que aún no se han cubierto; cada pago`,
-    `  VALIDADO ya está descontado. Un comprobante en validación NO baja el saldo.`,
-    `- Si te piden una cifra distinta a estas (otro plazo, otro escenario, un desglose que`,
-    `  no tienes), NO la calcules: dile con calidez que en un momento se la confirman y`,
-    `  marca pasar_a_humano = true.`,
   ];
 
-  if (est.devengadoHasta == null) {
+  if (est.devengadoHasta != null) {
+    // Datos COMPLETOS: entregamos el total con confianza.
     lineas.push(
-      `- ⚠️ AVISO INTERNO: el sistema aún no tiene registradas las cuotas diarias de este`,
-      `  contrato, así que el total puede estar incompleto. Si el cliente pregunta por su`,
-      `  saldo o lo discute, NO discutas la cifra: marca pasar_a_humano = true.`,
+      ``,
+      `CÓMO SE ARMA EL TOTAL (dáselo así, concepto por concepto, y al final el total):`,
+      `- Desglose: ${est.desglose}.`,
+      `- Lo que debe pagar HOY: ${m(est.totalHoy)}.`,
+      `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
+      `  no cubrió cuota + arreglo, pierde el descuento de ese día y el resto se va a mañana.`,
+      yaCorte || est.pagoPuntual || est.pendiente
+        ? `- Ese monto ya considera la situación de hoy.`
+        : `- Si a las 7 p.m. no ha cubierto lo de hoy: ${m(est.totalHoyTarde)}.`,
+      est.cuotaManana > 0
+        ? `- Si NO paga hoy y paga mañana: ${m(est.totalManana)}.`
+        : `- Mañana no corre cuota nueva; si no paga hoy, mañana seguiría en ${m(est.totalHoyTarde)}.`,
+      `- Ese total sale de sumar las cuotas diarias que aún no se han cubierto; cada pago`,
+      `  VALIDADO ya está descontado. Un comprobante en validación NO baja el saldo.`,
+      `- Si te piden una cifra distinta a estas (otro plazo, otro escenario, un desglose que`,
+      `  no tienes), NO la calcules: dile con calidez que en un momento se la confirman y`,
+      `  marca pasar_a_humano = true.`,
+    );
+  } else {
+    // Datos INCOMPLETOS: el saldo acumulado NO es confiable. No entregamos un total;
+    // solo la cuota diaria, y se escala cualquier pregunta de saldo/total. En cobranza
+    // es peor decir una cifra equivocada que pedir un momento para confirmarla.
+    lineas.push(
+      ``,
+      `SALDO NO CONSOLIDADO (MUY IMPORTANTE — no des cifras de saldo):`,
+      `- El sistema todavía NO tiene consolidado el saldo acumulado de este contrato, así que`,
+      `  NO tienes un total confiable. Sí puedes decir su CUOTA DIARIA (${m(est.letra)} puntual,`,
+      `  ${m(tarifaPlenaDia)} si va atrasado) y cómo funciona el pago (horario, corte de 7 p.m.).`,
+      `- Si pregunta cuánto debe, su saldo, su total, o lo discute: NO le des NINGUNA cifra de`,
+      `  saldo/total (aunque parezca que la tienes). Dile con calidez que le confirman el saldo`,
+      `  exacto en un momento, y marca pasar_a_humano = true.`,
     );
   }
 
@@ -262,8 +275,11 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     for (const p of pagos) {
       const dia = fechaContable(p.pagado_at);
       const hora = horaPanama(new Date(p.pagado_at));
+      const extra = p.asignaciones.length
+        ? ` · ${textoComoSeAplico({ asignaciones: p.asignaciones, sobrante: 0, totalAplicado: p.asignaciones.reduce((s, a) => s + a.aplicado, 0) }, m)}`
+        : "";
       lineas.push(
-        `- ${dia} ${hora}: ${m(p.monto)} · ${etiquetaPago(p.estado)}${p.origen ? ` (${p.origen})` : ""}`,
+        `- ${dia} ${hora}: ${m(p.monto)} · ${etiquetaPago(p.estado)}${p.origen ? ` (${p.origen})` : ""}${extra}`,
       );
     }
   }
@@ -276,6 +292,11 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `  Debe poner el número de carro (${est.vehiculoNumero}) en el comentario y enviar el comprobante por aquí.`,
     `  IMPORTANTE: dale SOLO la cuenta de su empresa; jamás la de otra empresa.`,
     pagoEnOficinaTexto(),
+    ``,
+    `CÓMO SE APLICA UN ABONO (orden fijo; el cliente NO elige):`,
+    `- Primero arreglo, luego saldo anterior, luego recargo, al final la cuota de hoy.`,
+    `- NUNCA preguntes a qué lo quiere aplicar. Si el CONTEXTO dice cómo se partió un pago, INFORMALO.`,
+    `- Si discute esa asignación (quiere que vaya a otra cosa): marca pasar_a_humano = true.`,
   );
 
   return lineas.join("\n");
@@ -730,6 +751,14 @@ export async function procesarPagoComprobante(opts: {
       return { pagoId: null, comprobantePath: path, resolucion, estadoConciliacion: "duplicado", veredicto };
     }
     throw error;
+  }
+
+  if (estadoConciliacion === "manual") {
+    try {
+      await aplicarPagoEnObligaciones(pago.id as string);
+    } catch (e) {
+      console.error("[pipeline] waterfall pago manual", e);
+    }
   }
 
   return { pagoId: pago.id as string, comprobantePath: path, resolucion, estadoConciliacion, veredicto };

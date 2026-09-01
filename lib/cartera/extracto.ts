@@ -7,6 +7,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, fechaContable, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
+import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import {
   canonCarro,
   extraerCarro,
@@ -216,6 +217,7 @@ export async function procesarExtractoPDF(
 
   const usados = new Set<string>();
   const porRecalcular = new Set<string>();
+  const aplicarPagoIds: string[] = [];
   const fechasMov = new Set(movimientos.map((m) => m.fecha).filter((f): f is string => Boolean(f)));
   const ctxExtracto = { empresaId: empresa.id, numeroCuenta: cuentaRow?.numero_cuenta ?? null };
 
@@ -253,6 +255,7 @@ export async function procesarExtractoPDF(
         if (estado === "parcial") res.parciales++; else res.aplicados++;
         res.montoAplicado += mov.monto;
         porRecalcular.add(`${contrato.contratoId}|${fechaContable(pago.pagadoAt)}`);
+        aplicarPagoIds.push(pago.id);
       }
     } else if (veredicto.tipo === "ambiguo") {
       motivo = veredicto.motivo;
@@ -303,6 +306,14 @@ export async function procesarExtractoPDF(
       await recalcularRecargo(contratoId, fecha);
     } catch (e) {
       console.error("[extracto] no pude recalcular el recargo de", clave, e);
+    }
+  }
+
+  for (const id of aplicarPagoIds) {
+    try {
+      await aplicarPagoEnObligaciones(id);
+    } catch (e) {
+      console.error("[extracto] no pude aplicar el waterfall de", id, e);
     }
   }
 
