@@ -4,6 +4,11 @@ import { modeloVision } from "./provider";
 
 // Datos que extraemos de la captura de una transferencia bancaria.
 export const ComprobanteSchema = z.object({
+  es_comprobante: z
+    .boolean()
+    .describe(
+      "true SOLO si la imagen es de verdad un comprobante/captura de una transferencia o pago bancario (se ven datos de pago: monto, banco, referencia, cuenta). false si es cualquier otra cosa: selfie, foto de un carro/persona, meme, pantallazo sin datos de pago, documento no relacionado.",
+    ),
   monto: z.number().nullable().describe("Monto de la transferencia en dólares (USD)"),
   fecha: z.string().nullable().describe("Fecha del pago tal como se ve; formato YYYY-MM-DD si es posible"),
   referencia: z.string().nullable().describe("Número de referencia / confirmación de la transacción"),
@@ -24,8 +29,14 @@ export const ComprobanteSchema = z.object({
 export type Comprobante = z.infer<typeof ComprobanteSchema>;
 
 const PROMPT = `Eres el asistente de cartera de una empresa de renta de autos en Panamá.
-Te paso la captura de un comprobante de transferencia bancaria (Banco General y otros bancos panameños).
-Extrae con precisión:
+Te paso una imagen que el cliente envió por WhatsApp.
+
+PRIMERO decide si la imagen ES REALMENTE un comprobante de pago / transferencia bancaria
+(Banco General u otros bancos panameños), donde se vean datos de pago (monto, banco, referencia,
+cuenta). Si NO lo es (una selfie, la foto de un carro, un meme, un pantallazo sin datos de pago,
+un documento no relacionado), pon es_comprobante = false y TODOS los demás campos en null.
+
+Si SÍ es un comprobante, pon es_comprobante = true y extrae con precisión:
 - monto en USD
 - fecha (YYYY-MM-DD)
 - número de referencia / confirmación

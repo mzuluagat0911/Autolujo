@@ -226,34 +226,47 @@ async function procesarComprobante(
   try {
     const bytes = await downloadMedia(mediaId);
     const c = await leerComprobante(bytes, mime);
+
+    // La imagen debe SER un comprobante. Si no, no creamos pago (antifraude).
+    if (!c.es_comprobante) {
+      await responder(
+        conversacionId,
+        from,
+        "Recibí tu imagen, pero no parece un comprobante de pago 🤔 ¿Me envías la captura de la transferencia, donde se vea el monto y la referencia? Así la cruzamos con el banco y aplicamos tu pago.",
+      );
+      return;
+    }
+
     const res = await procesarPagoComprobante({ conversacion: conv, comprobante: c, bytes, mime });
 
     // Completar el mensaje reclamado con la imagen en Storage + el pago.
     await completarMensaje(mensajeId, { mediaUrl: res.comprobantePath, pagoId: res.pagoId });
 
-    // Respuesta HUMANA al cliente, COMPARANDO el pago contra lo que debía.
+    // Respuesta al cliente. NUNCA confirmamos "al día" aquí: el pago se valida
+    // primero cruzándolo con el banco (antifraude). Solo acusamos recibo.
     const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : null;
     let respuesta: string;
     if (!monto || c.confianza === "baja") {
-      // No confirmamos un monto dudoso: mejor validarlo.
-      respuesta = "¡Gracias! 🙌 Recibí tu comprobante, dame un momentito para validarlo y te confirmo.";
+      // Monto dudoso: ni siquiera repetimos la cifra, solo validamos.
+      respuesta =
+        "¡Gracias por enviarnos el comprobante! 🙌 Lo estamos cruzando con el banco para confirmar que entró bien. En cuanto quede validado te confirmamos por aquí.";
     } else if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
-      // El sistema sabe cuánto debía → comparamos.
       const est = await estadoCuentaContrato(res.resolucion.contratoId);
-      const carro = res.resolucion.etiqueta ?? "carro";
+      const carro = res.resolucion.etiqueta ?? "tu carro";
       const nombre = est?.templateVars[0] ? `, ${est.templateVars[0]}` : "";
       const debia = est?.cuenta ?? 0; // saldo base (sin recargo)
-      if (est && c.monto! + 0.01 >= debia) {
-        respuesta = `¡Listo${nombre}! Recibí tu pago de ${monto} del ${carro} ✅ Quedas al día por hoy. ¡Gracias por tu puntualidad! 🙌`;
-      } else if (est) {
-        respuesta = `¡Gracias${nombre}! Recibí ${monto} del ${carro}. Te queda un saldo de ${money(debia - c.monto!)} para completar hoy. Cualquier cosa nos dices 🙌`;
+      const faltante = est ? debia - c.monto! : 0;
+      const base = `¡Gracias${nombre} por enviarnos el comprobante de ${monto} del ${carro}! 🙌 Lo estamos cruzando con el banco para confirmar que entró sin problema.`;
+      if (est && faltante > 0.01) {
+        // Señal tentativa del faltante, sin dar el pago por aplicado.
+        respuesta = `${base} Por lo que veo, quedaría un saldo de ${money(faltante)} para completar hoy; te confirmo apenas esté validado.`;
       } else {
-        respuesta = `¡Listo! Recibí tu pago de ${monto} del ${carro} ✅ Ya lo registro. ¡Gracias!`;
+        respuesta = `${base} Apenas quede validado te confirmamos por aquí.`;
       }
     } else if (res.resolucion.estado === "sin_carro") {
-      respuesta = `¡Gracias! Recibí tu comprobante de ${monto} 💪 ¿Me confirmas el número de carro para aplicarlo bien?`;
+      respuesta = `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 ¿Me confirmas el número de carro para aplicarlo bien? Lo estamos cruzando con el banco para validar que entró.`;
     } else {
-      respuesta = `¡Gracias! Recibí tu comprobante de ${monto}. Déjame validarlo y en un momento te confirmo 🙌`;
+      respuesta = `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 Lo estamos cruzando con el banco para validarlo y en un momento te confirmamos.`;
     }
     await responder(conversacionId, from, respuesta, res.pagoId);
   } catch (e) {
