@@ -40,6 +40,8 @@ export function pagoEnOficinaTexto(): string {
     `PAGO EN OFICINA — hay 2 oficinas:`,
     oficinas,
     `   Horario de oficina: ${HORARIO_OFICINA}`,
-    `   Nota: si el cliente quiere pagar con TARJETA, solo se puede en Juan Díaz.`,
+    `   Cuando pregunten dónde pagar en persona (efectivo o tarjeta), MENCIONA LAS DOS oficinas`,
+    `   (La Chorrera y Juan Díaz) con su dirección. Recuerda: con TARJETA solo en Juan Díaz;`,
+    `   en La Chorrera solo efectivo.`,
   ].join("\n");
 }
