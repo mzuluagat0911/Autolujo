@@ -2,22 +2,18 @@
 // y arma el mensaje con el mismo formato que usa el equipo:
 //   $60 cuenta · $5 por no pagar · $90 domingo 30  →  Total a pagar hoy: $65
 // Todo determinista (código), nunca el LLM.
+//
+// El saldo viene de vw_saldo_contrato, que depende del devengo diario
+// (lib/cartera/devengo.ts). Si el devengo no corrió, el saldo no incluye la
+// cuota de hoy.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-
-const MESES = [
-  "enero", "febrero", "marzo", "abril", "mayo", "junio",
-  "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
-];
+import { hoyPanama, pasoCorte, fechaLarga, sumarDias, esDomingo } from "./fecha";
 
 /** "$60" si es entero, "$60.50" si tiene centavos. */
 export function money(n: number): string {
   const v = Math.round(n * 100) / 100;
   return "$" + (Number.isInteger(v) ? String(v) : v.toFixed(2));
-}
-
-function fechaLarga(d: Date): string {
-  return `${d.getDate()} de ${MESES[d.getMonth()]}`;
 }
 
 export type EstadoCuenta = {
@@ -27,14 +23,15 @@ export type EstadoCuenta = {
   clienteNombre: string;
   waNumero: string | null;
   letra: number;
-  cuenta: number;        // saldo pendiente (la "cuenta")
-  recargo: number;       // recargo por no pagar (si no pagó hoy)
+  cuenta: number;         // saldo pendiente (la "cuenta")
+  recargo: number;        // recargo YA causado (solo si pasó el corte sin pagar)
+  recargoSiTarda: number; // lo que se suma si no paga antes de las 7 p.m.
   domingo: number | null; // cargo de domingo próximo (informativo)
   domingoDia: number | null;
-  totalHoy: number;      // cuenta + recargo
+  totalHoy: number;       // cuenta + recargo causado
   pagoHoy: boolean;
-  desglose: string;      // línea para el mensaje/template
-  fecha: string;         // "29 de agosto"
+  desglose: string;       // línea para el mensaje/template
+  fecha: string;          // "29 de agosto"
   // Variables listas para el template estado_cuenta_diario:
   templateVars: [string, string, string, string, string];
 };
@@ -49,22 +46,37 @@ type ContratoRow = {
   cliente: { nombre: string; whatsapp: string | null } | null;
 };
 
-function construir(c: ContratoRow, saldo: number, pagoHoy: boolean, hoy: Date): EstadoCuenta {
+function construir(
+  c: ContratoRow,
+  saldo: number,
+  pagoHoy: boolean,
+  hoy: string,
+  corte: boolean,
+): EstadoCuenta {
   const letra = Number(c.letra_diaria) || 0;
   const cuenta = Math.max(saldo, 0);
-  const recargo = pagoHoy ? 0 : Number(c.descuento_puntual ?? 0);
+
+  // El recargo por no pagar solo existe DESPUÉS de las 7 p.m. Antes del corte
+  // el cliente todavía conserva el descuento: anunciarlo como cobrado a las
+  // 8 a.m. sería cobrarle algo que aún no ocurrió.
+  const penalidad = Number(c.descuento_puntual ?? 0);
+  const causado = !pagoHoy && corte;
+  const recargo = causado ? penalidad : 0;
+  const recargoSiTarda = !pagoHoy && !corte ? penalidad : 0;
 
   // ¿mañana es domingo y este contrato cobra domingo?
-  const manana = new Date(hoy);
-  manana.setDate(hoy.getDate() + 1);
-  const esDomingoManana = manana.getDay() === 0;
-  const domingo = esDomingoManana && c.cobra_domingo ? Number(c.cuota_domingo ?? 0) || null : null;
+  const manana = sumarDias(hoy, 1);
+  const domingo =
+    esDomingo(manana) && c.cobra_domingo
+      ? Number(c.cuota_domingo ?? 0) || null
+      : null;
 
   const totalHoy = cuenta + recargo;
 
   const partes = [`${money(cuenta)} cuenta`];
   if (recargo > 0) partes.push(`${money(recargo)} por no pagar`);
-  if (domingo) partes.push(`${money(domingo)} domingo ${manana.getDate()}`);
+  else if (recargoSiTarda > 0) partes.push(`${money(recargoSiTarda)} si pagas después de las 7 p.m.`);
+  if (domingo) partes.push(`${money(domingo)} domingo ${Number(manana.slice(8, 10))}`);
   const desglose = partes.join(" · ");
 
   const fecha = fechaLarga(hoy);
@@ -80,8 +92,9 @@ function construir(c: ContratoRow, saldo: number, pagoHoy: boolean, hoy: Date): 
     letra,
     cuenta,
     recargo,
+    recargoSiTarda,
     domingo,
-    domingoDia: domingo ? manana.getDate() : null,
+    domingoDia: domingo ? Number(manana.slice(8, 10)) : null,
     totalHoy,
     pagoHoy,
     desglose,
@@ -96,8 +109,7 @@ const SEL =
 /** Estado de cuenta de un solo contrato. */
 export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCuenta | null> {
   const sb = createServerSupabase();
-  const hoy = new Date();
-  const hoyStr = hoy.toISOString().slice(0, 10);
+  const hoy = hoyPanama();
 
   const { data: c } = await sb.from("contratos").select(SEL).eq("id", contratoId).maybeSingle();
   if (!c) return null;
@@ -105,7 +117,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   const { data: s } = await sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle();
   const { data: pagos } = await sb
     .from("pagos").select("id")
-    .eq("contrato_id", contratoId).eq("fecha", hoyStr)
+    .eq("contrato_id", contratoId).eq("fecha", hoy)
     .in("estado_conciliacion", ["conciliado", "manual"]).limit(1);
 
   return construir(
@@ -113,19 +125,20 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     Number((s as { saldo_actual: number } | null)?.saldo_actual ?? 0),
     (pagos?.length ?? 0) > 0,
     hoy,
+    pasoCorte(),
   );
 }
 
 /** Estado de cuenta de TODOS los contratos activos (para el envío del día). */
 export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
   const sb = createServerSupabase();
-  const hoy = new Date();
-  const hoyStr = hoy.toISOString().slice(0, 10);
+  const hoy = hoyPanama();
+  const corte = pasoCorte();
 
   const [contratos, saldos, pagosHoy] = await Promise.all([
     sb.from("contratos").select(SEL).eq("estado", "activo"),
     sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual"),
-    sb.from("pagos").select("contrato_id").eq("fecha", hoyStr).in("estado_conciliacion", ["conciliado", "manual"]),
+    sb.from("pagos").select("contrato_id").eq("fecha", hoy).in("estado_conciliacion", ["conciliado", "manual"]),
   ]);
 
   const saldoMap = new Map<string, number>();
@@ -135,7 +148,7 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
   const pagaronHoy = new Set((pagosHoy.data ?? []).map((p: { contrato_id: string | null }) => p.contrato_id));
 
   return ((contratos.data ?? []) as unknown as ContratoRow[])
-    .map((c) => construir(c, saldoMap.get(c.id) ?? 0, pagaronHoy.has(c.id), hoy))
+    .map((c) => construir(c, saldoMap.get(c.id) ?? 0, pagaronHoy.has(c.id), hoy, corte))
     // No le cobres a quien YA pagó hoy (transferencia conciliada o pago en oficina).
     .filter((e) => !e.pagoHoy)
     .sort((a, b) => b.totalHoy - a.totalHoy);

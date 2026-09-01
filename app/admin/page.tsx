@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { hoyPanama } from "@/lib/cartera/fecha";
 import { PageHeader, Band, Kpi, Money, StatusChip, EmptyState } from "@/components/kit";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +19,7 @@ type Resumen = {
 async function getResumen(): Promise<Resumen> {
   try {
     const sb = createServerSupabase();
-    const hoy = new Date().toISOString().slice(0, 10);
+    const hoy = hoyPanama();
     const [clientes, contratos, vehiculos, pagosPend, cobrado, saldos] = await Promise.all([
       sb.from("clientes").select("*", { count: "exact", head: true }),
       sb.from("contratos").select("*", { count: "exact", head: true }),

@@ -9,6 +9,8 @@ import {
   ventanaAbierta,
 } from "@/lib/cartera/pipeline";
 import { money } from "@/lib/cartera/estado-cuenta";
+import { hoyPanama } from "@/lib/cartera/fecha";
+import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { sendText } from "@/lib/whatsapp/client";
 
 /**
@@ -52,7 +54,7 @@ export async function registrarPagoManual(
   const carro = String(formData.get("carro") ?? "").trim();
   const montoRaw = String(formData.get("monto") ?? "").replace(",", ".").trim();
   const metodo = String(formData.get("metodo") ?? "").trim(); // "efectivo" | "tarjeta"
-  const fecha = String(formData.get("fecha") ?? "").trim() || new Date().toISOString().slice(0, 10);
+  const fecha = String(formData.get("fecha") ?? "").trim() || hoyPanama();
 
   const monto = Number(montoRaw);
   if (!carro) return { ok: false, msg: "Escribe el número de carro." };
@@ -76,7 +78,8 @@ export async function registrarPagoManual(
     .maybeSingle();
   const cliente = (contrato as { cliente?: { nombre?: string; whatsapp?: string | null; telefono?: string | null } } | null)?.cliente;
   const nombre = cliente?.nombre?.split(" ")[0] ?? "";
-  const waNumero = (cliente?.whatsapp ?? cliente?.telefono ?? "").replace(/\D/g, "") || null;
+  // Canónico 507XXXXXXXX: si no, se abriría una conversación paralela a la real.
+  const waNumero = normalizarTelefono(cliente?.whatsapp ?? cliente?.telefono);
 
   // 3) Registrar el pago (manual → ya cuenta en el saldo, sin conciliar).
   const metodoLabel = metodo === "efectivo" ? "efectivo" : "tarjeta (datáfono)";
@@ -87,6 +90,7 @@ export async function registrarPagoManual(
     monto,
     metodo,
     numero_carro: carro,
+    origen: "manual",
     estado_conciliacion: "manual",
     notas: `Pago presencial en oficina — ${metodoLabel}. Registrado por el equipo.`,
   });

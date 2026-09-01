@@ -3,6 +3,8 @@
 
 import { sendTemplate } from "@/lib/whatsapp/client";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { hoyPanama } from "./fecha";
+import { normalizarTelefono } from "./telefono";
 import {
   estadoCuentaContrato,
   estadosCuentaHoy,
@@ -16,7 +18,7 @@ function componentes(vars: string[]) {
 }
 
 function hoyStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return hoyPanama();
 }
 
 /** Envía el estado de cuenta de UN estado ya calculado y lo registra. Idempotente por día. */
@@ -27,9 +29,16 @@ export async function enviarYRegistrar(
   const sb = createServerSupabase();
   const fecha = hoyStr();
 
-  if (!e.waNumero) {
+  // Normalizado: en el control hay números guardados sin prefijo país.
+  const to = normalizarTelefono(e.waNumero);
+  if (!to) {
     await registrar(sb, e, fecha, "fallido");
-    return { ok: false, error: "El cliente no tiene número de WhatsApp." };
+    return {
+      ok: false,
+      error: e.waNumero
+        ? `El número del cliente no es válido: ${e.waNumero}`
+        : "El cliente no tiene número de WhatsApp.",
+    };
   }
 
   // Idempotencia: si ya se envió hoy y no forzamos, no repetir.
@@ -44,7 +53,6 @@ export async function enviarYRegistrar(
   }
 
   try {
-    const to = e.waNumero.replace(/^\+/, "");
     await sendTemplate(to, TEMPLATE, "es", componentes(e.templateVars));
     await registrar(sb, e, fecha, "enviado");
     return { ok: true };
@@ -106,8 +114,8 @@ export async function enviarEstadoCuentaPrueba(
   const e = await estadoCuentaContrato(contrato.id as string);
   if (!e) return { ok: false, error: "No pude calcular el estado de cuenta." };
 
-  const dest = (numeroDestino?.trim() || e.waNumero || "").replace(/^\+/, "");
-  if (!dest) return { ok: false, error: "No hay número destino (ni del cliente ni indicado)." };
+  const dest = normalizarTelefono(numeroDestino?.trim() || e.waNumero);
+  if (!dest) return { ok: false, error: "No hay número destino válido (ni del cliente ni indicado)." };
 
   const [nombre, carro, fecha, desglose, total] = e.templateVars;
   const preview = `Buen día ${nombre} 🌞\n📋 Extracto diario · Carro ${carro} — ${fecha}\n${desglose}\nTotal a pagar hoy: ${total}`;

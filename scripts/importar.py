@@ -49,6 +49,17 @@ def num(v):
     try: return float(v)
     except: return 0.0
 
+# Espejo de lib/cartera/telefono.ts y de la función SQL normalizar_tel (0009).
+# Pegarle "+507" a cualquier cosa produce números imposibles (+5076042127) que
+# después no calzan con nadie: mejor dejarlos en None y corregirlos a mano.
+def normalizar_tel(t):
+    d = re.sub(r"\D", "", str(t or ""))
+    if not d: return None
+    if len(d) == 8: return "+507" + d
+    if d.startswith("507"): return "+" + d if len(d) == 11 else None
+    if 10 <= len(d) <= 15: return "+" + d
+    return None
+
 # ---------- 1) Parsear ControlCobros ----------
 wb = openpyxl.load_workbook(CONTROL, data_only=True, read_only=True)
 ws = wb.active
@@ -124,7 +135,9 @@ emp_id = {e["codigo"]: e["id"] for e in sb_get("empresas?select=id,codigo")}
 # clientes
 exist_cli = {c["codigo"]: c["id"] for c in sb_get("clientes?select=id,codigo") if c.get("codigo")}
 nuevos_cli = [c for k, c in clientes.items() if k not in exist_cli]
-for c in nuevos_cli: c["whatsapp"] = ("+507" + re.sub(r"\D", "", c["telefono"])) if c.get("telefono") else None
+for c in nuevos_cli: c["whatsapp"] = normalizar_tel(c.get("telefono"))
+malos = [c["nombre"] for c in nuevos_cli if c.get("telefono") and not c["whatsapp"]]
+if malos: print(f"⚠️  {len(malos)} teléfonos no válidos (quedan sin whatsapp): {', '.join(malos[:5])}")
 creados = sb_post("clientes", [{"codigo": c["codigo"], "nombre": c["nombre"], "telefono": c.get("telefono"), "whatsapp": c.get("whatsapp")} for c in nuevos_cli])
 for c in creados: exist_cli[c["codigo"]] = c["id"]
 print(f"Clientes: +{len(creados)} nuevos ({len(exist_cli)} total)")

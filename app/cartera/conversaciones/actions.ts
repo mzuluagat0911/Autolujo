@@ -88,9 +88,11 @@ export async function enviarRespuestaHumana(
       enviadoPor: "Equipo",
     });
 
+    // escalada_at se limpia junto con necesita_humano: si no, la próxima
+    // escalada heredaría el reloj de esta y parecería vieja de entrada.
     await sb
       .from("conversaciones")
-      .update({ necesita_humano: false, no_leidos: 0 })
+      .update({ necesita_humano: false, no_leidos: 0, escalada_at: null })
       .eq("id", id);
 
     revalidar(id);

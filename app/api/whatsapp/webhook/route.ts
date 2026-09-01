@@ -11,6 +11,8 @@ import {
   historialReciente,
   marcarEscalada,
   marcarNecesitaHumano,
+  marcarPendienteDeRespuesta,
+  notasRecientes,
   resumenContrato,
   type Conversacion,
 } from "@/lib/cartera/pipeline";
@@ -72,7 +74,15 @@ export async function POST(req: NextRequest) {
 // ---------------------------------------------------------------------------
 function verificarFirma(raw: string, signature: string | null): boolean {
   const secret = process.env.META_APP_SECRET;
-  if (!secret) return true; // sin secret configurado, no bloqueamos (dev)
+  if (!secret) {
+    // Sin secret, cualquiera puede inyectar mensajes falsos y manejar al
+    // agente. En dev se deja pasar; en producción se cierra.
+    if (process.env.NODE_ENV === "production") {
+      console.error("[whatsapp/webhook] falta META_APP_SECRET: se rechaza el evento.");
+      return false;
+    }
+    return true;
+  }
   if (!signature) return false;
   const expected =
     "sha256=" + crypto.createHmac("sha256", secret).update(raw).digest("hex");
@@ -108,7 +118,23 @@ async function responder(conversacionId: string, from: string, texto: string, pa
       conversacionId, direccion: "out", tipo: "system",
       texto: `⚠️ ENVÍO FALLÓ: ${err}`,
     });
+    await marcarPendienteDeRespuesta(conversacionId, "No se pudo enviar la respuesta por WhatsApp.");
   }
+}
+
+/**
+ * Se le prometió al cliente que alguien le escribe. Deja la conversación en
+ * la cola de pendientes para que la promesa tenga dueño; sin esto el chat se
+ * queda mudo y nadie se entera.
+ */
+async function responderYEscalar(
+  conversacionId: string,
+  from: string,
+  texto: string,
+  motivo: string,
+) {
+  await responder(conversacionId, from, texto);
+  await marcarPendienteDeRespuesta(conversacionId, motivo);
 }
 
 async function manejarMensaje(msg: WhatsAppMessage) {
@@ -143,7 +169,12 @@ async function manejarMensaje(msg: WhatsAppMessage) {
   } else if (tipo === "audio") {
     await procesarAudio(conv, from, msg, mensajeId);
   } else {
-    await responder(conv.id, from, "¡Gracias por escribir! En un momento te respondo por aquí 🙌");
+    await responderYEscalar(
+      conv.id,
+      from,
+      "¡Gracias por escribir! En un momento te respondo por aquí 🙌",
+      `Mensaje de tipo "${msg.type ?? "desconocido"}" que el agente no puede leer.`,
+    );
   }
 }
 
@@ -175,12 +206,24 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
       const resumen = await resumenContrato(conv.contrato_id);
       if (resumen) contexto = resumen;
     }
+    // Lo que registró el equipo por fuera del chat (ej. un pago en oficina).
+    const notas = await notasRecientes(conv.id);
+    if (notas.length) {
+      contexto = `${contexto ?? ""}\n\nREGISTROS INTERNOS RECIENTES (el equipo los anotó; tenlos en cuenta):\n${notas
+        .map((n) => `- ${n}`)
+        .join("\n")}`.trim();
+    }
     const r = await responderAgente({ historial, contexto });
     if (r.pasar_a_humano) await marcarEscalada(conv.id, r.motivo ?? null);
     await responder(conv.id, from, r.mensaje);
   } catch (e) {
     console.error("[whatsapp/webhook] agente falló:", e);
-    await responder(conv.id, from, "¡Gracias por escribir! En un momento te respondo por aquí 🙌");
+    await responderYEscalar(
+      conv.id,
+      from,
+      "¡Gracias por escribir! En un momento te respondo por aquí 🙌",
+      "El agente no pudo responder (falla técnica).",
+    );
   }
 }
 
@@ -188,7 +231,12 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
 async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, mensajeId: string) {
   const mediaId = msg.audio?.id;
   if (!mediaId) {
-    await responder(conv.id, from, "Recibí tu audio pero no pude abrirlo. ¿Me lo escribes o me lo reenvías?");
+    await responderYEscalar(
+      conv.id,
+      from,
+      "Recibí tu audio pero no pude abrirlo. ¿Me lo escribes o me lo reenvías?",
+      "Llegó una nota de voz que no se pudo descargar.",
+    );
     return;
   }
   try {
@@ -198,10 +246,11 @@ async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, men
     await responderConAgente(conv, from, { direccion: "in", texto: transcript });
   } catch (e) {
     console.error("[whatsapp/webhook] transcribir audio falló:", e);
-    await responder(
+    await responderYEscalar(
       conv.id,
       from,
       "Te escuché, pero no pude entender bien el audio. ¿Me lo escribes en un mensajito?",
+      "No se pudo transcribir una nota de voz.",
     );
   }
 }
@@ -218,7 +267,12 @@ async function procesarComprobante(
   const image = msg.image;
   const mediaId = image?.id;
   if (!mediaId) {
-    await responder(conversacionId, from, "📷 Recibí una imagen pero no pude abrirla. Reenvíala, por favor.");
+    await responderYEscalar(
+      conversacionId,
+      from,
+      "📷 Recibí una imagen pero no pude abrirla. Reenvíala, por favor.",
+      "Llegó una imagen que no se pudo descargar.",
+    );
     return;
   }
   const mime = image?.mime_type ?? "image/jpeg";
@@ -245,8 +299,20 @@ async function procesarComprobante(
     // Respuesta al cliente. NUNCA confirmamos "al día" aquí: el pago se valida
     // primero cruzándolo con el banco (antifraude). Solo acusamos recibo.
     const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : null;
+    const alerta = (codigo: string) => res.veredicto.alertas.some((a) => a.codigo === codigo);
     let respuesta: string;
-    if (!monto || c.confianza === "baja") {
+    if (res.estadoConciliacion === "duplicado") {
+      // Mismo comprobante otra vez: no se registra de nuevo ni se insinúa que sí.
+      respuesta =
+        "Ese comprobante ya lo tenemos registrado por aquí 🙌 Si hiciste otro pago distinto, mándame la captura de ese otro y lo revisamos.";
+    } else if (alerta("cuenta_ajena") || alerta("cuenta_otra_empresa")) {
+      // Puede ser un error de lectura o una transferencia a un tercero: lo ve una persona.
+      respuesta =
+        "¡Gracias por enviarlo! Me aparece que la cuenta del comprobante no es la nuestra 🤔 Déjame verificarlo con el equipo y te confirmamos por aquí en un momento.";
+    } else if (alerta("fecha_vieja") || alerta("fecha_futura")) {
+      respuesta =
+        "¡Gracias! Recibí tu comprobante, pero la fecha no me cuadra con un pago de hoy 🤔 Déjame revisarlo con el equipo y te confirmamos por aquí.";
+    } else if (!monto || c.confianza === "baja") {
       // Monto dudoso: ni siquiera repetimos la cifra, solo validamos.
       respuesta =
         "¡Gracias por enviarnos el comprobante! 🙌 Lo estamos cruzando con el banco para confirmar que entró bien. En cuanto quede validado te confirmamos por aquí.";
@@ -268,12 +334,14 @@ async function procesarComprobante(
     } else {
       respuesta = `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 Lo estamos cruzando con el banco para validarlo y en un momento te confirmamos.`;
     }
-    await responder(conversacionId, from, respuesta, res.pagoId);
+    await responder(conversacionId, from, respuesta, res.pagoId ?? undefined);
   } catch (e) {
     console.error("[whatsapp/webhook] error procesando comprobante:", e);
-    await responder(
-      conversacionId, from,
+    await responderYEscalar(
+      conversacionId,
+      from,
       "¡Gracias por escribir! Tuve un detallito abriendo la imagen 🙈 ¿Me la reenvías, porfa?",
+      "Falló el procesamiento de un comprobante: revisar si el pago quedó registrado.",
     );
   }
 }

@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { hoyPanama, fechaConDia } from "@/lib/cartera/fecha";
+import { conversacionesEnEspera } from "@/lib/cartera/pipeline";
 import { PageHeader, Kpi, Money } from "@/components/kit";
 
 export const dynamic = "force-dynamic";
@@ -13,23 +15,28 @@ type Datos = {
   sinPagoHoy: number;
   porRevisar: number;
   necesitaRespuesta: number;
+  esperandoHace: number;
   error: string | null;
 };
+
+/** A partir de aquí, un chat escalado ya se está quedando sin respuesta. */
+const MINUTOS_ESPERA = 120;
 
 async function getDatos(): Promise<Datos> {
   const base: Datos = {
     ok: false, contratosActivos: 0, saldoTotal: 0, cobradoHoy: 0, alDia: 0,
-    sinPagoHoy: 0, porRevisar: 0, necesitaRespuesta: 0, error: null,
+    sinPagoHoy: 0, porRevisar: 0, necesitaRespuesta: 0, esperandoHace: 0, error: null,
   };
   try {
     const sb = createServerSupabase();
-    const hoy = new Date().toISOString().slice(0, 10);
-    const [cAct, saldos, pagosHoy, porRev, necesita] = await Promise.all([
+    const hoy = hoyPanama();
+    const [cAct, saldos, pagosHoy, porRev, necesita, esperando] = await Promise.all([
       sb.from("contratos").select("*", { count: "exact", head: true }).eq("estado", "activo"),
       sb.from("vw_saldo_contrato").select("saldo_actual"),
       sb.from("pagos").select("contrato_id, monto").eq("fecha", hoy).in("estado_conciliacion", ["conciliado", "manual"]),
       sb.from("pagos").select("*", { count: "exact", head: true }).in("estado_conciliacion", ["pendiente", "manual"]),
       sb.from("conversaciones").select("*", { count: "exact", head: true }).eq("necesita_humano", true),
+      conversacionesEnEspera(MINUTOS_ESPERA),
     ]);
     const err = cAct.error ?? saldos.error ?? pagosHoy.error ?? porRev.error ?? necesita.error;
     if (err) throw err;
@@ -44,6 +51,7 @@ async function getDatos(): Promise<Datos> {
       sinPagoHoy: Math.max(contratosActivos - alDia, 0),
       porRevisar: porRev.count ?? 0,
       necesitaRespuesta: necesita.count ?? 0,
+      esperandoHace: esperando,
       error: null,
     };
   } catch (e) {
@@ -51,7 +59,7 @@ async function getDatos(): Promise<Datos> {
   }
 }
 
-const HOY = new Intl.DateTimeFormat("es-PA", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+const HOY = fechaConDia(hoyPanama());
 
 export default async function PanelCartera() {
   const d = await getDatos();
@@ -80,7 +88,13 @@ export default async function PanelCartera() {
               <Cubeta label="Al día" valor={d.alDia} tono="good" hint="Pagaron hoy" />
               <Cubeta label="Sin pago hoy" valor={d.sinPagoHoy} tono="warn" hint="Por cobrar hoy" />
               <Cubeta label="Por conciliar" valor={d.porRevisar} tono="crit" hint="Comprobantes a revisar" href="/cartera/pagos" />
-              <Cubeta label="Necesitan respuesta" valor={d.necesitaRespuesta} tono="azul" hint="Chats escalados" href="/cartera/conversaciones" />
+              <Cubeta
+                label="Necesitan respuesta"
+                valor={d.necesitaRespuesta}
+                tono={d.esperandoHace > 0 ? "crit" : "azul"}
+                hint={d.esperandoHace > 0 ? `${d.esperandoHace} llevan +2 h esperando` : "Chats escalados"}
+                href="/cartera/conversaciones"
+              />
             </div>
           </div>
 

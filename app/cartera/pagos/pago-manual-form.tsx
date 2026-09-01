@@ -2,8 +2,9 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { registrarPagoManual, type ResultadoPagoManual } from "./actions";
+import { hoyPanama } from "@/lib/cartera/fecha";
 
-const HOY = new Date().toISOString().slice(0, 10);
+const HOY = hoyPanama();
 
 export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefecto?: boolean }) {
   const [abierto, setAbierto] = useState(abiertoPorDefecto);

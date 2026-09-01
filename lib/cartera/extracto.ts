@@ -5,6 +5,7 @@
 
 import { extractText, getDocumentProxy } from "unpdf";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { hoyPanama } from "./fecha";
 
 const MESES: Record<string, string> = {
   ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
@@ -182,7 +183,7 @@ export async function procesarExtractoPDF(
   }
 
   // Cabecera del extracto
-  const fechaExtracto = movimientos.find((m) => m.fecha)?.fecha ?? new Date().toISOString().slice(0, 10);
+  const fechaExtracto = movimientos.find((m) => m.fecha)?.fecha ?? hoyPanama();
   const { data: extracto } = await sb
     .from("extractos_bancarios")
     .insert({

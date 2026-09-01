@@ -1,6 +1,6 @@
 import { generateObject } from "ai";
 import { z } from "zod";
-import { modeloVision } from "./provider";
+import { modeloVision, modeloVisionFallback } from "./provider";
 
 // Datos que extraemos de la captura de una transferencia bancaria.
 export const ComprobanteSchema = z.object({
@@ -45,21 +45,31 @@ Si SÍ es un comprobante, pon es_comprobante = true y extrae con precisión:
 - cuenta destino: el número de cuenta al que se transfirió, si se ve.
 Si un dato no se ve claro, ponlo en null y baja la confianza. NO inventes valores.`;
 
-/**
- * Lee un comprobante y devuelve los campos estructurados.
- * `image` acepta un Buffer (de downloadMedia) o un data URL.
- */
-export async function leerComprobante(
-  image: Buffer | string,
-  mime = "image/jpeg",
-): Promise<Comprobante> {
-  const imagePart =
-    typeof image === "string"
-      ? image
-      : `data:${mime};base64,${image.toString("base64")}`;
+const RANGO_CONFIANZA = { alta: 3, media: 2, baja: 1 } as const;
 
+/** ¿Vale la pena pedir una segunda opinión al modelo más fuerte? */
+function lecturaFloja(c: Comprobante): boolean {
+  if (!c.es_comprobante) return false; // no es comprobante: no hay nada que releer
+  return c.confianza === "baja" || c.monto == null || c.numero_carro == null;
+}
+
+/** Se queda con la lectura más completa de las dos. */
+function mejor(a: Comprobante, b: Comprobante): Comprobante {
+  const puntaje = (c: Comprobante) =>
+    RANGO_CONFIANZA[c.confianza] * 10 +
+    (c.monto != null ? 4 : 0) +
+    (c.numero_carro != null ? 3 : 0) +
+    (c.referencia != null ? 2 : 0) +
+    (c.cuenta_destino != null ? 1 : 0);
+  return puntaje(b) > puntaje(a) ? b : a;
+}
+
+async function extraer(
+  modelo: ReturnType<typeof modeloVision>,
+  imagePart: string,
+): Promise<Comprobante> {
   const { object } = await generateObject({
-    model: modeloVision(),
+    model: modelo,
     schema: ComprobanteSchema,
     maxOutputTokens: 800,
     messages: [
@@ -72,6 +82,35 @@ export async function leerComprobante(
       },
     ],
   });
-
   return object;
+}
+
+/**
+ * Lee un comprobante y devuelve los campos estructurados.
+ * `image` acepta un Buffer (de downloadMedia) o un data URL.
+ *
+ * Empieza con el modelo barato; si la lectura queda floja (confianza baja o
+ * sin monto/carro), pide una segunda opinión al modelo fuerte. De un
+ * comprobante mal leído salen pagos mal aplicados, así que la relectura sale
+ * más barata que el error.
+ */
+export async function leerComprobante(
+  image: Buffer | string,
+  mime = "image/jpeg",
+): Promise<Comprobante> {
+  const imagePart =
+    typeof image === "string"
+      ? image
+      : `data:${mime};base64,${image.toString("base64")}`;
+
+  const primera = await extraer(modeloVision(), imagePart);
+  if (!lecturaFloja(primera)) return primera;
+
+  try {
+    const segunda = await extraer(modeloVisionFallback(), imagePart);
+    return mejor(primera, segunda);
+  } catch (e) {
+    console.error("[comprobante] el modelo de respaldo falló:", e);
+    return primera;
+  }
 }
