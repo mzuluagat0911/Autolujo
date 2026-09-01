@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "probar:guard": "node --experimental-strip-types scripts/probar-guard.ts"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",

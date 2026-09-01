@@ -42,6 +42,15 @@ function digitos(v: string | null | undefined): string {
 }
 
 /**
+ * La referencia viene de un OCR. Un `%` o un `_` leídos de más convertirían el
+ * `ilike` en un comodín que calza con cualquier pago: el comprobante legítimo
+ * se descartaría como duplicado y el pago nunca se crearía.
+ */
+function escaparLike(v: string): string {
+  return v.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
  * ¿La cuenta leída es una de las nuestras? Los comprobantes suelen enmascarar
  * la cuenta ("****9347"), así que basta con que una termine en la otra y que
  * la parte visible tenga al menos 4 dígitos.
@@ -70,7 +79,7 @@ export async function validarComprobante(opts: {
     const { data: previo } = await sb
       .from("pagos")
       .select("id, fecha, monto")
-      .ilike("referencia", ref)
+      .ilike("referencia", escaparLike(ref))
       .neq("estado_conciliacion", "rechazado")
       .limit(1)
       .maybeSingle();

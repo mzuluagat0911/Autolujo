@@ -13,6 +13,9 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    // Los scripts de scripts/ corren con `node --experimental-strip-types`,
+    // que exige la extensión .ts en el import.
+    "allowImportingTsExtensions": true,
     "plugins": [{ "name": "next" }],
     "paths": {
       "@/*": ["./*"]

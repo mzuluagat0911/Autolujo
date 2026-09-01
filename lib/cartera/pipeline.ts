@@ -537,12 +537,21 @@ export async function notasRecientes(conversacionId: string, limite = 5): Promis
     .eq("conversacion_id", conversacionId)
     .eq("tipo", "system")
     .order("created_at", { ascending: false })
-    .limit(limite);
+    .limit(limite + DIAGNOSTICO.length);
   return ((data ?? []) as { texto: string | null }[])
     .map((m) => m.texto)
-    .filter((t): t is string => Boolean(t) && !t!.startsWith("⚠️ ENVÍO FALLÓ"))
+    .filter((t): t is string => Boolean(t) && !DIAGNOSTICO.some((p) => t!.startsWith(p)))
+    .slice(0, limite)
     .reverse();
 }
+
+/**
+ * Notas que son diagnóstico para el equipo, NO contexto para el agente.
+ * La del guard es crítica: lleva dentro el texto que se bloqueó, así que
+ * reinyectarla convertiría la cifra inventada en una cifra "permitida" en el
+ * turno siguiente — el guard se estaría autorizando a sí mismo.
+ */
+const DIAGNOSTICO = ["⚠️ ENVÍO FALLÓ", "🛡️ Respuesta bloqueada"];
 
 /** Sube la imagen del comprobante al bucket privado. Devuelve el path. */
 export async function subirComprobante(bytes: Buffer, mime: string): Promise<string> {
@@ -636,11 +645,29 @@ export async function procesarPagoComprobante(opts: {
   const { conversacion, comprobante, bytes, mime } = opts;
 
   const path = await subirComprobante(bytes, mime);
-  let resolucion = await resolverContratoPorCarro(comprobante.numero_carro);
+  const porCarro = await resolverContratoPorCarro(comprobante.numero_carro);
 
-  // Fallback teléfono→contrato: si no cuadró por # de carro pero la conversación
-  // ya está vinculada a un contrato (por el número del cliente), aplícalo ahí.
-  if (resolucion.estado !== "ok" && conversacion.contrato_id) {
+  // El # de carro sale de un OCR sobre el comentario de la transferencia: un
+  // dígito mal leído o mal escrito apuntaría a OTRO contrato. Si la conversación
+  // ya está vinculada (por el teléfono del cliente, que sí es verificable), ese
+  // vínculo manda; el carro del comprobante solo puede confirmarlo, no cambiarlo.
+  const contradice =
+    porCarro.estado === "ok" &&
+    conversacion.contrato_id != null &&
+    porCarro.contratoId !== conversacion.contrato_id;
+
+  let resolucion: ResolucionCarro;
+  if (contradice) {
+    // Ni se aplica al carro leído ni se asume el de la conversación: lo ve una persona.
+    resolucion = {
+      vehiculoId: conversacion.vehiculo_id,
+      contratoId: null,
+      clienteId: conversacion.cliente_id,
+      etiqueta: conversacion.etiqueta,
+      estado: "ambiguo",
+    };
+  } else if (porCarro.estado !== "ok" && conversacion.contrato_id) {
+    // Sin carro legible, el vínculo del teléfono es la mejor referencia.
     resolucion = {
       vehiculoId: conversacion.vehiculo_id,
       contratoId: conversacion.contrato_id,
@@ -648,21 +675,28 @@ export async function procesarPagoComprobante(opts: {
       etiqueta: conversacion.etiqueta,
       estado: "ok",
     };
+  } else {
+    resolucion = porCarro;
   }
 
   const empresaId = await empresaDelVehiculo(resolucion.vehiculoId);
   const veredicto = await validarComprobante({ comprobante, empresaId });
 
-  // Enriquecer la conversación con el carro/contrato detectado.
-  if (resolucion.vehiculoId || resolucion.contratoId) {
-    await sb
-      .from("conversaciones")
-      .update({
-        vehiculo_id: resolucion.vehiculoId ?? conversacion.vehiculo_id,
-        contrato_id: resolucion.contratoId ?? conversacion.contrato_id,
-        etiqueta: resolucion.etiqueta ?? conversacion.etiqueta,
-      })
-      .eq("id", conversacion.id);
+  // Solo se RELLENA lo que falte. Nunca se sobreescribe un vínculo existente:
+  // eso le entregaría a este cliente el saldo del contrato equivocado.
+  const patch: Record<string, unknown> = {};
+  if (!conversacion.vehiculo_id && resolucion.vehiculoId) patch.vehiculo_id = resolucion.vehiculoId;
+  if (!conversacion.contrato_id && resolucion.contratoId) patch.contrato_id = resolucion.contratoId;
+  if (!conversacion.etiqueta && resolucion.etiqueta) patch.etiqueta = resolucion.etiqueta;
+  if (Object.keys(patch).length > 0) {
+    await sb.from("conversaciones").update(patch).eq("id", conversacion.id);
+  }
+
+  if (contradice) {
+    await marcarAmbiguo(
+      conversacion.id,
+      `El comprobante dice carro ${comprobante.numero_carro}, pero el chat es del ${conversacion.etiqueta ?? "contrato vinculado por teléfono"}. Confirmar a cuál se aplica.`,
+    );
   }
 
   // Cualquier alerta antifraude va al panel: nadie da el pago por bueno solo.

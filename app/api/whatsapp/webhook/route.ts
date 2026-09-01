@@ -17,6 +17,7 @@ import {
   type Conversacion,
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
+import { revisarRespuesta } from "@/lib/ai/guard";
 import { transcribirAudio } from "@/lib/ai/transcribir";
 import { estadoCuentaContrato, money } from "@/lib/cartera/estado-cuenta";
 
@@ -213,7 +214,20 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
         .map((n) => `- ${n}`)
         .join("\n")}`.trim();
     }
-    const r = await responderAgente({ historial, contexto });
+    const bruta = await responderAgente({ historial, contexto });
+
+    // El prompt pide; el guard verifica. Nada sale sin pasar por aquí.
+    const { respuesta: r, intervino, detalle } = revisarRespuesta(bruta, contexto);
+    if (intervino) {
+      console.warn(`[whatsapp/webhook] guard (${intervino}): ${detalle}`);
+      await registrarMensaje({
+        conversacionId: conv.id,
+        direccion: "out",
+        tipo: "system",
+        texto: `🛡️ Respuesta bloqueada (${intervino}): ${detalle}`,
+      });
+    }
+
     if (r.pasar_a_humano) await marcarEscalada(conv.id, r.motivo ?? null);
     await responder(conv.id, from, r.mensaje);
   } catch (e) {

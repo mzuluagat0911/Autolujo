@@ -130,7 +130,9 @@ export async function responderAgente(opts: {
     schema: RespuestaAgente,
     system,
     messages,
-    maxOutputTokens: 400,
+    // Holgado a propósito: si el JSON se trunca, generateObject lanza y el
+    // cliente recibe la respuesta genérica sin que nadie sepa por qué.
+    maxOutputTokens: 700,
     // Bajo a propósito: este agente dicta cifras de dinero, no improvisa.
     temperature: 0.2,
   });
