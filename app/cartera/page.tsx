@@ -77,10 +77,10 @@ export default async function PanelCartera() {
           <div>
             <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">El día de hoy</h2>
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Cubeta emoji="✅" label="Al día" valor={d.alDia} tono="good" hint="Pagaron hoy" />
-              <Cubeta emoji="🟡" label="Sin pago hoy" valor={d.sinPagoHoy} tono="warn" hint="Por cobrar hoy" />
-              <Cubeta emoji="🧾" label="Por conciliar" valor={d.porRevisar} tono="crit" hint="Comprobantes a revisar" href="/cartera/pagos" />
-              <Cubeta emoji="🔔" label="Necesitan respuesta" valor={d.necesitaRespuesta} tono="gold" hint="Chats escalados" href="/cartera/conversaciones" />
+              <Cubeta label="Al día" valor={d.alDia} tono="good" hint="Pagaron hoy" />
+              <Cubeta label="Sin pago hoy" valor={d.sinPagoHoy} tono="warn" hint="Por cobrar hoy" />
+              <Cubeta label="Por conciliar" valor={d.porRevisar} tono="crit" hint="Comprobantes a revisar" href="/cartera/pagos" />
+              <Cubeta label="Necesitan respuesta" valor={d.necesitaRespuesta} tono="azul" hint="Chats escalados" href="/cartera/conversaciones" />
             </div>
           </div>
 
@@ -102,15 +102,24 @@ export default async function PanelCartera() {
   );
 }
 
-function Cubeta({ emoji, label, valor, tono, hint, href }: {
-  emoji: string; label: string; valor: number; hint: string; href?: string;
-  tono: "good" | "warn" | "crit" | "gold";
+function Cubeta({ label, valor, tono, hint, href }: {
+  label: string; valor: number; hint: string; href?: string;
+  tono: "good" | "warn" | "crit" | "azul";
 }) {
-  const color = tono === "good" ? "text-good" : tono === "crit" ? "text-crit" : "text-gold";
+  const color =
+    tono === "good" ? "text-verde"
+    : tono === "crit" ? "text-rojo"
+    : tono === "warn" ? "text-ambar"
+    : "text-azul";
+  const dot =
+    tono === "good" ? "bg-verde"
+    : tono === "crit" ? "bg-rojo"
+    : tono === "warn" ? "bg-ambar"
+    : "bg-azul";
   const inner = (
-    <div className="rounded-2xl bg-surface p-5 ring-1 ring-line/60 transition hover:ring-line">
+    <div className="rounded-xl bg-surface p-5 ring-1 ring-line transition hover:ring-line-strong">
       <div className="flex items-center justify-between">
-        <span className="text-lg">{emoji}</span>
+        <span className={`h-2 w-2 rounded-full ${dot}`} />
         {href && <span className="text-xs text-muted">ver →</span>}
       </div>
       <p className={`mt-3 text-4xl font-bold tabular-nums ${color}`}>{valor}</p>

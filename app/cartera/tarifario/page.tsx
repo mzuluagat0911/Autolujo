@@ -105,7 +105,7 @@ export default async function TarifarioPage() {
                   <td className="px-5 py-3 font-mono tabular-nums text-muted">
                     {rangoKm(t.km_min, t.km_max)}
                   </td>
-                  <td className="px-5 py-3 font-semibold tabular-nums text-gold">
+                  <td className="px-5 py-3 font-semibold tabular-nums">
                     ${t.letra_diaria}
                   </td>
                 </tr>

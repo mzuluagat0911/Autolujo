@@ -79,8 +79,8 @@ export default async function ResumenPage() {
       <div className="pb-16">
         <PageHeader eyebrow="Plataforma" title="Resumen" subtitle="El pulso de todo el negocio" />
         <div className="border border-line bg-surface p-8">
-          <h2 className="font-serif text-2xl font-bold">No se pudo leer la base de datos</h2>
-          <p className="mt-2 text-sm font-light text-muted">
+          <h2 className="text-xl font-bold">No se pudo leer la base de datos</h2>
+          <p className="mt-2 text-sm text-muted">
             Revisa que el schema esté aplicado en Supabase y las variables de entorno.
           </p>
           <p className="mt-4 bg-surface-2 p-3 font-mono text-xs text-muted">{r.error}</p>
@@ -97,11 +97,11 @@ export default async function ResumenPage() {
         subtitle={HOY}
         action={
           <div className="hidden text-right sm:block">
-            <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-gold">Hoy</p>
-            <p className="mt-2 font-serif text-3xl font-bold text-surface">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Hoy</p>
+            <p className="mt-1 text-2xl font-bold tabular-nums text-ink">
               <Money amount={r.cobradoHoy} />
             </p>
-            <p className="mt-1 text-xs font-light text-white/40">Cobrado y conciliado</p>
+            <p className="mt-0.5 text-xs text-muted">Cobrado y conciliado</p>
           </div>
         }
       />
@@ -134,13 +134,13 @@ export default async function ResumenPage() {
             {r.pagosPend > 0 ? (
               <Link
                 href="/cartera/pagos"
-                className="flex items-center justify-between bg-ink px-5 py-4 text-sm text-surface transition hover:bg-black"
+                className="flex items-center justify-between rounded-xl bg-ambar-wash px-5 py-4 text-sm ring-1 ring-ambar/25 transition hover:ring-ambar/40"
               >
                 <span>
-                  <span className="font-serif text-lg font-bold text-gold">{r.pagosPend}</span>
-                  <span className="ml-3 font-light">pagos esperando conciliación</span>
+                  <span className="text-lg font-bold tabular-nums text-ambar">{r.pagosPend}</span>
+                  <span className="ml-3 text-ink">pagos esperando conciliación</span>
                 </span>
-                <span className="text-gold">Revisar →</span>
+                <span className="font-medium text-ambar">Revisar →</span>
               </Link>
             ) : (
               <EmptyState
@@ -203,13 +203,13 @@ function AgentRow({
   return (
     <div className="flex items-center justify-between gap-4 py-5">
       <div>
-        <p className="font-serif text-lg font-bold">{nombre}</p>
-        <p className="text-xs font-light text-muted">{nota ?? "Módulo en preparación"}</p>
+        <p className="font-semibold">{nombre}</p>
+        <p className="text-xs text-muted">{nota ?? "Módulo en preparación"}</p>
       </div>
       {estado === "activo" ? (
         <StatusChip tone="good">Activo</StatusChip>
       ) : (
-        <StatusChip tone="gold">Preparando</StatusChip>
+        <StatusChip tone="neutral">Preparando</StatusChip>
       )}
     </div>
   );

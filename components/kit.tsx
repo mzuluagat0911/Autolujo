@@ -2,22 +2,20 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 export function GoldRule({ className = "" }: { className?: string }) {
-  return <span className={`block h-[2px] w-12 bg-gold ${className}`} aria-hidden="true" />;
+  return <span className={`block h-[2px] w-10 bg-ink ${className}`} aria-hidden="true" />;
 }
 
 export function Money({ amount, className = "" }: { amount: number; className?: string }) {
   const n = new Intl.NumberFormat("es-PA", { maximumFractionDigits: 0 }).format(amount);
   return (
     <span className={`tabular-nums ${className}`}>
-      <span className="mr-1.5 align-[0.4em] font-sans text-[0.32em] font-medium tracking-[0.18em] text-gold">
-        USD
-      </span>
+      <span className="mr-1 align-[0.45em] text-[0.42em] font-semibold tracking-[0.1em] text-muted">USD</span>
       {n}
     </span>
   );
 }
 
-/** Mástil negro a sangre — el gesto de marca, no un H1 genérico. */
+/** Encabezado de página — limpio, sans, sobre blanco. */
 export function PageHeader({
   eyebrow,
   title,
@@ -30,24 +28,14 @@ export function PageHeader({
   action?: ReactNode;
 }) {
   return (
-    <header className="relative -mx-5 mb-10 bg-ink px-5 py-10 text-surface sm:-mx-8 sm:px-8 lg:-mx-12 lg:px-12 lg:py-14">
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-gold to-transparent"
-        aria-hidden
-      />
-      <div className="flex flex-wrap items-end justify-between gap-6">
+    <header className="mb-8">
+      {eyebrow && (
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">{eyebrow}</p>
+      )}
+      <div className="flex flex-wrap items-end justify-between gap-4">
         <div className="max-w-2xl">
-          {eyebrow && (
-            <p className="mb-4 text-[11px] font-medium uppercase tracking-[0.28em] text-gold">
-              {eyebrow}
-            </p>
-          )}
-          <h1 className="font-serif text-4xl font-bold leading-[0.95] tracking-tight sm:text-5xl lg:text-[3.5rem]">
-            {title}
-          </h1>
-          {subtitle && (
-            <p className="mt-4 max-w-lg text-[15px] font-light leading-relaxed text-white/55">{subtitle}</p>
-          )}
+          <h1 className="text-2xl font-bold tracking-tight sm:text-[28px]">{title}</h1>
+          {subtitle && <p className="mt-1.5 text-sm text-muted">{subtitle}</p>}
         </div>
         {action}
       </div>
@@ -65,9 +53,9 @@ export function Band({
   children: ReactNode;
 }) {
   return (
-    <section className={status === "pronto" ? "opacity-55" : undefined}>
-      <div className="mb-5 flex items-baseline gap-4">
-        <h2 className="font-serif text-2xl font-bold tracking-tight">{title}</h2>
+    <section className={status === "pronto" ? "opacity-60" : undefined}>
+      <div className="mb-5 flex items-center gap-4">
+        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
         <span className="h-px flex-1 bg-line" />
         {status === "pronto" ? <ProntoBadge /> : <ActivoBadge />}
       </div>
@@ -78,17 +66,12 @@ export function Band({
 
 export function ProntoBadge() {
   return (
-    <span className="shrink-0 text-[10px] font-medium uppercase tracking-[0.2em] text-gold">En preparación</span>
+    <StatusChip tone="neutral">En preparación</StatusChip>
   );
 }
 
 function ActivoBadge() {
-  return (
-    <span className="inline-flex shrink-0 items-center gap-2 text-[10px] font-medium uppercase tracking-[0.2em] text-good">
-      <span className="h-1.5 w-1.5 rounded-full bg-good" />
-      En marcha
-    </span>
-  );
+  return <StatusChip tone="good">En marcha</StatusChip>;
 }
 
 export function Kpi({
@@ -101,52 +84,58 @@ export function Kpi({
   label: string;
   value: ReactNode;
   hint?: string;
-  tone?: "default" | "warn" | "crit" | "pronto";
+  tone?: "default" | "good" | "warn" | "crit" | "pronto";
   size?: "default" | "hero";
 }) {
+  const color =
+    tone === "good" ? "text-verde"
+    : tone === "warn" ? "text-ambar"
+    : tone === "crit" ? "text-rojo"
+    : tone === "pronto" ? "text-faint"
+    : "text-ink";
+
   if (size === "hero") {
     return (
-      <div className="relative overflow-hidden bg-ink px-7 py-8 text-surface">
-        <div className="absolute left-0 top-0 h-full w-[3px] bg-gold" />
-        <p className="text-[11px] font-medium uppercase tracking-[0.22em] text-gold">{label}</p>
-        <div className="mt-6 font-serif text-5xl font-bold leading-none tracking-tight lg:text-6xl">
+      <div className="rounded-xl bg-surface p-6 ring-1 ring-line">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">{label}</p>
+        <div className={`mt-4 text-4xl font-bold leading-none tracking-tight tabular-nums lg:text-5xl ${color}`}>
           {value}
         </div>
-        {hint && <p className="mt-4 text-sm font-light text-white/45">{hint}</p>}
+        {hint && <p className="mt-3 text-sm text-muted">{hint}</p>}
       </div>
     );
   }
 
-  const color =
-    tone === "warn" ? "text-warn" : tone === "crit" ? "text-crit" : tone === "pronto" ? "text-faint" : "text-ink";
-
   return (
-    <div className="border-t border-line pt-4">
-      <div className="text-[10px] font-medium uppercase tracking-[0.18em] text-muted">{label}</div>
-      <div className={`mt-2 font-serif text-3xl font-bold tabular-nums tracking-tight ${color}`}>
+    <div className="rounded-xl bg-surface p-5 ring-1 ring-line">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">{label}</div>
+      <div className={`mt-2 text-2xl font-bold tabular-nums tracking-tight ${color}`}>
         {tone === "pronto" ? "—" : value}
       </div>
-      {hint && <div className="mt-1 text-xs font-light text-faint">{hint}</div>}
+      {hint && <div className="mt-1 text-xs text-muted">{hint}</div>}
     </div>
   );
 }
 
+/** Badge / etiqueta de estado — pill con punto + tint. */
 export function StatusChip({
   tone,
   children,
 }: {
-  tone: "good" | "warn" | "crit" | "neutral" | "gold";
+  tone: "good" | "warn" | "crit" | "neutral" | "azul" | "purpura";
   children: ReactNode;
 }) {
   const map: Record<string, string> = {
-    good: "text-good border-good/35",
-    warn: "text-warn border-warn/35",
-    crit: "text-crit border-crit/35",
-    gold: "text-gold border-gold/40",
-    neutral: "text-muted border-line",
+    good: "bg-verde-wash text-verde",
+    warn: "bg-ambar-wash text-ambar",
+    crit: "bg-rojo-wash text-rojo",
+    azul: "bg-azul-wash text-azul",
+    purpura: "bg-purpura-wash text-purpura",
+    neutral: "bg-gris-wash text-gris",
   };
   return (
-    <span className={`inline-flex items-center border px-2 py-0.5 text-[10px] font-medium uppercase tracking-[0.12em] ${map[tone]}`}>
+    <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${map[tone]}`}>
+      <span className="h-1.5 w-1.5 rounded-full bg-current" />
       {children}
     </span>
   );
@@ -154,10 +143,9 @@ export function StatusChip({
 
 export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
-    <div className="border border-dashed border-line px-6 py-12 text-center">
-      <GoldRule className="mx-auto mb-5" />
-      <p className="font-serif text-lg font-bold">{title}</p>
-      {hint && <p className="mx-auto mt-2 max-w-sm text-sm font-light text-muted">{hint}</p>}
+    <div className="rounded-xl border border-dashed border-line px-6 py-12 text-center">
+      <p className="text-base font-semibold">{title}</p>
+      {hint && <p className="mx-auto mt-2 max-w-sm text-sm text-muted">{hint}</p>}
     </div>
   );
 }
@@ -175,22 +163,22 @@ export function SubCard({
 }) {
   if (status === "pronto") {
     return (
-      <div className="border-t border-line py-6 opacity-50">
+      <div className="rounded-xl bg-surface p-4 ring-1 ring-line opacity-60">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-serif text-xl font-bold">{title}</span>
+          <span className="font-semibold">{title}</span>
           <ProntoBadge />
         </div>
-        <p className="mt-1 text-sm font-light text-muted">{desc}</p>
+        <p className="mt-1 text-sm text-muted">{desc}</p>
       </div>
     );
   }
   return (
-    <Link href={href} className="group block border-t border-line py-6 transition">
+    <Link href={href} className="group block rounded-xl bg-surface p-4 ring-1 ring-line transition hover:ring-line-strong">
       <div className="flex items-baseline justify-between gap-4">
-        <span className="font-serif text-xl font-bold group-hover:text-gold">{title}</span>
-        <span className="text-gold opacity-0 transition group-hover:opacity-100">→</span>
+        <span className="font-semibold group-hover:text-ink">{title}</span>
+        <span className="text-muted opacity-0 transition group-hover:opacity-100">→</span>
       </div>
-      <p className="mt-1 text-sm font-light text-muted">{desc}</p>
+      <p className="mt-1 text-sm text-muted">{desc}</p>
     </Link>
   );
 }

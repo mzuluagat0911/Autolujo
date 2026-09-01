@@ -67,7 +67,7 @@ export function Shell({ children }: { children: ReactNode }) {
 
   // Páginas públicas: sin barra lateral ni topbar.
   if (RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + "/"))) {
-    return <div className="min-h-screen bg-paper">{children}</div>;
+    return <div className="min-h-screen bg-paper font-brand-ui">{children}</div>;
   }
 
   return (

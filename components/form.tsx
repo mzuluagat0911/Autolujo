@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 const INPUT =
-  "rounded-md bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none transition placeholder:text-faint focus:ring-gold";
+  "rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none transition placeholder:text-faint focus:ring-2 focus:ring-ink/20";
 
 export function Field({
   label,
@@ -71,7 +71,7 @@ export function SubmitButton({ children }: { children: ReactNode }) {
   return (
     <button
       type="submit"
-      className="rounded-md bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-black"
+      className="rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-surface transition hover:bg-black"
     >
       {children}
     </button>
@@ -82,7 +82,7 @@ export function FormCard({ action, children }: { action: (fd: FormData) => void;
   return (
     <form
       action={action}
-      className="grid grid-cols-1 gap-4 rounded-lg bg-surface p-6 ring-1 ring-line sm:grid-cols-2 lg:grid-cols-3"
+      className="grid grid-cols-1 gap-4 rounded-xl bg-surface p-6 ring-1 ring-line sm:grid-cols-2 lg:grid-cols-3"
     >
       {children}
     </form>

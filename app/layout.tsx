@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import { PT_Serif, Montserrat } from "next/font/google";
+import { PT_Serif, Inter, Montserrat } from "next/font/google";
 import "./globals.css";
 import { Shell } from "@/components/shell";
 
-// Marca / títulos — serif clásica (como el wordmark del logo)
+// Landing — serif del wordmark
 const brandSerif = PT_Serif({
   subsets: ["latin"],
   weight: ["400", "700"],
@@ -11,10 +11,18 @@ const brandSerif = PT_Serif({
   display: "swap",
 });
 
-// UI / etiquetas — sans geométrica (como el tagline "Siempre seguro")
-const brandSans = Montserrat({
+// Landing — sans de marca (tagline / UI pública)
+const brandUi = Montserrat({
   subsets: ["latin"],
-  weight: ["300", "400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-montserrat",
+  display: "swap",
+});
+
+// Dashboard — Inter
+const brandSans = Inter({
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
   variable: "--font-brand-sans",
   display: "swap",
 });
@@ -30,8 +38,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={`${brandSerif.variable} ${brandSans.variable}`}>
-      <body className="min-h-screen font-sans font-light antialiased">
+    <html lang="es" className={`${brandSerif.variable} ${brandUi.variable} ${brandSans.variable}`}>
+      <body className="min-h-screen font-sans antialiased">
         <Shell>{children}</Shell>
       </body>
     </html>

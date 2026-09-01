@@ -3,28 +3,40 @@
 @theme {
   --font-sans: var(--font-brand-sans), system-ui, sans-serif;
   --font-serif: var(--font-brand-serif), Georgia, serif;
+  --font-brand-ui: var(--font-montserrat), system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
-  /* Solo blanco, negro y dorado */
+  /* Neutrales — base blanco/negro con gris frío */
   --color-paper: #ffffff;
   --color-surface: #ffffff;
-  --color-surface-2: #f4f4f4;
-  --color-ink: #000000;
-  --color-muted: #6b6b6b;
-  --color-faint: #9a9a9a;
-  --color-line: #e6e6e6;
-  --color-line-strong: #d0d0d0;
+  --color-surface-2: #f3f4f6;
+  --color-ink: #0a0a0a;
+  --color-muted: #6b7280;
+  --color-faint: #9ca3af;
+  --color-line: #e5e7eb;
+  --color-line-strong: #d1d5db;
 
+  /* Marca (dorado) — sidebar activo + landing pública */
   --color-gold: #c9a44a;
   --color-gold-soft: #d4b56a;
   --color-gold-wash: #fff8e6;
   --color-brand: #c9a44a;
   --color-brand-wash: #fff8e6;
 
-  --color-good: #c9a44a;
-  --color-warn: #c9a44a;
-  --color-crit: #000000;
+  /* Acentos semánticos */
+  --color-verde: #059669;   --color-verde-wash: #ecfdf5;
+  --color-azul: #2563eb;    --color-azul-wash: #eff6ff;
+  --color-rojo: #dc2626;    --color-rojo-wash: #fef2f2;
+  --color-ambar: #d97706;   --color-ambar-wash: #fffbeb;
+  --color-gris: #6b7280;    --color-gris-wash: #f3f4f6;
+  --color-purpura: #7c3aed; --color-purpura-wash: #f5f3ff;
 
+  /* Estados → mapeados a semánticos */
+  --color-good: #059669;
+  --color-warn: #d97706;
+  --color-crit: #dc2626;
+
+  /* Sidebar (negro) */
   --color-side-bg: #000000;
   --color-side-surface: #0c0c0c;
   --color-side-ink: #ffffff;
@@ -33,44 +45,46 @@
   --color-side-active: #c9a44a;
 }
 
+/* ---- Dark mode (se conserva; el dashboard es claro por defecto) ---- */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --color-paper: #000000;
-    --color-surface: #111111;
-    --color-surface-2: #1a1a1a;
-    --color-ink: #ffffff;
-    --color-muted: #9a9a9a;
-    --color-faint: #6b6b6b;
-    --color-line: #2a2a2a;
+    --color-paper: #0a0a0a;
+    --color-surface: #141414;
+    --color-surface-2: #1f1f1f;
+    --color-ink: #f5f5f5;
+    --color-muted: #9ca3af;
+    --color-faint: #6b7280;
+    --color-line: #262626;
     --color-line-strong: #3a3a3a;
-    --color-gold: #d4b56a;
-    --color-gold-soft: #e2c888;
     --color-gold-wash: #1a1a1a;
-    --color-brand: #d4b56a;
     --color-brand-wash: #1a1a1a;
-    --color-good: #d4b56a;
-    --color-warn: #d4b56a;
-    --color-crit: #ffffff;
+    --color-verde: #34d399; --color-verde-wash: #06281f;
+    --color-azul: #60a5fa;  --color-azul-wash: #0c1e3a;
+    --color-rojo: #f87171;  --color-rojo-wash: #3a1010;
+    --color-ambar: #fbbf24; --color-ambar-wash: #3a2a0a;
+    --color-gris: #9ca3af;  --color-gris-wash: #1f1f1f;
+    --color-purpura: #a78bfa; --color-purpura-wash: #241a3a;
+    --color-good: #34d399; --color-warn: #fbbf24; --color-crit: #f87171;
   }
 }
-
 :root[data-theme="dark"] {
-  --color-paper: #000000;
-  --color-surface: #111111;
-  --color-surface-2: #1a1a1a;
-  --color-ink: #ffffff;
-  --color-muted: #9a9a9a;
-  --color-faint: #6b6b6b;
-  --color-line: #2a2a2a;
+  --color-paper: #0a0a0a;
+  --color-surface: #141414;
+  --color-surface-2: #1f1f1f;
+  --color-ink: #f5f5f5;
+  --color-muted: #9ca3af;
+  --color-faint: #6b7280;
+  --color-line: #262626;
   --color-line-strong: #3a3a3a;
-  --color-gold: #d4b56a;
-  --color-gold-soft: #e2c888;
   --color-gold-wash: #1a1a1a;
-  --color-brand: #d4b56a;
   --color-brand-wash: #1a1a1a;
-  --color-good: #d4b56a;
-  --color-warn: #d4b56a;
-  --color-crit: #ffffff;
+  --color-verde: #34d399; --color-verde-wash: #06281f;
+  --color-azul: #60a5fa;  --color-azul-wash: #0c1e3a;
+  --color-rojo: #f87171;  --color-rojo-wash: #3a1010;
+  --color-ambar: #fbbf24; --color-ambar-wash: #3a2a0a;
+  --color-gris: #9ca3af;  --color-gris-wash: #1f1f1f;
+  --color-purpura: #a78bfa; --color-purpura-wash: #241a3a;
+  --color-good: #34d399; --color-warn: #fbbf24; --color-crit: #f87171;
 }
 
 html,
@@ -82,8 +96,8 @@ body {
 }
 
 *:focus-visible {
-  outline: 2px solid var(--color-gold);
-  outline-offset: 3px;
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: reduce) {

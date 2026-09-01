@@ -148,17 +148,16 @@ export function InboxConversaciones({
 
   return (
     <div className="-mx-5 flex h-[calc(100dvh-3rem)] flex-col sm:-mx-8 lg:-mx-12 md:h-dvh">
-      <header className="shrink-0 border-b border-line bg-ink px-5 py-4 text-surface sm:px-6">
+      <header className="shrink-0 border-b border-line bg-surface px-5 py-4 sm:px-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-[0.28em] text-gold">Cartera</p>
-            <h1 className="mt-1 font-serif text-2xl font-bold tracking-tight sm:text-3xl">
-              Conversaciones
-            </h1>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Cartera</p>
+            <h1 className="mt-1 text-2xl font-bold tracking-tight">Conversaciones</h1>
           </div>
-          <div className="flex items-center gap-4 text-sm text-white/55">
+          <div className="flex items-center gap-3 text-sm text-muted">
             {contadores.responder > 0 && (
-              <span className="rounded-md bg-gold/20 px-2.5 py-1 text-xs font-medium text-gold ring-1 ring-gold/30">
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-ambar-wash px-2.5 py-1 text-xs font-medium text-ambar">
+                <span className="h-1.5 w-1.5 rounded-full bg-current" />
                 {contadores.responder} por responder
               </span>
             )}
@@ -168,7 +167,7 @@ export function InboxConversaciones({
       </header>
 
       {demo && (
-        <div className="shrink-0 border-b border-gold/30 bg-gold-wash px-5 py-2 text-center text-xs text-muted sm:px-6">
+        <div className="shrink-0 border-b border-line bg-surface-2 px-5 py-2 text-center text-xs text-muted sm:px-6">
           <span className="font-medium text-ink">Modo demo</span> — conversaciones de ejemplo. En
           producción los mensajes llegan en vivo desde WhatsApp y el agente responde automáticamente.
         </div>
@@ -188,7 +187,7 @@ export function InboxConversaciones({
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 placeholder="Buscar carro, cliente o teléfono…"
-                className="w-full rounded-md bg-paper py-2.5 pl-9 pr-3 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-gold/40"
+                className="w-full rounded-lg bg-paper py-2.5 pl-9 pr-3 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink/20"
               />
               <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
             </label>
@@ -244,7 +243,7 @@ export function InboxConversaciones({
                     <br />
                     <a
                       href="/cartera/conversaciones?demo=1"
-                      className="mt-3 inline-block text-gold underline-offset-2 hover:underline"
+                      className="mt-3 inline-block text-azul underline-offset-2 hover:underline"
                     >
                       Ver demo con conversaciones de ejemplo →
                     </a>
@@ -263,8 +262,8 @@ export function InboxConversaciones({
         >
           {!selectedId && (
             <div className="flex flex-1 flex-col items-center justify-center px-6 text-center">
-              <div className="mb-4 h-[2px] w-12 bg-gold" />
-              <p className="font-serif text-xl font-bold">Elige un chat</p>
+              <div className="mb-4 h-[2px] w-12 bg-line-strong" />
+              <p className="text-xl font-bold">Elige un chat</p>
               <p className="mt-2 max-w-sm text-sm text-muted">
                 Responde a clientes, toma el control del agente y envía mensajes por el mismo
                 WhatsApp.
@@ -378,12 +377,12 @@ function ConvRow({
       type="button"
       onClick={onSelect}
       className={`flex w-full items-start gap-3 border-b border-line px-4 py-3.5 text-left transition ${
-        active ? "bg-gold-wash/60" : "hover:bg-surface-2"
+        active ? "bg-gris-wash" : "hover:bg-surface-2"
       }`}
     >
       <div
-        className={`grid h-10 w-10 shrink-0 place-items-center rounded-md font-serif text-[13px] font-bold ${
-          c.necesita_humano ? "bg-gold text-ink" : "bg-ink text-gold"
+        className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[13px] font-bold ${
+          c.necesita_humano ? "bg-ambar text-white" : "bg-ink text-white"
         }`}
       >
         {placaConv(c)}
@@ -406,7 +405,7 @@ function ConvRow({
           {c.modo === "humano" && !c.necesita_humano && <MiniChip tone="neutral">Humano</MiniChip>}
           {c.modo === "agente" && !c.necesita_humano && <MiniChip tone="good">Agente</MiniChip>}
           {c.no_leidos > 0 && (
-            <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-ink px-1.5 text-[10px] font-semibold text-gold">
+            <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-ink px-1.5 text-[10px] font-semibold text-white">
               {c.no_leidos}
             </span>
           )}
@@ -513,7 +512,7 @@ function ChatPanel({
             >
               ←
             </button>
-            <h2 className="truncate font-serif text-lg font-bold">{tituloConv(detalle)}</h2>
+            <h2 className="truncate text-lg font-bold">{tituloConv(detalle)}</h2>
             {esHumano ? (
               <MiniChip tone="warn">Lo llevas tú</MiniChip>
             ) : (
@@ -530,7 +529,7 @@ function ChatPanel({
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-right">
             <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">Saldo</p>
-            <p className="font-serif text-lg font-bold tabular-nums">{formatSaldo(detalle.saldo)}</p>
+            <p className="text-lg font-bold tabular-nums">{formatSaldo(detalle.saldo)}</p>
           </div>
           {esHumano ? (
             <button
@@ -555,8 +554,8 @@ function ChatPanel({
       </div>
 
       {detalle.necesita_humano && (
-        <div className="shrink-0 bg-gold-wash px-4 py-2.5 text-sm ring-1 ring-inset ring-gold/20 sm:px-5">
-          <b className="font-medium">Necesita respuesta.</b>{" "}
+        <div className="shrink-0 bg-ambar-wash px-4 py-2.5 text-sm text-ambar ring-1 ring-inset ring-ambar/25 sm:px-5">
+          <b className="font-semibold">Necesita respuesta.</b>{" "}
           {detalle.motivo_escalada
             ? `Motivo: ${detalle.motivo_escalada}`
             : "Hay un mensaje del cliente esperando."}
@@ -645,12 +644,12 @@ function Thread({
         return (
           <div key={m.id} className={`flex ${system ? "justify-center" : out ? "justify-end" : "justify-start"}`}>
             <div
-              className={`max-w-[min(78%,28rem)] rounded-lg px-3.5 py-2.5 text-sm ${
+              className={`max-w-[min(78%,28rem)] rounded-2xl px-4 py-2.5 text-sm ${
                 system
-                  ? "bg-crit/5 text-crit ring-1 ring-crit/20"
+                  ? "bg-rojo-wash text-rojo ring-1 ring-rojo/20"
                   : out
-                    ? "bg-ink text-surface"
-                    : "bg-surface text-ink ring-1 ring-line"
+                    ? "bg-ink text-white"
+                    : "bg-gris-wash text-ink"
               }`}
             >
               {m.signedUrl && (
@@ -666,7 +665,7 @@ function Thread({
               {m.texto && <p className="whitespace-pre-wrap leading-relaxed">{m.texto}</p>}
               <p
                 className={`mt-1 text-right text-[10px] tabular-nums ${
-                  out && !system ? "text-surface/55" : "text-muted"
+                  out && !system ? "text-white/55" : "text-muted"
                 }`}
               >
                 {out && !system
@@ -761,7 +760,7 @@ function Composer({
         </p>
       )}
       {esHumano && !ventanaAbierta && (
-        <p className="mb-2 rounded-md bg-gold-wash px-3 py-2 text-xs text-muted ring-1 ring-gold/25">
+        <p className="mb-2 rounded-md bg-ambar-wash px-3 py-2 text-xs text-ambar ring-1 ring-ambar/25">
           Ventana de 24h cerrada. El cliente debe escribir primero para poder responder por texto.
         </p>
       )}
@@ -796,12 +795,12 @@ function Composer({
                 : "Escribe tu respuesta… (Enter envía)"
           }
           disabled={!esHumano || !ventanaAbierta || pending}
-          className="flex-1 resize-none rounded-md bg-paper px-3.5 py-2.5 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-gold/40 disabled:opacity-50"
+          className="flex-1 resize-none rounded-lg bg-paper px-3.5 py-2.5 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink/20 disabled:opacity-50"
         />
         <button
           type="submit"
           disabled={!puede || !texto.trim()}
-          className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-surface transition hover:bg-black disabled:opacity-40"
+          className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black disabled:opacity-40"
         >
           {pending ? "…" : "Enviar"}
         </button>
@@ -818,13 +817,13 @@ function MiniChip({
   children: ReactNode;
 }) {
   const map = {
-    good: "text-good border-good/35",
-    warn: "text-warn border-warn/35",
-    neutral: "text-muted border-line",
+    good: "bg-verde-wash text-verde",
+    warn: "bg-ambar-wash text-ambar",
+    neutral: "bg-gris-wash text-gris",
   };
   return (
     <span
-      className={`inline-flex items-center border px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-[0.1em] ${map[tone]}`}
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${map[tone]}`}
     >
       {children}
     </span>

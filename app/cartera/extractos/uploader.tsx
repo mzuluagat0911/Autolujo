@@ -95,7 +95,7 @@ export function SubirExtracto() {
 }
 
 function Resumen({ label, value, tone: t }: { label: string; value: number; tone?: "good" | "warn" | "crit" | "neutral" }) {
-  const color = t === "good" ? "text-good" : t === "warn" ? "text-gold" : t === "crit" ? "text-crit" : "text-ink";
+  const color = t === "good" ? "text-verde" : t === "warn" ? "text-ambar" : t === "crit" ? "text-rojo" : "text-ink";
   return (
     <div className="rounded-xl bg-surface p-4 ring-1 ring-line/60">
       <p className="font-mono text-[10px] uppercase tracking-wide text-muted">{label}</p>

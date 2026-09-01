@@ -59,7 +59,7 @@ export default async function EstadosCuentaPage() {
                     </td>
                     <td className="px-4 py-2.5 text-muted">{e.clienteNombre}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums"><Money amount={e.cuenta} /></td>
-                    <td className="px-4 py-2.5 text-right tabular-nums text-gold">
+                    <td className="px-4 py-2.5 text-right tabular-nums text-ambar">
                       {e.recargo > 0 ? <Money amount={e.recargo} /> : "—"}
                     </td>
                     <td className="px-4 py-2.5 text-right font-semibold tabular-nums"><Money amount={e.totalHoy} /></td>
