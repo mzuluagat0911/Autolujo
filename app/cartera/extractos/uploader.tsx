@@ -27,7 +27,7 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
       <form action={action} className="rounded-xl bg-surface p-6 ring-1 ring-line">
         <p className="text-sm font-semibold">¿De qué empresa es este extracto?</p>
         <p className="mt-1 text-sm text-muted">
-          Elige la cuenta. Solo se cruzan los carros de esa empresa (Autolujo, Kowua o Gold).
+          Elige la cuenta. Solo se cruzan los carros de esa empresa. Un movimiento se marca conciliado únicamente si calza con un comprobante en carro, monto, fecha y cuenta.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -99,7 +99,8 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
             <Resumen label="Por revisar" value={state.revisar} tone={state.revisar > 0 ? "crit" : "neutral"} />
           </div>
           <p className="mt-3 text-sm text-muted">
-            Cruce contra <b>{state.empresa}</b> · Total aplicado:{" "}
+            Cruce contra <b>{state.empresa}</b> · Solo se aplica con coincidencia perfecta
+            (carro + monto + fecha + empresa). El resto queda para revisión. Total aplicado:{" "}
             <b><Money amount={state.montoAplicado} /></b>
           </p>
 
@@ -112,6 +113,7 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
                   <th className="px-4 py-3">Carro</th>
                   <th className="px-4 py-3 text-right">Monto</th>
                   <th className="px-4 py-3">Estado</th>
+                  <th className="px-4 py-3">Motivo</th>
                 </tr>
               </thead>
               <tbody>
@@ -119,9 +121,12 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
                   <tr key={i} className="border-b border-line last:border-0 hover:bg-surface-2">
                     <td className="px-4 py-2.5 tabular-nums text-muted">{d.fecha ?? "—"}</td>
                     <td className="px-4 py-2.5">{d.descripcion.slice(0, 60)}</td>
-                    <td className="px-4 py-2.5 font-semibold">{d.carro ?? (d.via === "nombre" ? "por nombre" : "—")}</td>
+                    <td className="px-4 py-2.5 font-semibold">
+                      {d.carro ?? (d.via === "nombre" ? "sugerido" : "—")}
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums"><Money amount={d.monto} /></td>
                     <td className="px-4 py-2.5"><StatusChip tone={tone(d.estado)}>{d.estado}</StatusChip></td>
+                    <td className="px-4 py-2.5 text-[11px] text-muted">{d.motivo ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>

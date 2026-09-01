@@ -1,12 +1,20 @@
 // Conciliación por extracto bancario (Banco General).
-// Sube el PDF → parsea movimientos → cruza por # de carro (y por nombre) →
-// aplica el pago al contrato (parciales incluidos) → marca excepciones.
-// Todo el dinero se calcula aquí, no en el LLM.
+// Sube el PDF → parsea movimientos → cruza contra comprobantes pendientes.
+// Solo aplica dinero con cruce PERFECTO (ver lib/cartera/cruce.ts).
+// El match por nombre solo sugiere; no crea ni concilia un pago.
 
 import { extractText, getDocumentProxy } from "unpdf";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama, instantePanama, fechaContable } from "./fecha";
+import { hoyPanama, fechaContable, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
+import {
+  canonCarro,
+  extraerCarro,
+  extraerNombre,
+  decidirMovimiento,
+  type ContratoFlota,
+  type PagoCandidato,
+} from "./cruce";
 
 const MESES: Record<string, string> = {
   ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
@@ -21,18 +29,7 @@ function parseFecha(s: string): string | null {
   return `${m[3]}-${mes}-${m[1].padStart(2, "0")}`;
 }
 
-// Clave canónica de un # de carro: quita símbolos y ceros a la izquierda.
-export function canonCarro(s: string): string {
-  const t = String(s).toUpperCase().replace(/[^A-Z0-9]/g, "");
-  const m = /^([A-Z]*)0*(\d+)$/.exec(t);
-  return m ? m[1] + String(parseInt(m[2], 10)) : t;
-}
-
-function canonNombre(s: string): string {
-  return s
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .toUpperCase().replace(/[^A-Z ]/g, " ").replace(/\s+/g, " ").trim();
-}
+export { canonCarro, extraerCarro };
 
 type MovParse = {
   fecha: string | null;
@@ -42,25 +39,6 @@ type MovParse = {
   numeroCarro: string | null;
   nombre: string | null;
 };
-
-function extraerCarro(desc: string, empresa: string | null): string | null {
-  if (empresa === "GOLD") {
-    const m = /\bG\s*-?\s*0*(\d{1,3})\b/i.exec(desc);
-    return m ? "G" + parseInt(m[1], 10) : null;
-  }
-  // Autolujo / Kowua: número junto a una palabra clave
-  const m = /\b(?:carro|cuota|veh[ií]culo|unidad|#)\s*#?\s*0*(\d{1,3})\b/i.exec(desc);
-  return m ? String(parseInt(m[1], 10)) : null;
-}
-
-function extraerNombre(desc: string): string | null {
-  const m = /TRANSFERENCIA DE\s+(.+)/i.exec(desc) || /DEP[OÓ]SITO DE\s+(.+)/i.exec(desc);
-  if (!m) return null;
-  // corta antes del # de carro o de un paréntesis
-  let n = m[1].split(/\s+(?:carro|cuota|veh[ií]culo|pago|seguro|\(|G\s?-?\d)/i)[0];
-  n = n.replace(/\s+[A-Z]?\d.*$/i, "").trim(); // quita colas tipo "G02", "G 14"
-  return n.length >= 5 ? n : null;
-}
 
 /** Parsea el PDF del extracto en movimientos estructurados. */
 export async function parseExtracto(
@@ -114,8 +92,9 @@ export type ResultadoConciliacion = {
     descripcion: string;
     monto: number;
     carro: string | null;
-    via: "carro" | "nombre" | null;
+    via: "perfecto" | "carro" | "nombre" | null;
     estado: string;
+    motivo: string | null;
   }[];
 };
 
@@ -143,30 +122,33 @@ export async function procesarExtractoPDF(
     return { ...VACIO, empresa: empresa.codigo, error: "No encontré movimientos en el PDF. ¿Es el de “Últimos movimientos” de Banco General?" };
   }
 
-  // Contratos activos de la empresa con su carro, cliente y letra
   const { data: contratos } = await sb
     .from("contratos")
     .select("id, letra_diaria, vehiculo:vehiculos!inner(numero, empresa_id), cliente:clientes(nombre)")
     .eq("estado", "activo")
     .eq("vehiculo.empresa_id", empresaId);
 
-  const porCarro = new Map<string, { contratoId: string; letra: number }>();
-  const porNombre = new Map<string, { contratoId: string; letra: number }>();
-  for (const c of (contratos ?? []) as unknown as {
+  const flota: ContratoFlota[] = ((contratos ?? []) as unknown as {
     id: string; letra_diaria: number;
-    vehiculo: { numero: string }; cliente: { nombre: string } | null;
-  }[]) {
-    porCarro.set(canonCarro(c.vehiculo.numero), { contratoId: c.id, letra: Number(c.letra_diaria) });
-    if (c.cliente?.nombre) porNombre.set(canonNombre(c.cliente.nombre), { contratoId: c.id, letra: Number(c.letra_diaria) });
-  }
+    vehiculo: { numero: string; empresa_id: string };
+    cliente: { nombre: string } | null;
+  }[]).map((c) => ({
+    contratoId: c.id,
+    letra: Number(c.letra_diaria),
+    numero: c.vehiculo.numero,
+    clienteNombre: c.cliente?.nombre ?? null,
+    empresaId: c.vehiculo.empresa_id,
+  }));
+  const contratoIds = new Set(flota.map((c) => c.contratoId));
 
   const { data: cuenta } = await sb
     .from("cuentas_bancarias")
-    .select("id")
+    .select("id, numero_cuenta")
     .eq("empresa_id", empresa.id)
     .ilike("tipo", "AHORROS")
     .limit(1)
     .maybeSingle();
+  const cuentaRow = cuenta as { id: string; numero_cuenta: string | null } | null;
 
   let aviso: string | undefined;
   if (titular) {
@@ -179,17 +161,16 @@ export async function procesarExtractoPDF(
           ? "AUTOLUJO"
           : null;
     if (delPdf && delPdf !== empresa.codigo) {
-      aviso = `El PDF parece de ${delPdf} (titular “${titular}”) y tú elegiste ${empresa.codigo}. Concilié contra los carros de ${empresa.codigo}.`;
+      aviso = `El PDF parece de ${delPdf} (titular “${titular}”) y tú elegiste ${empresa.codigo}. No mezclo flotas: revisa que sea la cuenta correcta.`;
     }
   }
 
-  // Cabecera del extracto
   const fechaExtracto = movimientos.find((m) => m.fecha)?.fecha ?? hoyPanama();
   const { data: extracto } = await sb
     .from("extractos_bancarios")
     .insert({
       empresa_id: empresa.id,
-      cuenta_bancaria_id: (cuenta as { id: string } | null)?.id ?? null,
+      cuenta_bancaria_id: cuentaRow?.id ?? null,
       banco: "Banco General",
       fecha: fechaExtracto,
       cargado_por: cargadoPor,
@@ -197,78 +178,146 @@ export async function procesarExtractoPDF(
     .select("id").single();
   const extractoId = extracto!.id as string;
 
+  const { data: pagosRaw } = await sb
+    .from("pagos")
+    .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion")
+    .eq("estado_conciliacion", "pendiente")
+    .eq("origen", "comprobante");
+
+  const pendientes: PagoCandidato[] = ((pagosRaw ?? []) as {
+    id: string;
+    contrato_id: string | null;
+    monto: number;
+    pagado_at: string;
+    numero_carro: string | null;
+    cuenta_destino: string | null;
+    origen: string | null;
+  }[])
+    .filter((p) => {
+      if (p.contrato_id && contratoIds.has(p.contrato_id)) return true;
+      if (p.numero_carro && flota.some((c) => canonCarro(c.numero) === canonCarro(p.numero_carro!))) return true;
+      return false;
+    })
+    .map((p) => ({
+      id: p.id,
+      contratoId: p.contrato_id,
+      empresaId,
+      monto: Number(p.monto),
+      pagadoAt: p.pagado_at,
+      numeroCarro: p.numero_carro,
+      cuentaDestino: p.cuenta_destino,
+      origen: p.origen,
+    }));
+
   const res: ResultadoConciliacion = {
     ok: true, aviso, empresa: empresa.codigo, total: movimientos.length,
     aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [],
   };
 
-  // "contratoId|fecha" de los días cuyo recargo hay que revisar al terminar.
+  const usados = new Set<string>();
   const porRecalcular = new Set<string>();
+  const fechasMov = new Set(movimientos.map((m) => m.fecha).filter((f): f is string => Boolean(f)));
+  const ctxExtracto = { empresaId: empresa.id, numeroCuenta: cuentaRow?.numero_cuenta ?? null };
 
   for (const mov of movimientos) {
-    let match: { contratoId: string; letra: number } | undefined;
-    let via: "carro" | "nombre" | null = null;
-    const carroKey = mov.numeroCarro ? canonCarro(mov.numeroCarro) : "";
-    if (carroKey && porCarro.has(carroKey)) { match = porCarro.get(carroKey); via = "carro"; }
-    else if (mov.nombre) {
-      const nombreKey = canonNombre(mov.nombre);
-      // match por nombre exacto o por inclusión (nombre del banco contiene el del cliente o viceversa)
-      for (const [k, v] of porNombre) {
-        if (k === nombreKey || k.includes(nombreKey) || nombreKey.includes(k)) { match = v; via = "nombre"; break; }
-      }
-    }
+    const libres = pendientes.filter((p) => !usados.has(p.id));
+    const veredicto = decidirMovimiento(mov, libres, flota, ctxExtracto);
 
     let estado = "revisar";
     let pagoId: string | null = null;
+    let contratoId: string | null = null;
+    let via: ResultadoConciliacion["detalle"][0]["via"] = null;
+    let motivo: string | null = null;
+    let conciliado = false;
 
-    if (match) {
-      // dedup: ¿hay un comprobante pendiente/manual del mismo contrato por monto similar?
-      const { data: pend } = await sb
-        .from("pagos").select("id, monto, pagado_at")
-        .eq("contrato_id", match.contratoId)
-        .in("estado_conciliacion", ["pendiente", "manual"]);
-      const existente = (pend ?? []).find((p) => Math.abs(Number(p.monto) - mov.monto) < 0.5);
-      if (existente) {
-        await sb.from("pagos").update({ estado_conciliacion: "conciliado" }).eq("id", existente.id);
-        pagoId = existente.id;
-        porRecalcular.add(`${match.contratoId}|${existente.pagado_at ? fechaContable(existente.pagado_at) : (mov.fecha ?? hoyPanama())}`);
+    if (veredicto.tipo === "perfecto") {
+      const { pago, contrato } = veredicto;
+      usados.add(pago.id);
+      contratoId = contrato.contratoId;
+      via = "perfecto";
+      const { error } = await sb
+        .from("pagos")
+        .update({
+          estado_conciliacion: "conciliado",
+          contrato_id: contrato.contratoId,
+        })
+        .eq("id", pago.id);
+      if (error) {
+        motivo = `Calzó, pero no pude marcar el pago: ${error.message}`;
+        res.revisar++;
       } else {
-        // El extracto solo trae fecha, no hora → se asume post-corte (sin descuento).
-        const fechaMov = mov.fecha ?? hoyPanama();
-        const pagadoAt = instantePanama(fechaMov, 19, 1).toISOString();
-        const { data: nuevo } = await sb.from("pagos").insert({
-          contrato_id: match.contratoId, fecha: fechaMov, pagado_at: pagadoAt, monto: mov.monto,
-          banco: "Banco General", numero_carro: mov.numeroCarro,
-          estado_conciliacion: "conciliado", origen: "extracto",
-          notas: `Conciliado por extracto (${via}). Sin hora en extracto → asumido después de las 7 p.m.`,
-        }).select("id").single();
-        pagoId = nuevo?.id ?? null;
+        pagoId = pago.id;
+        conciliado = true;
+        estado = mov.monto + 0.01 < contrato.letra ? "parcial" : "aplicado";
+        motivo = "Cruce perfecto: carro, monto, fecha y empresa.";
+        if (estado === "parcial") res.parciales++; else res.aplicados++;
+        res.montoAplicado += mov.monto;
+        porRecalcular.add(`${contrato.contratoId}|${fechaContable(pago.pagadoAt)}`);
       }
-      estado = mov.monto + 0.01 < match.letra ? "parcial" : "aplicado";
-      if (estado === "parcial") res.parciales++; else res.aplicados++;
-      res.montoAplicado += mov.monto;
+    } else if (veredicto.tipo === "ambiguo") {
+      motivo = veredicto.motivo;
+      res.revisar++;
     } else {
+      motivo = veredicto.motivo;
+      contratoId = veredicto.sugerido?.contratoId ?? null;
+      via = veredicto.via;
       res.revisar++;
     }
 
-    await sb.from("movimientos_extracto").insert({
-      extracto_id: extractoId, fecha: mov.fecha, monto: mov.monto,
-      descripcion: mov.descripcion, numero_carro: mov.numeroCarro,
-      nombre_detectado: mov.nombre, contrato_id: match?.contratoId ?? null,
-      conciliado: !!match, pago_id: pagoId, estado,
-    });
+    const fila: Record<string, unknown> = {
+      extracto_id: extractoId,
+      fecha: mov.fecha,
+      monto: mov.monto,
+      descripcion: mov.descripcion,
+      numero_carro: mov.numeroCarro,
+      nombre_detectado: mov.nombre,
+      contrato_id: contratoId,
+      conciliado,
+      pago_id: pagoId,
+      estado,
+      motivo,
+      via,
+    };
+    const { error: errMov } = await sb.from("movimientos_extracto").insert(fila);
+    if (errMov && /motivo|via/i.test(errMov.message)) {
+      // Migración 0013 aún no corrida: guardamos sin las columnas nuevas.
+      delete fila.motivo;
+      delete fila.via;
+      await sb.from("movimientos_extracto").insert(fila);
+    }
 
-    res.detalle.push({ fecha: mov.fecha, descripcion: mov.descripcion, monto: mov.monto, carro: mov.numeroCarro, via, estado });
+    res.detalle.push({
+      fecha: mov.fecha,
+      descripcion: mov.descripcion,
+      monto: mov.monto,
+      carro: mov.numeroCarro,
+      via,
+      estado,
+      motivo,
+    });
   }
 
-  // El pago ya está confirmado por el banco: si esa noche se le puso recargo
-  // (o se le difirió), ahora se decide con la hora real del comprobante.
   for (const clave of porRecalcular) {
     const [contratoId, fecha] = clave.split("|");
     try {
       await recalcularRecargo(contratoId, fecha);
     } catch (e) {
       console.error("[extracto] no pude recalcular el recargo de", clave, e);
+    }
+  }
+
+  // Comprobantes de días que SÍ vinieron en este PDF y no calzaron: el recargo
+  // diferido se revisa. Si la gracia venció, entra; si el pago era bueno y el
+  // banco no lo trajo, el equipo lo ve en "por revisar".
+  for (const p of pendientes) {
+    if (usados.has(p.id) || !p.contratoId) continue;
+    const dia = fechaContable(p.pagadoAt);
+    const cubierto = fechasMov.has(dia) || fechasMov.has(sumarDias(dia, 1));
+    if (!cubierto) continue;
+    try {
+      await recalcularRecargo(p.contratoId, dia);
+    } catch (e) {
+      console.error("[extracto] no pude recalcular recargo de pendiente", p.id, e);
     }
   }
 

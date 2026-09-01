@@ -59,7 +59,7 @@ export default async function ExtractosPage() {
           2 · Extracto bancario
         </h2>
         <p className="mt-1 mb-4 text-sm text-muted">
-          Un PDF por empresa. El cruce usa solo esa flota, no mezcla Autolujo con Kowua ni Gold.
+          Un PDF por empresa. Solo se concilia lo que calza en carro, monto, fecha y cuenta; el resto queda para revisión.
         </p>
         {empresas.length === 0 ? (
           <p className="rounded-xl bg-surface p-4 text-sm text-muted ring-1 ring-line">

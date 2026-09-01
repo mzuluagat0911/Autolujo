@@ -7,9 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "probar": "npm run probar:fechas && npm run probar:guard",
+    "probar": "npm run probar:fechas && npm run probar:guard && npm run probar:cruce",
     "probar:fechas": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-fechas.mts",
-    "probar:guard": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-guard.mts"
+    "probar:guard": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-guard.mts",
+    "probar:cruce": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-cruce.mts"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",

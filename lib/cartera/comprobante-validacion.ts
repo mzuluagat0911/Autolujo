@@ -10,6 +10,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { hoyPanama, sumarDias } from "./fecha";
+import { digitos, mismaCuenta } from "./cuenta";
 
 /** Días hacia atrás que se aceptan sin levantar la mano. */
 const DIAS_TOLERANCIA = 7;
@@ -37,9 +38,7 @@ export type Veredicto = {
 };
 
 /** Solo los dígitos, para comparar cuentas escritas de mil formas. */
-function digitos(v: string | null | undefined): string {
-  return (v ?? "").replace(/\D/g, "");
-}
+export { digitos, mismaCuenta } from "./cuenta";
 
 /**
  * La referencia viene de un OCR. Un `%` o un `_` leídos de más convertirían el
@@ -48,18 +47,6 @@ function digitos(v: string | null | undefined): string {
  */
 function escaparLike(v: string): string {
   return v.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-}
-
-/**
- * ¿La cuenta leída es una de las nuestras? Los comprobantes suelen enmascarar
- * la cuenta ("****9347"), así que basta con que una termine en la otra y que
- * la parte visible tenga al menos 4 dígitos.
- */
-function mismaCuenta(leida: string, nuestra: string): boolean {
-  const a = digitos(leida);
-  const b = digitos(nuestra);
-  if (a.length < 4 || b.length < 4) return false;
-  return a === b || a.endsWith(b) || b.endsWith(a);
 }
 
 export async function validarComprobante(opts: {
