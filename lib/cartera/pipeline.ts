@@ -4,6 +4,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
+import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
 
 const BUCKET = "comprobantes";
 
@@ -93,7 +94,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
   const sb = createServerSupabase();
   const { data: c } = await sb
     .from("contratos")
-    .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero)")
+    .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, nombre))")
     .eq("id", contratoId)
     .maybeSingle();
   if (!c) return null;
@@ -104,7 +105,26 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     .maybeSingle();
 
   const saldo = Math.max(Number((s as { saldo_actual: number } | null)?.saldo_actual ?? 0), 0);
-  const carro = (c.vehiculo as unknown as { numero: string } | null)?.numero ?? "";
+  const veh = c.vehiculo as unknown as { numero: string; empresa: { id: string; nombre: string } | null } | null;
+  const carro = veh?.numero ?? "";
+  const empresa = veh?.empresa ?? null;
+
+  // Cuenta de cobro de la EMPRESA de este carro (nunca la de otra empresa).
+  let cuentaTexto = "Para transferir, pídele al equipo la cuenta de tu empresa.";
+  if (empresa?.id) {
+    const { data: cta } = await sb
+      .from("cuentas_bancarias")
+      .select("banco, numero_cuenta, tipo, titular")
+      .eq("empresa_id", empresa.id)
+      .ilike("tipo", "AHORROS")
+      .limit(1)
+      .maybeSingle();
+    const ct = cta as { banco: string; numero_cuenta: string; tipo: string; titular: string } | null;
+    if (ct?.numero_cuenta) {
+      cuentaTexto = `${ct.banco} · ${ct.tipo === "AHORROS" ? "Ahorros" : ct.tipo} · cuenta ${ct.numero_cuenta} · a nombre de ${ct.titular}`;
+    }
+  }
+
   const puntual = Number(c.letra_diaria);                       // cuota pagando puntual (con descuento)
   const desc = Number(c.descuento_puntual ?? 0);
   const sinDesc = puntual + desc;                               // cuota si NO paga puntual
@@ -127,6 +147,13 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `- "¿Cuánto pago mañana si no pago hoy?" = saldo (${m(saldo)}) + cuota de mañana. Si mañana paga puntual, la de mañana es ${m(puntual)}.`,
     `- "¿Cuánto es la cuota de hoy + la de mañana?" (sin el acumulado) = ${m(sinDesc)} (hoy sin descuento) + ${m(puntual)} (mañana puntual).`,
     `- Nunca dupliques la cuota de hoy: o está en el saldo, o la sumas aparte, pero no ambas.`,
+    ``,
+    `CÓMO PUEDE PAGAR ESTE CLIENTE (dale la opción que necesite):`,
+    `- Su carro es de la empresa ${empresa?.nombre ?? "—"}. Para TRANSFERIR, la cuenta de SU empresa es:`,
+    `  ${cuentaTexto}.`,
+    `  Debe poner el número de carro (${carro}) en el comentario y enviar el comprobante por aquí.`,
+    `  IMPORTANTE: dale SOLO la cuenta de su empresa; jamás la de otra empresa.`,
+    pagoEnOficinaTexto(),
   ].join("\n");
 }
 

@@ -1,7 +1,7 @@
 import { generateObject } from "ai";
 import { z } from "zod";
 import { modeloTexto } from "./provider";
-import { mediosDePagoTexto } from "@/lib/cartera/medios-pago";
+import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
 
 // El agente conversacional de cartera. Habla como una persona real del equipo.
 // NO calcula dinero (eso lo hace el código); solo conversa y decide si escalar.
@@ -33,10 +33,12 @@ TONO:
 
 DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
 - El pago es diario, de lunes a sábado. Los domingos son libres (no se cobra cuota).
-- Horario de pago: 8:00 a.m. a 7:00 p.m. Pagar puntual (antes de las 7 p.m.) puede dar un
-  descuento por pago puntual; pagar después de las 7 p.m. pierde ese descuento.
+- Descuento por pago puntual: aplica si paga antes de las 7:00 p.m.; después de esa hora
+  pierde el descuento del día. (Ojo: esto es distinto al horario de las oficinas.)
 - Al transferir, siempre poner el NÚMERO DE CARRO en el comentario del pago y enviar el
   comprobante por aquí. Así se aplica el pago.
+- La cuenta para transferir es la de la EMPRESA del carro (cada carro paga a su empresa).
+  Usa solo la que aparezca en el CONTEXTO; nunca des la cuenta de otra empresa.
 
 REGLAS ESTRICTAS (NUNCA las rompas):
 - Si en el CONTEXTO tienes el saldo/cifras del cliente → dáselos DE INMEDIATO, con el número
@@ -85,8 +87,11 @@ export async function responderAgente(opts: {
     role: (m.direccion === "in" ? "user" : "assistant") as "user" | "assistant",
     content: m.texto,
   }));
-  const base = `${SISTEMA}\n\n${mediosDePagoTexto()}`;
-  const system = opts.contexto ? `${base}\n\nCONTEXTO DEL CLIENTE:\n${opts.contexto}` : base;
+  // Con CONTEXTO, el resumen del contrato ya trae la cuenta de la empresa del
+  // carro + las oficinas. Sin contexto, damos solo la info general de oficinas.
+  const system = opts.contexto
+    ? `${SISTEMA}\n\nCONTEXTO DEL CLIENTE:\n${opts.contexto}`
+    : `${SISTEMA}\n\nMEDIOS DE PAGO (info general):\n${pagoEnOficinaTexto()}\nPara TRANSFERIR, la cuenta depende de la empresa del carro; si no la tienes, pídele el número de carro o dile que en un momento se la confirmas.`;
 
   const { object } = await generateObject({
     model: modeloTexto(),
