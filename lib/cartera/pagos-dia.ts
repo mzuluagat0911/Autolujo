@@ -92,6 +92,38 @@ export async function comprobantePendienteContrato(
   };
 }
 
+export type PagoReciente = {
+  monto: number;
+  pagado_at: string;
+  estado: string;
+  origen: string | null;
+};
+
+/** Últimos pagos del contrato, de cualquier estado (el agente necesita verlos). */
+export async function pagosRecientesContrato(
+  contratoId: string,
+  limite = 5,
+): Promise<PagoReciente[]> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("pagos")
+    .select("monto, pagado_at, estado_conciliacion, origen")
+    .eq("contrato_id", contratoId)
+    .order("pagado_at", { ascending: false })
+    .limit(limite);
+  return ((data ?? []) as {
+    monto: number;
+    pagado_at: string;
+    estado_conciliacion: string;
+    origen: string | null;
+  }[]).map((p) => ({
+    monto: Number(p.monto),
+    pagado_at: p.pagado_at,
+    estado: p.estado_conciliacion,
+    origen: p.origen,
+  }));
+}
+
 /** Para un solo contrato: ¿pagó hoy? ¿fue puntual? */
 export async function pagoHoyContrato(
   contratoId: string,

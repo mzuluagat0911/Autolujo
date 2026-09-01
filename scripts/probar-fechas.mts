@@ -11,6 +11,7 @@ import {
   diaSemana, sumarDias, diasEntre, esDomingo,
 } from "@/lib/cartera/fecha";
 import { cuotaDeFecha, tarifaPlena, penalidadDe, type TerminosCuota } from "@/lib/cartera/cuota";
+import { calcularCifras, type EntradaCifras } from "@/lib/cartera/cifras";
 
 let fallos = 0;
 function check(nombre: string, obtenido: unknown, esperado: unknown) {
@@ -85,6 +86,39 @@ check("tarifa plena del domingo pactado", tarifaPlena(conDomingo, "2026-09-06"),
 const sinDescuento: TerminosCuota = { letra_diaria: 30, descuento_puntual: null, cobra_domingo: false, cuota_domingo: null };
 check("sin descuento pactado no hay recargo", penalidadDe(sinDescuento), 0);
 check("y la tarifa plena es la cuota", tarifaPlena(sinDescuento, "2026-09-01"), 30);
+
+// --- Una sola fuente de cifras (lo que ve el cliente) -----------------------
+console.log("\n· Cifras del día");
+const T: TerminosCuota = { letra_diaria: 30, descuento_puntual: 5, cobra_domingo: false, cuota_domingo: null };
+const base = (over: Partial<EntradaCifras>): EntradaCifras => ({
+  terminos: T, saldo: 30, pagoHoy: false, pagoPuntual: false, pendiente: false,
+  hoy: "2026-09-01", corte: false, multaHoyRegistrada: false, hoyYaDevengado: true,
+  ...over,
+});
+
+check("devengado, sin pagar, antes del corte: debe $30", calcularCifras(base({})).totalHoy, 30);
+check("y avisa $35 si paga tarde", calcularCifras(base({})).totalHoyTarde, 35);
+check("mañana suma otra cuota: $65", calcularCifras(base({})).totalManana, 65);
+
+check("después del corte sin pagar: recargo $5", calcularCifras(base({ corte: true })).recargo, 5);
+check("total con recargo $35", calcularCifras(base({ corte: true })).totalHoy, 35);
+check("si la multa ya está en el saldo, no se duplica", calcularCifras(base({ corte: true, multaHoyRegistrada: true, saldo: 35 })).totalHoy, 35);
+
+check("comprobante pendiente congela el recargo tras el corte", calcularCifras(base({ corte: true, pendiente: true })).recargo, 0);
+check("y el total sigue en $30", calcularCifras(base({ corte: true, pendiente: true })).totalHoy, 30);
+
+check("pagó puntual: $0 si no debía de antes", calcularCifras(base({ pagoHoy: true, pagoPuntual: true, saldo: 0 })).totalHoy, 0);
+
+const sinDevengar = calcularCifras(base({ hoyYaDevengado: false, saldo: 0 }));
+check("cron no ha corrido: se suma la cuota de hoy", sinDevengar.faltaHoy, 30);
+check("total igual que si ya estuviera devengada", sinDevengar.totalHoy, 30);
+
+const pagoSinRenta = calcularCifras(base({ hoyYaDevengado: false, saldo: -30, pagoHoy: true, pagoPuntual: true }));
+check("pagó $30 y la renta aún no existe: saldo negativo cancela la cuota", pagoSinRenta.totalHoy, 0);
+
+check("max(saldo,0) ANTES de sumar la cuota habría cobrado de más", pagoSinRenta.cuenta, 0);
+
+check("domingo libre no cobra ni recarga", calcularCifras(base({ hoy: "2026-09-06", corte: true, saldo: 0 })).totalHoy, 0);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

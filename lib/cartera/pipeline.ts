@@ -6,9 +6,8 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
 import { hoyPanama, horaPanama, pasoCorte, fechaConDia, sumarDias, fechaContable } from "@/lib/cartera/fecha";
-import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "@/lib/cartera/cuota";
-import { ultimoDiaDevengado } from "@/lib/cartera/devengo";
-import { pagoHoyContrato } from "@/lib/cartera/pagos-dia";
+import { estadoCuentaContrato, money } from "@/lib/cartera/estado-cuenta";
+import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
 import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
 
@@ -168,42 +167,30 @@ async function marcarAmbiguo(conversacionId: string, motivo: string): Promise<vo
     .eq("id", conversacionId);
 }
 
+function etiquetaPago(estado: string): string {
+  if (estado === "conciliado" || estado === "manual") return "validado";
+  if (estado === "pendiente") return "EN VALIDACIÓN (aún no baja el saldo)";
+  if (estado === "rechazado") return "rechazado";
+  return estado;
+}
+
 /** Resumen del contrato para el CONTEXTO del agente (cifras reales, no inventadas). */
 export async function resumenContrato(contratoId: string): Promise<string | null> {
-  const sb = createServerSupabase();
-  const { data: c } = await sb
-    .from("contratos")
-    .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, nombre))")
-    .eq("id", contratoId)
-    .maybeSingle();
-  if (!c) return null;
+  const est = await estadoCuentaContrato(contratoId);
+  if (!est) return null;
 
+  const sb = createServerSupabase();
   const hoy = hoyPanama();
   const manana = sumarDias(hoy, 1);
-  const corte = pasoCorte();
+  const yaCorte = pasoCorte();
+  const m = money;
 
-  const [saldoRes, pagoRes, devengadoHasta, multaRes] = await Promise.all([
-    sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
-    pagoHoyContrato(contratoId, hoy),
-    ultimoDiaDevengado(contratoId),
-    sb.from("cargos").select("id").eq("contrato_id", contratoId).eq("fecha", hoy)
-      .eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE").limit(1),
-  ]);
-
-  const saldo = Math.max(Number((saldoRes.data as { saldo_actual: number } | null)?.saldo_actual ?? 0), 0);
-  const pagoHoy = pagoRes.pagoHoy;
-  const pagoPuntual = pagoRes.pagoPuntual;
-  const veh = c.vehiculo as unknown as { numero: string; empresa: { id: string; nombre: string } | null } | null;
-  const carro = veh?.numero ?? "";
-  const empresa = veh?.empresa ?? null;
-
-  // Cuenta de cobro de la EMPRESA de este carro (nunca la de otra empresa).
   let cuentaTexto = "Para transferir, pídele al equipo la cuenta de tu empresa.";
-  if (empresa?.id) {
+  if (est.empresaId) {
     const { data: cta } = await sb
       .from("cuentas_bancarias")
       .select("banco, numero_cuenta, tipo, titular")
-      .eq("empresa_id", empresa.id)
+      .eq("empresa_id", est.empresaId)
       .ilike("tipo", "AHORROS")
       .limit(1)
       .maybeSingle();
@@ -213,74 +200,54 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     }
   }
 
-  const terminos: TerminosCuota = {
-    letra_diaria: Number(c.letra_diaria),
-    descuento_puntual: c.descuento_puntual as number | null,
-    cobra_domingo: c.cobra_domingo as boolean | null,
-    cuota_domingo: c.cuota_domingo as number | null,
-  };
-  const puntual = Number(c.letra_diaria);   // cuota pagando puntual (con descuento)
-  const penalidad = penalidadDe(terminos);  // se pierde el descuento tras el corte
-  const cuotaHoy = cuotaDeFecha(terminos, hoy);
-  const cuotaManana = cuotaDeFecha(terminos, manana);
-
-  // El saldo de la vista solo llega hasta el último día devengado. Si el cargo
-  // de hoy todavía no se generó, hay que sumarlo aquí — no asumirlo incluido.
-  const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
-  const faltaHoy = hoyYaDevengado ? 0 : cuotaHoy;
-  const multaHoyRegistrada = (multaRes.data ?? []).length > 0;
-  const recargoCausado = !pagoPuntual && corte && !multaHoyRegistrada ? penalidad : 0;
-
-  const totalHoy = saldo + faltaHoy + recargoCausado;
-  const totalHoyTarde = corte || pagoHoy ? totalHoy : totalHoy + penalidad;
-  const totalManana = totalHoyTarde + cuotaManana;
-
-  const m = (n: number) => `$${Number.isInteger(n) ? n : n.toFixed(2)}`;
-  const domingos = c.cobra_domingo
-    ? `SÍ cobra los domingos (cuota domingo ${m(Number(c.cuota_domingo) || puntual)})`
+  const pagos = await pagosRecientesContrato(contratoId, 5);
+  const tarifaPlenaDia = est.letra + est.penalidad;
+  const domingos = est.cobraDomingo
+    ? `SÍ cobra los domingos (cuota domingo ${m(est.cuotaDomingo || est.letra)})`
     : "NO cobra los domingos (domingos libres)";
 
   const lineas = [
     `FECHA Y HORA REALES (Panamá). Úsalas; NUNCA supongas otro día ni otra hora:`,
     `- Hoy es ${fechaConDia(hoy)}. Son las ${horaPanama()}.`,
     `- Mañana es ${fechaConDia(manana)}.`,
-    corte
+    yaCorte
       ? `- El corte de las 7:00 p.m. YA PASÓ hoy: si paga ahora, es sin descuento.`
       : `- Todavía NO son las 7:00 p.m.: si paga hoy antes de esa hora, conserva el descuento.`,
     ``,
     `DATOS EXACTOS del contrato de ESTE cliente (usa SOLO estos números; nunca inventes ni estimes otros):`,
-    `- Carro: ${carro}`,
-    `- Cuota diaria pagando PUNTUAL (antes de las 7:00 p.m.): ${m(puntual)}.`,
-    `- Si paga después del corte se le suman ${m(penalidad)} (pierde el descuento de ESE día).`,
-    `- Días atrasados sin pagar quedan a tarifa plena (${m(puntual + penalidad)} por día, no ${m(puntual)}).`,
+    `- Carro: ${est.vehiculoNumero}`,
+    `- Cuota diaria pagando PUNTUAL (antes de las 7:00 p.m.): ${m(est.letra)}.`,
+    `- Si paga después del corte se le suman ${m(est.penalidad)} (pierde el descuento de ESE día).`,
+    `- Días atrasados sin pagar quedan a tarifa plena (${m(tarifaPlenaDia)} por día, no ${m(est.letra)}).`,
     `- Domingos: ${domingos}.`,
-    cuotaHoy > 0
-      ? `- Hoy SÍ corre cuota (${m(cuotaHoy)}).`
+    est.cuotaHoy > 0
+      ? `- Hoy SÍ corre cuota (${m(est.cuotaHoy)}).`
       : `- Hoy NO corre cuota (día libre para este contrato).`,
-    pagoHoy
-      ? pagoPuntual
-        ? `- Este cliente YA pagó hoy PUNTUAL (antes de las 7:00 p.m.).`
-        : `- Este cliente pagó hoy DESPUÉS del corte (sin descuento de ese día).`
-      : `- Hoy NO tiene ningún pago registrado todavía.`,
+    est.pagoHoy
+      ? est.pagoPuntual
+        ? `- Este cliente YA pagó hoy PUNTUAL (antes de las 7:00 p.m.). El pago YA está descontado del saldo.`
+        : `- Este cliente pagó hoy DESPUÉS del corte (sin descuento de ese día). El pago YA está descontado del saldo.`
+      : est.pendiente
+        ? `- Este cliente mandó comprobante hoy por ${m(est.pendienteMonto)} y está EN VALIDACIÓN. AÚN NO está descontado del saldo. NO le digas que ya pagó ni que queda al día.`
+        : `- Hoy NO tiene ningún pago validado todavía.`,
     ``,
     `CIFRAS YA CALCULADAS POR EL SISTEMA — dalas TAL CUAL. Está PROHIBIDO que sumes,`,
     `restes o estimes por tu cuenta: si la cifra no está en esta lista, no la des.`,
-    `- Lo que debe pagar HOY: ${m(totalHoy)}.`,
-    corte || pagoHoy
+    `- Lo que debe pagar HOY: ${m(est.totalHoy)}.`,
+    yaCorte || est.pagoHoy || est.pendiente
       ? `- Ese monto ya considera la situación de hoy.`
-      : `- Si paga hoy DESPUÉS de las 7:00 p.m.: ${m(totalHoyTarde)}.`,
-    cuotaManana > 0
-      ? `- Si NO paga hoy y paga mañana: ${m(totalManana)}.`
-      : `- Mañana no corre cuota nueva; si no paga hoy, mañana seguiría en ${m(totalHoyTarde)}.`,
+      : `- Si paga hoy DESPUÉS de las 7:00 p.m.: ${m(est.totalHoyTarde)}.`,
+    est.cuotaManana > 0
+      ? `- Si NO paga hoy y paga mañana: ${m(est.totalManana)}.`
+      : `- Mañana no corre cuota nueva; si no paga hoy, mañana seguiría en ${m(est.totalHoyTarde)}.`,
     `- Ese total sale de sumar las cuotas diarias que aún no se han cubierto; cada pago`,
-    `  que el cliente ya envió y quedó validado ya está descontado ahí.`,
+    `  VALIDADO ya está descontado. Un comprobante en validación NO baja el saldo.`,
     `- Si te piden una cifra distinta a estas (otro plazo, otro escenario, un desglose que`,
     `  no tienes), NO la calcules: dile con calidez que en un momento se la confirman y`,
     `  marca pasar_a_humano = true.`,
   ];
 
-  // Sin devengo no se puede sostener el número: mejor que lo vea una persona.
-  if (devengadoHasta == null) {
+  if (est.devengadoHasta == null) {
     lineas.push(
       `- ⚠️ AVISO INTERNO: el sistema aún no tiene registradas las cuotas diarias de este`,
       `  contrato, así que el total puede estar incompleto. Si el cliente pregunta por su`,
@@ -288,12 +255,23 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     );
   }
 
+  if (pagos.length > 0) {
+    lineas.push(``, `PAGOS RECIENTES DE ESTE CONTRATO (para si pregunta por un comprobante):`);
+    for (const p of pagos) {
+      const dia = fechaContable(p.pagado_at);
+      const hora = horaPanama(new Date(p.pagado_at));
+      lineas.push(
+        `- ${dia} ${hora}: ${m(p.monto)} · ${etiquetaPago(p.estado)}${p.origen ? ` (${p.origen})` : ""}`,
+      );
+    }
+  }
+
   lineas.push(
     ``,
     `CÓMO PUEDE PAGAR ESTE CLIENTE (dale la opción que necesite):`,
-    `- Su carro es de la empresa ${empresa?.nombre ?? "—"}. Para TRANSFERIR, la cuenta de SU empresa es:`,
+    `- Su carro es de la empresa ${est.empresaNombre ?? est.empresa ?? "—"}. Para TRANSFERIR, la cuenta de SU empresa es:`,
     `  ${cuentaTexto}.`,
-    `  Debe poner el número de carro (${carro}) en el comentario y enviar el comprobante por aquí.`,
+    `  Debe poner el número de carro (${est.vehiculoNumero}) en el comentario y enviar el comprobante por aquí.`,
     `  IMPORTANTE: dale SOLO la cuenta de su empresa; jamás la de otra empresa.`,
     pagoEnOficinaTexto(),
   );

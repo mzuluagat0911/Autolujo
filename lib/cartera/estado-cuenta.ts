@@ -3,13 +3,25 @@
 //   $60 cuenta · $5 por no pagar · $90 domingo 30  →  Total a pagar hoy: $65
 // Todo determinista (código), nunca el LLM.
 //
-// El saldo viene de vw_saldo_contrato, que depende del devengo diario
-// (lib/cartera/devengo.ts). Si el devengo no corrió, el saldo no incluye la
-// cuota de hoy.
+// Esta es la ÚNICA fuente de las cifras. El contexto del agente, el envío
+// masivo y el panel leen de aquí. Si cada uno calcula lo suyo, el mismo chat
+// termina dando dos números distintos para lo mismo.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama, pasoCorte, fechaLarga, sumarDias, esDomingo } from "./fecha";
-import { contratosConPagoEnDia, contratosConPagoPuntualEnDia, pagoHoyContrato } from "./pagos-dia";
+import { hoyPanama, pasoCorte, fechaLarga, sumarDias } from "./fecha";
+import type { TerminosCuota } from "./cuota";
+import { calcularCifras, type Cifras } from "./cifras";
+import {
+  contratosConPagoEnDia,
+  contratosConPagoPuntualEnDia,
+  contratosConComprobantePendienteEnDia,
+  pagoHoyContrato,
+  comprobantePendienteContrato,
+} from "./pagos-dia";
+import { ultimoDiaDevengado } from "./devengo";
+
+export { calcularCifras } from "./cifras";
+export type { Cifras, EntradaCifras } from "./cifras";
 
 /** "$60" si es entero, "$60.50" si tiene centavos. */
 export function money(n: number): string {
@@ -17,97 +29,99 @@ export function money(n: number): string {
   return "$" + (Number.isInteger(v) ? String(v) : v.toFixed(2));
 }
 
-export type EstadoCuenta = {
+export type EstadoCuenta = Cifras & {
   contratoId: string;
   vehiculoNumero: string;
   empresa: string | null;
+  empresaId: string | null;
+  empresaNombre: string | null;
   clienteNombre: string;
   waNumero: string | null;
-  letra: number;
-  cuenta: number;         // saldo pendiente (la "cuenta")
-  recargo: number;        // recargo YA causado (solo si pasó el corte sin pagar)
-  recargoSiTarda: number; // lo que se suma si no paga antes de las 7 p.m.
-  domingo: number | null; // cargo de domingo próximo (informativo)
-  domingoDia: number | null;
-  totalHoy: number;       // cuenta + recargo causado
   pagoHoy: boolean;
-  desglose: string;       // línea para el mensaje/template
-  fecha: string;          // "29 de agosto"
-  // Variables listas para el template estado_cuenta_diario:
+  pagoPuntual: boolean;
+  pendiente: boolean;
+  pendienteMonto: number;
+  pendienteHora: string | null;
+  hoyYaDevengado: boolean;
+  devengadoHasta: string | null;
+  cobraDomingo: boolean;
+  cuotaDomingo: number;
+  desglose: string;
+  fecha: string;
   templateVars: [string, string, string, string, string];
 };
 
-type ContratoRow = {
+type ContratoRow = TerminosCuota & {
   id: string;
-  letra_diaria: number;
-  descuento_puntual: number | null;
-  cobra_domingo: boolean | null;
-  cuota_domingo: number | null;
-  vehiculo: { numero: string; empresa: { codigo: string } | null } | null;
+  vehiculo: {
+    numero: string;
+    empresa: { id: string; codigo: string; nombre: string } | null;
+  } | null;
   cliente: { nombre: string; whatsapp: string | null } | null;
 };
 
-function construir(
+function armar(
   c: ContratoRow,
-  saldo: number,
-  pagoHoy: boolean,
-  pagoPuntual: boolean,
-  hoy: string,
-  corte: boolean,
-  multaHoyRegistrada: boolean,
+  cifras: Cifras,
+  extra: {
+    hoy: string;
+    pagoHoy: boolean;
+    pagoPuntual: boolean;
+    pendiente: boolean;
+    pendienteMonto: number;
+    pendienteHora: string | null;
+    hoyYaDevengado: boolean;
+    devengadoHasta: string | null;
+  },
 ): EstadoCuenta {
-  const letra = Number(c.letra_diaria) || 0;
-  const cuenta = Math.max(saldo, 0);
+  const manana = sumarDias(extra.hoy, 1);
+  const partes = [`${money(cifras.cuenta)} cuenta`];
+  if (cifras.recargo > 0) partes.push(`${money(cifras.recargo)} por no pagar`);
+  else if (cifras.recargoSiTarda > 0) {
+    partes.push(`${money(cifras.recargoSiTarda)} si pagas después de las 7 p.m.`);
+  }
+  if (cifras.domingo) partes.push(`${money(cifras.domingo)} domingo ${Number(manana.slice(8, 10))}`);
 
-  // El recargo por no pagar solo existe DESPUÉS de las 7 p.m. Antes del corte
-  // el cliente todavía conserva el descuento. Si el cron de las 7 p.m. ya lo
-  // anotó como cargo multa, el saldo ya lo trae — no sumarlo otra vez.
-  const penalidad = Number(c.descuento_puntual ?? 0);
-  const causado = !pagoPuntual && corte && !multaHoyRegistrada;
-  const recargo = causado ? penalidad : 0;
-  const recargoSiTarda = !pagoPuntual && !corte && !pagoHoy ? penalidad : 0;
-
-  // ¿mañana es domingo y este contrato cobra domingo?
-  const manana = sumarDias(hoy, 1);
-  const domingo =
-    esDomingo(manana) && c.cobra_domingo
-      ? Number(c.cuota_domingo ?? 0) || null
-      : null;
-
-  const totalHoy = cuenta + recargo;
-
-  const partes = [`${money(cuenta)} cuenta`];
-  if (recargo > 0) partes.push(`${money(recargo)} por no pagar`);
-  else if (recargoSiTarda > 0) partes.push(`${money(recargoSiTarda)} si pagas después de las 7 p.m.`);
-  if (domingo) partes.push(`${money(domingo)} domingo ${Number(manana.slice(8, 10))}`);
-  const desglose = partes.join(" · ");
-
-  const fecha = fechaLarga(hoy);
-  const nombre = c.cliente?.nombre?.split(" ")[0] ?? "cliente"; // primer nombre
+  const fecha = fechaLarga(extra.hoy);
+  const nombre = c.cliente?.nombre?.split(" ")[0] ?? "cliente";
   const carro = c.vehiculo?.numero ?? "—";
+  const emp = c.vehiculo?.empresa ?? null;
 
   return {
+    ...cifras,
     contratoId: c.id,
     vehiculoNumero: carro,
-    empresa: c.vehiculo?.empresa?.codigo ?? null,
+    empresa: emp?.codigo ?? null,
+    empresaId: emp?.id ?? null,
+    empresaNombre: emp?.nombre ?? null,
     clienteNombre: c.cliente?.nombre ?? "Sin nombre",
     waNumero: c.cliente?.whatsapp ?? null,
-    letra,
-    cuenta,
-    recargo,
-    recargoSiTarda,
-    domingo,
-    domingoDia: domingo ? Number(manana.slice(8, 10)) : null,
-    totalHoy,
-    pagoHoy,
-    desglose,
+    pagoHoy: extra.pagoHoy,
+    pagoPuntual: extra.pagoPuntual,
+    pendiente: extra.pendiente,
+    pendienteMonto: extra.pendienteMonto,
+    pendienteHora: extra.pendienteHora,
+    hoyYaDevengado: extra.hoyYaDevengado,
+    devengadoHasta: extra.devengadoHasta,
+    cobraDomingo: Boolean(c.cobra_domingo),
+    cuotaDomingo: Number(c.cuota_domingo) || 0,
+    desglose: partes.join(" · "),
     fecha,
-    templateVars: [nombre, carro, fecha, desglose, money(totalHoy)],
+    templateVars: [nombre, carro, fecha, partes.join(" · "), money(cifras.totalHoy)],
+  };
+}
+
+function terminosDe(c: ContratoRow): TerminosCuota {
+  return {
+    letra_diaria: Number(c.letra_diaria),
+    descuento_puntual: c.descuento_puntual,
+    cobra_domingo: c.cobra_domingo,
+    cuota_domingo: c.cuota_domingo,
   };
 }
 
 const SEL =
-  "id, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(codigo)), cliente:clientes(nombre, whatsapp)";
+  "id, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
 
 /** Estado de cuenta de un solo contrato. */
 export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCuenta | null> {
@@ -116,23 +130,56 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
 
   const { data: c } = await sb.from("contratos").select(SEL).eq("id", contratoId).maybeSingle();
   if (!c) return null;
+  const row = c as unknown as ContratoRow;
 
-  const { data: s } = await sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle();
-  const { pagoHoy, pagoPuntual } = await pagoHoyContrato(contratoId, hoy);
-  const { data: multa } = await sb
-    .from("cargos").select("id")
-    .eq("contrato_id", contratoId).eq("fecha", hoy)
-    .eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE").limit(1);
+  const [s, pago, multa, devengadoHasta, pend] = await Promise.all([
+    sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
+    pagoHoyContrato(contratoId, hoy),
+    sb.from("cargos").select("id").eq("contrato_id", contratoId).eq("fecha", hoy)
+      .eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE").limit(1),
+    ultimoDiaDevengado(contratoId),
+    comprobantePendienteContrato(contratoId, hoy),
+  ]);
 
-  return construir(
-    c as unknown as ContratoRow,
-    Number((s as { saldo_actual: number } | null)?.saldo_actual ?? 0),
-    pagoHoy,
-    pagoPuntual,
+  const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
+  const cifras = calcularCifras({
+    terminos: terminosDe(row),
+    saldo: Number((s.data as { saldo_actual: number } | null)?.saldo_actual ?? 0),
+    pagoHoy: pago.pagoHoy,
+    pagoPuntual: pago.pagoPuntual,
+    pendiente: pend.pendiente,
     hoy,
-    pasoCorte(),
-    (multa?.length ?? 0) > 0,
-  );
+    corte: pasoCorte(),
+    multaHoyRegistrada: (multa.data?.length ?? 0) > 0,
+    hoyYaDevengado,
+  });
+
+  return armar(row, cifras, {
+    hoy,
+    pagoHoy: pago.pagoHoy,
+    pagoPuntual: pago.pagoPuntual,
+    pendiente: pend.pendiente,
+    pendienteMonto: pend.monto,
+    pendienteHora: pend.hora,
+    hoyYaDevengado,
+    devengadoHasta,
+  });
+}
+
+/** Última renta de cada contrato en la ventana de catch-up (7 días). */
+async function ultimoDevengoPorContrato(hoy: string): Promise<Map<string, string>> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("cargos")
+    .select("contrato_id, fecha")
+    .eq("tipo", "renta")
+    .gte("fecha", sumarDias(hoy, -7));
+  const out = new Map<string, string>();
+  for (const r of (data ?? []) as { contrato_id: string; fecha: string }[]) {
+    const prev = out.get(r.contrato_id);
+    if (!prev || r.fecha > prev) out.set(r.contrato_id, r.fecha);
+  }
+  return out;
 }
 
 /** Estado de cuenta de TODOS los contratos activos (para el envío del día). */
@@ -141,35 +188,54 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
   const hoy = hoyPanama();
   const corte = pasoCorte();
 
-  const [contratos, saldos, multasHoy, pagaronHoy, pagaronPuntual] = await Promise.all([
-    sb.from("contratos").select(SEL).eq("estado", "activo"),
-    sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual"),
-    sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE"),
-    contratosConPagoEnDia(hoy),
-    contratosConPagoPuntualEnDia(hoy),
-  ]);
+  const [contratos, saldos, multasHoy, pagaronHoy, pagaronPuntual, pendientes, lastRenta] =
+    await Promise.all([
+      sb.from("contratos").select(SEL).eq("estado", "activo"),
+      sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual"),
+      sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa")
+        .eq("concepto_codigo", "PAGO_TARDE"),
+      contratosConPagoEnDia(hoy),
+      contratosConPagoPuntualEnDia(hoy),
+      contratosConComprobantePendienteEnDia(hoy),
+      ultimoDevengoPorContrato(hoy),
+    ]);
 
   const saldoMap = new Map<string, number>();
   for (const s of (saldos.data ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {
     saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
   }
-  const pagaronHoySet = pagaronHoy;
-  const pagaronPuntualSet = pagaronPuntual;
   const multaHoy = new Set((multasHoy.data ?? []).map((g: { contrato_id: string }) => g.contrato_id));
 
   return ((contratos.data ?? []) as unknown as ContratoRow[])
-    .map((c) =>
-      construir(
-        c,
-        saldoMap.get(c.id) ?? 0,
-        pagaronHoySet.has(c.id),
-        pagaronPuntualSet.has(c.id),
+    .map((c) => {
+      const pagoHoy = pagaronHoy.has(c.id);
+      const pagoPuntual = pagaronPuntual.has(c.id);
+      const pendiente = pendientes.has(c.id);
+      const devengadoHasta = lastRenta.get(c.id) ?? null;
+      const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
+      const cifras = calcularCifras({
+        terminos: terminosDe(c),
+        saldo: saldoMap.get(c.id) ?? 0,
+        pagoHoy,
+        pagoPuntual,
+        pendiente,
         hoy,
         corte,
-        multaHoy.has(c.id),
-      ),
-    )
-    // No le cobres a quien YA pagó hoy (transferencia conciliada o pago en oficina).
-    .filter((e) => !e.pagoHoy)
+        multaHoyRegistrada: multaHoy.has(c.id),
+        hoyYaDevengado,
+      });
+      return armar(c, cifras, {
+        hoy,
+        pagoHoy,
+        pagoPuntual,
+        pendiente,
+        pendienteMonto: 0,
+        pendienteHora: null,
+        hoyYaDevengado,
+        devengadoHasta,
+      });
+    })
+    // No le cobres a quien YA pagó hoy, ni a quien tiene comprobante en validación.
+    .filter((e) => !e.pagoHoy && !e.pendiente)
     .sort((a, b) => b.totalHoy - a.totalHoy);
 }

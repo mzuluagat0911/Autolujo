@@ -19,7 +19,6 @@ import {
 import { responderAgente } from "@/lib/ai/agente";
 import { revisarRespuesta } from "@/lib/ai/guard";
 import { transcribirAudio } from "@/lib/ai/transcribir";
-import { estadoCuentaContrato, money } from "@/lib/cartera/estado-cuenta";
 
 type Conv = Conversacion;
 
@@ -331,18 +330,11 @@ async function procesarComprobante(
       respuesta =
         "¡Gracias por enviarnos el comprobante! 🙌 Lo estamos cruzando con el banco para confirmar que entró bien. En cuanto quede validado te confirmamos por aquí.";
     } else if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
-      const est = await estadoCuentaContrato(res.resolucion.contratoId);
       const carro = res.resolucion.etiqueta ?? "tu carro";
-      const nombre = est?.templateVars[0] ? `, ${est.templateVars[0]}` : "";
-      const debia = est?.cuenta ?? 0; // saldo base (sin recargo)
-      const faltante = est ? debia - c.monto! : 0;
-      const base = `¡Gracias${nombre} por enviarnos el comprobante de ${monto} del ${carro}! 🙌 Lo estamos cruzando con el banco para confirmar que entró sin problema.`;
-      if (est && faltante > 0.01) {
-        // Señal tentativa del faltante, sin dar el pago por aplicado.
-        respuesta = `${base} Por lo que veo, quedaría un saldo de ${money(faltante)} para completar hoy; te confirmo apenas esté validado.`;
-      } else {
-        respuesta = `${base} Apenas quede validado te confirmamos por aquí.`;
-      }
+      // El pago todavía no está validado: no restamos el monto del saldo ni
+      // insinuamos un faltante. Una sola cifra vive en estado-cuenta.ts y sale
+      // cuando el cliente pregunta, no aquí.
+      respuesta = `¡Gracias por enviarnos el comprobante de ${monto} del ${carro}! 🙌 Lo estamos cruzando con el banco para confirmar que entró sin problema. Apenas quede validado te confirmamos por aquí.`;
     } else if (res.resolucion.estado === "sin_carro") {
       respuesta = `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 ¿Me confirmas el número de carro para aplicarlo bien? Lo estamos cruzando con el banco para validar que entró.`;
     } else {
