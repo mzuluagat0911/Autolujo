@@ -5,7 +5,7 @@
 
 import { extractText, getDocumentProxy } from "unpdf";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama } from "./fecha";
+import { hoyPanama, instantePanama } from "./fecha";
 
 const MESES: Record<string, string> = {
   ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
@@ -228,11 +228,14 @@ export async function procesarExtractoPDF(
         await sb.from("pagos").update({ estado_conciliacion: "conciliado" }).eq("id", existente.id);
         pagoId = existente.id;
       } else {
+        // El extracto solo trae fecha, no hora → se asume post-corte (sin descuento).
+        const fechaMov = mov.fecha ?? hoyPanama();
+        const pagadoAt = instantePanama(fechaMov, 19, 1).toISOString();
         const { data: nuevo } = await sb.from("pagos").insert({
-          contrato_id: match.contratoId, fecha: mov.fecha, monto: mov.monto,
+          contrato_id: match.contratoId, fecha: fechaMov, pagado_at: pagadoAt, monto: mov.monto,
           banco: "Banco General", numero_carro: mov.numeroCarro,
           estado_conciliacion: "conciliado", origen: "extracto",
-          notas: `Conciliado por extracto (${via}).`,
+          notas: `Conciliado por extracto (${via}). Sin hora en extracto → asumido después de las 7 p.m.`,
         }).select("id").single();
         pagoId = nuevo?.id ?? null;
       }

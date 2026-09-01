@@ -5,6 +5,10 @@
       "schedule": "30 12 * * *"
     },
     {
+      "path": "/api/cron/recargo",
+      "schedule": "5 0 * * *"
+    },
+    {
       "path": "/api/cron/estado-cuenta",
       "schedule": "0 13 * * 1-6"
     }

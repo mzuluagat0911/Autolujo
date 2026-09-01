@@ -9,6 +9,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, pasoCorte, fechaLarga, sumarDias, esDomingo } from "./fecha";
+import { contratosConPagoEnDia, contratosConPagoPuntualEnDia, pagoHoyContrato } from "./pagos-dia";
 
 /** "$60" si es entero, "$60.50" si tiene centavos. */
 export function money(n: number): string {
@@ -50,19 +51,21 @@ function construir(
   c: ContratoRow,
   saldo: number,
   pagoHoy: boolean,
+  pagoPuntual: boolean,
   hoy: string,
   corte: boolean,
+  multaHoyRegistrada: boolean,
 ): EstadoCuenta {
   const letra = Number(c.letra_diaria) || 0;
   const cuenta = Math.max(saldo, 0);
 
   // El recargo por no pagar solo existe DESPUÉS de las 7 p.m. Antes del corte
-  // el cliente todavía conserva el descuento: anunciarlo como cobrado a las
-  // 8 a.m. sería cobrarle algo que aún no ocurrió.
+  // el cliente todavía conserva el descuento. Si el cron de las 7 p.m. ya lo
+  // anotó como cargo multa, el saldo ya lo trae — no sumarlo otra vez.
   const penalidad = Number(c.descuento_puntual ?? 0);
-  const causado = !pagoHoy && corte;
+  const causado = !pagoPuntual && corte && !multaHoyRegistrada;
   const recargo = causado ? penalidad : 0;
-  const recargoSiTarda = !pagoHoy && !corte ? penalidad : 0;
+  const recargoSiTarda = !pagoPuntual && !corte && !pagoHoy ? penalidad : 0;
 
   // ¿mañana es domingo y este contrato cobra domingo?
   const manana = sumarDias(hoy, 1);
@@ -115,17 +118,20 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   if (!c) return null;
 
   const { data: s } = await sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle();
-  const { data: pagos } = await sb
-    .from("pagos").select("id")
+  const { pagoHoy, pagoPuntual } = await pagoHoyContrato(contratoId, hoy);
+  const { data: multa } = await sb
+    .from("cargos").select("id")
     .eq("contrato_id", contratoId).eq("fecha", hoy)
-    .in("estado_conciliacion", ["conciliado", "manual"]).limit(1);
+    .eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE").limit(1);
 
   return construir(
     c as unknown as ContratoRow,
     Number((s as { saldo_actual: number } | null)?.saldo_actual ?? 0),
-    (pagos?.length ?? 0) > 0,
+    pagoHoy,
+    pagoPuntual,
     hoy,
     pasoCorte(),
+    (multa?.length ?? 0) > 0,
   );
 }
 
@@ -135,20 +141,34 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
   const hoy = hoyPanama();
   const corte = pasoCorte();
 
-  const [contratos, saldos, pagosHoy] = await Promise.all([
+  const [contratos, saldos, multasHoy, pagaronHoy, pagaronPuntual] = await Promise.all([
     sb.from("contratos").select(SEL).eq("estado", "activo"),
     sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual"),
-    sb.from("pagos").select("contrato_id").eq("fecha", hoy).in("estado_conciliacion", ["conciliado", "manual"]),
+    sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE"),
+    contratosConPagoEnDia(hoy),
+    contratosConPagoPuntualEnDia(hoy),
   ]);
 
   const saldoMap = new Map<string, number>();
   for (const s of (saldos.data ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {
     saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
   }
-  const pagaronHoy = new Set((pagosHoy.data ?? []).map((p: { contrato_id: string | null }) => p.contrato_id));
+  const pagaronHoySet = pagaronHoy;
+  const pagaronPuntualSet = pagaronPuntual;
+  const multaHoy = new Set((multasHoy.data ?? []).map((g: { contrato_id: string }) => g.contrato_id));
 
   return ((contratos.data ?? []) as unknown as ContratoRow[])
-    .map((c) => construir(c, saldoMap.get(c.id) ?? 0, pagaronHoy.has(c.id), hoy, corte))
+    .map((c) =>
+      construir(
+        c,
+        saldoMap.get(c.id) ?? 0,
+        pagaronHoySet.has(c.id),
+        pagaronPuntualSet.has(c.id),
+        hoy,
+        corte,
+        multaHoy.has(c.id),
+      ),
+    )
     // No le cobres a quien YA pagó hoy (transferencia conciliada o pago en oficina).
     .filter((e) => !e.pagoHoy)
     .sort((a, b) => b.totalHoy - a.totalHoy);

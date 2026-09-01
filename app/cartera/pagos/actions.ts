@@ -9,7 +9,7 @@ import {
   ventanaAbierta,
 } from "@/lib/cartera/pipeline";
 import { money } from "@/lib/cartera/estado-cuenta";
-import { hoyPanama } from "@/lib/cartera/fecha";
+import { hoyPanama, pagadoAtDesdeForm, horaPanama } from "@/lib/cartera/fecha";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { sendText } from "@/lib/whatsapp/client";
 
@@ -55,6 +55,8 @@ export async function registrarPagoManual(
   const montoRaw = String(formData.get("monto") ?? "").replace(",", ".").trim();
   const metodo = String(formData.get("metodo") ?? "").trim(); // "efectivo" | "tarjeta"
   const fecha = String(formData.get("fecha") ?? "").trim() || hoyPanama();
+  const hora = String(formData.get("hora") ?? "").trim() || horaPanama();
+  const pagadoAt = pagadoAtDesdeForm(fecha, hora);
 
   const monto = Number(montoRaw);
   if (!carro) return { ok: false, msg: "Escribe el número de carro." };
@@ -87,6 +89,7 @@ export async function registrarPagoManual(
     contrato_id: r.contratoId,
     cliente_id: r.clienteId,
     fecha,
+    pagado_at: pagadoAt,
     monto,
     metodo,
     numero_carro: carro,

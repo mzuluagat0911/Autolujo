@@ -79,3 +79,45 @@ export function fechaLarga(fecha: string): string {
 export function fechaConDia(fecha: string): string {
   return `${DIAS[diaSemana(fecha)]} ${fechaLarga(fecha)}`;
 }
+
+/** Instante en zona Panamá → Date UTC. */
+export function instantePanama(fecha: string, hora: number, minuto = 0): Date {
+  return new Date(
+    `${fecha}T${String(hora).padStart(2, "0")}:${String(minuto).padStart(2, "0")}:00-05:00`,
+  );
+}
+
+/** Límites del día operativo en Panamá (para consultas a `pagado_at`). */
+export function rangoDiaPanama(fecha: string): { desde: Date; corte: Date; hasta: Date } {
+  return {
+    desde: instantePanama(fecha, 0, 0),
+    corte: instantePanama(fecha, HORA_CORTE, 0),
+    hasta: instantePanama(sumarDias(fecha, 1), 0, 0),
+  };
+}
+
+/** ¿El pago entró ese día en Panamá y antes de las 7:00 p.m.? */
+export function esPagoPuntual(pagadoAt: string | Date, fechaDia: string): boolean {
+  const d = typeof pagadoAt === "string" ? new Date(pagadoAt) : pagadoAt;
+  const { fecha, hora, minuto } = partesPanama(d);
+  if (fecha !== fechaDia) return false;
+  return hora < HORA_CORTE;
+}
+
+/** ¿Hubo algún pago ese día en Panamá (puntual o tarde)? */
+export function esPagoDelDia(pagadoAt: string | Date, fechaDia: string): boolean {
+  const d = typeof pagadoAt === "string" ? new Date(pagadoAt) : pagadoAt;
+  return partesPanama(d).fecha === fechaDia;
+}
+
+/** Arma `pagado_at` desde fecha + hora "HH:mm" del formulario. */
+export function pagadoAtDesdeForm(fecha: string, hora: string): string {
+  const [h, m] = hora.split(":").map((x) => Number(x));
+  return instantePanama(fecha, h || 0, m || 0).toISOString();
+}
+
+/** Fecha contable (columna `fecha`) a partir del instante real del pago. */
+export function fechaContable(pagadoAt: string | Date): string {
+  const d = typeof pagadoAt === "string" ? new Date(pagadoAt) : pagadoAt;
+  return hoyPanama(d);
+}

@@ -1,4 +1,4 @@
-// Verificación SOLO LECTURA de que las migraciones 0008–0011 quedaron aplicadas.
+// Verificación SOLO LECTURA de que las migraciones 0008–0012 quedaron aplicadas.
 //   node scripts/verificar-migraciones.mjs
 
 import { createClient } from "@supabase/supabase-js";
@@ -75,6 +75,18 @@ if (errConv) {
   );
 }
 
+// --- 0012: pagado_at (hora real del pago) ------------------------------------
+const { data: pagosHora, error: errHora } = await sb
+  .from("pagos")
+  .select("id, pagado_at, fecha")
+  .limit(5);
+if (errHora) {
+  check("0012 · columna pagado_at", false, errHora.message);
+} else {
+  const conHora = (pagosHora ?? []).filter((p) => p.pagado_at).length;
+  check("0012 · columna pagado_at", true, `${conHora} de ${pagosHora?.length ?? 0} muestras con hora`);
+}
+
 // --- 0008: el índice no se puede leer por PostgREST, pero sí el estado --------
 const { data: cargos, error: errCargos } = await sb.from("cargos").select("tipo, fecha");
 if (errCargos) {
@@ -85,4 +97,4 @@ if (errCargos) {
   console.log(`   El índice único se comprueba al correr el devengo por primera vez.`);
 }
 
-console.log(todoBien ? `\n✅ Migraciones 0009–0011 aplicadas.` : `\n❌ Hay algo sin aplicar (ver arriba).`);
+console.log(todoBien ? `\n✅ Migraciones 0008–0012 verificadas.` : `\n❌ Hay algo sin aplicar (ver arriba).`);

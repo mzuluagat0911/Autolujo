@@ -5,8 +5,9 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
-import { hoyPanama, horaPanama, pasoCorte, fechaConDia, sumarDias } from "@/lib/cartera/fecha";
-import { cuotaDeFecha, ultimoDiaDevengado } from "@/lib/cartera/devengo";
+import { hoyPanama, horaPanama, pasoCorte, fechaConDia, sumarDias, fechaContable } from "@/lib/cartera/fecha";
+import { cuotaDeFecha, ultimoDiaDevengado, type TerminosCuota } from "@/lib/cartera/devengo";
+import { pagoHoyContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
 import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
 
@@ -180,15 +181,17 @@ export async function resumenContrato(contratoId: string): Promise<string | null
   const manana = sumarDias(hoy, 1);
   const corte = pasoCorte();
 
-  const [saldoRes, pagosRes, devengadoHasta] = await Promise.all([
+  const [saldoRes, pagoRes, devengadoHasta, multaRes] = await Promise.all([
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
-    sb.from("pagos").select("id").eq("contrato_id", contratoId).eq("fecha", hoy)
-      .in("estado_conciliacion", ["conciliado", "manual"]).limit(1),
+    pagoHoyContrato(contratoId, hoy),
     ultimoDiaDevengado(contratoId),
+    sb.from("cargos").select("id").eq("contrato_id", contratoId).eq("fecha", hoy)
+      .eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE").limit(1),
   ]);
 
   const saldo = Math.max(Number((saldoRes.data as { saldo_actual: number } | null)?.saldo_actual ?? 0), 0);
-  const pagoHoy = (pagosRes.data ?? []).length > 0;
+  const pagoHoy = pagoRes.pagoHoy;
+  const pagoPuntual = pagoRes.pagoPuntual;
   const veh = c.vehiculo as unknown as { numero: string; empresa: { id: string; nombre: string } | null } | null;
   const carro = veh?.numero ?? "";
   const empresa = veh?.empresa ?? null;
@@ -209,8 +212,9 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     }
   }
 
-  const terminos = {
+  const terminos: TerminosCuota = {
     letra_diaria: Number(c.letra_diaria),
+    descuento_puntual: c.descuento_puntual as number | null,
     cobra_domingo: c.cobra_domingo as boolean | null,
     cuota_domingo: c.cuota_domingo as number | null,
   };
@@ -223,7 +227,8 @@ export async function resumenContrato(contratoId: string): Promise<string | null
   // de hoy todavía no se generó, hay que sumarlo aquí — no asumirlo incluido.
   const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
   const faltaHoy = hoyYaDevengado ? 0 : cuotaHoy;
-  const recargoCausado = !pagoHoy && corte ? penalidad : 0;
+  const multaHoyRegistrada = (multaRes.data ?? []).length > 0;
+  const recargoCausado = !pagoPuntual && corte && !multaHoyRegistrada ? penalidad : 0;
 
   const totalHoy = saldo + faltaHoy + recargoCausado;
   const totalHoyTarde = corte || pagoHoy ? totalHoy : totalHoy + penalidad;
@@ -245,13 +250,16 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `DATOS EXACTOS del contrato de ESTE cliente (usa SOLO estos números; nunca inventes ni estimes otros):`,
     `- Carro: ${carro}`,
     `- Cuota diaria pagando PUNTUAL (antes de las 7:00 p.m.): ${m(puntual)}.`,
-    `- Si paga después del corte se le suman ${m(penalidad)} (pierde el descuento).`,
+    `- Si paga después del corte se le suman ${m(penalidad)} (pierde el descuento de ESE día).`,
+    `- Días atrasados sin pagar quedan a tarifa plena (${m(puntual + penalidad)} por día, no ${m(puntual)}).`,
     `- Domingos: ${domingos}.`,
     cuotaHoy > 0
       ? `- Hoy SÍ corre cuota (${m(cuotaHoy)}).`
       : `- Hoy NO corre cuota (día libre para este contrato).`,
     pagoHoy
-      ? `- Este cliente YA tiene un pago registrado hoy.`
+      ? pagoPuntual
+        ? `- Este cliente YA pagó hoy PUNTUAL (antes de las 7:00 p.m.).`
+        : `- Este cliente pagó hoy DESPUÉS del corte (sin descuento de ese día).`
       : `- Hoy NO tiene ningún pago registrado todavía.`,
     ``,
     `CIFRAS YA CALCULADAS POR EL SISTEMA — dalas TAL CUAL. Está PROHIBIDO que sumes,`,
@@ -677,12 +685,16 @@ export async function procesarPagoComprobante(opts: {
     .filter(Boolean)
     .join(" ");
 
+  const pagadoAt = new Date().toISOString();
+  const fechaPago = fechaContable(pagadoAt);
+
   const { data: pago, error } = await sb
     .from("pagos")
     .insert({
       contrato_id: resolucion.contratoId,
       cliente_id: resolucion.clienteId ?? conversacion.cliente_id,
-      fecha: comprobante.fecha ?? hoyPanama(),
+      fecha: fechaPago,
+      pagado_at: pagadoAt,
       monto: comprobante.monto ?? 0,
       banco: comprobante.banco,
       referencia: comprobante.referencia,

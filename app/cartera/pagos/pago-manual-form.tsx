@@ -2,9 +2,10 @@
 
 import { useActionState, useEffect, useRef, useState } from "react";
 import { registrarPagoManual, type ResultadoPagoManual } from "./actions";
-import { hoyPanama } from "@/lib/cartera/fecha";
+import { hoyPanama, horaPanama } from "@/lib/cartera/fecha";
 
 const HOY = hoyPanama();
+const HORA_AHORA = horaPanama();
 
 export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefecto?: boolean }) {
   const [abierto, setAbierto] = useState(abiertoPorDefecto);
@@ -35,7 +36,7 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
 
       {abierto && (
         <form ref={formRef} action={accion} className="border-t border-line p-5">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <Campo label="Número de carro">
               <input
                 name="carro"
@@ -74,7 +75,19 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
                 className="w-full rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-ink/20"
               />
             </Campo>
+            <Campo label="Hora (Panamá)">
+              <input
+                type="time"
+                name="hora"
+                defaultValue={HORA_AHORA}
+                required
+                className="w-full rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-ink/20"
+              />
+            </Campo>
           </div>
+          <p className="mt-2 text-xs text-muted">
+            El descuento puntual aplica solo si pagó antes de las 7:00 p.m. de ese día.
+          </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
             <button
