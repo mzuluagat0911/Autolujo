@@ -1,11 +1,12 @@
 import type { NextRequest } from "next/server";
 import crypto from "node:crypto";
 import { sendText, downloadMedia } from "@/lib/whatsapp/client";
-import { leerComprobante } from "@/lib/ai/comprobante";
+import { leerComprobantes, type Comprobante } from "@/lib/ai/comprobante";
 import {
   obtenerConversacion,
   registrarMensaje,
   procesarPagoComprobante,
+  subirComprobante,
   reclamarMensajeEntrante,
   completarMensaje,
   historialReciente,
@@ -13,11 +14,13 @@ import {
   marcarNecesitaHumano,
   marcarPendienteDeRespuesta,
   notasRecientes,
+  hayImagenEntranteReciente,
   resumenContrato,
   type Conversacion,
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
 import { revisarRespuesta } from "@/lib/ai/guard";
+import { destinarCharla } from "@/lib/ai/filtro-charla";
 import { transcribirAudio } from "@/lib/ai/transcribir";
 
 type Conv = Conversacion;
@@ -145,7 +148,8 @@ async function manejarMensaje(msg: WhatsAppMessage) {
   const texto =
     tipo === "text" ? msg.text?.body ?? "" :
     tipo === "image" ? "📷 Comprobante" :
-    tipo === "audio" ? "🎤 Nota de voz" : `[${msg.type ?? "mensaje"}]`;
+    tipo === "audio" ? "🎤 Nota de voz" :
+    tipo === "ack" ? "👍" : `[${msg.type ?? "mensaje"}]`;
 
   // Candado de idempotencia: reclama el mensaje ANTES de trabajo pesado.
   // Si Meta reintenta, el segundo choca con el unique y sale sin reprocesar.
@@ -163,11 +167,21 @@ async function manejarMensaje(msg: WhatsAppMessage) {
   }
 
   if (tipo === "text") {
+    // Coalesce "foto + caption": si este texto suena a que anuncia un comprobante
+    // ("aquí el pago", "envío comprobante"…), espera la ventana y, si en ella llegó
+    // una imagen, no respondas — el lector de comprobante contesta por los dos.
+    if (pareceCaptionDeAdjunto(msg.text?.body ?? "")) {
+      await new Promise((r) => setTimeout(r, VENTANA_ADJUNTO_MS));
+      if (await hayImagenEntranteReciente(conv.id, VENTANA_ADJUNTO_MS * 2)) return;
+    }
     await responderConAgente(conv, from);
   } else if (tipo === "image") {
     await procesarComprobante(conv, from, msg, mensajeId);
   } else if (tipo === "audio") {
     await procesarAudio(conv, from, msg, mensajeId);
+  } else if (tipo === "ack") {
+    // Sticker / reacción: mismo trato que un "ok". No se escala ni se gasta el modelo.
+    return;
   } else {
     await responderYEscalar(
       conv.id,
@@ -178,7 +192,23 @@ async function manejarMensaje(msg: WhatsAppMessage) {
   }
 }
 
-function tipoMensaje(msg: WhatsAppMessage): "text" | "image" | "audio" | "otro" {
+// Ventana de gracia para juntar una foto con su textito (caption). 3–5s.
+const VENTANA_ADJUNTO_MS = 4000;
+
+// Texto que suena a "te estoy mandando el comprobante" (el caption de una foto).
+const ANUNCIA_ADJUNTO =
+  /comprobante|transferenc|dep[óo]sit|adjunt|captura|pantallazo|voucher|recibo|(?:te|le)\s+(?:lo\s+)?(?:mand|env[íi]|paso|comparto)|env[íi]o|ah[íi]\s+(?:va|te|le|est)|aqu[íi]\s+(?:est|va|le|te|tien)|ya\s+pagu|hice\s+el\s+pago|acabo\s+de\s+pagar|mira/i;
+
+/** ¿Este texto parece solo el caption de una foto que viene? (corto, sin pregunta). */
+function pareceCaptionDeAdjunto(texto: string): boolean {
+  const t = (texto ?? "").trim();
+  if (t.length === 0 || t.length > 80) return false; // largo = conversación real
+  if (/[?¿]/.test(t)) return false;                  // si pregunta algo, hay que responder
+  return ANUNCIA_ADJUNTO.test(t);
+}
+
+function tipoMensaje(msg: WhatsAppMessage): "text" | "image" | "audio" | "ack" | "otro" {
+  if (msg.type === "sticker" || msg.type === "reaction") return "ack";
   if (msg.type === "text" || msg.text?.body) return "text";
   if (msg.type === "image" || msg.image?.id) return "image";
   // Cloud API: notas de voz = type "audio". A veces llega voice/ptt.
@@ -200,6 +230,20 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
         historial.push(extraTurno);
       }
     }
+
+    const textoCliente =
+      extraTurno?.texto ??
+      [...historial].reverse().find((m) => m.direccion === "in")?.texto ??
+      "";
+    const ultimoSaliente =
+      [...historial].reverse().find((m) => m.direccion === "out")?.texto ?? null;
+    const dest = destinarCharla(textoCliente, ultimoSaliente);
+    if (dest.destinar === "silencio") return;
+    if (dest.destinar === "canned") {
+      await responder(conv.id, from, dest.mensaje);
+      return;
+    }
+
     // Contexto con cifras REALES si la conversación está vinculada a un contrato.
     let contexto = conv.etiqueta ? `El cliente está vinculado al ${conv.etiqueta}.` : undefined;
     if (conv.contrato_id) {
@@ -292,55 +336,52 @@ async function procesarComprobante(
 
   try {
     const bytes = await downloadMedia(mediaId);
-    const c = await leerComprobante(bytes, mime);
+    const lista = (await leerComprobantes(bytes, mime)).filter((x) => x.es_comprobante);
 
-    // La imagen debe SER un comprobante. Si no, no creamos pago (antifraude).
-    if (!c.es_comprobante) {
+    // Ninguna lectura es comprobante → no creamos pago (antifraude).
+    if (lista.length === 0) {
       await responder(
         conversacionId,
         from,
-        "Recibí tu imagen, pero no parece un comprobante de pago 🤔 ¿Me envías la captura de la transferencia, donde se vea el monto y la referencia? Así la cruzamos con el banco y aplicamos tu pago.",
+        "Recibí tu imagen, pero no parece un comprobante de pago 🤔 ¿Me envías la captura de la transferencia, o la foto del recibo o cheque, donde se vea el monto y la referencia? Así la cruzamos con el banco y aplicamos tu pago.",
       );
       return;
     }
 
-    const res = await procesarPagoComprobante({ conversacion: conv, comprobante: c, bytes, mime });
-
-    // Completar el mensaje reclamado con la imagen en Storage + el pago.
-    await completarMensaje(mensajeId, { mediaUrl: res.comprobantePath, pagoId: res.pagoId });
-
-    // Respuesta al cliente. NUNCA confirmamos "al día" aquí: el pago se valida
-    // primero cruzándolo con el banco (antifraude). Solo acusamos recibo.
-    const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : null;
-    const alerta = (codigo: string) => res.veredicto.alertas.some((a) => a.codigo === codigo);
-    let respuesta: string;
-    if (res.estadoConciliacion === "duplicado") {
-      // Mismo comprobante otra vez: no se registra de nuevo ni se insinúa que sí.
-      respuesta =
-        "Ese comprobante ya lo tenemos registrado por aquí 🙌 Si hiciste otro pago distinto, mándame la captura de ese otro y lo revisamos.";
-    } else if (alerta("cuenta_ajena") || alerta("cuenta_otra_empresa")) {
-      // Puede ser un error de lectura o una transferencia a un tercero: lo ve una persona.
-      respuesta =
-        "¡Gracias por enviarlo! Me aparece que la cuenta del comprobante no es la nuestra 🤔 Déjame verificarlo con el equipo y te confirmamos por aquí en un momento.";
-    } else if (alerta("fecha_vieja") || alerta("fecha_futura")) {
-      respuesta =
-        "¡Gracias! Recibí tu comprobante, pero la fecha no me cuadra con un pago de hoy 🤔 Déjame revisarlo con el equipo y te confirmamos por aquí.";
-    } else if (!monto || c.confianza === "baja") {
-      // Monto dudoso: ni siquiera repetimos la cifra, solo validamos.
-      respuesta =
-        "¡Gracias por enviarnos el comprobante! 🙌 Lo estamos cruzando con el banco para confirmar que entró bien. En cuanto quede validado te confirmamos por aquí.";
-    } else if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
-      const carro = res.resolucion.etiqueta ?? "tu carro";
-      // El pago todavía no está validado: no restamos el monto del saldo ni
-      // insinuamos un faltante. Una sola cifra vive en estado-cuenta.ts y sale
-      // cuando el cliente pregunta, no aquí.
-      respuesta = `¡Gracias por enviarnos el comprobante de ${monto} del ${carro}! 🙌 Lo estamos cruzando con el banco para confirmar que entró sin problema. Apenas quede validado te confirmamos por aquí.`;
-    } else if (res.resolucion.estado === "sin_carro") {
-      respuesta = `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 ¿Me confirmas el número de carro para aplicarlo bien? Lo estamos cruzando con el banco para validar que entró.`;
-    } else {
-      respuesta = `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 Lo estamos cruzando con el banco para validarlo y en un momento te confirmamos.`;
+    // La imagen se sube UNA sola vez, aunque traiga varios recibos.
+    const path = await subirComprobante(bytes, mime);
+    const items: { c: Comprobante; res: Awaited<ReturnType<typeof procesarPagoComprobante>> }[] = [];
+    for (const c of lista) {
+      const res = await procesarPagoComprobante({ conversacion: conv, comprobante: c, bytes, mime, path });
+      items.push({ c, res });
     }
-    await responder(conversacionId, from, respuesta, res.pagoId ?? undefined);
+
+    // La miniatura del mensaje enlaza al primer pago creado.
+    const primerPago = items.find((it) => it.res.pagoId)?.res.pagoId ?? null;
+    await completarMensaje(mensajeId, { mediaUrl: path, pagoId: primerPago });
+
+    // Un solo comprobante: respuesta completa de siempre.
+    if (items.length === 1) {
+      const { c, res } = items[0];
+      const { respuesta, escalarMotivo } = armarRespuestaComprobante(c, res);
+      await responder(conversacionId, from, respuesta, res.pagoId ?? undefined);
+      if (escalarMotivo) await marcarPendienteDeRespuesta(conversacionId, escalarMotivo);
+      return;
+    }
+
+    // Varios comprobantes en una foto: se resumen y se escala si alguno tiene pero.
+    const lineas = items.map(({ c, res }) => lineaComprobante(c, res));
+    const motivos = items
+      .map(({ c, res }) => armarRespuestaComprobante(c, res).escalarMotivo)
+      .filter((m): m is string => !!m);
+    const cabeza = `¡Recibí ${items.length} comprobantes en esa foto! 🙌`;
+    const cola = motivos.length
+      ? "Hay uno que necesito revisar con el equipo; te confirmamos por aquí."
+      : "Los estamos cruzando con el banco para validarlos. Apenas queden, te confirmo.";
+    await responder(conversacionId, from, `${cabeza}\n${lineas.join("\n")}\n${cola}`, primerPago ?? undefined);
+    if (motivos.length) {
+      await marcarPendienteDeRespuesta(conversacionId, `Foto con varios comprobantes: ${motivos.join(" · ")}`);
+    }
   } catch (e) {
     console.error("[whatsapp/webhook] error procesando comprobante:", e);
     await responderYEscalar(
@@ -352,13 +393,88 @@ async function procesarComprobante(
   }
 }
 
+type ResPago = Awaited<ReturnType<typeof procesarPagoComprobante>>;
+
+/** Respuesta al cliente para UN comprobante ya procesado. No confirma "al día". */
+function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: string; escalarMotivo: string | null } {
+  const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : null;
+  const alerta = (codigo: string) => res.veredicto.alertas.some((a) => a.codigo === codigo);
+  if (res.estadoConciliacion === "duplicado") {
+    return {
+      respuesta: "Ese comprobante ya lo tenemos registrado por aquí 🙌 Si hiciste otro pago distinto, mándame la captura de ese otro y lo revisamos.",
+      escalarMotivo: null,
+    };
+  }
+  if (alerta("cuenta_otra_empresa")) {
+    return {
+      respuesta: "¡Gracias por enviarlo! Pero ese comprobante fue a la cuenta de otra de nuestras empresas, no a la cuenta asignada a tu carro. Por eso no lo puedo aplicar así. Déjame revisarlo con el equipo y te confirmamos por aquí.",
+      escalarMotivo: "Comprobante a la cuenta de otra empresa (no la del carro).",
+    };
+  }
+  if (alerta("cuenta_ajena")) {
+    return {
+      respuesta: "¡Gracias por enviarlo! Pero ese comprobante no corresponde a la cuenta de banco asignada a tu carro 🤔 Revisa que la transferencia vaya a nuestra cuenta. Déjame verificarlo con el equipo y te confirmamos.",
+      escalarMotivo: "Comprobante a una cuenta que no es de la empresa.",
+    };
+  }
+  if (alerta("moneda_no_esperada")) {
+    return {
+      respuesta: "¡Gracias por enviarlo! El comprobante no parece estar en dólares/balboas, así que necesito revisarlo con el equipo para aplicarlo bien. Te confirmamos por aquí.",
+      escalarMotivo: "Comprobante en moneda distinta a USD.",
+    };
+  }
+  if (alerta("fecha_vieja") || alerta("fecha_futura")) {
+    return {
+      respuesta: "¡Gracias! Recibí tu comprobante, pero la fecha no me cuadra con un pago de hoy 🤔 Déjame revisarlo con el equipo y te confirmamos por aquí.",
+      escalarMotivo: "La fecha del comprobante no cuadra (viejo o futuro).",
+    };
+  }
+  if (!monto || c.confianza === "baja") {
+    return {
+      respuesta: "¡Gracias por enviarnos el comprobante! 🙌 Lo estamos cruzando con el banco para confirmar que entró bien. En cuanto quede validado te confirmamos por aquí.",
+      escalarMotivo: null,
+    };
+  }
+  if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
+    const carro = res.resolucion.etiqueta ?? "tu carro";
+    return {
+      respuesta: `¡Gracias por enviarnos el comprobante de ${monto} del ${carro}! 🙌 Lo estamos cruzando con el banco para confirmar que entró sin problema. Apenas quede validado te confirmamos por aquí.`,
+      escalarMotivo: null,
+    };
+  }
+  if (res.resolucion.estado === "sin_carro") {
+    return {
+      respuesta: `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 ¿Me confirmas el número de carro para aplicarlo bien? Lo estamos cruzando con el banco para validar que entró.`,
+      escalarMotivo: null,
+    };
+  }
+  return {
+    respuesta: `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 Lo estamos cruzando con el banco para validarlo y en un momento te confirmamos.`,
+    escalarMotivo: null,
+  };
+}
+
+/** Línea corta de un comprobante para el resumen cuando llegan varios en una foto. */
+function lineaComprobante(c: Comprobante, res: ResPago): string {
+  const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : "monto ?";
+  const alerta = (codigo: string) => res.veredicto.alertas.some((a) => a.codigo === codigo);
+  if (res.estadoConciliacion === "duplicado") return `• ${monto} — ya estaba registrado`;
+  if (alerta("cuenta_otra_empresa")) return `• ${monto} — ⚠️ fue a la cuenta de otra empresa`;
+  if (alerta("cuenta_ajena")) return `• ${monto} — ⚠️ cuenta que no es la nuestra`;
+  if (alerta("moneda_no_esperada")) return `• ${monto} — ⚠️ no está en dólares`;
+  if (alerta("fecha_vieja") || alerta("fecha_futura")) return `• ${monto} — ⚠️ la fecha no cuadra`;
+  if (res.resolucion.estado === "ok" && res.resolucion.contratoId) return `• ${monto} del ${res.resolucion.etiqueta ?? "tu carro"} ✓`;
+  if (res.resolucion.estado === "sin_carro") return `• ${monto} — ¿de qué carro?`;
+  return `• ${monto} — validando`;
+}
+
 // ---------------------------------------------------------------------------
 // Tipos mínimos del payload de WhatsApp
 // ---------------------------------------------------------------------------
 type WhatsAppMessage = {
   id?: string;
   from?: string;
-  type?: string | "text" | "image" | "audio" | "voice" | "ptt";
+  type?: string | "text" | "image" | "audio" | "voice" | "ptt" | "sticker" | "reaction";
   text?: { body?: string };
   image?: { id?: string; mime_type?: string };
   audio?: { id?: string; mime_type?: string; voice?: boolean };

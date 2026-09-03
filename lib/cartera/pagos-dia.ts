@@ -234,12 +234,15 @@ export async function pagosRecientesContrato(
     .order("pagado_at", { ascending: false })
     .limit(limite);
   if (q.error && /asignaciones/i.test(q.error.message)) {
-    q = await sb
+    // Reintento sin la columna `asignaciones` (aún no migrada). El tipo es más
+    // angosto; lo igualamos al de la query principal — abajo se lee de forma
+    // defensiva (asignaciones ausente → []), así que es seguro.
+    q = (await sb
       .from("pagos")
       .select("monto, pagado_at, estado_conciliacion, origen")
       .eq("contrato_id", contratoId)
       .order("pagado_at", { ascending: false })
-      .limit(limite);
+      .limit(limite)) as typeof q;
   }
   const data = q.data;
   return ((data ?? []) as {

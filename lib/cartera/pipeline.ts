@@ -309,6 +309,25 @@ export function ventanaAbierta(ultimoEntranteAt: string | null | undefined): boo
 }
 
 /**
+ * ¿Llegó una imagen (comprobante) entrante en esta conversación en los últimos
+ * `ventanaMs`? Sirve para coalescer "foto + caption": si el cliente manda una
+ * foto y un textito casi al tiempo, no se responde dos veces.
+ */
+export async function hayImagenEntranteReciente(conversacionId: string, ventanaMs: number): Promise<boolean> {
+  const sb = createServerSupabase();
+  const desde = new Date(Date.now() - ventanaMs).toISOString();
+  const { data } = await sb
+    .from("mensajes")
+    .select("id")
+    .eq("conversacion_id", conversacionId)
+    .eq("direccion", "in")
+    .eq("tipo", "image")
+    .gte("created_at", desde)
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
+/**
  * Arranca el reloj de espera si no estaba corriendo. No lo reinicia: lo que
  * importa es desde CUÁNDO espera el cliente, no la última vez que se escaló.
  */
@@ -642,11 +661,13 @@ export async function procesarPagoComprobante(opts: {
   comprobante: Comprobante;
   bytes: Buffer;
   mime: string;
+  /** Imagen ya subida a Storage (para varios comprobantes en una misma foto). */
+  path?: string;
 }): Promise<ResultadoPago> {
   const sb = createServerSupabase();
   const { conversacion, comprobante, bytes, mime } = opts;
 
-  const path = await subirComprobante(bytes, mime);
+  const path = opts.path ?? (await subirComprobante(bytes, mime));
   const porCarro = await resolverContratoPorCarro(comprobante.numero_carro);
 
   // El # de carro sale de un OCR sobre el comentario de la transferencia: un

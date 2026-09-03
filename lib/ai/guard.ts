@@ -41,6 +41,22 @@ const PROHIBIDAS: { re: RegExp; que: string }[] = [
 const SALDO_CERO = /\bno\s+(debes|tienes\s+que\s+pagar)\s+nada\b|\best[áa]s\s+al\s+d[íi]a\b|\bpaz\s+y\s+salvo\b/i;
 
 /**
+ * Cifra de dinero escrita EN LETRAS (ej. "treinta dólares", "mil doscientos
+ * balboas"). montosDelTexto solo ve números, así que deletrear una cifra la
+ * saca del control del guard. La política es escribir el dinero en NÚMEROS;
+ * una cifra en letras no se puede verificar contra el contexto, así que se
+ * bloquea. En la práctica solo aparece cuando el cliente insiste "en letras"
+ * (patrón manipulador), y bloquear→escalar es justo la respuesta correcta.
+ */
+const NUM_PALABRA =
+  "(?:cero|una?|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|once|doce|trece|catorce|quince|dieci(?:s[eé]is|siete|ocho|nueve)|veinti\\w+|veinte|treinta|cuarenta|cincuenta|sesenta|setenta|ochenta|noventa|cien(?:to|tos)?|doscientos|trescientos|cuatrocientos|quinientos|seiscientos|setecientos|ochocientos|novecientos|mil|mill[oó]n(?:es)?)";
+const MONEDA_PALABRA = "(?:d[oó]lares?|balboas?|usd)";
+const CIFRA_EN_LETRAS = new RegExp(
+  `\\b${NUM_PALABRA}(?:\\s+(?:y\\s+)?${NUM_PALABRA})*\\s+${MONEDA_PALABRA}\\b`,
+  "i",
+);
+
+/**
  * Promesa de que alguien va a responder después. Necesita las dos piezas —un
  * marcador de tiempo y un verbo de contacto— para no confundir "te confirmo que
  * hoy sí corre cuota" (afirmación presente) con "en un momento te confirmo".
@@ -114,6 +130,11 @@ export function revisarRespuesta(respuesta: RespuestaAgente, contexto?: string):
       "cifra",
       `El agente dio una cifra que no está en el contexto (${inventadas.map((n) => `$${n}`).join(", ")}): "${recorte}"`,
     );
+  }
+
+  // Cifra deletreada en letras: no se puede verificar contra el contexto → fuera.
+  if (CIFRA_EN_LETRAS.test(mensaje)) {
+    return bloquear("cifra", `El agente escribió una cifra en letras (no verificable): "${recorte}"`);
   }
 
   // La promesa sí sale —está bien dicha—, pero deja dueño en el panel.

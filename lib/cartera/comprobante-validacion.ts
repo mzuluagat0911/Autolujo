@@ -22,6 +22,7 @@ export type Alerta = {
     | "cuenta_otra_empresa"
     | "fecha_vieja"
     | "fecha_futura"
+    | "moneda_no_esperada"
     | "sin_monto"
     | "lectura_dudosa";
   detalle: string;
@@ -114,6 +115,18 @@ export async function validarComprobante(opts: {
     } else if (c.fecha < sumarDias(hoy, -DIAS_TOLERANCIA)) {
       alertas.push({ codigo: "fecha_vieja", detalle: `El comprobante es del ${c.fecha}, hace más de ${DIAS_TOLERANCIA} días.` });
     }
+  }
+
+  // --- 3b. ¿La moneda es la esperada? ----------------------------------------
+  // Cobramos en USD/balboas. Un comprobante en otra moneda (ej. pesos COP) suele
+  // significar que se pagó a una cuenta que no es de la empresa, o un monto que
+  // el lector podría malinterpretar por mil. Lo mira una persona.
+  const moneda = (c.moneda ?? "").toUpperCase();
+  if (moneda && !["USD", "B/.", "B/", "PAB", "BALBOAS", "DOLARES", "DÓLARES", "USD$", "$"].includes(moneda)) {
+    alertas.push({
+      codigo: "moneda_no_esperada",
+      detalle: `El comprobante parece estar en ${c.moneda}, no en dólares/balboas.`,
+    });
   }
 
   // --- 4. Calidad de la lectura ----------------------------------------------

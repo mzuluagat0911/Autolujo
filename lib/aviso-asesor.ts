@@ -2,7 +2,10 @@
 // Pensado para Chrome, Edge, Firefox y Safari (escritorio). El audio de los
 // navegadores solo arranca después de un clic; por eso hay que "desbloquearlo".
 
-type AudioWindow = Window & { webkitAudioContext?: typeof AudioContext };
+type AudioWindow = Window & {
+  AudioContext?: typeof AudioContext;
+  webkitAudioContext?: typeof AudioContext;
+};
 
 let ctx: AudioContext | null = null;
 let htmlAudio: HTMLAudioElement | null = null;
