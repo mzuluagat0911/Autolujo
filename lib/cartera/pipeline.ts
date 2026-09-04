@@ -166,6 +166,7 @@ async function marcarAmbiguo(conversacionId: string, motivo: string): Promise<vo
     .from("conversaciones")
     .update({ necesita_humano: true, motivo_escalada: motivo })
     .eq("id", conversacionId);
+  await arrancarEspera(conversacionId);
 }
 
 function etiquetaPago(estado: string): string {
@@ -173,6 +174,33 @@ function etiquetaPago(estado: string): string {
   if (estado === "pendiente") return "EN VALIDACIÓN (aún no baja el saldo)";
   if (estado === "rechazado") return "rechazado";
   return estado;
+}
+
+/**
+ * Cargos del contrato que NO son la cuota diaria: reparaciones, multas,
+ * afiliación, siniestros, etc. Es lo que el cliente discute ("¿qué es este
+ * cobro?"). Van itemizados para que el agente pueda explicar cada uno.
+ */
+type CargoExtra = { concepto: string; monto: number; fecha: string };
+async function cargosExtraDelContrato(contratoId: string): Promise<CargoExtra[]> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("cargos")
+    .select("tipo, concepto, concepto_codigo, monto, fecha")
+    .eq("contrato_id", contratoId)
+    .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)")
+    .order("fecha", { ascending: false })
+    .limit(20);
+  const filas = (data ?? []) as {
+    tipo: string; concepto: string | null; concepto_codigo: string | null; monto: number; fecha: string;
+  }[];
+  return filas
+    .filter((f) => Number(f.monto) > 0.009)
+    .map((f) => ({
+      concepto: f.concepto?.trim() || f.concepto_codigo || f.tipo,
+      monto: Number(f.monto),
+      fecha: f.fecha,
+    }));
 }
 
 /** Resumen del contrato para el CONTEXTO del agente (cifras reales, no inventadas). */
@@ -216,6 +244,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       : `- Todavía NO son las 7:00 p.m.: si paga hoy antes de esa hora, conserva el descuento.`,
     ``,
     `DATOS EXACTOS del contrato de ESTE cliente (usa SOLO estos números; nunca inventes ni estimes otros):`,
+    `- Cliente: ${est.clienteNombre} (si te pregunta su nombre o para saludarlo, usa su primer nombre).`,
     `- Carro: ${est.vehiculoNumero}`,
     `- Cuota diaria pagando PUNTUAL (antes de las 7:00 p.m.): ${m(est.letra)}.`,
     `- Si paga después del corte se le suman ${m(est.penalidad)} (pierde el descuento de ESE día).`,
@@ -254,6 +283,17 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `  no tienes), NO la calcules: dile con calidez que en un momento se la confirman y`,
       `  marca pasar_a_humano = true.`,
     );
+
+    // Pago adelantado por semana — ya calculado por el código (el agente no multiplica).
+    const diasSemana = est.cobraDomingo ? 7 : 6;
+    const valorSemana = est.letra * diasSemana;
+    lineas.push(
+      ``,
+      `PAGO ADELANTADO POR SEMANA (si pide "pagar la semana adelantada"):`,
+      `- Una semana son ${diasSemana} días (${est.cobraDomingo ? "incluye domingo" : "domingo libre"}) a ${m(est.letra)} = ${m(valorSemana)}. Eso es SOLO las cuotas de la semana; no incluye lo que ya deba.`,
+      `- Si quiere ponerse al día HOY y además dejar la semana adelantada: ${m(est.totalHoy)} + ${m(valorSemana)} = ${m(est.totalHoy + valorSemana)}.`,
+      `- Para OTROS plazos (2 semanas, un mes, X días distintos), NO lo calcules: pásalo a una persona.`,
+    );
   } else {
     // Datos INCOMPLETOS: el saldo acumulado NO es confiable. No entregamos un total;
     // solo la cuota diaria, y se escala cualquier pregunta de saldo/total. En cobranza
@@ -267,6 +307,76 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `- Si pregunta cuánto debe, su saldo, su total, o lo discute: NO le des NINGUNA cifra de`,
       `  saldo/total (aunque parezca que la tienes). Dile con calidez que le confirman el saldo`,
       `  exacto en un momento, y marca pasar_a_humano = true.`,
+    );
+  }
+
+  // Cumpleaños libre (cláusula del contrato). El motor ya lo aplicó en las cifras;
+  // aquí solo se le dice al agente qué responder.
+  if (est.esCumpleanos && est.cumpleLibreAplica) {
+    lineas.push(
+      ``,
+      `🎂 HOY ES EL CUMPLEAÑOS de este cliente y CUMPLE las condiciones (al día + 1 mes): hoy su`,
+      `cuota es LIBRE ($0), ya está aplicado. Felicítalo y confírmale que hoy NO paga cuota. (Si`,
+      `tiene saldo anterior, ese sigue; lo libre es solo la cuota de hoy.)`,
+    );
+  } else if (est.esCumpleanos && !est.cumpleLibreAplica) {
+    lineas.push(
+      ``,
+      `🎂 Hoy es el cumpleaños de este cliente, PERO el beneficio de cumpleaños libre NO aplica`,
+      `porque ${est.cumpleMotivo ?? "no cumple las condiciones"}. Felicítalo, pero explícale con tacto`,
+      `que para el día libre debe estar al día y con al menos 1 mes; hoy sí corre la cuota normal.`,
+    );
+  } else if (est.fechaNacimiento) {
+    lineas.push(
+      ``,
+      `Cumpleaños registrado de este cliente: ${est.fechaNacimiento}. Si dice que "hoy" es su`,
+      `cumpleaños y NO coincide con esa fecha, dile con amabilidad que según el registro su`,
+      `cumpleaños es otro día (no inventes la fecha, usa la registrada).`,
+    );
+  } else {
+    lineas.push(
+      ``,
+      `No tenemos registrada la fecha de cumpleaños de este cliente. Si reclama el beneficio de`,
+      `cumpleaños libre, reconoce que existe (al día + 1 mes de permanencia) y pásalo a una persona`,
+      `para verificar la fecha (pasar_a_humano = true). No lo apliques tú.`,
+    );
+  }
+
+  // Cargos aparte de la cuota diaria (reparaciones, multas, afiliación…): itemizados
+  // para que el agente pueda EXPLICAR y DEFENDER cada cobro cuando el cliente lo discute.
+  if (est.devengadoHasta != null) {
+    const extras = await cargosExtraDelContrato(contratoId);
+    if (extras.length > 0) {
+      lineas.push(
+        ``,
+        `CARGOS EN LA CUENTA aparte de las cuotas diarias (para cuando pregunte "¿por qué debo tanto?" o discuta un cobro):`,
+        ...extras.map((x) => `- ${m(x.monto)} · ${x.concepto} · ${fechaConDia(x.fecha)}`),
+        `El resto del saldo son cuotas diarias acumuladas. Si el cliente pregunta qué compone su saldo o`,
+        `discute un cobro, explícaselo con este detalle (concepto, monto y fecha). No lo enumeres si no lo pide.`,
+      );
+    }
+  }
+
+  // Cuántas CUOTAS (número, no dinero) ha pagado — cuando pregunta "¿cuántas cuotas llevo?".
+  if (est.devengadoHasta != null && est.letra > 0) {
+    const [pg, ext, ct] = await Promise.all([
+      sb.from("pagos").select("monto").eq("contrato_id", contratoId).in("estado_conciliacion", ["conciliado", "manual"]),
+      sb.from("cargos").select("monto").eq("contrato_id", contratoId).not("tipo", "in", "(renta,cuenta_diaria,acuerdo)"),
+      sb.from("contratos").select("num_cuotas_total").eq("id", contratoId).maybeSingle(),
+    ]);
+    const pagadoTotal = ((pg.data ?? []) as { monto: number }[]).reduce((s, p) => s + Number(p.monto || 0), 0);
+    const extrasTotal = ((ext.data ?? []) as { monto: number }[]).reduce((s, x) => s + Number(x.monto || 0), 0);
+    const rentaAbonada = Math.max(pagadoTotal - extrasTotal, 0);
+    const cuotasPagadas = Math.round(rentaAbonada / est.letra);
+    const numTotal = (ct.data as { num_cuotas_total: number | null } | null)?.num_cuotas_total ?? null;
+    lineas.push(
+      ``,
+      `CUOTAS PAGADAS (si pregunta "¿cuántas cuotas he pagado?" o "¿cuántas llevo?" — responde el NÚMERO de cuotas, no solo el dinero):`,
+      `- Ha pagado el equivalente a aproximadamente ${cuotasPagadas} cuotas de ${m(est.letra)} (total abonado a renta: ${m(rentaAbonada)}).`,
+      numTotal
+        ? `- El contrato es de ${numTotal} cuotas en total; le faltarían alrededor de ${Math.max(numTotal - cuotasPagadas, 0)}.`
+        : `- No tengo el total de cuotas del contrato; no lo inventes.`,
+      `- Es un APROXIMADO (dilo como "aproximadamente"): el dinero de multas/reparaciones no cuenta como cuota.`,
     );
   }
 

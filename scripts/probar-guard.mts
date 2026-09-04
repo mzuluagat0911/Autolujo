@@ -67,6 +67,9 @@ const CASOS: Caso[] = [
 
   // --- Debe ESCALAR pero dejar salir el mensaje ------------------------------
   { nombre: "promesa sin escalar", mensaje: "Déjame confirmarlo y en un momento te escribo por aquí.", espera: "promesa" },
+  { nombre: "revisar con el equipo (sin 'te escribo')", mensaje: "Lo voy a revisar con el equipo.", espera: "promesa" },
+  { nombre: "déjame revisarlo con el equipo", mensaje: "Déjame revisarlo con el equipo y te confirmo.", espera: "promesa" },
+  { nombre: "presentarse del equipo NO escala", mensaje: "Soy Marcela, del equipo de Auto Lujo.", espera: null },
 
   // --- Contexto sin cifras (conversación sin contrato vinculado) -------------
   { nombre: "sin contrato: cualquier cifra es inventada", mensaje: "Debes $30.", contexto: "El cliente está vinculado al Carro 144.", espera: "cifra" },

@@ -32,6 +32,30 @@ export function penalidadDe(c: TerminosCuota): number {
   return Math.max(Number(c.descuento_puntual ?? 0), 0);
 }
 
+/** ¿`fecha` (YYYY-MM-DD) es el cumpleaños de alguien nacido en `nacimiento`? */
+export function esCumpleanos(nacimiento: string | null | undefined, fecha: string): boolean {
+  if (!nacimiento || nacimiento.length < 10) return false;
+  const mmddNac = nacimiento.slice(5, 10);
+  const mmddHoy = fecha.slice(5, 10);
+  if (mmddNac === mmddHoy) return true;
+  // Nacidos el 29 de febrero: en años no bisiestos el beneficio aplica el 28.
+  if (mmddNac === "02-29" && mmddHoy === "02-28") return true;
+  return false;
+}
+
+/** ¿El contrato ya tiene al menos `meses` de permanencia a la fecha dada? */
+export function tienePermanencia(
+  fechaInicio: string | null | undefined,
+  fecha: string,
+  meses = 1,
+): boolean {
+  if (!fechaInicio || fechaInicio.length < 10) return false;
+  const [y, m, d] = fechaInicio.slice(0, 10).split("-").map(Number);
+  const limite = new Date(Date.UTC(y, m - 1 + meses, d));
+  const hoy = new Date(`${fecha.slice(0, 10)}T00:00:00Z`);
+  return hoy.getTime() >= limite.getTime();
+}
+
 /**
  * Lo que termina costando un día que no se pagó a tiempo.
  * Ojo: es un total informativo. En la base nunca se guarda así — la renta va

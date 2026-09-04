@@ -23,7 +23,7 @@ import {
 } from "./pagos-dia";
 import { ultimoDiaDevengado } from "./devengo";
 import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
-import { cuotaDeFecha } from "./cuota";
+import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
 
 export function money(n: number): string {
   const v = Math.round(n * 100) / 100;
@@ -47,6 +47,10 @@ export type EstadoCuenta = Cifras & {
   devengadoHasta: string | null;
   cobraDomingo: boolean;
   cuotaDomingo: number;
+  esCumpleanos: boolean;
+  cumpleLibreAplica: boolean;
+  cumpleMotivo: string | null;
+  fechaNacimiento: string | null;
   desglose: string;
   fecha: string;
   templateVars: [string, string, string, string, string];
@@ -54,6 +58,8 @@ export type EstadoCuenta = Cifras & {
 
 type ContratoRow = TerminosCuota & {
   id: string;
+  cliente_id: string | null;
+  fecha_inicio: string | null;
   vehiculo: {
     numero: string;
     empresa: { id: string; codigo: string; nombre: string } | null;
@@ -73,6 +79,10 @@ function armar(
     pendienteHora: string | null;
     hoyYaDevengado: boolean;
     devengadoHasta: string | null;
+    esCumpleanos: boolean;
+    cumpleLibreAplica: boolean;
+    cumpleMotivo: string | null;
+    fechaNacimiento: string | null;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -109,10 +119,43 @@ function armar(
     devengadoHasta: extra.devengadoHasta,
     cobraDomingo: Boolean(c.cobra_domingo),
     cuotaDomingo: Number(c.cuota_domingo) || 0,
+    esCumpleanos: extra.esCumpleanos,
+    cumpleLibreAplica: extra.cumpleLibreAplica,
+    cumpleMotivo: extra.cumpleMotivo,
+    fechaNacimiento: extra.fechaNacimiento,
     desglose,
     fecha,
     templateVars: [nombre, carro, fecha, desglose, money(cifras.totalHoy)],
   };
+}
+
+/**
+ * Evalúa el beneficio de cumpleaños libre para un contrato en `hoy`, dadas sus
+ * cifras. Aplica solo si HOY es su cumpleaños, tiene >= 1 mes de permanencia y
+ * está al día (sin saldo anterior). Devuelve también las cifras corregidas
+ * (con la cuota de hoy en 0) cuando aplica.
+ */
+function evaluarCumple(
+  c: ContratoRow,
+  nac: string | null,
+  hoy: string,
+  cifras: Cifras,
+  entrada: Parameters<typeof calcularCifras>[0],
+): { esCumpleanos: boolean; aplica: boolean; motivo: string | null; cifras: Cifras } {
+  if (!esCumpleanos(nac, hoy)) {
+    return { esCumpleanos: false, aplica: false, motivo: null, cifras };
+  }
+  if (!tienePermanencia(c.fecha_inicio, hoy, 1)) {
+    return { esCumpleanos: true, aplica: false, motivo: "menos de 1 mes de permanencia", cifras };
+  }
+  if (cifras.pendienteAnterior > 0.009) {
+    return { esCumpleanos: true, aplica: false, motivo: "tiene saldo pendiente; debe estar al día", cifras };
+  }
+  if (cifras.cuotaHoy <= 0) {
+    // Hoy ya era libre (domingo) o ya se cobró: no hay nada que descontar.
+    return { esCumpleanos: true, aplica: false, motivo: null, cifras };
+  }
+  return { esCumpleanos: true, aplica: true, motivo: null, cifras: calcularCifras({ ...entrada, diaLibre: true }) };
 }
 
 function terminosDe(c: ContratoRow): TerminosCuota {
@@ -125,7 +168,25 @@ function terminosDe(c: ContratoRow): TerminosCuota {
 }
 
 const SEL =
-  "id, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+  "id, cliente_id, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+
+/**
+ * Fecha de nacimiento por cliente. En una consulta aparte y a prueba de fallos:
+ * si la columna aún no existe (migración 0015 sin correr), devuelve vacío y el
+ * beneficio de cumpleaños simplemente no aplica todavía.
+ */
+async function nacimientosDe(clienteIds: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  const ids = clienteIds.filter(Boolean);
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const { data, error } = await sb.from("clientes").select("id, fecha_nacimiento").in("id", ids);
+  if (error) return out; // columna inexistente u otro problema → sin cumpleaños
+  for (const r of (data ?? []) as { id: string; fecha_nacimiento: string | null }[]) {
+    out.set(r.id, r.fecha_nacimiento ?? null);
+  }
+  return out;
+}
 
 async function acuerdosActivos(): Promise<Map<string, AcuerdoActivo[]>> {
   const sb = createServerSupabase();
@@ -166,7 +227,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy), arregloAplicado);
   const meta = cuotaDeFecha(terminosDe(row), hoy) + acuerdoHoy;
   const pagoPuntual = cubrioCuotaDelDia(pago.pagadoPuntual, meta);
-  const cifras = calcularCifras({
+  const entrada = {
     terminos: terminosDe(row),
     saldo: Number((s.data as { saldo_actual: number } | null)?.saldo_actual ?? 0),
     pagoHoy: pago.pagoHoy,
@@ -179,9 +240,12 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     corte: pasoCorte(),
     multaHoyRegistrada: (multa.data?.length ?? 0) > 0,
     hoyYaDevengado,
-  });
+  };
+  const cifrasBase = calcularCifras(entrada);
+  const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
+  const cumple = evaluarCumple(row, nac, hoy, cifrasBase, entrada);
 
-  return armar(row, cifras, {
+  return armar(row, cumple.cifras, {
     hoy,
     pagoHoy: pago.pagoHoy,
     pagoPuntual,
@@ -190,6 +254,10 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     pendienteHora: pend.hora,
     hoyYaDevengado,
     devengadoHasta,
+    esCumpleanos: cumple.esCumpleanos,
+    cumpleLibreAplica: cumple.aplica,
+    cumpleMotivo: cumple.motivo,
+    fechaNacimiento: nac,
   });
 }
 
@@ -236,7 +304,10 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
   }
   const multaHoy = new Set((multasHoy.data ?? []).map((g: { contrato_id: string }) => g.contrato_id));
 
-  return ((contratos.data ?? []) as unknown as ContratoRow[])
+  const filasContrato = (contratos.data ?? []) as unknown as ContratoRow[];
+  const nacMap = await nacimientosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
+
+  return filasContrato
     .map((c) => {
       const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(c.id) ?? [], hoy), arregloMap.get(c.id) ?? 0);
       const pagoHoy = pagaronHoy.has(c.id);
@@ -244,7 +315,7 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
       const pendiente = pendientes.has(c.id);
       const devengadoHasta = lastRenta.get(c.id) ?? null;
       const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
-      const cifras = calcularCifras({
+      const entrada = {
         terminos: terminosDe(c),
         saldo: saldoMap.get(c.id) ?? 0,
         pagoHoy,
@@ -257,8 +328,11 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
         corte,
         multaHoyRegistrada: multaHoy.has(c.id),
         hoyYaDevengado,
-      });
-      return armar(c, cifras, {
+      };
+      const cifrasBase = calcularCifras(entrada);
+      const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;
+      const cumple = evaluarCumple(c, nac, hoy, cifrasBase, entrada);
+      return armar(c, cumple.cifras, {
         hoy,
         pagoHoy,
         pagoPuntual,
@@ -267,6 +341,10 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
         pendienteHora: null,
         hoyYaDevengado,
         devengadoHasta,
+        esCumpleanos: cumple.esCumpleanos,
+        cumpleLibreAplica: cumple.aplica,
+        cumpleMotivo: cumple.motivo,
+        fechaNacimiento: nac,
       });
     })
     // Quien cubrió el día (o tiene comprobante en validación) no recibe cobro.

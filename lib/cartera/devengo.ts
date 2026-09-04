@@ -21,7 +21,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, sumarDias, pasoCorte, diasEntre } from "./fecha";
-import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
+import { cuotaDeFecha, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
 import {
   contratosQueCubrieronElDia,
   contratosConComprobantePendienteEnDia,
@@ -51,8 +51,24 @@ function graciaVigente(fecha: string, hoy = hoyPanama()): boolean {
 
 type ContratoDevengo = TerminosCuota & {
   id: string;
+  cliente_id: string | null;
   fecha_inicio: string;
 };
+
+/**
+ * Fechas de nacimiento por cliente, a prueba de fallos: si la columna aún no
+ * existe (migración 0015 sin correr), devuelve vacío y no aplica cumpleaños.
+ */
+async function nacimientosPorCliente(): Promise<Map<string, string | null>> {
+  const sb = createServerSupabase();
+  const { data, error } = await sb.from("clientes").select("id, fecha_nacimiento");
+  const out = new Map<string, string | null>();
+  if (error) return out;
+  for (const r of (data ?? []) as { id: string; fecha_nacimiento: string | null }[]) {
+    out.set(r.id, r.fecha_nacimiento ?? null);
+  }
+  return out;
+}
 
 export type ResultadoDevengo = {
   fecha: string;
@@ -99,7 +115,7 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
 
   const { data: contratos, error } = await sb
     .from("contratos")
-    .select("id, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+    .select("id, cliente_id, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
     .eq("estado", "activo");
   if (error) throw error;
 
@@ -109,6 +125,14 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     ((existentes ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id),
   );
 
+  // Saldo + cumpleaños por contrato (el beneficio aplica solo si está al día).
+  const { data: saldos } = await sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual");
+  const saldoMap = new Map<string, number>();
+  for (const s of (saldos ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {
+    saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
+  }
+  const nacMap = await nacimientosPorCliente();
+
   const res: ResultadoDevengo = { fecha, creados: 0, yaEstaban: 0, sinCuota: 0 };
   const filas: Record<string, unknown>[] = [];
 
@@ -117,6 +141,17 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     if (yaTiene.has(c.id)) { res.yaEstaban++; continue; }
     const monto = cuotaDeFecha(c, fecha);
     if (monto <= 0) { res.sinCuota++; continue; }
+    // Cumpleaños libre: no se genera cargo si es su cumpleaños, tiene >= 1 mes
+    // de permanencia y está al día (sin saldo pendiente al momento del devengo).
+    const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;
+    if (
+      esCumpleanos(nac, fecha) &&
+      tienePermanencia(c.fecha_inicio, fecha, 1) &&
+      (saldoMap.get(c.id) ?? 0) <= 0.009
+    ) {
+      res.sinCuota++;
+      continue;
+    }
     filas.push({
       contrato_id: c.id,
       fecha,

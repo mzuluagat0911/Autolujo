@@ -65,6 +65,21 @@ const TEMPORAL = /\b(en\s+un\s+momento|en\s+breve|en\s?seguida|m[áa]s\s+tarde|y
 const CONTACTO = /\b(te|le)\s+(escrib|confirm|avis|respond|contact|llam)\w*|\bse\s+(comunican?|contactan?)\b/i;
 
 /**
+ * "Lo reviso con el equipo" / "déjame validarlo con el encargado":
+ * es una promesa de revisión humana, aunque NO diga "en un momento te escribo".
+ * Sin esto el cliente oye que alguien lo ve y el panel no se entera.
+ * No pega en "Soy Marcela, del equipo de Auto Lujo" (presentación).
+ */
+const PROMESA_EQUIPO =
+  /\b(?:revis|valid|confirm|consult|paso|pasar|miro|mirar|veo|ver)\w*.{0,48}\b(?:el\s+)?(?:equipo|encargad)/i;
+
+export function prometeRevisionHumana(mensaje: string): boolean {
+  const t = mensaje ?? "";
+  if (TEMPORAL.test(t) && CONTACTO.test(t)) return true;
+  return PROMESA_EQUIPO.test(t);
+}
+
+/**
  * Cifras de dinero de un texto. Acepta "$35", "$1,250.50", "35 dólares",
  * "USD 35", "B/. 35", "35$". No toma números sueltos (carro 144, las 7:00).
  */
@@ -138,15 +153,15 @@ export function revisarRespuesta(respuesta: RespuestaAgente, contexto?: string):
   }
 
   // La promesa sí sale —está bien dicha—, pero deja dueño en el panel.
-  if (!respuesta.pasar_a_humano && TEMPORAL.test(mensaje) && CONTACTO.test(mensaje)) {
+  if (!respuesta.pasar_a_humano && prometeRevisionHumana(mensaje)) {
     return {
       respuesta: {
         ...respuesta,
         pasar_a_humano: true,
-        motivo: respuesta.motivo ?? "El agente prometió que alguien le escribe.",
+        motivo: respuesta.motivo ?? "El agente prometió que el equipo lo revisa.",
       },
       intervino: "promesa",
-      detalle: "El agente prometió respuesta sin escalar; se escaló para que la promesa tenga dueño.",
+      detalle: "El agente prometió revisión humana sin escalar; se escaló para que la promesa tenga dueño.",
     };
   }
 

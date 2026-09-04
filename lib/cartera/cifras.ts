@@ -53,6 +53,8 @@ export type EntradaCifras = {
   corte: boolean;
   multaHoyRegistrada: boolean;
   hoyYaDevengado: boolean;
+  /** Hoy no corre cuota (ej. cumpleaños libre): la cuota del día es 0. */
+  diaLibre?: boolean;
 };
 
 /** ¿La suma de abonos de hoy (antes de las 7) cubre lo que tocaba hoy? */
@@ -73,7 +75,8 @@ export function cubrioCuotaDelDia(pagadoPuntual: number, meta: number): boolean 
 export function calcularCifras(e: EntradaCifras): Cifras {
   const letra = Math.max(Number(e.terminos.letra_diaria) || 0, 0);
   const penalidad = penalidadDe(e.terminos);
-  const cuotaHoy = cuotaDeFecha(e.terminos, e.hoy);
+  // diaLibre (ej. cumpleaños): hoy no corre cuota, como un domingo libre.
+  const cuotaHoy = e.diaLibre ? 0 : cuotaDeFecha(e.terminos, e.hoy);
   const manana = sumarDias(e.hoy, 1);
   const cuotaManana = cuotaDeFecha(e.terminos, manana);
   const acuerdoHoy = Math.max(Number(e.acuerdoHoy) || 0, 0);
