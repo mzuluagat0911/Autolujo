@@ -77,7 +77,7 @@ const MENSAJES: Record<string, ConversacionDetalle["mensajes"]> = {
       direccion: "out",
       tipo: "text",
       texto:
-        "Recibí tu comprobante de $35.00. Lo estoy validando contra tu saldo del Carro 144.",
+        "Recibí su comprobante de $35.00. Lo estoy validando contra su saldo del Carro 144.",
       media_url: null,
       enviado_por: null,
       created_at: hace(15),
@@ -218,10 +218,10 @@ export function demoBandeja(): { convs: ConversacionLista[]; error: null } {
 export function demoRespuestaAgente(textoCliente: string): string {
   const t = textoCliente.toLowerCase();
   if (t.includes("saldo") || t.includes("debo")) {
-    return "Tu saldo lo calculo desde el sistema — un momento y te lo confirmo por aquí.";
+    return "El saldo se lo confirmo en un momento.";
   }
   if (t.includes("comprobante") || t.includes("pago") || t.includes("transfer")) {
-    return "Cuando lo tengas, mándame la captura del comprobante y lo registro enseguida.";
+    return "Cuando lo tenga, mándeme la captura del comprobante.";
   }
-  return "Recibí tu mensaje. Si necesitas algo urgente, un compañero del equipo puede tomar este chat.";
+  return "Recibí su mensaje. Si es urgente, alguien del equipo toma este chat.";
 }

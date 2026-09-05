@@ -186,7 +186,7 @@ async function manejarMensaje(msg: WhatsAppMessage) {
     await responderYEscalar(
       conv.id,
       from,
-      "¡Gracias por escribir! En un momento te respondo por aquí 🙌",
+      "Eso no me abre bien. ¿Me lo escribe o me manda foto?",
       `Mensaje de tipo "${msg.type ?? "desconocido"}" que el agente no puede leer.`,
     );
   }
@@ -278,7 +278,7 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
     await responderYEscalar(
       conv.id,
       from,
-      "¡Gracias por escribir! En un momento te respondo por aquí 🙌",
+      "Déme un toque, le escribo ya.",
       "El agente no pudo responder (falla técnica).",
     );
   }
@@ -291,7 +291,7 @@ async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, men
     await responderYEscalar(
       conv.id,
       from,
-      "Recibí tu audio pero no pude abrirlo. ¿Me lo escribes o me lo reenvías?",
+      "Recibí su audio pero no pude abrirlo. ¿Me lo escribe o me lo reenvía?",
       "Llegó una nota de voz que no se pudo descargar.",
     );
     return;
@@ -306,7 +306,7 @@ async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, men
     await responderYEscalar(
       conv.id,
       from,
-      "Te escuché, pero no pude entender bien el audio. ¿Me lo escribes en un mensajito?",
+      "Lo escuché, pero no pude entender bien el audio. ¿Me lo escribe en un mensajito?",
       "No se pudo transcribir una nota de voz.",
     );
   }
@@ -327,7 +327,7 @@ async function procesarComprobante(
     await responderYEscalar(
       conversacionId,
       from,
-      "📷 Recibí una imagen pero no pude abrirla. Reenvíala, por favor.",
+      "No pude abrir esa foto. ¿Me la reenvía?",
       "Llegó una imagen que no se pudo descargar.",
     );
     return;
@@ -343,7 +343,7 @@ async function procesarComprobante(
       await responder(
         conversacionId,
         from,
-        "Recibí tu imagen, pero no parece un comprobante de pago 🤔 ¿Me envías la captura de la transferencia, o la foto del recibo o cheque, donde se vea el monto y la referencia? Así la cruzamos con el banco y aplicamos tu pago.",
+        "Esa foto no se ve como comprobante. Mándeme la captura de la transferencia donde se vea el monto.",
       );
       return;
     }
@@ -374,10 +374,10 @@ async function procesarComprobante(
     const motivos = items
       .map(({ c, res }) => armarRespuestaComprobante(c, res).escalarMotivo)
       .filter((m): m is string => !!m);
-    const cabeza = `¡Recibí ${items.length} comprobantes en esa foto! 🙌`;
+    const cabeza = `Vi ${items.length} comprobantes en esa foto.`;
     const cola = motivos.length
-      ? "Hay uno que necesito revisar con el equipo; te confirmamos por aquí."
-      : "Los estamos cruzando con el banco para validarlos. Apenas queden, te confirmo.";
+      ? "Hay uno que reviso yo y le escribo."
+      : "Los cruzo con el banco y le confirmo.";
     await responder(conversacionId, from, `${cabeza}\n${lineas.join("\n")}\n${cola}`, primerPago ?? undefined);
     if (motivos.length) {
       await marcarPendienteDeRespuesta(conversacionId, `Foto con varios comprobantes: ${motivos.join(" · ")}`);
@@ -387,7 +387,7 @@ async function procesarComprobante(
     await responderYEscalar(
       conversacionId,
       from,
-      "¡Gracias por escribir! Tuve un detallito abriendo la imagen 🙈 ¿Me la reenvías, porfa?",
+      "No pude abrir la foto. ¿Me la reenvía?",
       "Falló el procesamiento de un comprobante: revisar si el pago quedó registrado.",
     );
   }
@@ -401,55 +401,55 @@ function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: s
   const alerta = (codigo: string) => res.veredicto.alertas.some((a) => a.codigo === codigo);
   if (res.estadoConciliacion === "duplicado") {
     return {
-      respuesta: "Ese comprobante ya lo tenemos registrado por aquí 🙌 Si hiciste otro pago distinto, mándame la captura de ese otro y lo revisamos.",
+      respuesta: "Ese comprobante ya me aparece. Si fue otro pago, mándeme esa captura.",
       escalarMotivo: null,
     };
   }
   if (alerta("cuenta_otra_empresa")) {
     return {
-      respuesta: "¡Gracias por enviarlo! Pero ese comprobante fue a la cuenta de otra de nuestras empresas, no a la cuenta asignada a tu carro. Por eso no lo puedo aplicar así. Déjame revisarlo con el equipo y te confirmamos por aquí.",
+      respuesta: "Ese depósito fue a otra cuenta de las nuestras, no a la del carro. Lo reviso y le confirmo.",
       escalarMotivo: "Comprobante a la cuenta de otra empresa (no la del carro).",
     };
   }
   if (alerta("cuenta_ajena")) {
     return {
-      respuesta: "¡Gracias por enviarlo! Pero ese comprobante no corresponde a la cuenta de banco asignada a tu carro 🤔 Revisa que la transferencia vaya a nuestra cuenta. Déjame verificarlo con el equipo y te confirmamos.",
+      respuesta: "Esa transferencia no fue a la cuenta del carro. Revise el número de cuenta. Lo veo yo y le escribo.",
       escalarMotivo: "Comprobante a una cuenta que no es de la empresa.",
     };
   }
   if (alerta("moneda_no_esperada")) {
     return {
-      respuesta: "¡Gracias por enviarlo! El comprobante no parece estar en dólares/balboas, así que necesito revisarlo con el equipo para aplicarlo bien. Te confirmamos por aquí.",
+      respuesta: "Ese comprobante no se ve en dólares. Lo reviso y le escribo.",
       escalarMotivo: "Comprobante en moneda distinta a USD.",
     };
   }
   if (alerta("fecha_vieja") || alerta("fecha_futura")) {
     return {
-      respuesta: "¡Gracias! Recibí tu comprobante, pero la fecha no me cuadra con un pago de hoy 🤔 Déjame revisarlo con el equipo y te confirmamos por aquí.",
+      respuesta: "Vi el comprobante pero la fecha no me cuadra con hoy. Lo reviso y le escribo.",
       escalarMotivo: "La fecha del comprobante no cuadra (viejo o futuro).",
     };
   }
   if (!monto || c.confianza === "baja") {
     return {
-      respuesta: "¡Gracias por enviarnos el comprobante! 🙌 Lo estamos cruzando con el banco para confirmar que entró bien. En cuanto quede validado te confirmamos por aquí.",
+      respuesta: "Vi el comprobante. Lo cruzo con el banco y le confirmo.",
       escalarMotivo: null,
     };
   }
   if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
-    const carro = res.resolucion.etiqueta ?? "tu carro";
+    const carro = res.resolucion.etiqueta ?? "su carro";
     return {
-      respuesta: `¡Gracias por enviarnos el comprobante de ${monto} del ${carro}! 🙌 Lo estamos cruzando con el banco para confirmar que entró sin problema. Apenas quede validado te confirmamos por aquí.`,
+      respuesta: `Vi el comprobante de ${monto} del ${carro}. Lo cruzo con el banco y le confirmo.`,
       escalarMotivo: null,
     };
   }
   if (res.resolucion.estado === "sin_carro") {
     return {
-      respuesta: `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 ¿Me confirmas el número de carro para aplicarlo bien? Lo estamos cruzando con el banco para validar que entró.`,
+      respuesta: `Vi el comprobante de ${monto}. ¿De qué carro es?`,
       escalarMotivo: null,
     };
   }
   return {
-    respuesta: `¡Gracias por enviarnos el comprobante de ${monto}! 🙌 Lo estamos cruzando con el banco para validarlo y en un momento te confirmamos.`,
+    respuesta: `Vi el comprobante de ${monto}. Lo cruzo con el banco y le confirmo.`,
     escalarMotivo: null,
   };
 }
@@ -458,14 +458,14 @@ function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: s
 function lineaComprobante(c: Comprobante, res: ResPago): string {
   const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : "monto ?";
   const alerta = (codigo: string) => res.veredicto.alertas.some((a) => a.codigo === codigo);
-  if (res.estadoConciliacion === "duplicado") return `• ${monto} — ya estaba registrado`;
-  if (alerta("cuenta_otra_empresa")) return `• ${monto} — ⚠️ fue a la cuenta de otra empresa`;
-  if (alerta("cuenta_ajena")) return `• ${monto} — ⚠️ cuenta que no es la nuestra`;
-  if (alerta("moneda_no_esperada")) return `• ${monto} — ⚠️ no está en dólares`;
-  if (alerta("fecha_vieja") || alerta("fecha_futura")) return `• ${monto} — ⚠️ la fecha no cuadra`;
-  if (res.resolucion.estado === "ok" && res.resolucion.contratoId) return `• ${monto} del ${res.resolucion.etiqueta ?? "tu carro"} ✓`;
-  if (res.resolucion.estado === "sin_carro") return `• ${monto} — ¿de qué carro?`;
-  return `• ${monto} — validando`;
+  if (res.estadoConciliacion === "duplicado") return `${monto} ya estaba`;
+  if (alerta("cuenta_otra_empresa")) return `${monto} fue a otra empresa`;
+  if (alerta("cuenta_ajena")) return `${monto} no es nuestra cuenta`;
+  if (alerta("moneda_no_esperada")) return `${monto} no está en dólares`;
+  if (alerta("fecha_vieja") || alerta("fecha_futura")) return `${monto} fecha rara`;
+  if (res.resolucion.estado === "ok" && res.resolucion.contratoId) return `${monto} del ${res.resolucion.etiqueta ?? "carro"}`;
+  if (res.resolucion.estado === "sin_carro") return `${monto} ¿de qué carro?`;
+  return `${monto}`;
 }
 
 // ---------------------------------------------------------------------------

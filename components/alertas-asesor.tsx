@@ -61,6 +61,7 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
   const [permiso, setPermiso] = useState<NotificationPermission | "unsupported">("unsupported");
   const [sonidoOn, setSonidoOn] = useState(true);
   const conocidos = useRef<Set<string> | null>(null);
+  const primerToque = useRef(true);
   const pathname = usePathname();
   const router = useRouter();
 
@@ -68,13 +69,18 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
     setPermiso(permisoNotificacion());
     setSonidoOn(sonidoActivado());
     const unlock = () => desbloquearAudio();
-    window.addEventListener("pointerdown", unlock, { once: true });
-    window.addEventListener("keydown", unlock, { once: true });
-    window.addEventListener("touchstart", unlock, { once: true });
+    const onVis = () => {
+      if (document.visibilityState === "visible") desbloquearAudio();
+    };
+    window.addEventListener("pointerdown", unlock);
+    window.addEventListener("keydown", unlock);
+    window.addEventListener("touchstart", unlock);
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
       window.removeEventListener("touchstart", unlock);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, []);
 
@@ -90,7 +96,7 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
         lanzarNotificacionEscritorio({
           titulo: `${a.titulo} espera a un asesor`,
           cuerpo: a.motivo ?? a.preview ?? "Marcela pasó este chat a una persona.",
-          tag: `escalada-${a.id}`,
+          tag: `escalada-${a.huella}`,
           onClick: () => {
             if (opts?.prueba || a.id === "__prueba__") return;
             router.push(`/cartera/conversaciones/${a.id}`);
@@ -106,12 +112,17 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
     const tick = async () => {
       const next = await cargarAlertasEscalada();
       if (cancelled) return;
-      const ids = new Set(next.map((a) => a.id));
+      const huellas = new Set(next.map((a) => a.huella));
       if (conocidos.current === null) {
-        conocidos.current = ids;
+        conocidos.current = huellas;
+        // Al abrir el panel: si ya hay gente esperando, un toque para que se oiga.
+        if (next.length > 0 && primerToque.current) {
+          primerToque.current = false;
+          avisar(next.slice(0, 1));
+        }
       } else {
-        const nuevas = next.filter((a) => !conocidos.current!.has(a.id));
-        conocidos.current = ids;
+        const nuevas = next.filter((a) => !conocidos.current!.has(a.huella));
+        conocidos.current = huellas;
         if (nuevas.length > 0) avisar(nuevas);
       }
       setItems(next);
@@ -148,6 +159,7 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
           motivo: "Así suena y se ve cuando un cliente espera a un asesor.",
           desde: new Date().toISOString(),
           preview: null,
+          huella: `__prueba__|${Date.now()}`,
         },
       ],
       { prueba: true },
@@ -168,7 +180,9 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
     const fd = new FormData();
     fd.set("conversacion_id", id);
     await accionTomarChat(fd);
-    conocidos.current?.delete(id);
+    if (conocidos.current) {
+      conocidos.current = new Set([...conocidos.current].filter((h) => !h.startsWith(`${id}|`)));
+    }
     setItems((prev) => prev.filter((a) => a.id !== id));
     setOpen(false);
     router.push(`/cartera/conversaciones/${id}`);

@@ -186,6 +186,8 @@ export type AlertaEscalada = {
   motivo: string | null;
   desde: string | null;
   preview: string | null;
+  /** Cambia si hay un mensaje nuevo o se vuelve a escalar → la campana suena otra vez. */
+  huella: string;
 };
 
 /** Chats que Marcela (o el sistema) pasó a una persona y nadie ha tomado. */
@@ -195,7 +197,7 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
     const { data, error } = await sb
       .from("conversaciones")
       .select(
-        "id, etiqueta, motivo_escalada, escalada_at, ultimo_texto, cliente:clientes(nombre), vehiculo:vehiculos(numero)",
+        "id, etiqueta, motivo_escalada, escalada_at, ultimo_texto, ultimo_mensaje_at, cliente:clientes(nombre), vehiculo:vehiculos(numero)",
       )
       .eq("necesita_humano", true)
       .order("escalada_at", { ascending: true, nullsFirst: false });
@@ -206,6 +208,7 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       motivo_escalada: string | null;
       escalada_at: string | null;
       ultimo_texto: string | null;
+      ultimo_mensaje_at: string | null;
       cliente: { nombre: string } | null;
       vehiculo: { numero: string } | null;
     }[]).map((c) => ({
@@ -216,6 +219,7 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       motivo: c.motivo_escalada,
       desde: c.escalada_at,
       preview: c.ultimo_texto,
+      huella: [c.id, c.escalada_at ?? "", c.motivo_escalada ?? "", c.ultimo_mensaje_at ?? ""].join("|"),
     }));
   } catch {
     return [];

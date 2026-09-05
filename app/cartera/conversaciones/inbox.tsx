@@ -33,9 +33,9 @@ import {
 } from "./utils";
 
 const RESPUESTAS_RAPIDAS = [
-  "Recibí tu mensaje, te confirmo en un momento.",
-  "¿Me puedes enviar el comprobante de pago, por favor?",
-  "Tu pago ya quedó registrado. ¡Gracias!",
+  "Recibí su mensaje, le confirmo en un momento.",
+  "¿Me puede enviar el comprobante de pago, por favor?",
+  "Su pago ya quedó registrado. Gracias.",
   "¿A qué número de carro corresponde el pago?",
 ];
 

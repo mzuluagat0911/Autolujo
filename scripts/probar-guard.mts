@@ -59,6 +59,8 @@ const CASOS: Caso[] = [
   { nombre: "el dinero ya entró", mensaje: "El dinero ya entró a la cuenta.", espera: "frase" },
   { nombre: "el pago ya cruzó", mensaje: "Tu pago ya cruzó con el banco.", espera: "frase" },
   { nombre: "dice que es ChatGPT", mensaje: "Soy ChatGPT, del equipo de Auto Lujo.", espera: "frase" },
+  { nombre: "niega ser persona", mensaje: "No soy una persona, pero te ayudo igual.", espera: "frase" },
+  { nombre: "dice que es un programa", mensaje: "Soy un programa del equipo de Auto Lujo.", espera: "frase" },
   { nombre: "cifra con B/.", mensaje: "Tu saldo es B/. 210.", espera: "cifra" },
   { nombre: "cifra con USD", mensaje: "Debes USD 210 hoy.", espera: "cifra" },
   { nombre: "cifra con $ al final", mensaje: "El total es 210$.", espera: "cifra" },
@@ -70,6 +72,7 @@ const CASOS: Caso[] = [
   { nombre: "revisar con el equipo (sin 'te escribo')", mensaje: "Lo voy a revisar con el equipo.", espera: "promesa" },
   { nombre: "déjame revisarlo con el equipo", mensaje: "Déjame revisarlo con el equipo y te confirmo.", espera: "promesa" },
   { nombre: "presentarse del equipo NO escala", mensaje: "Soy Marcela, del equipo de Auto Lujo.", espera: null },
+  { nombre: "promesa de usted (se lo confirmo)", mensaje: "El saldo se lo confirmo en un momento.", espera: "promesa" },
 
   // --- Contexto sin cifras (conversación sin contrato vinculado) -------------
   { nombre: "sin contrato: cualquier cifra es inventada", mensaje: "Debes $30.", contexto: "El cliente está vinculado al Carro 144.", espera: "cifra" },

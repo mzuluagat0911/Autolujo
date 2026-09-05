@@ -8,7 +8,7 @@ export type DestinoCharla =
   | { destinar: "silencio" }
   | { destinar: "canned"; mensaje: string };
 
-const MENSAJE_GRACIAS = "Con gusto 🙌";
+const MENSAJE_GRACIAS = "Con gusto";
 
 /** Palabras que convierten el mensaje en asunto de cartera → Marcela. */
 const INTENTO =

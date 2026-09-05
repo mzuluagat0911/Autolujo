@@ -228,7 +228,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
   const yaCorte = pasoCorte();
   const m = money;
 
-  let cuentaTexto = "Para transferir, pídele al equipo la cuenta de tu empresa.";
+  let cuentaTexto = "Para transferir, pídele al equipo la cuenta de su empresa.";
   if (est.empresaId) {
     const { data: cta } = await sb
       .from("cuentas_bancarias")
@@ -306,9 +306,8 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         : `- Mañana no corre cuota nueva; si no paga hoy, mañana seguiría en ${m(est.totalHoyTarde)}.`,
       `- Ese total sale de sumar las cuotas diarias que aún no se han cubierto; cada pago`,
       `  VALIDADO ya está descontado. Un comprobante en validación NO baja el saldo.`,
-      `- Si te piden una cifra distinta a estas (otro plazo, otro escenario, un desglose que`,
-      `  no tienes), NO la calcules: dile con calidez que en un momento se la confirman y`,
-      `  marca pasar_a_humano = true.`,
+      `- Si te piden un plazo que no está aquí, NO lo calcules: dales estas cifras y pregunta`,
+      `  si con eso les sirve. No pases a una persona en el primer intento.`,
     );
 
     // Pago adelantado por semana — ya calculado por el código (el agente no multiplica).
@@ -319,7 +318,8 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `PAGO ADELANTADO POR SEMANA (si pide "pagar la semana adelantada"):`,
       `- Una semana son ${diasSemana} días (${est.cobraDomingo ? "incluye domingo" : "domingo libre"}) a ${m(est.letra)} = ${m(valorSemana)}. Eso es SOLO las cuotas de la semana; no incluye lo que ya deba.`,
       `- Si quiere ponerse al día HOY y además dejar la semana adelantada: ${m(est.totalHoy)} + ${m(valorSemana)} = ${m(est.totalHoy + valorSemana)}.`,
-      `- Para OTROS plazos (2 semanas, un mes, X días distintos), NO lo calcules: pásalo a una persona.`,
+      `- Para OTROS plazos (2 semanas, un mes, X días), NO lo calcules: dales la semana y el día;`,
+      `  no pases a una persona salvo que insistan en esa cuenta exacta.`,
     );
   } else {
     // Datos INCOMPLETOS: el saldo acumulado NO es confiable. No entregamos un total;
@@ -332,8 +332,8 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `  NO tienes un total confiable. Sí puedes decir su CUOTA DIARIA (${m(est.letra)} puntual,`,
       `  ${m(tarifaPlenaDia)} si va atrasado) y cómo funciona el pago (horario, corte de 7 p.m.).`,
       `- Si pregunta cuánto debe, su saldo, su total, o lo discute: NO le des NINGUNA cifra de`,
-      `  saldo/total (aunque parezca que la tienes). Dile con calidez que le confirman el saldo`,
-      `  exacto en un momento, y marca pasar_a_humano = true.`,
+      `  saldo/total. Di "El saldo se lo confirmo en un momento" (sin decir "el sistema")`,
+      `  y marca pasar_a_humano = true.`,
     );
   }
 
@@ -447,7 +447,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `CÓMO SE APLICA UN ABONO (orden fijo; el cliente NO elige):`,
     `- Primero arreglo, luego saldo anterior, luego recargo, al final la cuota de hoy.`,
     `- NUNCA preguntes a qué lo quiere aplicar. Si el CONTEXTO dice cómo se partió un pago, INFORMALO.`,
-    `- Si discute esa asignación (quiere que vaya a otra cosa): marca pasar_a_humano = true.`,
+    `- Si discute esa asignación: explícaselo una vez. Solo si insiste, marca pasar_a_humano = true.`,
   );
 
   return lineas.join("\n");

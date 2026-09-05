@@ -13,7 +13,7 @@
 import type { RespuestaAgente } from "./agente";
 
 /** Lo que se responde cuando el mensaje original no pasó la revisión. */
-const MENSAJE_SEGURO = "Déjame revisar eso bien y en un momento te escribo por aquí 🙌";
+const MENSAJE_SEGURO = "Déme un toque, lo reviso y le escribo.";
 
 /**
  * Afirmaciones que dan por hecho algo que el sistema no ha confirmado, o que
@@ -33,7 +33,11 @@ const PROHIBIDAS: { re: RegExp; que: string }[] = [
   { re: /\bpago\s+(ya\s+)?(aplicado|acreditado|validado\s+correctamente)\b/i, que: "da un pago por aplicado" },
   { re: /\b(soy|somos)\s+(un[ao]?\s+)?(bot|robot|asistente\s+virtual|inteligencia\s+artificial|ia|modelo\s+de)\b/i, que: "revela que es IA" },
   { re: /\b(soy|somos)\s+(chatgpt|claude|gemini|gpt-?\d*)\b/i, que: "revela que es IA" },
-  { re: /\b(chatbot|respuesta\s+autom[áa]tica|mensaje\s+autom[áa]tico)\b/i, que: "revela que es automático" },
+  { re: /\bno\s+soy\s+(una?\s+)?(persona|humana?|alguien\s+real)\b/i, que: "revela que es IA" },
+  { re: /\bsoy\s+(un\s+)?(programa|software|modelo\s+de\s+lenguaje)\b/i, que: "revela que es IA" },
+  { re: /\bcomo\s+(una?\s+)?(ia|inteligencia\s+artificial|modelo\s+de\s+lenguaje)\b/i, que: "revela que es IA" },
+  { re: /\b(chatbot|respuesta\s+autom[áa]tica|mensaje\s+autom[áa]tico|asistencia\s+automatizada)\b/i, que: "revela que es automático" },
+  { re: /\bno\s+tengo\s+(sentimientos|emociones|cuerpo)\b/i, que: "revela que es IA" },
   { re: /🤖/u, que: "revela que es IA" },
 ];
 
@@ -62,7 +66,7 @@ const CIFRA_EN_LETRAS = new RegExp(
  * hoy sí corre cuota" (afirmación presente) con "en un momento te confirmo".
  */
 const TEMPORAL = /\b(en\s+un\s+momento|en\s+breve|en\s?seguida|m[áa]s\s+tarde|ya\s+mismo|pronto|apenas|en\s+cuanto|ahorita)\b/i;
-const CONTACTO = /\b(te|le)\s+(escrib|confirm|avis|respond|contact|llam)\w*|\bse\s+(comunican?|contactan?)\b/i;
+const CONTACTO = /\b(te|le|se\s+l[oa])\s+(escrib|confirm|avis|respond|contact|llam)\w*|\bse\s+(comunican?|contactan?)\b/i;
 
 /**
  * "Lo reviso con el equipo" / "déjame validarlo con el encargado":

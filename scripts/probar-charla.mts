@@ -26,7 +26,7 @@ check("jajaja", destinarCharla("jajaja").destinar, "silencio");
 check("ok dale", destinarCharla("ok dale").destinar, "silencio");
 
 console.log("\n· Gracias → respuesta fija, no Marcela");
-check("gracias", destinarCharla("gracias"), { destinar: "canned", mensaje: "Con gusto 🙌" });
+check("gracias", destinarCharla("gracias"), { destinar: "canned", mensaje: "Con gusto" });
 check("mil gracias", destinarCharla("¡Mil gracias!").destinar, "canned");
 check("ok gracias", destinarCharla("ok gracias").destinar, "canned");
 

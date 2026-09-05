@@ -152,11 +152,11 @@ export async function registrarPagoManual(
       });
 
       const cierre = como
-        ? `${como} Quedó en el Carro ${carro}.`
-        : `Ya quedó registrado en tu cuenta del Carro ${carro}.`;
+        ? `${como} Quedó en el carro ${carro}.`
+        : `Quedó en el carro ${carro}.`;
       const texto = nombre
-        ? `¡Listo, ${nombre}! Recibimos tu pago de ${money(monto)} en la oficina (${metodoLabel}). ${cierre} ¡Gracias! 🙌`
-        : `Recibimos tu pago de ${money(monto)} en la oficina (${metodoLabel}). ${cierre} ¡Gracias! 🙌`;
+        ? `Listo ${nombre}, recibimos ${money(monto)} en oficina (${metodoLabel}). ${cierre}`
+        : `Recibimos ${money(monto)} en oficina (${metodoLabel}). ${cierre}`;
 
       const { data: vent } = await sb
         .from("conversaciones")
