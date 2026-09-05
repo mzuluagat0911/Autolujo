@@ -11,6 +11,14 @@
     {
       "path": "/api/cron/estado-cuenta",
       "schedule": "0 13 * * 1-6"
+    },
+    {
+      "path": "/api/cron/recordatorio-mediodia",
+      "schedule": "0 18 * * 1-6"
+    },
+    {
+      "path": "/api/cron/recordatorio-cierre",
+      "schedule": "30 22 * * 1-6"
     }
   ]
 }

@@ -51,6 +51,9 @@ export type EstadoCuenta = Cifras & {
   cumpleLibreAplica: boolean;
   cumpleMotivo: string | null;
   fechaNacimiento: string | null;
+  diasAdelantados: number;
+  cubiertoHasta: string | null;
+  estadoContrato: string;
   desglose: string;
   fecha: string;
   templateVars: [string, string, string, string, string];
@@ -59,6 +62,7 @@ export type EstadoCuenta = Cifras & {
 type ContratoRow = TerminosCuota & {
   id: string;
   cliente_id: string | null;
+  estado: string;
   fecha_inicio: string | null;
   vehiculo: {
     numero: string;
@@ -83,6 +87,7 @@ function armar(
     cumpleLibreAplica: boolean;
     cumpleMotivo: string | null;
     fechaNacimiento: string | null;
+    estadoContrato: string;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -100,6 +105,12 @@ function armar(
   const nombre = c.cliente?.nombre?.split(" ")[0] ?? "cliente";
   const carro = c.vehiculo?.numero ?? "—";
   const emp = c.vehiculo?.empresa ?? null;
+
+  // Pagos adelantados: si el neto (con la cuota de hoy) es negativo, hay crédito.
+  const netoConHoy = cifras.saldoVista + cifras.faltaHoy;
+  const credito = Math.max(-netoConHoy, 0);
+  const diasAdelantados = cifras.letra > 0 ? Math.floor(credito / cifras.letra) : 0;
+  const cubiertoHasta = diasAdelantados > 0 ? sumarDias(extra.hoy, diasAdelantados) : null;
 
   return {
     ...cifras,
@@ -123,6 +134,9 @@ function armar(
     cumpleLibreAplica: extra.cumpleLibreAplica,
     cumpleMotivo: extra.cumpleMotivo,
     fechaNacimiento: extra.fechaNacimiento,
+    diasAdelantados,
+    cubiertoHasta,
+    estadoContrato: extra.estadoContrato,
     desglose,
     fecha,
     templateVars: [nombre, carro, fecha, desglose, money(cifras.totalHoy)],
@@ -168,7 +182,7 @@ function terminosDe(c: ContratoRow): TerminosCuota {
 }
 
 const SEL =
-  "id, cliente_id, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
 
 /**
  * Fecha de nacimiento por cliente. En una consulta aparte y a prueba de fallos:
@@ -227,6 +241,9 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy), arregloAplicado);
   const meta = cuotaDeFecha(terminosDe(row), hoy) + acuerdoHoy;
   const pagoPuntual = cubrioCuotaDelDia(pago.pagadoPuntual, meta);
+  // Contrato cerrado (devuelto/finalizado/abandonado…): ya NO corre cuota diaria;
+  // solo queda la deuda pendiente. Se trata como "día libre" permanente.
+  const contratoCerrado = row.estado !== "activo";
   const entrada = {
     terminos: terminosDe(row),
     saldo: Number((s.data as { saldo_actual: number } | null)?.saldo_actual ?? 0),
@@ -240,6 +257,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     corte: pasoCorte(),
     multaHoyRegistrada: (multa.data?.length ?? 0) > 0,
     hoyYaDevengado,
+    diaLibre: contratoCerrado,
   };
   const cifrasBase = calcularCifras(entrada);
   const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
@@ -258,6 +276,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     cumpleLibreAplica: cumple.aplica,
     cumpleMotivo: cumple.motivo,
     fechaNacimiento: nac,
+    estadoContrato: row.estado,
   });
 }
 
@@ -345,6 +364,7 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
         cumpleLibreAplica: cumple.aplica,
         cumpleMotivo: cumple.motivo,
         fechaNacimiento: nac,
+        estadoContrato: c.estado,
       });
     })
     // Quien cubrió el día (o tiene comprobante en validación) no recibe cobro.

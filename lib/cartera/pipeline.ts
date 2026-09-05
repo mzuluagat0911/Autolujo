@@ -41,25 +41,39 @@ async function resolverContratoDeCliente(clienteId: string): Promise<VinculoCont
   const sb = createServerSupabase();
   const { data } = await sb
     .from("contratos")
-    .select("id, vehiculo:vehiculos(id, numero)")
+    .select("id, estado, vehiculo:vehiculos(id, numero)")
     .eq("cliente_id", clienteId)
-    .eq("estado", "activo")
-    .limit(5);
+    .limit(20);
 
-  const filas = (data ?? []) as unknown as {
-    id: string;
-    vehiculo: { id: string; numero: string } | null;
-  }[];
-  if (filas.length === 0) return { estado: "ninguno" };
-  if (filas.length > 1) return { estado: "varios", cuantos: filas.length };
-
-  const f = filas[0];
-  return {
+  type Fila = { id: string; estado: string; vehiculo: { id: string; numero: string } | null };
+  const filas = (data ?? []) as unknown as Fila[];
+  const ok = (f: Fila): VinculoContrato => ({
     estado: "ok",
     contratoId: f.id,
     vehiculoId: f.vehiculo?.id ?? null,
     etiqueta: f.vehiculo ? `Carro ${f.vehiculo.numero}` : null,
-  };
+  });
+
+  // 1) Contrato ACTIVO (el caso normal: cliente que renta hoy).
+  const activos = filas.filter((f) => f.estado === "activo");
+  if (activos.length === 1) return ok(activos[0]);
+  if (activos.length > 1) return { estado: "varios", cuantos: activos.length };
+
+  // 2) Sin activo: un contrato CERRADO que todavía debe (ej. entregó el carro
+  //    debiendo). Se le sigue cobrando esa deuda, sin cuota diaria.
+  const cerrados = filas.filter((f) => f.estado !== "activo");
+  if (cerrados.length === 0) return { estado: "ninguno" };
+  const { data: saldos } = await sb
+    .from("vw_saldo_contrato")
+    .select("contrato_id, saldo_actual")
+    .in("contrato_id", cerrados.map((c) => c.id));
+  const deudaDe = new Map(
+    ((saldos ?? []) as { contrato_id: string; saldo_actual: number | null }[]).map((s) => [s.contrato_id, Number(s.saldo_actual ?? 0)]),
+  );
+  const conDeuda = cerrados.filter((c) => (deudaDe.get(c.id) ?? 0) > 0.009);
+  if (conDeuda.length === 1) return ok(conDeuda[0]);
+  if (conDeuda.length > 1) return { estado: "varios", cuantos: conDeuda.length };
+  return { estado: "ninguno" };
 }
 
 type VinculoCliente =
@@ -262,13 +276,26 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         : `- Hoy NO tiene ningún pago validado todavía.`,
   ];
 
-  if (est.devengadoHasta != null) {
+  // Contrato CERRADO (entregó el carro debiendo): solo se le cobra la deuda.
+  if (est.estadoContrato !== "activo") {
+    lineas.push(
+      ``,
+      `⚠️ CONTRATO CERRADO (estado: ${est.estadoContrato}). Este cliente YA ENTREGÓ el carro ${est.vehiculoNumero}.`,
+      `- NO corre cuota diaria y NO hay "cuota de hoy": no le hables de cuota del día, de "hoy", de corte`,
+      `  de las 7 p.m. ni de descuento por pago puntual. Nada de eso aplica ya.`,
+      `- Solo tiene una DEUDA PENDIENTE de ${m(est.cuenta)} de cuando tenía el carro. Cóbrale ÚNICAMENTE`,
+      `  ese saldo; puede pagarlo de una vez o en abonos. Cada pago validado baja esa deuda.`,
+      `- Si pregunta cuánto debe: dile que su saldo pendiente es ${m(est.cuenta)} (deuda del carro que entregó).`,
+    );
+  } else if (est.devengadoHasta != null) {
     // Datos COMPLETOS: entregamos el total con confianza.
     lineas.push(
       ``,
-      `CÓMO SE ARMA EL TOTAL (dáselo así, concepto por concepto, y al final el total):`,
-      `- Desglose: ${est.desglose}.`,
-      `- Lo que debe pagar HOY: ${m(est.totalHoy)}.`,
+      `RESUMEN DE LA CUENTA (para "cuánto debo hoy" responde PRIMERO la CUOTA DEL DÍA, no el total):`,
+      `- CUOTA DE HOY (lo que le toca pagar por el día de hoy): ${m(est.cuotaHoy + est.recargo)}${est.recargo > 0.009 ? ` (ya pasó el corte de las 7 p.m.: incluye ${m(est.recargo)} de recargo)` : ""}.`,
+      `- ATRASO acumulado de días anteriores: ${m(est.pendienteAnterior)}.`,
+      `- Total de la cuenta (cuota de hoy + atraso): ${m(est.totalHoy)}. OJO: este es el ACUMULADO; NO lo presentes como "lo que debe pagar hoy". Solo dalo si piden el total/saldo completo.`,
+      `- Desglose completo: ${est.desglose}.`,
       `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
       `  no cubrió cuota + arreglo, pierde el descuento de ese día y el resto se va a mañana.`,
       yaCorte || est.pagoPuntual || est.pendiente
@@ -310,9 +337,23 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     );
   }
 
+  // Pagos adelantados: si tiene días pagados por adelantado, HOY no debe pagar.
+  if (est.diasAdelantados > 0 && est.estadoContrato === "activo") {
+    lineas.push(
+      ``,
+      `✅ CLIENTE ADELANTADO: tiene ${est.diasAdelantados} día(s) de cuota PAGADOS POR ADELANTADO` +
+        (est.cubiertoHasta ? ` (cubierto hasta el ${fechaConDia(est.cubiertoHasta)})` : "") + `.`,
+      `HOY NO tiene que pagar; su cuota de hoy ya está cubierta. Si pregunta cuánto debe o si paga`,
+      `hoy, felicítalo y dile que ya está al día y tiene cubiertos los próximos ${est.diasAdelantados} día(s)` +
+        (est.cubiertoHasta ? ` (hasta el ${fechaConDia(est.cubiertoHasta)})` : "") + `. No le cobres de más.`,
+    );
+  }
+
   // Cumpleaños libre (cláusula del contrato). El motor ya lo aplicó en las cifras;
-  // aquí solo se le dice al agente qué responder.
-  if (est.esCumpleanos && est.cumpleLibreAplica) {
+  // aquí solo se le dice al agente qué responder. No aplica en contratos cerrados.
+  if (est.estadoContrato !== "activo") {
+    // contrato cerrado: sin beneficio de cumpleaños (no hay cuota que perdonar).
+  } else if (est.esCumpleanos && est.cumpleLibreAplica) {
     lineas.push(
       ``,
       `🎂 HOY ES EL CUMPLEAÑOS de este cliente y CUMPLE las condiciones (al día + 1 mes): hoy su`,

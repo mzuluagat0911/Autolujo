@@ -190,15 +190,22 @@ export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRec
     .eq("estado", "activo");
   if (error) throw error;
 
-  const [pagaronPuntual, conPendiente, conRecargo, conRenta] = await Promise.all([
+  const [pagaronPuntual, conPendiente, conRecargo, conRenta, saldos] = await Promise.all([
     contratosQueCubrieronElDia(fecha),
     graciaVigente(fecha) ? contratosConComprobantePendienteEnDia(fecha) : new Set<string>(),
     contratosConRecargo(fecha),
     sb.from("cargos").select("contrato_id").eq("fecha", fecha).eq("tipo", "renta"),
+    sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual"),
   ]);
   const tieneRenta = new Set(
     ((conRenta.data ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id),
   );
+  // Crédito de pagos adelantados: si el saldo (ya con la cuota de hoy) es <= 0,
+  // el cliente está cubierto/adelantado y NO se le cobra recargo por hoy.
+  const saldoMap = new Map<string, number>();
+  for (const s of (saldos.data ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {
+    saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
+  }
 
   const res: ResultadoRecargo = { fecha, creados: 0, yaTenian: 0, diferidos: 0 };
   const filas: Record<string, unknown>[] = [];
@@ -207,6 +214,7 @@ export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRec
     if (c.fecha_inicio && c.fecha_inicio > fecha) continue;
     if (!tieneRenta.has(c.id)) continue; // domingo libre u otro día sin cuota
     if (pagaronPuntual.has(c.id)) continue;
+    if ((saldoMap.get(c.id) ?? 1) <= 0.009) continue; // adelantado / al día: sin recargo
     // Mandó comprobante y nadie lo ha validado: el recargo espera. Si el pago
     // resulta malo, `recalcularRecargo` lo aplica retroactivo.
     if (conPendiente.has(c.id)) { res.diferidos++; continue; }
