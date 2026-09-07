@@ -10,6 +10,8 @@ export function Field({
   placeholder,
   type = "text",
   defaultValue,
+  hint,
+  minLength,
 }: {
   label: string;
   name: string;
@@ -17,6 +19,8 @@ export function Field({
   placeholder?: string;
   type?: string;
   defaultValue?: string | number;
+  hint?: string;
+  minLength?: number;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -27,8 +31,10 @@ export function Field({
         placeholder={placeholder}
         type={type}
         defaultValue={defaultValue}
+        minLength={minLength}
         className={INPUT}
       />
+      {hint && <span className="text-xs text-muted">{hint}</span>}
     </label>
   );
 }

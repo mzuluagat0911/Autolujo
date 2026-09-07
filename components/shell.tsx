@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
+import { salir } from "@/app/ingreso/actions";
+import type { SesionEquipo } from "@/lib/equipo/tipos";
 import { Brand } from "./brand";
 import {
   AlertasAsesorProvider,
@@ -50,7 +52,7 @@ const NAV: Group[] = [
     section: "Configuración",
     items: [
       { label: "Empresas", href: "/cartera/empresas", status: "active" },
-      { label: "Usuarios y roles", href: "/usuarios", status: "pronto" },
+      { label: "Usuarios y roles", href: "/usuarios", status: "active" },
     ],
   },
 ];
@@ -61,9 +63,15 @@ function isActive(pathname: string, href: string) {
 }
 
 // Rutas públicas (sin menú ni chrome de la app): landing y páginas legales.
-const RUTAS_PUBLICAS = ["/", "/privacidad", "/terminos"];
+const RUTAS_PUBLICAS = ["/", "/privacidad", "/terminos", "/ingreso"];
 
-export function Shell({ children }: { children: ReactNode }) {
+export function Shell({
+  children,
+  equipo,
+}: {
+  children: ReactNode;
+  equipo: SesionEquipo | null;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -98,7 +106,13 @@ export function Shell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="flex-1 overflow-y-auto px-4 pb-8">
-          {NAV.map((group, gi) => (
+          {NAV.map((group, gi) => {
+            const items =
+              equipo?.rol === "admin"
+                ? group.items
+                : group.items.filter((i) => i.href !== "/usuarios");
+            if (items.length === 0) return null;
+            return (
             <div key={gi} className={gi > 0 ? "mt-8" : undefined}>
               {group.section && (
                 <div className="mb-3 px-3 text-[10px] font-medium uppercase tracking-[0.28em] text-gold/80">
@@ -106,22 +120,30 @@ export function Shell({ children }: { children: ReactNode }) {
                 </div>
               )}
               <ul>
-                {group.items.map((item) => (
+                {items.map((item) => (
                   <li key={item.href}>
                     <NavRow item={item} active={isActive(pathname, item.href)} />
                   </li>
                 ))}
               </ul>
             </div>
-          ))}
+            );
+          })}
         </nav>
 
         <div className="flex items-center justify-between border-t border-white/10 px-5 py-4">
-          <div>
-            <p className="text-[11px] font-medium tracking-wide text-white">Administrador</p>
-            <p className="text-[10px] font-light uppercase tracking-[0.18em] text-white/40">
-              Siempre seguro
+          <div className="min-w-0">
+            <p className="truncate text-[11px] font-medium tracking-wide text-white">
+              {equipo?.nombre ?? "Equipo"}
             </p>
+            <form action={salir}>
+              <button
+                type="submit"
+                className="mt-0.5 text-[10px] font-light uppercase tracking-[0.18em] text-white/40 hover:text-gold"
+              >
+                Cerrar sesión
+              </button>
+            </form>
           </div>
           <div className="flex items-center gap-1">
             <div className="hidden md:block">

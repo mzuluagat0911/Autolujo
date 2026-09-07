@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { PT_Serif, Inter, Montserrat } from "next/font/google";
 import "./globals.css";
 import { Shell } from "@/components/shell";
+import { sesionEquipo } from "@/lib/equipo/sesion";
 
 // Landing — serif del wordmark
 const brandSerif = PT_Serif({
@@ -32,15 +33,16 @@ export const metadata: Metadata = {
   description: "Plataforma de gestión con IA — Inversiones Auto Lujo Panamá",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const equipo = await sesionEquipo();
   return (
     <html lang="es" className={`${brandSerif.variable} ${brandUi.variable} ${brandSans.variable}`}>
       <body className="min-h-screen font-sans antialiased">
-        <Shell>{children}</Shell>
+        <Shell equipo={equipo}>{children}</Shell>
       </body>
     </html>
   );
