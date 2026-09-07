@@ -181,40 +181,37 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
 
   async function tomar(id: string) {
     const item = items.find((a) => a.id === id);
-    if (id.startsWith("salerta:")) {
-      await accionVerAlertaGps(id);
-      if (conocidos.current) {
-        conocidos.current = new Set([...conocidos.current].filter((h) => !h.startsWith(`${id}|`)));
-      }
-      setItems((prev) => prev.filter((a) => a.id !== id));
-      setOpen(false);
-      router.push(item?.href ?? "/cartera/pagos");
-      return;
-    }
-    if (item?.clase === "salida" || id.startsWith("salida:")) {
-      setOpen(false);
-      router.push("/cartera/pagos");
-      return;
-    }
-    if (item?.clase === "gps" || id.startsWith("gps:")) {
-      await accionVerAlertaGps(id);
-      if (conocidos.current) {
-        conocidos.current = new Set([...conocidos.current].filter((h) => !h.startsWith(`${id}|`)));
-      }
-      setItems((prev) => prev.filter((a) => a.id !== id));
-      setOpen(false);
-      router.push("/cartera/rastreo");
-      return;
-    }
-    const fd = new FormData();
-    fd.set("conversacion_id", id);
-    await accionTomarChat(fd);
+    const dest =
+      item?.href ??
+      (id.startsWith("gps:") || (id.startsWith("salerta:") && item?.clase === "gps")
+        ? "/cartera/rastreo"
+        : id.startsWith("salerta:") || id.startsWith("salida:") || item?.clase === "salida"
+          ? "/cartera/pagos"
+          : `/cartera/conversaciones/${id}`);
+
+    // Primero navegar: si el server action revalida la página actual, el push
+    // después a veces no corre y parece que "Ver" no hace nada.
+    setOpen(false);
+    setToast(null);
     if (conocidos.current) {
       conocidos.current = new Set([...conocidos.current].filter((h) => !h.startsWith(`${id}|`)));
     }
     setItems((prev) => prev.filter((a) => a.id !== id));
-    setOpen(false);
-    router.push(`/cartera/conversaciones/${id}`);
+    router.push(dest);
+
+    try {
+      if (id.startsWith("salerta:") || id.startsWith("gps:") || item?.clase === "gps") {
+        await accionVerAlertaGps(id);
+      } else if (item?.clase === "salida" || id.startsWith("salida:")) {
+        // Solo abre Comprobantes; el aval se da ahí.
+      } else if (id !== "__prueba__") {
+        const fd = new FormData();
+        fd.set("conversacion_id", id);
+        await accionTomarChat(fd);
+      }
+    } catch (e) {
+      console.error("[alertas] tomar", e);
+    }
   }
 
   return (
@@ -379,7 +376,11 @@ export function AlertasCampana({ variant }: { variant: "side" | "mobile" }) {
                     </Link>
                     <button
                       type="button"
-                      onClick={() => void tomar(a.id)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        void tomar(a.id);
+                      }}
                       className="shrink-0 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-black"
                     >
                       {a.clase === "gps" ? "Ver" : "Tomar"}

@@ -39,6 +39,13 @@ const NAV: Group[] = [
     ],
   },
   {
+    section: "Configuración",
+    items: [
+      { label: "Empresas", href: "/cartera/empresas", status: "active" },
+      { label: "Usuarios y roles", href: "/usuarios", status: "active" },
+    ],
+  },
+  {
     // Los demás módulos del negocio — la visión de la plataforma.
     section: "Módulos del negocio",
     items: [
@@ -46,13 +53,6 @@ const NAV: Group[] = [
       { label: "Operaciones", href: "/operaciones", status: "pronto" },
       { label: "Seguros", href: "/seguros", status: "pronto" },
       { label: "Administrativo", href: "/administrativo", status: "pronto" },
-    ],
-  },
-  {
-    section: "Configuración",
-    items: [
-      { label: "Empresas", href: "/cartera/empresas", status: "active" },
-      { label: "Usuarios y roles", href: "/usuarios", status: "active" },
     ],
   },
 ];
@@ -136,6 +136,14 @@ export function Shell({
             <p className="truncate text-[11px] font-medium tracking-wide text-white">
               {equipo?.nombre ?? "Equipo"}
             </p>
+            {equipo?.rol === "admin" && (
+              <Link
+                href="/usuarios"
+                className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.18em] text-gold/90 hover:text-gold"
+              >
+                Dar accesos
+              </Link>
+            )}
             <form action={salir}>
               <button
                 type="submit"

@@ -22,10 +22,27 @@ function mapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps?q=${lat},${lng}`;
 }
 
-export function TableroRastreo({ inicial }: { inicial: TableroRastreo }) {
+export function TableroRastreo({
+  inicial,
+  resaltarCarro,
+}: {
+  inicial: TableroRastreo;
+  resaltarCarro?: string | null;
+}) {
   const router = useRouter();
   const [vista, setVista] = useState<"ahora" | "historico">("ahora");
-  const [sel, setSel] = useState<string | null>(inicial.filas[0]?.id_dispositivo ?? null);
+  const selInicial = useMemo(() => {
+    if (resaltarCarro) {
+      const key = resaltarCarro.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const hit = inicial.filas.find((f) => {
+        const carro = (f.carro ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        return carro === key || carro.endsWith(key) || carro.includes(key);
+      });
+      if (hit) return hit.id_dispositivo;
+    }
+    return inicial.filas[0]?.id_dispositivo ?? null;
+  }, [inicial.filas, resaltarCarro]);
+  const [sel, setSel] = useState<string | null>(selInicial);
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const [fechaH, setFechaH] = useState(inicial.fechaHistorial);

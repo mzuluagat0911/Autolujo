@@ -4,8 +4,14 @@ import { TableroRastreo } from "./tablero";
 
 export const dynamic = "force-dynamic";
 
-export default async function RastreoPage() {
+export default async function RastreoPage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ carro?: string }>;
+}) {
   const t = await cargarTableroRastreo();
+  const sp = searchParams ? await searchParams : {};
+  const carro = typeof sp.carro === "string" ? sp.carro.trim() : "";
 
   return (
     <div className="pb-16">
@@ -31,7 +37,7 @@ export default async function RastreoPage() {
             <Kpi label="Por amarrar" value={t.porVincular} tone={t.porVincular > 0 ? "warn" : "default"} hint="Calzan, falta guardar gps_id" />
           </div>
           <div className="mt-8">
-            <TableroRastreo inicial={t} />
+            <TableroRastreo inicial={t} resaltarCarro={carro || null} />
           </div>
         </>
       )}

@@ -236,7 +236,7 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       preview: null,
       huella: `${g.id}|${g.desde}|${g.motivo}`,
       clase: "gps" as const,
-      href: "/cartera/rastreo",
+      href: hrefRastreo(g.titulo),
     }));
     const salidas = await salidasPendientesAval();
     const extrasSalida: AlertaEscalada[] = salidas.map((s) => ({
@@ -258,12 +258,20 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       preview: null,
       huella: `${s.id}|${s.desde}|${s.motivo}`,
       clase: s.tipo.startsWith("gps_") ? ("gps" as const) : ("salida" as const),
-      href: s.tipo.startsWith("gps_") ? "/cartera/rastreo" : "/cartera/pagos",
+      href: s.tipo.startsWith("gps_") ? hrefRastreo(s.titulo) : "/cartera/pagos",
     }));
     return [...extrasOps, ...extrasSalida, ...extras, ...chats];
   } catch {
     return [];
   }
+}
+
+/** "Carro GOLD · G10" → /cartera/rastreo?carro=G10 */
+function hrefRastreo(titulo: string): string {
+  const m = /carro\s+(.+)$/i.exec(titulo.trim());
+  const raw = (m?.[1] ?? titulo).split("·").pop()?.trim();
+  if (!raw) return "/cartera/rastreo";
+  return `/cartera/rastreo?carro=${encodeURIComponent(raw)}`;
 }
 
 export async function accionVerAlertaGps(id: string): Promise<void> {
