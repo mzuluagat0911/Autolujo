@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { StatusChip } from "@/components/kit";
-import { guardarEdicionMasiva } from "./actions";
+import { guardarEdicionMasiva, completarPlacasDesdeDiacor } from "./actions";
 
 export type FilaVehiculo = {
   id: string;
@@ -75,7 +75,7 @@ function fmtVisto(iso: string | null): string {
 
 type Filtro = "todos" | "alerta" | "sin_gps" | "salida" | "sin_contrato" | "exceso_km";
 
-type Draft = { placa: string; gps_id: string };
+type Draft = { placa: string; gps_id: string; marca: string; modelo: string; anio: string };
 
 export function ListaVehiculos({
   filas,
@@ -152,7 +152,13 @@ export function ListaVehiculos({
   function entrarEdicion() {
     const d: Record<string, Draft> = {};
     for (const v of filas) {
-      d[v.id] = { placa: v.placa ?? "", gps_id: v.gps_id ?? "" };
+      d[v.id] = {
+        placa: v.placa ?? "",
+        gps_id: v.gps_id ?? "",
+        marca: v.marca ?? "",
+        modelo: v.modelo ?? "",
+        anio: v.anio != null ? String(v.anio) : "",
+      };
     }
     setDrafts(d);
     setEditando(true);
@@ -167,12 +173,30 @@ export function ListaVehiculos({
           if (!d) return null;
           const placa = d.placa.trim().toUpperCase() || null;
           const gps = d.gps_id.trim() || null;
-          const placaOld = v.placa ?? null;
-          const gpsOld = v.gps_id ?? null;
-          if (placa === placaOld && gps === gpsOld) return null;
-          return { id: v.id, placa, gps_id: gps };
+          const marca = d.marca.trim() || null;
+          const modelo = d.modelo.trim() || null;
+          const anioRaw = d.anio.trim();
+          const anio = anioRaw === "" ? null : Number(anioRaw);
+          const anioOk = anio != null && Number.isFinite(anio) ? anio : null;
+          if (
+            placa === (v.placa ?? null) &&
+            gps === (v.gps_id ?? null) &&
+            marca === (v.marca ?? null) &&
+            modelo === (v.modelo ?? null) &&
+            anioOk === (v.anio ?? null)
+          ) {
+            return null;
+          }
+          return { id: v.id, placa, gps_id: gps, marca, modelo, anio: anioOk };
         })
-        .filter(Boolean) as { id: string; placa: string | null; gps_id: string | null }[];
+        .filter(Boolean) as {
+        id: string;
+        placa: string | null;
+        gps_id: string | null;
+        marca: string | null;
+        modelo: string | null;
+        anio: number | null;
+      }[];
 
       if (cambios.length === 0) {
         setMsg("No hay cambios.");
@@ -182,6 +206,13 @@ export function ListaVehiculos({
       const r = await guardarEdicionMasiva(cambios);
       setMsg(r.msg);
       if (r.ok) setEditando(false);
+    });
+  }
+
+  function placasDiacor() {
+    start(async () => {
+      const r = await completarPlacasDesdeDiacor();
+      setMsg(r.msg);
     });
   }
 
@@ -199,13 +230,23 @@ export function ListaVehiculos({
             {visibles.length} de {filas.length}
           </p>
           {!editando ? (
-            <button
-              type="button"
-              onClick={entrarEdicion}
-              className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-surface hover:bg-black"
-            >
-              Editar placa / GPS
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={placasDiacor}
+                className="rounded-lg px-3 py-2 text-sm text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+              >
+                {pending ? "…" : "Placas desde Diacor"}
+              </button>
+              <button
+                type="button"
+                onClick={entrarEdicion}
+                className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-surface hover:bg-black"
+              >
+                Editar ficha
+              </button>
+            </>
           ) : (
             <>
               <button
@@ -269,7 +310,13 @@ export function ListaVehiculos({
             {visibles.map((v) => {
               const nombre = [v.marca, v.modelo].filter(Boolean).join(" ");
               const exceso = v.kmMes != null && v.kmMes > topeKmMes;
-              const d = drafts[v.id] ?? { placa: v.placa ?? "", gps_id: v.gps_id ?? "" };
+              const d = drafts[v.id] ?? {
+                placa: v.placa ?? "",
+                gps_id: v.gps_id ?? "",
+                marca: v.marca ?? "",
+                modelo: v.modelo ?? "",
+                anio: v.anio != null ? String(v.anio) : "",
+              };
               return (
                 <tr key={v.id} className="border-b border-line last:border-0 hover:bg-surface-2/60">
                   <td className="px-5 py-3 font-medium tabular-nums">
@@ -294,8 +341,39 @@ export function ListaVehiculos({
                     )}
                   </td>
                   <td className="px-5 py-3 text-muted">
-                    {nombre || "—"}
-                    {v.anio != null ? <span className="text-faint"> · {v.anio}</span> : null}
+                    {editando ? (
+                      <div className="flex flex-wrap gap-1">
+                        <input
+                          value={d.marca}
+                          onChange={(e) =>
+                            setDrafts((prev) => ({ ...prev, [v.id]: { ...d, marca: e.target.value } }))
+                          }
+                          className="w-20 rounded-md bg-paper px-2 py-1 text-xs ring-1 ring-line"
+                          placeholder="Marca"
+                        />
+                        <input
+                          value={d.modelo}
+                          onChange={(e) =>
+                            setDrafts((prev) => ({ ...prev, [v.id]: { ...d, modelo: e.target.value } }))
+                          }
+                          className="w-24 rounded-md bg-paper px-2 py-1 text-xs ring-1 ring-line"
+                          placeholder="Modelo"
+                        />
+                        <input
+                          value={d.anio}
+                          onChange={(e) =>
+                            setDrafts((prev) => ({ ...prev, [v.id]: { ...d, anio: e.target.value } }))
+                          }
+                          className="w-14 rounded-md bg-paper px-2 py-1 text-xs ring-1 ring-line"
+                          placeholder="Año"
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        {nombre || "—"}
+                        {v.anio != null ? <span className="text-faint"> · {v.anio}</span> : null}
+                      </>
+                    )}
                   </td>
                   <td className="px-5 py-3">
                     {v.cliente ? (
@@ -390,11 +468,11 @@ export function ListaVehiculos({
         </table>
       </div>
       <p className="text-xs text-muted">
-        Carros no llama a Diacor: placa, GPS y último visto salen del histórico guardado. El mapa en vivo está en{" "}
+        Carros no llama a Diacor en cada visita: el histórico y el amarre viven acá; el mapa en vivo en{" "}
         <Link href="/cartera/rastreo" className="underline-offset-2 hover:underline">
           Rastreo
         </Link>
-        .
+        . Marca/modelo/año: edítelos aquí o pásenos un Excel (empresa, número, placa, marca, modelo, año).
       </p>
     </div>
   );

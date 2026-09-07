@@ -44,9 +44,12 @@ export type CambioVehiculo = {
   id: string;
   placa?: string | null;
   gps_id?: string | null;
+  marca?: string | null;
+  modelo?: string | null;
+  anio?: number | null;
 };
 
-/** Guarda placa / gps_id de varias filas a la vez (solo campos enviados). */
+/** Guarda ficha de varias filas a la vez (solo campos enviados). */
 export async function guardarEdicionMasiva(cambios: CambioVehiculo[]): Promise<ResultadoMasivo> {
   if (!Array.isArray(cambios) || cambios.length === 0) {
     return { ok: false, msg: "No hay cambios.", actualizados: 0 };
@@ -62,14 +65,22 @@ export async function guardarEdicionMasiva(cambios: CambioVehiculo[]): Promise<R
   for (const c of cambios) {
     const id = String(c.id ?? "").trim();
     if (!id) continue;
-    const patch: Record<string, string | null> = {};
+    const patch: Record<string, string | number | null> = {};
     if ("placa" in c) {
-      const p = c.placa == null ? null : String(c.placa).trim().toUpperCase() || null;
-      patch.placa = p;
+      patch.placa = c.placa == null ? null : String(c.placa).trim().toUpperCase() || null;
     }
     if ("gps_id" in c) {
-      const g = c.gps_id == null ? null : String(c.gps_id).trim() || null;
-      patch.gps_id = g;
+      patch.gps_id = c.gps_id == null ? null : String(c.gps_id).trim() || null;
+    }
+    if ("marca" in c) {
+      patch.marca = c.marca == null ? null : String(c.marca).trim() || null;
+    }
+    if ("modelo" in c) {
+      patch.modelo = c.modelo == null ? null : String(c.modelo).trim() || null;
+    }
+    if ("anio" in c) {
+      const a = c.anio == null || c.anio === ("" as unknown) ? null : Number(c.anio);
+      patch.anio = a != null && Number.isFinite(a) ? a : null;
     }
     if (Object.keys(patch).length === 0) continue;
     const { error } = await sb.from("vehiculos").update(patch).eq("id", id);
@@ -89,4 +100,45 @@ export async function guardarEdicionMasiva(cambios: CambioVehiculo[]): Promise<R
       : `Guardé ${actualizados} carro${actualizados === 1 ? "" : "s"}.`,
     actualizados,
   };
+}
+
+/** Rellena placa vacía con la que reporta Diacor para el gps_id amarrado. */
+export async function completarPlacasDesdeDiacor(): Promise<ResultadoMasivo> {
+  const { diacorConfigurado, posicionesGps } = await import("@/lib/gps/diacor");
+  const { normalizarPlaca } = await import("@/lib/gps/vincular");
+  if (!diacorConfigurado()) {
+    return { ok: false, msg: "Diacor no está configurado en el servidor.", actualizados: 0 };
+  }
+
+  function placaOk(raw: string | null | undefined): string | null {
+    const p = normalizarPlaca(raw);
+    if (!/^[A-Z]{1,3}\d{3,4}$/.test(p)) return null;
+    return p;
+  }
+
+  try {
+    const sb = createServerSupabase();
+    const [{ data: veh }, posiciones] = await Promise.all([
+      sb.from("vehiculos").select("id, placa, gps_id").neq("estado", "entregado"),
+      posicionesGps(),
+    ]);
+    const porGps = new Map(posiciones.map((p) => [p.id_dispositivo, p]));
+    let n = 0;
+    for (const v of (veh ?? []) as { id: string; placa: string | null; gps_id: string | null }[]) {
+      if (placaOk(v.placa) || !v.gps_id) continue;
+      const placa = placaOk(porGps.get(v.gps_id)?.placa ?? null);
+      if (!placa) continue;
+      const { error } = await sb.from("vehiculos").update({ placa }).eq("id", v.id);
+      if (!error) n++;
+    }
+    revalidatePath("/cartera/vehiculos");
+    revalidatePath("/cartera/rastreo");
+    return {
+      ok: true,
+      msg: n === 0 ? "Ninguna placa nueva en Diacor para carros sin placa." : `Completé ${n} placa${n === 1 ? "" : "s"} desde Diacor.`,
+      actualizados: n,
+    };
+  } catch (e) {
+    return { ok: false, msg: e instanceof Error ? e.message : "No pude leer Diacor.", actualizados: 0 };
+  }
 }
