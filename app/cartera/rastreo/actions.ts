@@ -79,22 +79,80 @@ export async function cargarSerieGps(idDispositivo: string, hasta: string): Prom
 }
 
 export async function vincularPorPlaca(): Promise<{ ok: boolean; vinculados: number; error: string | null }> {
-  if (!diacorConfigurado()) return { ok: false, vinculados: 0, error: "Diacor no está configurado." };
   try {
-    const [posiciones, vehiculos] = await Promise.all([posicionesGps(), cargarVehiculosGps()]);
-    const sug = sugerenciasVinculo(posiciones, vehiculos);
-    if (sug.length === 0) return { ok: true, vinculados: 0, error: null };
-    const sb = createServerSupabase();
-    for (const s of sug) {
-      const { error } = await sb.from("vehiculos").update({ gps_id: s.gps_id }).eq("id", s.vehiculoId);
-      if (error) throw error;
+    let deDiacor = 0;
+    if (diacorConfigurado()) {
+      const [posiciones, vehiculos] = await Promise.all([posicionesGps(), cargarVehiculosGps()]);
+      const sug = sugerenciasVinculo(posiciones, vehiculos);
+      const sb = createServerSupabase();
+      for (const s of sug) {
+        const { error } = await sb.from("vehiculos").update({ gps_id: s.gps_id }).eq("id", s.vehiculoId);
+        if (error) throw error;
+      }
+      deDiacor = sug.length;
     }
+    const extra = await amarrarDesdeHistorico();
     revalidatePath("/cartera/rastreo");
     revalidatePath("/cartera/vehiculos");
-    return { ok: true, vinculados: sug.length, error: null };
+    return { ok: true, vinculados: deDiacor + extra, error: null };
   } catch (e) {
     return { ok: false, vinculados: 0, error: e instanceof Error ? e.message : "No pude vincular." };
   }
+}
+
+/** Si el cron ya cruzó dispositivo↔carro, copia el id a vehiculos.gps_id. */
+export async function amarrarDesdeHistorico(): Promise<number> {
+  const sb = createServerSupabase();
+  const { data: sin } = await sb
+    .from("vehiculos")
+    .select("id")
+    .is("gps_id", null)
+    .neq("estado", "entregado");
+  const faltan = new Set(((sin ?? []) as { id: string }[]).map((v) => v.id));
+  if (faltan.size === 0) return 0;
+
+  const usados = new Set<string>();
+  const { data: ya } = await sb.from("vehiculos").select("gps_id").not("gps_id", "is", null);
+  for (const r of (ya ?? []) as { gps_id: string | null }[]) {
+    if (r.gps_id) usados.add(r.gps_id);
+  }
+
+  const { data: dias } = await sb
+    .from("gps_dias")
+    .select("vehiculo_id, id_dispositivo")
+    .not("vehiculo_id", "is", null)
+    .order("fecha", { ascending: false })
+    .limit(4000);
+
+  const pares = new Map<string, string>();
+  for (const r of (dias ?? []) as { vehiculo_id: string; id_dispositivo: string }[]) {
+    if (!faltan.has(r.vehiculo_id) || pares.has(r.vehiculo_id)) continue;
+    if (!r.id_dispositivo || usados.has(r.id_dispositivo)) continue;
+    pares.set(r.vehiculo_id, r.id_dispositivo);
+    usados.add(r.id_dispositivo);
+  }
+
+  if (pares.size === 0) {
+    const { data: pos } = await sb
+      .from("gps_posiciones")
+      .select("vehiculo_id, id_dispositivo")
+      .not("vehiculo_id", "is", null)
+      .order("tomado_at", { ascending: false })
+      .limit(4000);
+    for (const r of (pos ?? []) as { vehiculo_id: string; id_dispositivo: string }[]) {
+      if (!faltan.has(r.vehiculo_id) || pares.has(r.vehiculo_id)) continue;
+      if (!r.id_dispositivo || usados.has(r.id_dispositivo)) continue;
+      pares.set(r.vehiculo_id, r.id_dispositivo);
+      usados.add(r.id_dispositivo);
+    }
+  }
+
+  let n = 0;
+  for (const [vehiculoId, gpsId] of pares) {
+    const { error } = await sb.from("vehiculos").update({ gps_id: gpsId }).eq("id", vehiculoId).is("gps_id", null);
+    if (!error) n++;
+  }
+  return n;
 }
 
 export async function revisarRecorridoHoy(): Promise<{

@@ -44,7 +44,7 @@ export function TableroRastreo({ inicial }: { inicial: TableroRastreo }) {
       if (!r.ok) setMsg(r.error);
       else if (r.vinculados === 0) setMsg("Ninguna placa nueva para amarrar.");
       else {
-        setMsg(`Amarré ${r.vinculados} carro${r.vinculados === 1 ? "" : "s"} por placa.`);
+        setMsg(`Amarré ${r.vinculados} carro${r.vinculados === 1 ? "" : "s"} (placa, etiqueta Diacor o histórico).`);
         router.refresh();
       }
     });
@@ -104,10 +104,10 @@ export function TableroRastreo({ inicial }: { inicial: TableroRastreo }) {
             <button
               type="button"
               onClick={vincular}
-              disabled={pending || inicial.porVincular === 0}
+              disabled={pending}
               className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
             >
-              {pending ? "Vinculando…" : "Vincular por placa"}
+              {pending ? "Vinculando…" : "Amarrar GPS"}
             </button>
             <button
               type="button"

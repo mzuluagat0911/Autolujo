@@ -73,22 +73,51 @@ export function armarFilas(posiciones: PosicionGps[], vehiculos: VehiculoGps[]):
   });
 }
 
-/** Sugerencias para guardar gps_id: placa calza y el carro aún no tiene id. */
+/** Sugerencias para guardar gps_id: placa o etiqueta #AL66, y el carro aún no tiene id. */
 export function sugerenciasVinculo(
   posiciones: PosicionGps[],
   vehiculos: VehiculoGps[],
-): { vehiculoId: string; gps_id: string; placa: string }[] {
-  const out: { vehiculoId: string; gps_id: string; placa: string }[] = [];
-  const usados = new Set(vehiculos.map((v) => v.gps_id).filter(Boolean) as string[]);
+): { vehiculoId: string; gps_id: string; via: "placa" | "etiqueta"; detalle: string }[] {
+  const out: { vehiculoId: string; gps_id: string; via: "placa" | "etiqueta"; detalle: string }[] = [];
+  const usadosDisp = new Set(vehiculos.map((v) => v.gps_id).filter(Boolean) as string[]);
+  const usadosVeh = new Set(vehiculos.filter((v) => v.gps_id).map((v) => v.id));
+
   for (const p of posiciones) {
-    if (!p.id_dispositivo || usados.has(p.id_dispositivo)) continue;
+    if (!p.id_dispositivo || usadosDisp.has(p.id_dispositivo)) continue;
+
     const placa = normalizarPlaca(p.placa);
-    if (!placa) continue;
-    const hits = vehiculos.filter((v) => !v.gps_id && v.placa && normalizarPlaca(v.placa) === placa);
+    if (placa) {
+      const hits = vehiculos.filter(
+        (v) => !usadosVeh.has(v.id) && !v.gps_id && v.placa && normalizarPlaca(v.placa) === placa,
+      );
+      if (hits.length === 1) {
+        const v = hits[0]!;
+        out.push({ vehiculoId: v.id, gps_id: p.id_dispositivo, via: "placa", detalle: placa });
+        usadosDisp.add(p.id_dispositivo);
+        usadosVeh.add(v.id);
+        continue;
+      }
+    }
+
+    const etq = parseEtiquetaDiacor(p.nombre);
+    if (!etq) continue;
+    const hits = vehiculos.filter(
+      (v) =>
+        !usadosVeh.has(v.id) &&
+        !v.gps_id &&
+        (v.empresa ?? "").toUpperCase() === etq.codigoEmpresa &&
+        mismoNumero(v.numero, etq.numero),
+    );
     if (hits.length !== 1) continue;
     const v = hits[0]!;
-    out.push({ vehiculoId: v.id, gps_id: p.id_dispositivo, placa });
-    usados.add(p.id_dispositivo);
+    out.push({
+      vehiculoId: v.id,
+      gps_id: p.id_dispositivo,
+      via: "etiqueta",
+      detalle: `${etq.codigoEmpresa} · ${etq.numero}`,
+    });
+    usadosDisp.add(p.id_dispositivo);
+    usadosVeh.add(v.id);
   }
   return out;
 }

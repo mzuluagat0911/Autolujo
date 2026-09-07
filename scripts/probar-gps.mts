@@ -54,8 +54,16 @@ const filas = armarFilas([p], cars);
 check("fila carro", filas[0]?.carro, "AL · 12");
 
 const sug = sugerenciasVinculo([p], cars);
-check("sugerir gps_id", sug, [{ vehiculoId: "v1", gps_id: "34287", placa: "AN8779" }]);
+check("sugerir gps_id", sug, [{ vehiculoId: "v1", gps_id: "34287", via: "placa", detalle: "AN8779" }]);
 check("ya vinculado no sugiere", sugerenciasVinculo([p], [{ ...cars[0]!, gps_id: "34287" }]), []);
+check(
+  "sugerir por etiqueta",
+  sugerenciasVinculo(
+    [{ ...p, placa: null, nombre: "#AL12", id_dispositivo: "88" }],
+    [{ id: "v1", numero: "12", placa: null, gps_id: null, empresa: "AUTOLUJO" }],
+  ),
+  [{ vehiculoId: "v1", gps_id: "88", via: "etiqueta", detalle: "AUTOLUJO · 12" }],
+);
 
 check("etiqueta AL", parseEtiquetaDiacor("#AL66"), { codigoEmpresa: "AUTOLUJO", numero: "66" });
 check("etiqueta Gold", parseEtiquetaDiacor("#G02"), { codigoEmpresa: "GOLD", numero: "02" });

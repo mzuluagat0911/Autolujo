@@ -28,7 +28,7 @@ export default async function RastreoPage() {
             <Kpi label="Dispositivos" value={t.filas.length} hint="Lo que responde Diacor" />
             <Kpi label="En línea" value={t.enLinea} tone="good" hint="Señal viva" />
             <Kpi label="Sin carro" value={t.sinVincular} tone={t.sinVincular > 0 ? "warn" : "default"} hint="No calzan con la flota" />
-            <Kpi label="Por vincular" value={t.porVincular} tone={t.porVincular > 0 ? "warn" : "default"} hint="Misma placa, sin gps_id" />
+            <Kpi label="Por amarrar" value={t.porVincular} tone={t.porVincular > 0 ? "warn" : "default"} hint="Calzan, falta guardar gps_id" />
           </div>
           <div className="mt-8">
             <TableroRastreo inicial={t} />
