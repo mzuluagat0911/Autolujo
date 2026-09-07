@@ -12,6 +12,7 @@ export function Field({
   defaultValue,
   hint,
   minLength,
+  autoComplete,
 }: {
   label: string;
   name: string;
@@ -21,6 +22,7 @@ export function Field({
   defaultValue?: string | number;
   hint?: string;
   minLength?: number;
+  autoComplete?: string;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -32,6 +34,7 @@ export function Field({
         type={type}
         defaultValue={defaultValue}
         minLength={minLength}
+        autoComplete={autoComplete}
         className={INPUT}
       />
       {hint && <span className="text-xs text-muted">{hint}</span>}
