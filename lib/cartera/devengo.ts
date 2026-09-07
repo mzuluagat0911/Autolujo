@@ -288,7 +288,7 @@ export async function recalcularRecargo(
 
   if ((rentaRes.data ?? []).length === 0) return borrar();
 
-  const [{ pagadoPuntual }, { pendiente }, acuerdosRes] = await Promise.all([
+  const [{ pagadoPuntualCuota }, { pendiente }, acuerdosRes] = await Promise.all([
     pagoHoyContrato(contratoId, fecha),
     comprobantePendienteContrato(contratoId, fecha),
     sb.from("acuerdos").select("id, saldo, cuota_diaria, cuota_domingo, descripcion")
@@ -300,7 +300,7 @@ export async function recalcularRecargo(
   const c = contratoRes.data as TerminosCuota | null;
   const acuerdoHoy = acuerdoHoyDe((acuerdosRes.data ?? []) as AcuerdoActivo[], fecha);
   const meta = (c ? cuotaDeFecha(c, fecha) : 0) + acuerdoHoy;
-  const cubrio = cubrioCuotaDelDia(pagadoPuntual, meta);
+  const cubrio = cubrioCuotaDelDia(pagadoPuntualCuota, meta);
 
   if (cubrio || enGracia || diaAbierto) return borrar();
   if (multaId) return "sin_cambio";

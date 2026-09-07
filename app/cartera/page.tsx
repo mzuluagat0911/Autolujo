@@ -3,6 +3,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, fechaConDia } from "@/lib/cartera/fecha";
 import { conversacionesEnEspera } from "@/lib/cartera/pipeline";
 import { PageHeader, Kpi, Money } from "@/components/kit";
+import { lineaSalidaHoy, salidasDelDia } from "@/lib/cartera/salidas-aplicar";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +63,7 @@ async function getDatos(): Promise<Datos> {
 const HOY = fechaConDia(hoyPanama());
 
 export default async function PanelCartera() {
-  const d = await getDatos();
+  const [d, salidasHoy] = await Promise.all([getDatos(), salidasDelDia(hoyPanama())]);
 
   return (
     <div className="mx-auto max-w-6xl py-10">
@@ -80,6 +81,23 @@ export default async function PanelCartera() {
               <Kpi label="Contratos activos" value={d.contratosActivos} hint="Carros con arrendatario" />
             </div>
           </div>
+
+          {salidasHoy.length > 0 && (
+            <div className="rounded-xl bg-ambar-wash px-5 py-4 ring-1 ring-ambar/25">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-ambar">
+                Salidas de hoy · {salidasHoy.length}
+              </p>
+              <ul className="mt-2 space-y-1 text-sm">
+                {salidasHoy.map((s) => (
+                  <li key={s.id}>
+                    <Link href="/cartera/vehiculos" className="hover:underline">
+                      {lineaSalidaHoy(s)}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Cubetas del día — el trabajo */}
           <div>
@@ -107,6 +125,7 @@ export default async function PanelCartera() {
               <Acceso href="/cartera/pagos" titulo="Pagos por conciliar" desc="Comprobantes recibidos, por confirmar" />
               <Acceso href="/cartera/extractos" titulo="Conciliación" desc="Pago en oficina o extracto bancario por empresa" />
               <Acceso href="/cartera/vehiculos" titulo="Carros" desc="La flota por empresa" />
+              <Acceso href="/cartera/rastreo" titulo="Rastreo" desc="Dónde está cada carro ahora (Diacor)" />
               <Acceso href="/cartera/clientes" titulo="Clientes" desc="Directorio de arrendatarios" />
               <Acceso href="/cartera/tarifario" titulo="Tarifario" desc="Letra diaria por modelo" />
             </div>

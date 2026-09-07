@@ -2,6 +2,8 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader, StatusChip } from "@/components/kit";
 import { Field, Select, SubmitButton, FormCard } from "@/components/form";
 import { createVehiculo } from "./actions";
+import { hoyPanama } from "@/lib/cartera/fecha";
+import { lineaSalidaHoy, salidasDelDia, type SalidaHoyVista } from "@/lib/cartera/salidas-aplicar";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,7 @@ type Vehiculo = {
   modelo: string | null;
   anio: number | null;
   km_actual: number | null;
+  gps_id: string | null;
   estado: string;
   empresa: { codigo: string } | null;
 };
@@ -44,23 +47,36 @@ async function getData() {
       sb.from("empresas").select("id, codigo, nombre").order("codigo"),
       sb
         .from("vehiculos")
-        .select("id, numero, placa, marca, modelo, anio, km_actual, estado, empresa:empresas(codigo)")
+        .select("id, numero, placa, marca, modelo, anio, km_actual, gps_id, estado, empresa:empresas(codigo)")
         .order("numero"),
     ]);
     if (emp.error) throw emp.error;
     if (veh.error) throw veh.error;
+    const salidas = await salidasDelDia(hoyPanama());
+    const porVehiculo = new Map<string, SalidaHoyVista>();
+    for (const s of salidas) {
+      if (s.vehiculoId && !porVehiculo.has(s.vehiculoId)) porVehiculo.set(s.vehiculoId, s);
+    }
     return {
       empresas: (emp.data as Empresa[]) ?? [],
       vehiculos: (veh.data as unknown as Vehiculo[]) ?? [],
+      salidas,
+      porVehiculo,
       error: null as string | null,
     };
   } catch (e) {
-    return { empresas: [], vehiculos: [], error: e instanceof Error ? e.message : "Error" };
+    return {
+      empresas: [],
+      vehiculos: [],
+      salidas: [] as SalidaHoyVista[],
+      porVehiculo: new Map<string, SalidaHoyVista>(),
+      error: e instanceof Error ? e.message : "Error",
+    };
   }
 }
 
 export default async function VehiculosPage() {
-  const { empresas, vehiculos, error } = await getData();
+  const { empresas, vehiculos, salidas, porVehiculo, error } = await getData();
   const empOptions = empresas.map((e) => ({ value: e.id, label: `${e.codigo} — ${e.nombre}` }));
 
   return (
@@ -71,6 +87,19 @@ export default async function VehiculosPage() {
         subtitle="Flota por empresa. La numeración no se repite entre Autolujo, Kowua y Gold."
       />
 
+      {salidas.length > 0 && (
+        <div className="mt-6 rounded-xl bg-ambar-wash px-5 py-4 ring-1 ring-ambar/25">
+          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-ambar">
+            Salidas de hoy · {salidas.length}
+          </p>
+          <ul className="mt-2 space-y-1 text-sm">
+            {salidas.map((s) => (
+              <li key={s.id}>{lineaSalidaHoy(s)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <div className="mt-8">
         <FormCard action={createVehiculo}>
           <Select label="Empresa *" name="empresa_id" required placeholder="Selecciona…" options={empOptions} />
@@ -80,6 +109,7 @@ export default async function VehiculosPage() {
           <Field label="Modelo" name="modelo" placeholder="Grand i10" />
           <Field label="Año" name="anio" type="number" placeholder="2020" />
           <Field label="Km actual" name="km_actual" type="number" placeholder="0" />
+          <Field label="ID GPS Diacor" name="gps_id" placeholder="34287" />
           <Select label="Estado" name="estado" options={ESTADOS} defaultValue="activo" />
           <div className="flex items-end">
             <SubmitButton>Guardar vehículo</SubmitButton>
@@ -104,7 +134,9 @@ export default async function VehiculosPage() {
                 <th className="px-5 py-3">Vehículo</th>
                 <th className="px-5 py-3">Año</th>
                 <th className="px-5 py-3">Km</th>
+                <th className="px-5 py-3">GPS</th>
                 <th className="px-5 py-3">Estado</th>
+                <th className="px-5 py-3">Hoy</th>
               </tr>
             </thead>
             <tbody>
@@ -121,14 +153,37 @@ export default async function VehiculosPage() {
                   <td className="px-5 py-3 tabular-nums text-muted">
                     {v.km_actual != null ? v.km_actual.toLocaleString("es-PA") : "—"}
                   </td>
+                  <td className="px-5 py-3 font-mono text-xs text-muted">{v.gps_id ?? "—"}</td>
                   <td className="px-5 py-3">
                     <StatusChip tone={estadoTone(v.estado)}>{estadoLabel(v.estado)}</StatusChip>
+                  </td>
+                  <td className="px-5 py-3">
+                    {(() => {
+                      const s = porVehiculo.get(v.id);
+                      if (!s) return <span className="text-muted">—</span>;
+                      const tone =
+                        s.gpsEstado === "desvio" || s.gpsEstado === "sin_aval"
+                          ? "crit"
+                          : s.fueraTabla || s.estadoPago === "pendiente" || (s.fechaHasta && s.fecha && s.fechaHasta > s.fecha)
+                            ? "warn"
+                            : "azul";
+                      return (
+                        <StatusChip tone={tone}>
+                          Salida {s.destino}
+                          {s.fechaHasta && s.fecha && s.fechaHasta > s.fecha ? ` · ${s.fecha}–${s.fechaHasta}` : ""}
+                          {s.fueraTabla ? " · fuera de tabla" : ""}
+                          {s.estadoPago === "pendiente" ? " · por conciliar" : ""}
+                          {s.gpsEstado === "ok" ? " · GPS ok" : ""}
+                          {s.gpsEstado === "desvio" ? " · GPS no calza" : ""}
+                        </StatusChip>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
               {vehiculos.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-muted">
+                    <td colSpan={7} className="px-5 py-8 text-center text-muted">
                     Aún no hay vehículos. Agrega el primero arriba.
                   </td>
                 </tr>

@@ -12,6 +12,7 @@ import { cuotaDeFecha, type TerminosCuota } from "./cuota";
 import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
 import { cubrioCuotaDelDia } from "./cifras";
 import type { AsignacionPago, ResultadoPago } from "./types";
+import { montoQueCubreCuota } from "./salidas-aplicar";
 
 /** Estados que ya cuentan como dinero recibido. */
 export const PAGADO = ["conciliado", "manual"] as const;
@@ -22,14 +23,20 @@ export async function contratosConPagoEnDia(fecha: string): Promise<Set<string>>
   const { desde, hasta } = rangoDiaPanama(fecha);
   const { data } = await sb
     .from("pagos")
-    .select("contrato_id")
+    .select("contrato_id, monto, asignaciones, rubro, destino_interior")
     .in("estado_conciliacion", ["conciliado", "manual"])
     .gte("pagado_at", desde.toISOString())
     .lt("pagado_at", hasta.toISOString());
   return new Set(
-    ((data ?? []) as { contrato_id: string | null }[])
-      .map((p) => p.contrato_id)
-      .filter((id): id is string => Boolean(id)),
+    ((data ?? []) as {
+      contrato_id: string | null;
+      monto: number;
+      asignaciones?: unknown;
+      rubro?: string | null;
+      destino_interior?: string | null;
+    }[])
+      .filter((p) => p.contrato_id && montoQueCubreCuota(p) > 0.009)
+      .map((p) => p.contrato_id as string),
   );
 }
 
@@ -39,14 +46,22 @@ export async function montosDelDiaPorContrato(fecha: string): Promise<Map<string
   const { desde, hasta } = rangoDiaPanama(fecha);
   const { data } = await sb
     .from("pagos")
-    .select("contrato_id, monto")
+    .select("contrato_id, monto, asignaciones, rubro, destino_interior")
     .in("estado_conciliacion", ["conciliado", "manual"])
     .gte("pagado_at", desde.toISOString())
     .lt("pagado_at", hasta.toISOString());
   const out = new Map<string, number>();
-  for (const p of (data ?? []) as { contrato_id: string | null; monto: number }[]) {
+  for (const p of (data ?? []) as {
+    contrato_id: string | null;
+    monto: number;
+    asignaciones?: unknown;
+    rubro?: string | null;
+    destino_interior?: string | null;
+  }[]) {
     if (!p.contrato_id) continue;
-    out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + Number(p.monto));
+    const n = montoQueCubreCuota(p);
+    if (n <= 0.009) continue;
+    out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + n);
   }
   return out;
 }
@@ -59,14 +74,23 @@ export async function montosPuntualesPorContrato(
   const { desde, hasta } = rangoDiaPanama(fecha);
   const { data } = await sb
     .from("pagos")
-    .select("contrato_id, monto, pagado_at")
+    .select("contrato_id, monto, pagado_at, asignaciones, rubro, destino_interior")
     .in("estado_conciliacion", ["conciliado", "manual"])
     .gte("pagado_at", desde.toISOString())
     .lt("pagado_at", hasta.toISOString());
   const out = new Map<string, number>();
-  for (const p of (data ?? []) as { contrato_id: string | null; monto: number; pagado_at: string }[]) {
+  for (const p of (data ?? []) as {
+    contrato_id: string | null;
+    monto: number;
+    pagado_at: string;
+    asignaciones?: unknown;
+    rubro?: string | null;
+    destino_interior?: string | null;
+  }[]) {
     if (!p.contrato_id || !esPagoPuntual(p.pagado_at, fecha)) continue;
-    out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + Number(p.monto));
+    const n = montoQueCubreCuota(p);
+    if (n <= 0.009) continue;
+    out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + n);
   }
   return out;
 }
@@ -264,24 +288,49 @@ export async function pagosRecientesContrato(
 export async function pagoHoyContrato(
   contratoId: string,
   fecha: string,
-): Promise<{ pagoHoy: boolean; pagado: number; pagadoPuntual: number }> {
+): Promise<{
+  pagoHoy: boolean;
+  pagado: number;
+  pagadoPuntual: number;
+  pagadoCuota: number;
+  pagadoPuntualCuota: number;
+}> {
   const sb = createServerSupabase();
   const { desde, hasta } = rangoDiaPanama(fecha);
   const { data } = await sb
     .from("pagos")
-    .select("monto, pagado_at")
+    .select("monto, pagado_at, asignaciones, rubro, destino_interior")
     .eq("contrato_id", contratoId)
     .in("estado_conciliacion", ["conciliado", "manual"])
     .gte("pagado_at", desde.toISOString())
     .lt("pagado_at", hasta.toISOString())
     .limit(50);
-  const filas = (data ?? []) as { monto: number; pagado_at: string }[];
+  const filas = (data ?? []) as {
+    monto: number;
+    pagado_at: string;
+    asignaciones?: unknown;
+    rubro?: string | null;
+    destino_interior?: string | null;
+  }[];
   let pagado = 0;
   let pagadoPuntual = 0;
+  let pagadoCuota = 0;
+  let pagadoPuntualCuota = 0;
   for (const p of filas) {
     const n = Number(p.monto) || 0;
+    const cuota = montoQueCubreCuota(p);
     pagado += n;
-    if (esPagoPuntual(p.pagado_at, fecha)) pagadoPuntual += n;
+    pagadoCuota += cuota;
+    if (esPagoPuntual(p.pagado_at, fecha)) {
+      pagadoPuntual += n;
+      pagadoPuntualCuota += cuota;
+    }
   }
-  return { pagoHoy: pagado > 0.009, pagado, pagadoPuntual };
+  return {
+    pagoHoy: pagadoCuota > 0.009,
+    pagado,
+    pagadoPuntual,
+    pagadoCuota,
+    pagadoPuntualCuota,
+  };
 }

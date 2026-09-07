@@ -35,6 +35,8 @@ check("cuánto debo", destinarCharla("cuanto debo").destinar, "agente");
 check("gracias + saldo", destinarCharla("gracias, cuanto debo").destinar, "agente");
 check("ok te paso el comprobante", destinarCharla("ok te paso el comprobante").destinar, "agente");
 check("ya pagué", destinarCharla("ya pague").destinar, "agente");
+check("voy al interior", destinarCharla("voy al interior").destinar, "agente");
+check("permiso a David", destinarCharla("necesito permiso para David").destinar, "agente");
 check("no debo eso", destinarCharla("no debo eso").destinar, "agente");
 check("hola", destinarCharla("hola").destinar, "agente");
 check("buenos días", destinarCharla("buenos dias").destinar, "agente");

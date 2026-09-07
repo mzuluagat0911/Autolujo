@@ -69,6 +69,7 @@ export type PagoCandidato = {
   numeroCarro: string | null;
   cuentaDestino: string | null;
   origen: string | null;
+  destinoInterior?: string | null;
 };
 
 export type ContratoFlota = {

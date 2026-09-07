@@ -29,6 +29,7 @@ export async function createVehiculo(formData: FormData): Promise<void> {
     modelo: str(formData.get("modelo")),
     anio: num(formData.get("anio")),
     km_actual: num(formData.get("km_actual")) ?? 0,
+    gps_id: str(formData.get("gps_id")),
     estado: String(formData.get("estado") ?? "activo"),
   });
   if (error) throw new Error(error.message);

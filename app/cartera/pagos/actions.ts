@@ -11,9 +11,30 @@ import {
 import { money } from "@/lib/cartera/estado-cuenta";
 import { recalcularRecargo } from "@/lib/cartera/devengo";
 import { aplicarPagoEnObligaciones, revertirPagoEnObligaciones, textoComoSeAplico } from "@/lib/cartera/aplicar-pago";
-import { hoyPanama, pagadoAtDesdeForm, horaPanama, fechaContable } from "@/lib/cartera/fecha";
+import { hoyPanama, pagadoAtDesdeForm, horaPanama, fechaContable, sumarDias } from "@/lib/cartera/fecha";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { sendText } from "@/lib/whatsapp/client";
+import { destinoLibre, destinoPorId, type DestinoInterior } from "@/lib/cartera/salidas-interior";
+import { darAvalSalida, etiquetarPagoSalida, idsVehiculoYCliente } from "@/lib/cartera/salidas-aplicar";
+
+function destDesdeForm(formData: FormData, monto: number): DestinoInterior | null {
+  const destinoId = String(formData.get("destino_interior") ?? "").trim();
+  if (!destinoId) return null;
+  if (destinoId === "otro") {
+    const nombre = String(formData.get("destino_otro") ?? "").trim();
+    if (!nombre) return null;
+    return destinoLibre(nombre, monto);
+  }
+  return destinoPorId(destinoId);
+}
+
+function hastaDesdeForm(formData: FormData, fecha: string): string | null {
+  const hasta = String(formData.get("fecha_hasta") ?? "").trim();
+  if (hasta && hasta >= fecha) return hasta;
+  const dias = Number(String(formData.get("dias_viaje") ?? "1"));
+  if (Number.isFinite(dias) && dias > 1) return sumarDias(fecha, Math.min(Math.floor(dias), 14) - 1);
+  return null;
+}
 
 /**
  * Resuelve un pago de la cola de conciliación.
@@ -63,6 +84,8 @@ export async function resolverPago(formData: FormData): Promise<void> {
 
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
+  revalidatePath("/cartera/vehiculos");
+  revalidatePath("/cartera/extractos");
   revalidatePath("/");
 }
 
@@ -86,6 +109,11 @@ export async function registrarPagoManual(
   const pagadoAt = pagadoAtDesdeForm(fecha, hora);
 
   const monto = Number(montoRaw);
+  const dest = destDesdeForm(formData, Number.isFinite(monto) ? monto : 0);
+  const fechaHasta = dest ? hastaDesdeForm(formData, fecha) : null;
+  if (String(formData.get("destino_interior") ?? "") === "otro" && !dest) {
+    return { ok: false, msg: "Escribe el destino que no está en la tabla." };
+  }
   if (!carro) return { ok: false, msg: "Escribe el número de carro." };
   if (!Number.isFinite(monto) || monto <= 0) return { ok: false, msg: "El monto no es válido." };
   if (metodo !== "efectivo" && metodo !== "tarjeta")
@@ -112,7 +140,10 @@ export async function registrarPagoManual(
 
   // 3) Registrar el pago (manual → ya cuenta en el saldo, sin conciliar).
   const metodoLabel = metodo === "efectivo" ? "efectivo" : "tarjeta (datáfono)";
-  const { data: pagoInsert, error } = await sb.from("pagos").insert({
+  const notasOficina = dest
+    ? `Pago presencial en oficina — ${metodoLabel}. Salida al interior: ${dest.nombre}.`
+    : `Pago presencial en oficina — ${metodoLabel}. Registrado por el equipo.`;
+  const basePago = {
     contrato_id: r.contratoId,
     cliente_id: r.clienteId,
     fecha,
@@ -122,10 +153,44 @@ export async function registrarPagoManual(
     numero_carro: carro,
     origen: "manual",
     estado_conciliacion: "manual",
-    notas: `Pago presencial en oficina — ${metodoLabel}. Registrado por el equipo.`,
-  }).select("id").single();
+    notas: notasOficina,
+  };
+  let pagoInsert = (
+    await sb
+      .from("pagos")
+      .insert({
+        ...basePago,
+        rubro: dest ? "salida_interior" : null,
+        destino_interior: dest ? dest.id : null,
+      })
+      .select("id")
+      .single()
+  );
+  if (pagoInsert.error && /rubro|destino_interior/i.test(pagoInsert.error.message)) {
+    pagoInsert = await sb.from("pagos").insert(basePago).select("id").single();
+  }
+  const error = pagoInsert.error;
   if (error) return { ok: false, msg: error.message };
   const pagoId = (pagoInsert as { id: string }).id;
+  if (dest) {
+    try {
+      await etiquetarPagoSalida(pagoId, dest);
+      const { registrarSalidaPendiente } = await import("@/lib/cartera/salidas-aplicar");
+      const ids = await idsVehiculoYCliente(r.contratoId as string);
+      await registrarSalidaPendiente({
+        contratoId: r.contratoId as string,
+        vehiculoId: ids.vehiculoId,
+        clienteId: r.clienteId,
+        pagoId,
+        dest,
+        monto,
+        pagadoAt,
+        fechaHasta,
+      });
+    } catch {
+      /* columnas 0019 pueden faltar; ya va en notas */
+    }
+  }
 
   // Si pagó en oficina antes de las 7 p.m. pero el equipo lo registró después,
   // el cron ya le habría puesto el recargo. Se recalcula con la hora real.
@@ -148,12 +213,16 @@ export async function registrarPagoManual(
         conversacionId: conv.id,
         direccion: "out",
         tipo: "system",
-        texto: `Pago en oficina registrado: ${money(monto)} en ${metodoLabel} (Carro ${carro}).${como ? ` ${como}` : ""}`,
+        texto: dest
+          ? `Pago en oficina de salida a ${dest.nombre}: ${money(monto)} (${metodoLabel}, carro ${carro}). Aval dado.`
+          : `Pago en oficina registrado: ${money(monto)} en ${metodoLabel} (Carro ${carro}).${como ? ` ${como}` : ""}`,
       });
 
-      const cierre = como
-        ? `${como} Quedó en el carro ${carro}.`
-        : `Quedó en el carro ${carro}.`;
+      const cierre = dest
+        ? `Quedó como salida a ${dest.nombre}, no a la cuota. Ya tiene el aval.`
+        : como
+          ? `${como} Quedó en el carro ${carro}.`
+          : `Quedó en el carro ${carro}.`;
       const texto = nombre
         ? `Listo ${nombre}, recibimos ${money(monto)} en oficina (${metodoLabel}). ${cierre}`
         : `Recibimos ${money(monto)} en oficina (${metodoLabel}). ${cierre}`;
@@ -177,13 +246,69 @@ export async function registrarPagoManual(
 
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
+  revalidatePath("/cartera/vehiculos");
+  revalidatePath("/cartera/extractos");
   revalidatePath("/");
 
-  const base = `Pago de ${money(monto)} registrado en el Carro ${carro} (${metodoLabel}).`;
+  const base = dest
+    ? `Pago de ${money(monto)} a salida ${dest.nombre} en el carro ${carro}. Aval dado.`
+    : `Pago de ${money(monto)} registrado en el Carro ${carro} (${metodoLabel}).`;
   return {
     ok: true,
     msg: avisado
       ? `${base} Le avisamos al cliente por WhatsApp. ✅`
       : `${base} No se pudo avisar por WhatsApp (fuera de la ventana de 24h); el equipo puede confirmarle al pasar. ✅`,
   };
+}
+
+export async function asignarPagoASalida(formData: FormData): Promise<void> {
+  const pagoId = String(formData.get("pago_id") ?? "");
+  const montoHint = Number(String(formData.get("monto") ?? "").replace(",", ".")) || 0;
+  const dest = destDesdeForm(formData, montoHint);
+  if (!pagoId || !dest) throw new Error("Falta el destino de la salida.");
+  await etiquetarPagoSalida(pagoId, dest);
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("pagos")
+    .select("id, contrato_id, cliente_id, monto, pagado_at, estado_conciliacion")
+    .eq("id", pagoId)
+    .maybeSingle();
+  const p = data as {
+    contrato_id: string | null;
+    cliente_id: string | null;
+    monto: number;
+    pagado_at: string;
+    estado_conciliacion: string;
+  } | null;
+  if (p?.contrato_id) {
+    const ids = await idsVehiculoYCliente(p.contrato_id);
+    const { registrarSalidaPendiente } = await import("@/lib/cartera/salidas-aplicar");
+    await registrarSalidaPendiente({
+      contratoId: p.contrato_id,
+      vehiculoId: ids.vehiculoId,
+      clienteId: p.cliente_id,
+      pagoId,
+      dest,
+      monto: Number(p.monto) || dest.monto,
+      pagadoAt: p.pagado_at,
+      fechaHasta: hastaDesdeForm(formData, fechaContable(p.pagado_at)),
+    });
+    if (p.estado_conciliacion === "conciliado" || p.estado_conciliacion === "manual") {
+      await aplicarPagoEnObligaciones(pagoId);
+    }
+  }
+  revalidatePath("/cartera/pagos");
+  revalidatePath("/cartera");
+  revalidatePath("/cartera/vehiculos");
+  revalidatePath("/cartera/extractos");
+}
+
+export async function accionDarAval(formData: FormData): Promise<void> {
+  const salidaId = String(formData.get("salida_id") ?? "").replace(/^salida:/, "");
+  if (!salidaId) throw new Error("Falta la salida.");
+  await darAvalSalida(salidaId, "equipo");
+  revalidatePath("/cartera/pagos");
+  revalidatePath("/cartera");
+  revalidatePath("/cartera/vehiculos");
+  revalidatePath("/cartera/extractos");
 }

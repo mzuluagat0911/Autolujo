@@ -84,7 +84,8 @@ Códigos reales del sistema del cliente + montos del contrato:
 | 122 | Exceso de kilometraje (>8,000 km/mes) | $2 por cada 10 km |
 | 123 | Gastos administrativos | variable |
 | 124 | Mantenimiento (inasistencia / carro sucio) | $10 |
-| 127 | Otras (salida al interior sin permiso) | según distancia |
+| 127 | Otras (salida al interior **sin** permiso) | según distancia |
+| SALIDA_INT | Salida al interior **autorizada** (pago previo) | tarifa por destino |
 | — | Pago después de las 7 PM | $5 |
 | — | No cerrar semana al día (lunes) | $10 |
 | — | Salir de límites geográficos sin permiso | $50 |
@@ -97,6 +98,25 @@ Códigos reales del sistema del cliente + montos del contrato:
 | — | Cojinería en mal estado | $50 |
 
 > Regla: las multas se **descuentan del siguiente pago** que haga el arrendatario.
+
+### Salidas al interior autorizadas (pago previo)
+
+No es la multa 127. El cliente **paga antes**, el abono va al rubro `salida_interior`
+(no a la cuota del día) y el equipo da el **aval**. Sin pago no hay permiso.
+
+| Destino | Tarifa |
+|---------|--------|
+| Penonomé | $25 |
+| Aguadulce | $25 |
+| Santiago | $45 |
+| Chitré | $45 |
+| Las Tablas | $60 |
+| Chiriquí | $121 |
+| David | $127 |
+| Otro destino (fuera de tabla) | lo cotiza el equipo; se alerta |
+
+Viaje de **más de un día**: se registra `fecha` → `fecha_hasta` y se alerta al equipo.
+El GPS del día se cruza con el destino autorizado (o marca interior sin aval).
 
 ---
 

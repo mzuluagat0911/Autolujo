@@ -240,7 +240,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
   const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy), arregloAplicado);
   const meta = cuotaDeFecha(terminosDe(row), hoy) + acuerdoHoy;
-  const pagoPuntual = cubrioCuotaDelDia(pago.pagadoPuntual, meta);
+  const pagoPuntual = cubrioCuotaDelDia(pago.pagadoPuntualCuota, meta);
   // Contrato cerrado (devuelto/finalizado/abandonado…): ya NO corre cuota diaria;
   // solo queda la deuda pendiente. Se trata como "día libre" permanente.
   const contratoCerrado = row.estado !== "activo";
@@ -249,7 +249,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     saldo: Number((s.data as { saldo_actual: number } | null)?.saldo_actual ?? 0),
     pagoHoy: pago.pagoHoy,
     pagoPuntual,
-    pagadoHoy: pago.pagado,
+    pagadoHoy: pago.pagadoCuota,
     acuerdoHoy,
     faltaAcuerdo: acuerdoHoy,
     pendiente: pend.pendiente,

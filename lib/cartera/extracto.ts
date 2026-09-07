@@ -8,6 +8,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, fechaContable, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
 import { aplicarPagoEnObligaciones } from "./aplicar-pago";
+import { destinoPorId } from "./salidas-interior";
 import {
   canonCarro,
   extraerCarro,
@@ -179,13 +180,20 @@ export async function procesarExtractoPDF(
     .select("id").single();
   const extractoId = extracto!.id as string;
 
-  const { data: pagosRaw } = await sb
+  let pagosQ = await sb
     .from("pagos")
-    .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion")
+    .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion, destino_interior")
     .eq("estado_conciliacion", "pendiente")
     .eq("origen", "comprobante");
+  if (pagosQ.error && /destino_interior/i.test(pagosQ.error.message)) {
+    pagosQ = await sb
+      .from("pagos")
+      .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion")
+      .eq("estado_conciliacion", "pendiente")
+      .eq("origen", "comprobante");
+  }
 
-  const pendientes: PagoCandidato[] = ((pagosRaw ?? []) as {
+  const pendientes: PagoCandidato[] = ((pagosQ.data ?? []) as {
     id: string;
     contrato_id: string | null;
     monto: number;
@@ -193,6 +201,7 @@ export async function procesarExtractoPDF(
     numero_carro: string | null;
     cuenta_destino: string | null;
     origen: string | null;
+    destino_interior?: string | null;
   }[])
     .filter((p) => {
       if (p.contrato_id && contratoIds.has(p.contrato_id)) return true;
@@ -208,6 +217,7 @@ export async function procesarExtractoPDF(
       numeroCarro: p.numero_carro,
       cuentaDestino: p.cuenta_destino,
       origen: p.origen,
+      destinoInterior: p.destino_interior ?? null,
     }));
 
   const res: ResultadoConciliacion = {
@@ -250,8 +260,11 @@ export async function procesarExtractoPDF(
       } else {
         pagoId = pago.id;
         conciliado = true;
-        estado = mov.monto + 0.01 < contrato.letra ? "parcial" : "aplicado";
-        motivo = "Cruce perfecto: carro, monto, fecha y empresa.";
+        estado = pago.destinoInterior || mov.monto + 0.01 >= contrato.letra ? "aplicado" : "parcial";
+        const destNom = pago.destinoInterior ? destinoPorId(pago.destinoInterior)?.nombre ?? pago.destinoInterior : null;
+        motivo = destNom
+          ? `Cruce perfecto de salida a ${destNom}: carro, monto, fecha y empresa.`
+          : "Cruce perfecto: carro, monto, fecha y empresa.";
         if (estado === "parcial") res.parciales++; else res.aplicados++;
         res.montoAplicado += mov.monto;
         porRecalcular.add(`${contrato.contratoId}|${fechaContable(pago.pagadoAt)}`);

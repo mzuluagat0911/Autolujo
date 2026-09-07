@@ -12,7 +12,7 @@ const MENSAJE_GRACIAS = "Con gusto";
 
 /** Palabras que convierten el mensaje en asunto de cartera → Marcela. */
 const INTENTO =
-  /\b(debo|debe|debemos|saldo|cuot[ao]s?|letra|pag(o|ar|ue|u[eé]|amos)|pagu[eé]|comprobante|captura|transfer|deposit|cuenta|banco|recargo|multa|descuento|arreglo|acuerdo|cu[aá]nto|mora|atrasad|pendiente|carro|placa|contrato|oficina|efectivo|dat[aá]fono|tarde|puntual|extracto|concili)\b/i;
+  /\b(debo|debe|debemos|saldo|cuot[ao]s?|letra|pag(o|ar|ue|u[eé]|amos)|pagu[eé]|comprobante|captura|transfer|deposit|cuenta|banco|recargo|multa|descuento|arreglo|acuerdo|cu[aá]nto|mora|atrasad|pendiente|carro|placa|contrato|oficina|efectivo|dat[aá]fono|tarde|puntual|extracto|concili|interior|permiso|salida|viaje|penonome|penonom[eé]|santiago|aguadulce|tablas|chitre|chitr[eé]|david|chiriqui|chiriqu[ií]|aval)\b/i;
 
 const SOLO_RISA = /^(j(a|e)+)+s?$/i;
 

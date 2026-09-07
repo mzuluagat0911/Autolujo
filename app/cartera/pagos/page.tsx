@@ -1,7 +1,9 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader, StatusChip, Money } from "@/components/kit";
-import { resolverPago } from "./actions";
+import { accionDarAval, asignarPagoASalida, resolverPago } from "./actions";
 import { PagoManualForm } from "./pago-manual-form";
+import { TARIFAS_SALIDA_INTERIOR } from "@/lib/cartera/salidas-interior";
+import { salidasDePagos, type SalidaFila } from "@/lib/cartera/salidas-aplicar";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +18,10 @@ type Pago = {
   comprobante_url: string | null;
   notas: string | null;
   created_at: string;
+  rubro?: string | null;
+  destino_interior?: string | null;
   signedUrl?: string | null;
+  salida?: SalidaFila | null;
 };
 
 const POR_CONCILIAR = ["pendiente", "manual"];
@@ -33,12 +38,30 @@ async function getData() {
     const sb = createServerSupabase();
     const { data, error } = await sb
       .from("pagos")
-      .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, comprobante_url, notas, created_at")
+      .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, comprobante_url, notas, created_at, rubro, destino_interior")
       .order("created_at", { ascending: false })
       .limit(100);
+    if (error && /rubro|destino_interior/i.test(error.message)) {
+      const retry = await sb
+        .from("pagos")
+        .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, comprobante_url, notas, created_at")
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (retry.error) throw retry.error;
+      const pagos = (retry.data as Pago[]) ?? [];
+      for (const p of pagos) {
+        if (p.comprobante_url) {
+          const { data: s } = await sb.storage.from("comprobantes").createSignedUrl(p.comprobante_url, 3600);
+          p.signedUrl = s?.signedUrl ?? null;
+        }
+      }
+      return { pagos, error: null as string | null };
+    }
     if (error) throw error;
     const pagos = (data as Pago[]) ?? [];
+    const salidas = await salidasDePagos(pagos.map((p) => p.id));
     for (const p of pagos) {
+      p.salida = salidas.get(p.id) ?? null;
       if (p.comprobante_url) {
         const { data: s } = await sb.storage.from("comprobantes").createSignedUrl(p.comprobante_url, 3600);
         p.signedUrl = s?.signedUrl ?? null;
@@ -60,7 +83,7 @@ export default async function PagosPage() {
       <PageHeader
         eyebrow="Cartera"
         title="Pagos por conciliar"
-        subtitle="Comprobantes que llegan por WhatsApp. El pago de oficina y el extracto están en Conciliación."
+        subtitle="Comprobantes de WhatsApp, oficina y salidas al interior (pago previo + aval)."
       />
 
       {error && (
@@ -130,6 +153,13 @@ function PagoCard({ p, accionable }: { p: Pago; accionable?: boolean }) {
             ) : (
               <StatusChip tone="warn">sin carro</StatusChip>
             )}
+            {(p.rubro === "salida_interior" || p.salida) && (
+              <StatusChip tone={p.salida?.estado === "autorizada" ? "good" : "warn"}>
+                {p.salida
+                  ? `Interior · ${p.salida.destino} · ${p.salida.estado === "autorizada" ? "aval" : "sin aval"}`
+                  : "Salida al interior"}
+              </StatusChip>
+            )}
           </div>
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted sm:grid-cols-4">
             <span>Fecha: {p.fecha ?? "—"}</span>
@@ -155,6 +185,53 @@ function PagoCard({ p, accionable }: { p: Pago; accionable?: boolean }) {
                   Rechazar
                 </button>
               </form>
+              {!p.salida && p.rubro !== "salida_interior" && (
+                <form action={asignarPagoASalida} className="flex flex-wrap items-center gap-2">
+                  <input type="hidden" name="pago_id" value={p.id} />
+                  <input type="hidden" name="monto" value={p.monto} />
+                  <select
+                    name="destino_interior"
+                    required
+                    defaultValue=""
+                    className="rounded-md bg-paper px-3 py-2 text-sm ring-1 ring-line"
+                  >
+                    <option value="" disabled>
+                      Destino…
+                    </option>
+                    {TARIFAS_SALIDA_INTERIOR.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.nombre} (${d.monto})
+                      </option>
+                    ))}
+                    <option value="otro">Otro (fuera de tabla)</option>
+                  </select>
+                  <input
+                    name="destino_otro"
+                    placeholder="Si es otro…"
+                    className="w-36 rounded-md bg-paper px-3 py-2 text-sm ring-1 ring-line"
+                  />
+                  <input
+                    name="dias_viaje"
+                    type="number"
+                    min={1}
+                    max={14}
+                    defaultValue={1}
+                    title="Días"
+                    className="w-16 rounded-md bg-paper px-2 py-2 text-sm tabular-nums ring-1 ring-line"
+                  />
+                  <button className="rounded-md bg-surface px-4 py-2 text-sm font-medium ring-1 ring-line transition hover:bg-surface-2">
+                    Asignar a interior
+                  </button>
+                </form>
+              )}
+              {p.salida?.estado === "pendiente_aval" && (
+                <form action={accionDarAval}>
+                  <input type="hidden" name="salida_id" value={p.salida.id} />
+                  <button className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-surface transition hover:bg-black">
+                    Dar aval
+                  </button>
+                </form>
+              )}
             </div>
           )}
         </div>

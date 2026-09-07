@@ -17,6 +17,7 @@ export type MovimientoRevision = {
   sugeridoCarro: string | null;
   sugeridoCliente: string | null;
   empresa: string | null;
+  salidaHint?: string | null;
 };
 
 function viaChip(via: string | null): { tone: "good" | "warn" | "azul" | "neutral"; label: string } {
@@ -71,6 +72,7 @@ function FilaRevision({ m }: { m: MovimientoRevision }) {
             {m.sugeridoCarro && (
               <StatusChip tone="azul">Carro {m.sugeridoCarro}</StatusChip>
             )}
+            {m.salidaHint && <StatusChip tone="warn">salida interior</StatusChip>}
           </div>
           <p className="mt-2 text-sm text-muted">
             {m.fecha ?? "sin fecha"}
@@ -80,6 +82,7 @@ function FilaRevision({ m }: { m: MovimientoRevision }) {
             <p className="mt-1 text-sm">{m.descripcion.slice(0, 140)}</p>
           )}
           {m.motivo && <p className="mt-2 text-[12px] text-muted">{m.motivo}</p>}
+          {m.salidaHint && <p className="mt-1 text-[12px] text-ambar">{m.salidaHint}</p>}
           {m.sugeridoCliente && (
             <p className="mt-1 text-[12px] text-muted">Sugerido: {m.sugeridoCliente}</p>
           )}

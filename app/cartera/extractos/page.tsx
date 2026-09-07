@@ -1,5 +1,6 @@
 import { createServerSupabase } from "@/lib/supabase/server";
-import { PageHeader } from "@/components/kit";
+import { PageHeader, Money, StatusChip } from "@/components/kit";
+import { lineaSalidaCruce, salidasPendientesBanco } from "@/lib/cartera/salidas-aplicar";
 import { SubirExtracto } from "./uploader";
 import { ColaRevision, type MovimientoRevision } from "./cola";
 import { PagoManualForm } from "../pagos/pago-manual-form";
@@ -18,11 +19,17 @@ async function getData(): Promise<{
   empresas: Empresa[];
   recientes: ExtractoReciente[];
   revision: MovimientoRevision[];
+  salidasBanco: Awaited<ReturnType<typeof salidasPendientesBanco>>;
 }> {
-  const vacio = { empresas: [] as Empresa[], recientes: [] as ExtractoReciente[], revision: [] as MovimientoRevision[] };
+  const vacio = {
+    empresas: [] as Empresa[],
+    recientes: [] as ExtractoReciente[],
+    revision: [] as MovimientoRevision[],
+    salidasBanco: [] as Awaited<ReturnType<typeof salidasPendientesBanco>>,
+  };
   try {
     const sb = createServerSupabase();
-    const [emp, ext, mov] = await Promise.all([
+    const [emp, ext, mov, salidasBanco] = await Promise.all([
       sb.from("empresas").select("id, codigo, nombre").order("codigo"),
       sb
         .from("extractos_bancarios")
@@ -37,6 +44,7 @@ async function getData(): Promise<{
         .eq("estado", "revisar")
         .order("fecha", { ascending: false })
         .limit(80),
+      salidasPendientesBanco(),
     ]);
     const revision: MovimientoRevision[] = ((mov.data ?? []) as unknown as {
       id: string;
@@ -64,11 +72,21 @@ async function getData(): Promise<{
       sugeridoCarro: m.contrato?.vehiculo?.numero ?? m.numero_carro,
       sugeridoCliente: m.contrato?.cliente?.nombre ?? null,
       empresa: m.extracto?.empresa?.codigo ?? null,
+      salidaHint: null as string | null,
     }));
+    for (const r of revision) {
+      const hit = salidasBanco.find(
+        (s) =>
+          Math.round(s.monto * 100) === Math.round(r.monto * 100) &&
+          (!r.sugeridoCarro || !s.numero || r.sugeridoCarro === s.numero),
+      );
+      if (hit) r.salidaHint = `Calza con salida a ${hit.destino}${hit.numero ? ` · carro ${hit.numero}` : ""} · pendiente por conciliar`;
+    }
     return {
       empresas: (emp.data as Empresa[]) ?? [],
       recientes: (ext.data as unknown as ExtractoReciente[]) ?? [],
       revision,
+      salidasBanco,
     };
   } catch {
     return vacio;
@@ -76,7 +94,7 @@ async function getData(): Promise<{
 }
 
 export default async function ExtractosPage() {
-  const { empresas, recientes, revision } = await getData();
+  const { empresas, recientes, revision, salidasBanco } = await getData();
 
   return (
     <div className="mx-auto max-w-5xl pb-16">
@@ -85,6 +103,30 @@ export default async function ExtractosPage() {
         title="Conciliación"
         subtitle="Oficina, extracto de Banco General, y la cola de lo que el cruce no pudo aplicar solo."
       />
+
+      {salidasBanco.length > 0 && (
+        <section className="mb-10">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+            Salidas al interior · por cruzar con el banco · {salidasBanco.length}
+          </h2>
+          <p className="mt-1 mb-4 text-sm text-muted">
+            Ya hay comprobante y aval (o pago registrado). Al subir el extracto, si el movimiento calza en carro, monto y fecha, se cruza solo. Si no, queda abajo para aplicar a mano.
+          </p>
+          <div className="divide-y divide-line overflow-hidden rounded-xl bg-surface ring-1 ring-line">
+            {salidasBanco.map((s) => (
+              <div key={s.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{lineaSalidaCruce(s)}</span>
+                  <StatusChip tone="warn">pendiente</StatusChip>
+                </div>
+                <span className="tabular-nums font-semibold">
+                  <Money amount={s.monto} />
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section>
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">

@@ -10,8 +10,17 @@ import { acuerdoHoyDe, cuotaAcuerdoHoy, type AcuerdoActivo } from "./acuerdo";
 import { fechaContable, hoyPanama, pasoCorte, esPagoPuntual } from "./fecha";
 import { pagoHoyContrato } from "./pagos-dia";
 import type { AsignacionPago, Obligacion, ResultadoPago, TipoObligacion } from "./types";
+import {
+  asegurarCargoSalida,
+  borrarCargoSalidaDelPago,
+  destinoDePago,
+  idsVehiculoYCliente,
+  upsertSalidaAutorizada,
+} from "./salidas-aplicar";
+import { destinoLibre, destinoPorNombre, partirMontoInterior, type DestinoInterior } from "./salidas-interior";
 
 export const PRIORIDAD: Record<TipoObligacion, number> = {
+  salida_interior: 5,
   acuerdo: 10,
   saldo_anterior: 20,
   recargo: 25,
@@ -19,6 +28,7 @@ export const PRIORIDAD: Record<TipoObligacion, number> = {
 };
 
 const ETIQUETA: Record<TipoObligacion, string> = {
+  salida_interior: "salida al interior",
   acuerdo: "arreglo",
   saldo_anterior: "saldo anterior",
   recargo: "recargo",
@@ -83,7 +93,7 @@ export function textoComoSeAplico(r: ResultadoPago, money: (n: number) => string
   }
   const partes = r.asignaciones.map((a) => {
     const nombre = a.etiqueta ?? ETIQUETA[a.tipo];
-    const prep = /^(cuota|cuenta)\b/i.test(nombre) ? "a la" : "al";
+    const prep = /^(cuota|cuenta|salida)\b/i.test(nombre) ? "a la" : "al";
     return `${money(a.aplicado)} ${prep} ${nombre}`;
   });
   let s = `Se aplicó así: ${partes.join(", ")}.`;
@@ -94,12 +104,26 @@ export function textoComoSeAplico(r: ResultadoPago, money: (n: number) => string
 type PagoRow = {
   id: string;
   contrato_id: string | null;
+  cliente_id?: string | null;
   monto: number;
   pagado_at: string;
   estado_conciliacion: string;
   asignaciones: ResultadoPago | AsignacionPago[] | null;
   notas: string | null;
+  rubro?: string | null;
+  destino_interior?: string | null;
 };
+
+function destinoDesdePago(p: PagoRow): DestinoInterior | null {
+  const d = destinoDePago(p.destino_interior);
+  if (d) return d;
+  const m = /RUBRO:\s*salida_interior\s+(.+?)\s+\$/i.exec(p.notas ?? "");
+  if (m?.[1]) return destinoPorNombre(m[1].trim()) ?? destinoLibre(m[1].trim(), Number(p.monto) || 0);
+  if (p.rubro === "salida_interior" || p.destino_interior === "otro") {
+    return destinoLibre("Otro destino", Number(p.monto) || 0);
+  }
+  return null;
+}
 
 function parseAsignaciones(raw: unknown): ResultadoPago | null {
   if (!raw || typeof raw !== "object") return null;
@@ -142,20 +166,56 @@ async function asignacionesDeHoy(
 export async function aplicarPagoEnObligaciones(pagoId: string): Promise<ResultadoPago | null> {
   if (!pagoId) return null;
   const sb = createServerSupabase();
-  const { data: raw, error } = await sb
+  let q = await sb
     .from("pagos")
-    .select("id, contrato_id, monto, pagado_at, estado_conciliacion, asignaciones, notas")
+    .select("id, contrato_id, cliente_id, monto, pagado_at, estado_conciliacion, asignaciones, notas, rubro, destino_interior")
     .eq("id", pagoId)
     .maybeSingle();
-  if (error || !raw) return null;
-  const pago = raw as PagoRow;
+  if (q.error && /rubro|destino_interior/i.test(q.error.message)) {
+    q = await sb
+      .from("pagos")
+      .select("id, contrato_id, cliente_id, monto, pagado_at, estado_conciliacion, asignaciones, notas")
+      .eq("id", pagoId)
+      .maybeSingle();
+  }
+  if (q.error || !q.data) return null;
+  const pago = q.data as PagoRow;
   if (!pago.contrato_id) return null;
   if (pago.estado_conciliacion !== "conciliado" && pago.estado_conciliacion !== "manual") {
     return null;
   }
 
+  const dest = destinoDesdePago(pago);
   const ya = parseAsignaciones(pago.asignaciones);
-  if (ya) return ya;
+  if (ya) {
+    if (dest) {
+      const interior = ya.asignaciones
+        .filter((a) => a.tipo === "salida_interior")
+        .reduce((s, a) => s + a.aplicado, 0);
+      if (interior > 0.009) {
+        const ids = await idsVehiculoYCliente(pago.contrato_id);
+        await asegurarCargoSalida({
+          contratoId: pago.contrato_id,
+          pagoId,
+          dest,
+          monto: interior,
+          fecha: fechaContable(pago.pagado_at),
+        });
+        await upsertSalidaAutorizada({
+          contratoId: pago.contrato_id,
+          vehiculoId: ids.vehiculoId,
+          clienteId: pago.cliente_id ?? ids.clienteId,
+          pagoId,
+          dest,
+          monto: interior,
+          fecha: fechaContable(pago.pagado_at),
+          estado: "autorizada",
+          avalPor: pago.estado_conciliacion === "manual" ? "oficina" : "banco",
+        });
+      }
+    }
+    return ya;
+  }
 
   const fecha = fechaContable(pago.pagado_at);
   const contratoId = pago.contrato_id;
@@ -228,7 +288,30 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     otras,
   );
 
-  const resultado = distribuirPago(monto, obligaciones);
+  let resultado: ResultadoPago;
+  if (dest) {
+    const { interior, resto } = partirMontoInterior(monto, dest.monto);
+    const cola = resto > 0.009 ? distribuirPago(resto, obligaciones) : {
+      asignaciones: [] as AsignacionPago[],
+      sobrante: 0,
+      totalAplicado: 0,
+    };
+    resultado = {
+      asignaciones: [
+        {
+          tipo: "salida_interior",
+          aplicado: interior,
+          etiqueta: `salida a ${dest.nombre}`,
+        },
+        ...cola.asignaciones,
+      ],
+      sobrante: cola.sobrante,
+      totalAplicado: r2(interior + cola.totalAplicado),
+    };
+  } else {
+    resultado = distribuirPago(monto, obligaciones);
+  }
+
   const payload = {
     asignaciones: resultado.asignaciones,
     sobrante: resultado.sobrante,
@@ -258,6 +341,31 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     await sb.from("acuerdos").update({ saldo: nuevo, activo: nuevo > 0.009 }).eq("id", a.ref);
   }
 
+  if (dest) {
+    const interior = resultado.asignaciones
+      .filter((a) => a.tipo === "salida_interior")
+      .reduce((s, a) => s + a.aplicado, 0);
+    const ids = await idsVehiculoYCliente(contratoId);
+    await asegurarCargoSalida({
+      contratoId,
+      pagoId,
+      dest,
+      monto: interior,
+      fecha,
+    });
+    await upsertSalidaAutorizada({
+      contratoId,
+      vehiculoId: ids.vehiculoId,
+      clienteId: pago.cliente_id ?? ids.clienteId,
+      pagoId,
+      dest,
+      monto: interior,
+      fecha,
+      estado: "autorizada",
+      avalPor: pago.estado_conciliacion === "manual" ? "oficina" : "banco",
+    });
+  }
+
   return resultado;
 }
 
@@ -279,5 +387,8 @@ export async function revertirPagoEnObligaciones(pagoId: string): Promise<void> 
     await sb.from("acuerdos").update({ saldo: r2(saldo + a.aplicado), activo: true }).eq("id", a.ref);
   }
 
-  await sb.from("pagos").update({ asignaciones: null }).eq("id", pagoId);
+  await Promise.all([
+    sb.from("pagos").update({ asignaciones: null, rubro: null, destino_interior: null }).eq("id", pagoId),
+    borrarCargoSalidaDelPago(pagoId),
+  ]);
 }

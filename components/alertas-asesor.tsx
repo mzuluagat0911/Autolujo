@@ -13,6 +13,7 @@ import {
 } from "react";
 import {
   accionTomarChat,
+  accionVerAlertaGps,
   cargarAlertasEscalada,
   type AlertaEscalada,
 } from "@/app/cartera/conversaciones/actions";
@@ -94,12 +95,12 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
       void sonarAviso();
       for (const a of nuevas) {
         lanzarNotificacionEscritorio({
-          titulo: `${a.titulo} espera a un asesor`,
+          titulo: a.clase === "gps" ? a.titulo : `${a.titulo} espera a un asesor`,
           cuerpo: a.motivo ?? a.preview ?? "Marcela pasó este chat a una persona.",
           tag: `escalada-${a.huella}`,
           onClick: () => {
             if (opts?.prueba || a.id === "__prueba__") return;
-            router.push(`/cartera/conversaciones/${a.id}`);
+            router.push(a.href ?? `/cartera/conversaciones/${a.id}`);
           },
         });
       }
@@ -160,6 +161,8 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
           desde: new Date().toISOString(),
           preview: null,
           huella: `__prueba__|${Date.now()}`,
+          clase: "chat",
+          href: "/cartera/rastreo",
         },
       ],
       { prueba: true },
@@ -177,6 +180,32 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
   }
 
   async function tomar(id: string) {
+    const item = items.find((a) => a.id === id);
+    if (id.startsWith("salerta:")) {
+      await accionVerAlertaGps(id);
+      if (conocidos.current) {
+        conocidos.current = new Set([...conocidos.current].filter((h) => !h.startsWith(`${id}|`)));
+      }
+      setItems((prev) => prev.filter((a) => a.id !== id));
+      setOpen(false);
+      router.push(item?.href ?? "/cartera/pagos");
+      return;
+    }
+    if (item?.clase === "salida" || id.startsWith("salida:")) {
+      setOpen(false);
+      router.push("/cartera/pagos");
+      return;
+    }
+    if (item?.clase === "gps" || id.startsWith("gps:")) {
+      await accionVerAlertaGps(id);
+      if (conocidos.current) {
+        conocidos.current = new Set([...conocidos.current].filter((h) => !h.startsWith(`${id}|`)));
+      }
+      setItems((prev) => prev.filter((a) => a.id !== id));
+      setOpen(false);
+      router.push("/cartera/rastreo");
+      return;
+    }
     const fd = new FormData();
     fd.set("conversacion_id", id);
     await accionTomarChat(fd);
@@ -193,10 +222,10 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
       value={{ items, open, setOpen, permiso, pedirPermiso, tomar, probarAviso, sonidoOn, toggleSonido }}
     >
       {children}
-      {toast && pathname !== `/cartera/conversaciones/${toast.id}` && (
+      {toast && pathname !== (toast.href ?? `/cartera/conversaciones/${toast.id}`) && (
         <div className="fixed bottom-4 right-4 z-50 w-[min(100%-2rem,22rem)] rounded-xl bg-surface p-4 ring-1 ring-line shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ambar">
-            Cliente espera respuesta
+            {toast.clase === "gps" ? "Alerta de rastreo" : "Cliente espera respuesta"}
           </p>
           <p className="mt-1 text-sm font-medium text-ink">{toast.titulo}</p>
           <p className="mt-0.5 line-clamp-2 text-xs text-muted">
@@ -210,14 +239,14 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
                   onClick={() => void tomar(toast.id)}
                   className="rounded-lg bg-ink px-3 py-1.5 text-xs font-medium text-white hover:bg-black"
                 >
-                  Tomar ahora
+                  {toast.clase === "gps" ? "Revisar" : "Tomar ahora"}
                 </button>
                 <Link
-                  href={`/cartera/conversaciones/${toast.id}`}
+                  href={toast.href ?? `/cartera/conversaciones/${toast.id}`}
                   onClick={() => setToast(null)}
                   className="rounded-lg px-3 py-1.5 text-xs font-medium text-ink ring-1 ring-line hover:bg-surface-2"
                 >
-                  Ver chat
+                  {toast.clase === "gps" ? "Ver rastreo" : "Ver chat"}
                 </Link>
               </>
             ) : (
@@ -336,7 +365,7 @@ export function AlertasCampana({ variant }: { variant: "side" | "mobile" }) {
                 <li key={a.id} className="border-b border-line last:border-0">
                   <div className="flex items-start gap-2 px-4 py-3 hover:bg-surface-2">
                     <Link
-                      href={`/cartera/conversaciones/${a.id}`}
+                      href={a.href ?? `/cartera/conversaciones/${a.id}`}
                       onClick={() => setOpen(false)}
                       className="min-w-0 flex-1"
                     >
@@ -353,7 +382,7 @@ export function AlertasCampana({ variant }: { variant: "side" | "mobile" }) {
                       onClick={() => void tomar(a.id)}
                       className="shrink-0 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-black"
                     >
-                      Tomar
+                      {a.clase === "gps" ? "Ver" : "Tomar"}
                     </button>
                   </div>
                 </li>

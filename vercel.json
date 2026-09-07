@@ -19,6 +19,14 @@
     {
       "path": "/api/cron/recordatorio-cierre",
       "schedule": "30 22 * * 1-6"
+    },
+    {
+      "path": "/api/cron/gps-snapshot",
+      "schedule": "0 16,20,0 * * *"
+    },
+    {
+      "path": "/api/cron/gps-dia",
+      "schedule": "15 4 * * *"
     }
   ]
 }

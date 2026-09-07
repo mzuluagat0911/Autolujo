@@ -31,6 +31,7 @@ const NAV: Group[] = [
       { label: "Pagos por conciliar", href: "/cartera/pagos", status: "active" },
       { label: "Conciliación", href: "/cartera/extractos", status: "active" },
       { label: "Carros", href: "/cartera/vehiculos", status: "active" },
+      { label: "Rastreo", href: "/cartera/rastreo", status: "active" },
       { label: "Clientes", href: "/cartera/clientes", status: "active" },
       { label: "Tarifario", href: "/cartera/tarifario", status: "active" },
     ],

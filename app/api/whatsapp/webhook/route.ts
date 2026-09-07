@@ -435,6 +435,12 @@ function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: s
       escalarMotivo: null,
     };
   }
+  if (res.salida) {
+    return {
+      respuesta: `Vi el comprobante de ${monto} de la salida a ${res.salida.destino}. Ese pago va a la salida al interior, no a la cuota. El equipo le da el aval en un momento.`,
+      escalarMotivo: null,
+    };
+  }
   if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
     const carro = res.resolucion.etiqueta ?? "su carro";
     return {

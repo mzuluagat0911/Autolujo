@@ -11,6 +11,8 @@ import {
   marcarLeida,
 } from "@/lib/cartera/pipeline";
 import type { ConversacionDetalle, ConversacionLista, Mensaje } from "./types";
+import { alertasGpsPendientes, marcarAlertaGpsVista } from "@/lib/gps/revisar-dia";
+import { marcarAlertaSalidaVista, salidasAlertasPendientes, salidasPendientesAval } from "@/lib/cartera/salidas-aplicar";
 
 function revalidar(id?: string) {
   revalidatePath("/cartera/conversaciones");
@@ -188,6 +190,8 @@ export type AlertaEscalada = {
   preview: string | null;
   /** Cambia si hay un mensaje nuevo o se vuelve a escalar → la campana suena otra vez. */
   huella: string;
+  clase?: "chat" | "gps" | "salida";
+  href?: string;
 };
 
 /** Chats que Marcela (o el sistema) pasó a una persona y nadie ha tomado. */
@@ -202,7 +206,7 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       .eq("necesita_humano", true)
       .order("escalada_at", { ascending: true, nullsFirst: false });
     if (error) throw error;
-    return ((data ?? []) as unknown as {
+    const chats = ((data ?? []) as unknown as {
       id: string;
       etiqueta: string | null;
       motivo_escalada: string | null;
@@ -220,8 +224,55 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       desde: c.escalada_at,
       preview: c.ultimo_texto,
       huella: [c.id, c.escalada_at ?? "", c.motivo_escalada ?? "", c.ultimo_mensaje_at ?? ""].join("|"),
+      clase: "chat" as const,
+      href: `/cartera/conversaciones/${c.id}`,
     }));
+    const gps = await alertasGpsPendientes();
+    const extras: AlertaEscalada[] = gps.map((g) => ({
+      id: g.id,
+      titulo: g.titulo,
+      motivo: g.motivo,
+      desde: g.desde,
+      preview: null,
+      huella: `${g.id}|${g.desde}|${g.motivo}`,
+      clase: "gps" as const,
+      href: "/cartera/rastreo",
+    }));
+    const salidas = await salidasPendientesAval();
+    const extrasSalida: AlertaEscalada[] = salidas.map((s) => ({
+      id: s.id,
+      titulo: s.titulo,
+      motivo: s.motivo,
+      desde: s.desde,
+      preview: null,
+      huella: `${s.id}|${s.desde}|${s.motivo}`,
+      clase: "salida" as const,
+      href: "/cartera/pagos",
+    }));
+    const ops = await salidasAlertasPendientes();
+    const extrasOps: AlertaEscalada[] = ops.map((s) => ({
+      id: s.id,
+      titulo: s.titulo,
+      motivo: s.motivo,
+      desde: s.desde,
+      preview: null,
+      huella: `${s.id}|${s.desde}|${s.motivo}`,
+      clase: s.tipo.startsWith("gps_") ? ("gps" as const) : ("salida" as const),
+      href: s.tipo.startsWith("gps_") ? "/cartera/rastreo" : "/cartera/pagos",
+    }));
+    return [...extrasOps, ...extrasSalida, ...extras, ...chats];
   } catch {
     return [];
   }
+}
+
+export async function accionVerAlertaGps(id: string): Promise<void> {
+  if (id.startsWith("salerta:")) {
+    await marcarAlertaSalidaVista(id);
+    revalidatePath("/cartera/rastreo");
+    revalidatePath("/cartera/pagos");
+    return;
+  }
+  await marcarAlertaGpsVista(id);
+  revalidatePath("/cartera/rastreo");
 }

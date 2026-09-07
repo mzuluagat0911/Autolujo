@@ -11,6 +11,13 @@ import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
 import { aplicarPagoEnObligaciones, textoComoSeAplico } from "./aplicar-pago";
 import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
+import { detectarDiasViaje, textoTarifasInterior, type DestinoInterior } from "./salidas-interior";
+import {
+  inferirSalidaDelChat,
+  idsVehiculoYCliente,
+  registrarSalidaPendiente,
+  salidasDelContrato,
+} from "./salidas-aplicar";
 
 const BUCKET = "comprobantes";
 
@@ -444,11 +451,28 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `  IMPORTANTE: dale SOLO la cuenta de su empresa; jamás la de otra empresa.`,
     pagoEnOficinaTexto(),
     ``,
-    `CÓMO SE APLICA UN ABONO (orden fijo; el cliente NO elige):`,
+    `CÓMO SE APLICA UN ABONO (orden fijo; el cliente NO elige, EXCEPTO la salida al interior):`,
     `- Primero arreglo, luego saldo anterior, luego recargo, al final la cuota de hoy.`,
-    `- NUNCA preguntes a qué lo quiere aplicar. Si el CONTEXTO dice cómo se partió un pago, INFORMALO.`,
+    `- Si el pago es de una SALIDA AL INTERIOR, va a ese rubro y NO cubre la cuota del día.`,
+    `- NUNCA preguntes a qué lo quiere aplicar (salvo para confirmar el destino de una salida). Si el CONTEXTO dice cómo se partió un pago, INFORMALO.`,
     `- Si discute esa asignación: explícaselo una vez. Solo si insiste, marca pasar_a_humano = true.`,
+    ``,
+    textoTarifasInterior(),
   );
+
+  const salidas = await salidasDelContrato(contratoId, 8);
+  if (salidas.length > 0) {
+    lineas.push(``, `SALIDAS AL INTERIOR DE ESTE CARRO (para decirle si ya pagó / si tiene aval):`);
+    for (const s of salidas) {
+      const st =
+        s.estado === "autorizada"
+          ? "AVAL DADO — puede salir"
+          : s.estado === "rechazada"
+            ? "rechazada"
+            : "pago recibido, AVAL PENDIENTE del equipo";
+      lineas.push(`- ${s.fecha} · ${s.destino} · ${m(Number(s.monto))} · ${st}`);
+    }
+  }
 
   return lineas.join("\n");
 }
@@ -786,6 +810,7 @@ type ResultadoPago = {
   resolucion: ResolucionCarro;
   estadoConciliacion: "pendiente" | "manual" | "duplicado";
   veredicto: Veredicto;
+  salida?: { destino: string; monto: number } | null;
 };
 
 /** Empresa dueña del vehículo — para cruzar la cuenta destino del comprobante. */
@@ -925,13 +950,57 @@ export async function procesarPagoComprobante(opts: {
     throw error;
   }
 
+  const pagoId = pago.id as string;
+  let salida: DestinoInterior | null = null;
+  try {
+    const hist = await historialReciente(conversacion.id, 16);
+    const textos = hist.map((m) => m.texto);
+    salida = await inferirSalidaDelChat({
+      pagoId,
+      monto: comprobante.monto ?? 0,
+      textos,
+    });
+    if (salida && resolucion.contratoId) {
+      await registrarMensaje({
+        conversacionId: conversacion.id,
+        direccion: "out",
+        tipo: "system",
+        texto: `Pago asignado a salida al interior: ${salida.nombre} ($${salida.monto}). Aval pendiente del equipo.`,
+      });
+      const ids = await idsVehiculoYCliente(resolucion.contratoId);
+      const dias = detectarDiasViaje(textos);
+      const fechaHasta = dias && dias > 1 ? sumarDias(fechaPago, dias - 1) : null;
+      if (estadoConciliacion === "pendiente") {
+        await registrarSalidaPendiente({
+          contratoId: resolucion.contratoId,
+          vehiculoId: resolucion.vehiculoId ?? ids.vehiculoId,
+          clienteId: resolucion.clienteId ?? conversacion.cliente_id ?? ids.clienteId,
+          pagoId,
+          dest: salida,
+          monto: comprobante.monto ?? 0,
+          pagadoAt,
+          fechaHasta,
+        });
+      }
+    }
+  } catch (e) {
+    console.error("[pipeline] salida interior", e);
+  }
+
   if (estadoConciliacion === "manual") {
     try {
-      await aplicarPagoEnObligaciones(pago.id as string);
+      await aplicarPagoEnObligaciones(pagoId);
     } catch (e) {
       console.error("[pipeline] waterfall pago manual", e);
     }
   }
 
-  return { pagoId: pago.id as string, comprobantePath: path, resolucion, estadoConciliacion, veredicto };
+  return {
+    pagoId,
+    comprobantePath: path,
+    resolucion,
+    estadoConciliacion,
+    veredicto,
+    salida: salida ? { destino: salida.nombre, monto: salida.monto } : null,
+  };
 }
