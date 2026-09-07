@@ -16,6 +16,7 @@ function tone(estado: string): "good" | "warn" | "crit" | "neutral" {
 
 export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
   const [empresaId, setEmpresaId] = useState(empresas[0]?.id ?? "");
+  const [nombreArchivo, setNombreArchivo] = useState<string | null>(null);
   const [state, action, pending] = useActionState<ResultadoConciliacion | null, FormData>(
     conciliarExtracto,
     null,
@@ -25,9 +26,10 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
   return (
     <div>
       <form action={action} className="rounded-xl bg-surface p-6 ring-1 ring-line">
-        <p className="text-sm font-semibold">¿De qué empresa es este extracto?</p>
+        <p className="text-sm font-semibold">Empresa del extracto</p>
         <p className="mt-1 text-sm text-muted">
-          Elige la cuenta. Solo se cruzan los carros de esa empresa. Un movimiento se marca conciliado únicamente si calza con un comprobante en carro, monto, fecha y cuenta.
+          Solo cruza carros de esa empresa. Auto-aplica si calza carro, monto, fecha y cuenta
+          destino; el resto va a la cola de arriba.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -56,19 +58,30 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
         </div>
 
         <div className="mt-6 border-t border-line pt-5">
-          <label className="block text-sm font-medium">PDF de Banco General</label>
+          <label className="block text-sm font-medium">PDF · Banco General</label>
           <p className="mt-1 text-xs text-muted">
-            “Últimos movimientos” de la cuenta de {elegida?.codigo ?? "la empresa"}.
+            Descargar “Últimos movimientos” de la cuenta de {elegida?.codigo ?? "la empresa"}{" "}
+            (ahorros o corriente). Un archivo por empresa.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <input
-              type="file"
-              name="archivo"
-              accept="application/pdf"
-              required
-              className="text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-ink file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-black"
-            />
+            <label className="inline-flex cursor-pointer items-center gap-3 rounded-lg bg-paper px-3 py-2 ring-1 ring-line hover:ring-line-strong">
+              <span className="rounded-md bg-ink px-3 py-1.5 text-sm font-medium text-white">
+                Seleccionar PDF
+              </span>
+              <span className="max-w-[14rem] truncate text-sm text-muted">
+                {nombreArchivo ?? "Ningún archivo"}
+              </span>
+              <input
+                type="file"
+                name="archivo"
+                accept="application/pdf"
+                required
+                className="sr-only"
+                onChange={(e) => setNombreArchivo(e.target.files?.[0]?.name ?? null)}
+              />
+            </label>
             <button
+              type="submit"
               disabled={pending || !empresaId}
               className="rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
             >

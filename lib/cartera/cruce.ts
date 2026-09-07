@@ -107,7 +107,7 @@ function contratoPorCarro(
 export function esCrucePerfecto(
   pago: PagoCandidato,
   mov: { monto: number; fecha: string | null; numeroCarro: string | null },
-  extracto: { empresaId: string; numeroCuenta: string | null },
+  extracto: { empresaId: string; numeroCuenta: string | null; numerosCuenta?: string[] },
   contrato: ContratoFlota,
 ): boolean {
   if (pago.origen === "manual") return false;
@@ -124,8 +124,14 @@ export function esCrucePerfecto(
   if (carroPago && carroPago !== carroContrato) return false;
   if (!carroMov && !carroPago) return false;
 
-  if (pago.cuentaDestino && extracto.numeroCuenta) {
-    if (!mismaCuenta(pago.cuentaDestino, extracto.numeroCuenta)) return false;
+  if (pago.cuentaDestino) {
+    const candidatas = [
+      ...(extracto.numerosCuenta ?? []),
+      ...(extracto.numeroCuenta ? [extracto.numeroCuenta] : []),
+    ];
+    if (candidatas.length > 0 && !candidatas.some((n) => mismaCuenta(pago.cuentaDestino!, n))) {
+      return false;
+    }
   }
 
   if (pago.contratoId && pago.contratoId !== contrato.contratoId) {
@@ -157,7 +163,7 @@ export function decidirMovimiento(
   mov: { monto: number; fecha: string | null; numeroCarro: string | null; nombre: string | null },
   pendientes: PagoCandidato[],
   flota: ContratoFlota[],
-  extracto: { empresaId: string; numeroCuenta: string | null },
+  extracto: { empresaId: string; numeroCuenta: string | null; numerosCuenta?: string[] },
 ): VeredictoCruce {
   const { unico: porCarro, cuantos } = contratoPorCarro(flota, mov.numeroCarro);
 

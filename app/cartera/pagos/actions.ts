@@ -11,6 +11,7 @@ import {
 import { money } from "@/lib/cartera/estado-cuenta";
 import { recalcularRecargo } from "@/lib/cartera/devengo";
 import { aplicarPagoEnObligaciones, revertirPagoEnObligaciones, textoComoSeAplico } from "@/lib/cartera/aplicar-pago";
+import { avisarPagoConciliado } from "@/lib/cartera/avisar-conciliacion";
 import { hoyPanama, pagadoAtDesdeForm, horaPanama, fechaContable, sumarDias } from "@/lib/cartera/fecha";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { sendText } from "@/lib/whatsapp/client";
@@ -76,7 +77,12 @@ export async function resolverPago(formData: FormData): Promise<void> {
   }
   if (nuevoEstado === "conciliado") {
     try {
-      await aplicarPagoEnObligaciones(pagoId);
+      const aplicado = await aplicarPagoEnObligaciones(pagoId);
+      try {
+        await avisarPagoConciliado(pagoId, aplicado);
+      } catch (e) {
+        console.error("[pagos] aviso WA", e);
+      }
     } catch (e) {
       console.error("[pagos] waterfall", e);
     }

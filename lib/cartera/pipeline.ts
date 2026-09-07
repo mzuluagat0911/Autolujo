@@ -5,7 +5,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
-import { hoyPanama, horaPanama, pasoCorte, fechaConDia, sumarDias, fechaContable } from "@/lib/cartera/fecha";
+import { hoyPanama, horaPanama, pasoCorte, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm } from "@/lib/cartera/fecha";
 import { estadoCuentaContrato, money } from "@/lib/cartera/estado-cuenta";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
@@ -918,8 +918,23 @@ export async function procesarPagoComprobante(opts: {
     .filter(Boolean)
     .join(" ");
 
-  const pagadoAt = new Date().toISOString();
-  const fechaPago = fechaContable(pagadoAt);
+  // Fecha/hora del comprobante (no del momento en que llegó el WhatsApp).
+  const fechaLeida =
+    comprobante.fecha && /^\d{4}-\d{2}-\d{2}$/.test(comprobante.fecha) ? comprobante.fecha : null;
+  const horaLeida =
+    comprobante.hora && /^([01]?\d|2[0-3]):[0-5]\d$/.test(comprobante.hora)
+      ? comprobante.hora.slice(0, 5)
+      : null;
+  const fechaPago = fechaLeida ?? hoyPanama();
+  let pagadoAt: string;
+  if (horaLeida) {
+    pagadoAt = pagadoAtDesdeForm(fechaPago, horaLeida);
+  } else if (fechaPago === hoyPanama()) {
+    pagadoAt = new Date().toISOString();
+  } else {
+    // Sin hora legible en un día pasado: mediodía Panamá (no inventamos puntualidad).
+    pagadoAt = instantePanama(fechaPago, 12, 0).toISOString();
+  }
 
   const { data: pago, error } = await sb
     .from("pagos")

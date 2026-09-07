@@ -15,6 +15,7 @@ type Pago = {
   referencia: string | null;
   numero_carro: string | null;
   estado_conciliacion: string;
+  origen?: string | null;
   comprobante_url: string | null;
   notas: string | null;
   created_at: string;
@@ -24,7 +25,12 @@ type Pago = {
   salida?: SalidaFila | null;
 };
 
-const POR_CONCILIAR = ["pendiente", "manual"];
+/** Solo comprobantes pendientes o WA sin contrato. Oficina (manual+origen manual) ya cuenta. */
+function esPorRevisar(p: Pago): boolean {
+  if (p.estado_conciliacion === "pendiente") return true;
+  if (p.estado_conciliacion === "manual" && p.origen !== "manual") return true;
+  return false;
+}
 
 function estadoTone(e: string): "good" | "warn" | "crit" | "neutral" {
   if (e === "conciliado") return "good";
@@ -38,10 +44,10 @@ async function getData() {
     const sb = createServerSupabase();
     const { data, error } = await sb
       .from("pagos")
-      .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, comprobante_url, notas, created_at, rubro, destino_interior")
+      .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, origen, comprobante_url, notas, created_at, rubro, destino_interior")
       .order("created_at", { ascending: false })
       .limit(100);
-    if (error && /rubro|destino_interior/i.test(error.message)) {
+    if (error && /rubro|destino_interior|origen/i.test(error.message)) {
       const retry = await sb
         .from("pagos")
         .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, comprobante_url, notas, created_at")
@@ -75,15 +81,20 @@ async function getData() {
 
 export default async function PagosPage() {
   const { pagos, error } = await getData();
-  const porConciliar = pagos.filter((p) => POR_CONCILIAR.includes(p.estado_conciliacion));
-  const resueltos = pagos.filter((p) => !POR_CONCILIAR.includes(p.estado_conciliacion));
+  const porConciliar = pagos.filter(esPorRevisar);
+  const oficina = pagos.filter(
+    (p) => p.estado_conciliacion === "manual" && p.origen === "manual",
+  );
+  const resueltos = pagos.filter(
+    (p) => !esPorRevisar(p) && !(p.estado_conciliacion === "manual" && p.origen === "manual"),
+  );
 
   return (
     <div className="pb-16">
       <PageHeader
         eyebrow="Cartera"
         title="Pagos por conciliar"
-        subtitle="Comprobantes de WhatsApp, oficina y salidas al interior (pago previo + aval)."
+        subtitle="Comprobantes de WhatsApp pendientes de cruce y salidas al interior (pago previo + aval)."
       />
 
       {error && (
@@ -108,6 +119,22 @@ export default async function PagosPage() {
           </p>
         )}
       </div>
+
+      {oficina.length > 0 && (
+        <>
+          <h2 className="mt-12 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
+            Oficina · ya contados · {oficina.length}
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            Efectivo o datáfono: ya suman al saldo. No van al banco ni se rechazan aquí.
+          </p>
+          <div className="mt-4 space-y-3 opacity-90">
+            {oficina.slice(0, 15).map((p) => (
+              <PagoCard key={p.id} p={p} />
+            ))}
+          </div>
+        </>
+      )}
 
       {resueltos.length > 0 && (
         <>

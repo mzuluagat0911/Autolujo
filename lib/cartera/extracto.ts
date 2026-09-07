@@ -8,6 +8,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, fechaContable, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
 import { aplicarPagoEnObligaciones } from "./aplicar-pago";
+import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { destinoPorId } from "./salidas-interior";
 import {
   canonCarro,
@@ -18,6 +19,30 @@ import {
   type PagoCandidato,
 } from "./cruce";
 
+const BUCKET = "comprobantes";
+
+async function guardarPdfExtracto(
+  buffer: Buffer,
+  empresaCodigo: string,
+  fecha: string,
+): Promise<string | null> {
+  try {
+    const sb = createServerSupabase();
+    const path = `extractos/${empresaCodigo}/${fecha}-${crypto.randomUUID()}.pdf`;
+    const { error } = await sb.storage.from(BUCKET).upload(path, buffer, {
+      contentType: "application/pdf",
+      upsert: false,
+    });
+    if (error) {
+      console.error("[extracto] no pude guardar el PDF:", error.message);
+      return null;
+    }
+    return path;
+  } catch (e) {
+    console.error("[extracto] no pude guardar el PDF:", e);
+    return null;
+  }
+}
 const MESES: Record<string, string> = {
   ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
   jul: "07", ago: "08", sep: "09", oct: "10", nov: "11", dic: "12",
@@ -143,14 +168,17 @@ export async function procesarExtractoPDF(
   }));
   const contratoIds = new Set(flota.map((c) => c.contratoId));
 
-  const { data: cuenta } = await sb
+  const { data: cuentas } = await sb
     .from("cuentas_bancarias")
-    .select("id, numero_cuenta")
-    .eq("empresa_id", empresa.id)
-    .ilike("tipo", "AHORROS")
-    .limit(1)
-    .maybeSingle();
-  const cuentaRow = cuenta as { id: string; numero_cuenta: string | null } | null;
+    .select("id, numero_cuenta, tipo")
+    .eq("empresa_id", empresa.id);
+  const cuentasEmpresa = (cuentas ?? []) as { id: string; numero_cuenta: string | null; tipo: string | null }[];
+  // Preferimos AHORROS para el FK del extracto; el match acepta cualquiera de la empresa.
+  const cuentaRow =
+    cuentasEmpresa.find((c) => /ahorro/i.test(c.tipo ?? "")) ?? cuentasEmpresa[0] ?? null;
+  const numerosCuenta = cuentasEmpresa
+    .map((c) => c.numero_cuenta)
+    .filter((n): n is string => Boolean(n && n.trim()));
 
   let aviso: string | undefined;
   if (titular) {
@@ -168,6 +196,7 @@ export async function procesarExtractoPDF(
   }
 
   const fechaExtracto = movimientos.find((m) => m.fecha)?.fecha ?? hoyPanama();
+  const archivoUrl = await guardarPdfExtracto(buffer, empresa.codigo, fechaExtracto);
   const { data: extracto } = await sb
     .from("extractos_bancarios")
     .insert({
@@ -176,6 +205,7 @@ export async function procesarExtractoPDF(
       banco: "Banco General",
       fecha: fechaExtracto,
       cargado_por: cargadoPor,
+      archivo_url: archivoUrl,
     })
     .select("id").single();
   const extractoId = extracto!.id as string;
@@ -229,7 +259,11 @@ export async function procesarExtractoPDF(
   const porRecalcular = new Set<string>();
   const aplicarPagoIds: string[] = [];
   const fechasMov = new Set(movimientos.map((m) => m.fecha).filter((f): f is string => Boolean(f)));
-  const ctxExtracto = { empresaId: empresa.id, numeroCuenta: cuentaRow?.numero_cuenta ?? null };
+  const ctxExtracto = {
+    empresaId: empresa.id,
+    numeroCuenta: cuentaRow?.numero_cuenta ?? null,
+    numerosCuenta: numerosCuenta,
+  };
 
   for (const mov of movimientos) {
     const libres = pendientes.filter((p) => !usados.has(p.id));
@@ -294,12 +328,19 @@ export async function procesarExtractoPDF(
       motivo,
       via,
     };
-    const { error: errMov } = await sb.from("movimientos_extracto").insert(fila);
-    if (errMov && /motivo|via/i.test(errMov.message)) {
-      // Migración 0013 aún no corrida: guardamos sin las columnas nuevas.
+    const ins = await sb.from("movimientos_extracto").insert(fila).select("id").maybeSingle();
+    let movId = (ins.data as { id: string } | null)?.id ?? null;
+    if (ins.error && /motivo|via/i.test(ins.error.message)) {
       delete fila.motivo;
       delete fila.via;
-      await sb.from("movimientos_extracto").insert(fila);
+      const retry = await sb.from("movimientos_extracto").insert(fila).select("id").maybeSingle();
+      movId = (retry.data as { id: string } | null)?.id ?? null;
+    } else if (ins.error) {
+      console.error("[extracto] insert movimiento", ins.error.message);
+    }
+
+    if (pagoId && movId) {
+      await sb.from("pagos").update({ movimiento_extracto_id: movId }).eq("id", pagoId);
     }
 
     res.detalle.push({
@@ -324,7 +365,12 @@ export async function procesarExtractoPDF(
 
   for (const id of aplicarPagoIds) {
     try {
-      await aplicarPagoEnObligaciones(id);
+      const aplicado = await aplicarPagoEnObligaciones(id);
+      try {
+        await avisarPagoConciliado(id, aplicado);
+      } catch (e) {
+        console.error("[extracto] aviso WA", id, e);
+      }
     } catch (e) {
       console.error("[extracto] no pude aplicar el waterfall de", id, e);
     }

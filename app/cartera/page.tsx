@@ -35,7 +35,7 @@ async function getDatos(): Promise<Datos> {
       sb.from("contratos").select("*", { count: "exact", head: true }).eq("estado", "activo"),
       sb.from("vw_saldo_contrato").select("saldo_actual"),
       sb.from("pagos").select("contrato_id, monto").eq("fecha", hoy).in("estado_conciliacion", ["conciliado", "manual"]),
-      sb.from("pagos").select("*", { count: "exact", head: true }).in("estado_conciliacion", ["pendiente", "manual"]),
+      sb.from("pagos").select("*", { count: "exact", head: true }).eq("estado_conciliacion", "pendiente"),
       sb.from("conversaciones").select("*", { count: "exact", head: true }).eq("necesita_humano", true),
       conversacionesEnEspera(MINUTOS_ESPERA),
     ]);

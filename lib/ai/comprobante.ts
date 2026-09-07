@@ -30,6 +30,12 @@ export const ComprobanteSchema = z.object({
     .describe(
       "Fecha EXACTA impresa en el comprobante, en formato YYYY-MM-DD. Léela tal cual aparece (ej. '02 septiembre 2026' -> 2026-09-02; 'Hoy (02 sep)' -> 2026-09-02; '31 Ago 2026' -> 2026-08-31). NUNCA pongas la fecha de hoy por defecto: si no puedes leerla, pon null y baja la confianza.",
     ),
+  hora: z
+    .string()
+    .nullable()
+    .describe(
+      "Hora impresa en el comprobante en formato HH:mm (24h, hora de Panamá si se ve). Ej. '18:42', '09:05'. null si no aparece o no se lee con claridad.",
+    ),
   referencia: z.string().nullable().describe("Número de referencia / confirmación / comprobante de la transacción. En un cheque, el número del cheque."),
   banco: z.string().nullable().describe("Banco o entidad EMISORA (desde dónde se pagó), si es visible."),
   banco_destino: z.string().nullable().describe("Banco o entidad que RECIBE el pago (ej. 'Banco General'), si es visible."),
@@ -67,6 +73,7 @@ PASO 2 — Si es comprobante, extrae con MUCHA precisión:
 - moneda: USD si son dólares o balboas (B/.); COP si son pesos colombianos; etc.
 - fecha: la fecha EXACTA impresa en el comprobante (YYYY-MM-DD). NUNCA uses la fecha de hoy por
   defecto. Si no la puedes leer, null y baja la confianza.
+- hora: si aparece hora en el comprobante, HH:mm en 24h; si no, null.
 - referencia / número de confirmación (o número del cheque).
 - banco emisor y banco destino, si se ven.
 - cuenta destino: el número de cuenta que RECIBE, tal como aparece.
