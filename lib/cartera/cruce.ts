@@ -1,11 +1,13 @@
 // Cruce extracto ↔ comprobante. Puro: sin base de datos.
 //
 // Un movimiento del banco SOLO se marca conciliado si calza con un comprobante
-// pendiente en TODOS los criterios: empresa del carro, cuenta destino (si se
-// leyó), código de carro, monto exacto y fecha (el día del pago o el siguiente,
-// por la hora de corte del banco). El banco del extracto es el destino
-// (Banco General); el banco del comprobante es el emisor del cliente y no se
-// usa para decidir, porque casi nunca coincide.
+// pendiente en TODOS los criterios: empresa, cuenta destino (si se leyó),
+// monto exacto, fecha (día del pago o el siguiente) y un ancla operativa:
+//   - # de carro (comentario del banco ↔ comprobante/contrato), y/o
+//   - referencia bancaria EXACTA (confirmación / comprobante / canje / ref).
+// Si ambos lados traen referencia y no es la misma → nunca es perfecto.
+// El banco del extracto es el destino (Banco General); el banco del
+// comprobante es el emisor del cliente y no se usa para decidir.
 //
 // Todo lo demás —incluido el match por nombre— queda en revisión. El nombre
 // solo SUGIERE un contrato para que una persona confirme.
@@ -34,6 +36,34 @@ export function extraerNombre(desc: string): string | null {
   let n = m[1].split(/\s+(?:carro|cuota|veh[ií]culo|pago|seguro|\(|G\s?-?\d)/i)[0];
   n = n.replace(/\s+[A-Z]?\d.*$/i, "").trim();
   return n.length >= 5 ? n : null;
+}
+
+/**
+ * Normaliza el ID de la transferencia para comparar exacto.
+ * Alias reales: referencia, Nº confirmación, Nº comprobante, comprobante de canje.
+ */
+export function canonReferencia(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const t = String(s).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return t.length >= 4 ? t : null;
+}
+
+export function mismaReferencia(
+  a: string | null | undefined,
+  b: string | null | undefined,
+): boolean {
+  const ca = canonReferencia(a);
+  const cb = canonReferencia(b);
+  return Boolean(ca && cb && ca === cb);
+}
+
+/** Saca la referencia del texto del extracto o del comentario bancario. */
+export function extraerReferencia(desc: string): string | null {
+  const re =
+    /(?:comprobante\s+de\s+canje|n[uúºo°\.]*\s*(?:de\s+)?(?:confirmaci[oó]n|comprobante)|confirmaci[oó]n|comprobante|referencia|ref\.?)\s*[#:.\-]?\s*([A-Z0-9][A-Z0-9\-]{3,})/i;
+  const m = re.exec(desc);
+  if (!m) return null;
+  return canonReferencia(m[1]);
 }
 
 export function canonNombre(s: string): string {
@@ -69,6 +99,8 @@ export type PagoCandidato = {
   numeroCarro: string | null;
   cuentaDestino: string | null;
   origen: string | null;
+  /** Confirmación / comprobante / canje / ref del voucher WA. */
+  referencia?: string | null;
   destinoInterior?: string | null;
 };
 
@@ -121,10 +153,18 @@ function contratoPorCarro(
 /**
  * ¿Este comprobante es el de este movimiento, sin duda?
  * Origen `manual` (oficina) no cruza: el efectivo no aparece en Banco General.
+ *
+ * Ancla: carro y/o referencia exacta. Si hay referencia en ambos lados y no
+ * es idéntica (canon), no es perfecto aunque el carro calce.
  */
 export function esCrucePerfecto(
   pago: PagoCandidato,
-  mov: { monto: number; fecha: string | null; numeroCarro: string | null },
+  mov: {
+    monto: number;
+    fecha: string | null;
+    numeroCarro: string | null;
+    referencia?: string | null;
+  },
   extracto: { empresaId: string; numeroCuenta: string | null; numerosCuenta?: string[] },
   contrato: ContratoFlota,
 ): boolean {
@@ -140,7 +180,14 @@ export function esCrucePerfecto(
   const carroContrato = canonCarro(contrato.numero);
   if (carroMov && carroMov !== carroContrato) return false;
   if (carroPago && carroPago !== carroContrato) return false;
-  if (!carroMov && !carroPago) return false;
+
+  const refPago = canonReferencia(pago.referencia);
+  const refMov = canonReferencia(mov.referencia);
+  if (refPago && refMov && refPago !== refMov) return false;
+
+  const anclaCarro = Boolean(carroMov || carroPago);
+  const anclaRef = Boolean(refPago && refMov && refPago === refMov);
+  if (!anclaCarro && !anclaRef) return false;
 
   if (pago.cuentaDestino) {
     const candidatas = [
@@ -178,12 +225,19 @@ function sugerirPorNombre(flota: ContratoFlota[], nombre: string | null): Contra
  * pendientes que todavía no se han usado en este archivo.
  */
 export function decidirMovimiento(
-  mov: { monto: number; fecha: string | null; numeroCarro: string | null; nombre: string | null },
+  mov: {
+    monto: number;
+    fecha: string | null;
+    numeroCarro: string | null;
+    nombre: string | null;
+    referencia?: string | null;
+  },
   pendientes: PagoCandidato[],
   flota: ContratoFlota[],
   extracto: { empresaId: string; numeroCuenta: string | null; numerosCuenta?: string[] },
 ): VeredictoCruce {
   const { unico: porCarro, cuantos } = contratoPorCarro(flota, mov.numeroCarro);
+  const refMov = canonReferencia(mov.referencia);
 
   const perfectos: { pago: PagoCandidato; contrato: ContratoFlota }[] = [];
   for (const pago of pendientes) {
@@ -193,6 +247,14 @@ export function decidirMovimiento(
     if (!delPago) continue;
     if (esCrucePerfecto(pago, mov, extracto, delPago)) {
       perfectos.push({ pago, contrato: delPago });
+    }
+  }
+
+  // Si varios calzan por carro/monto/fecha, la referencia exacta desempata.
+  if (perfectos.length > 1 && refMov) {
+    const porRef = perfectos.filter((p) => mismaReferencia(p.pago.referencia, refMov));
+    if (porRef.length === 1) {
+      return { tipo: "perfecto", pago: porRef[0].pago, contrato: porRef[0].contrato };
     }
   }
 
@@ -219,7 +281,9 @@ export function decidirMovimiento(
   if (porCarro) {
     return {
       tipo: "revisar",
-      motivo: "El carro está claro, pero no hay un comprobante que calce en monto, fecha y cuenta.",
+      motivo: refMov
+        ? "El carro está claro, pero no hay un comprobante con la misma referencia, monto, fecha y cuenta."
+        : "El carro está claro, pero no hay un comprobante que calce en monto, fecha y cuenta.",
       sugerido: porCarro,
       via: "carro",
     };
@@ -239,7 +303,9 @@ export function decidirMovimiento(
     tipo: "revisar",
     motivo: mov.numeroCarro
       ? `El carro ${mov.numeroCarro} no es de esta empresa o no tiene contrato activo.`
-      : "Sin carro identificable y sin comprobante que calce.",
+      : refMov
+        ? `Hay referencia ${refMov}, pero no calza exacta con un comprobante pendiente (monto/fecha/contrato).`
+        : "Sin carro ni referencia identificable y sin comprobante que calce.",
     sugerido: null,
     via: null,
   };

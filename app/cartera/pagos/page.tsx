@@ -1,45 +1,18 @@
+import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { PageHeader, StatusChip, Money } from "@/components/kit";
-import { accionDarAval, asignarPagoASalida, resolverPago } from "./actions";
-import { PagoManualForm } from "./pago-manual-form";
-import { TARIFAS_SALIDA_INTERIOR } from "@/lib/cartera/salidas-interior";
-import { salidasDePagos, type SalidaFila } from "@/lib/cartera/salidas-aplicar";
+import { PageHeader } from "@/components/kit";
+import { salidasDePagos } from "@/lib/cartera/salidas-aplicar";
+import { ListaComprobantes, type ContratoOpt, type PagoFila } from "./lista";
 
 export const dynamic = "force-dynamic";
 
-type Pago = {
-  id: string;
-  fecha: string | null;
-  monto: number;
-  banco: string | null;
-  referencia: string | null;
-  numero_carro: string | null;
+function esPorRevisar(p: {
   estado_conciliacion: string;
   origen?: string | null;
-  contrato_id?: string | null;
-  comprobante_url: string | null;
-  notas: string | null;
-  created_at: string;
-  rubro?: string | null;
-  destino_interior?: string | null;
-  signedUrl?: string | null;
-  salida?: SalidaFila | null;
-};
-
-type ContratoOpt = { id: string; label: string };
-
-/** Solo comprobantes pendientes o WA sin contrato. Oficina (manual+origen manual) ya cuenta. */
-function esPorRevisar(p: Pago): boolean {
+}): boolean {
   if (p.estado_conciliacion === "pendiente") return true;
   if (p.estado_conciliacion === "manual" && p.origen !== "manual") return true;
   return false;
-}
-
-function estadoTone(e: string): "good" | "warn" | "crit" | "neutral" {
-  if (e === "conciliado") return "good";
-  if (e === "pendiente" || e === "manual") return "warn";
-  if (e === "rechazado") return "crit";
-  return "neutral";
 }
 
 async function getData() {
@@ -48,7 +21,9 @@ async function getData() {
     const [pagosRes, contratosRes] = await Promise.all([
       sb
         .from("pagos")
-        .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, origen, contrato_id, comprobante_url, notas, created_at, rubro, destino_interior")
+        .select(
+          "id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, origen, contrato_id, comprobante_url, notas, created_at, rubro, destino_interior, contrato:contratos(id, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo)))",
+        )
         .order("created_at", { ascending: false })
         .limit(100),
       sb
@@ -58,27 +33,80 @@ async function getData() {
         .limit(400),
     ]);
 
-    let pagosRaw = pagosRes.data;
+    let rows = pagosRes.data;
     let error = pagosRes.error;
-    if (error && /rubro|destino_interior|origen|contrato_id/i.test(error.message)) {
+    if (error && /rubro|destino_interior|origen|contrato/i.test(error.message)) {
       const retry = await sb
         .from("pagos")
-        .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, comprobante_url, notas, created_at")
+        .select(
+          "id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, origen, contrato_id, comprobante_url, notas, created_at",
+        )
         .order("created_at", { ascending: false })
         .limit(100);
       if (retry.error) throw retry.error;
-      pagosRaw = retry.data as typeof pagosRes.data;
+      rows = retry.data as typeof pagosRes.data;
       error = null;
     }
     if (error) throw error;
-    const pagos = (pagosRaw as Pago[]) ?? [];
-    const salidas = await salidasDePagos(pagos.map((p) => p.id));
-    for (const p of pagos) {
-      p.salida = salidas.get(p.id) ?? null;
+
+    type Raw = {
+      id: string;
+      fecha: string | null;
+      monto: number;
+      banco: string | null;
+      referencia: string | null;
+      numero_carro: string | null;
+      estado_conciliacion: string;
+      origen?: string | null;
+      contrato_id?: string | null;
+      comprobante_url: string | null;
+      notas: string | null;
+      created_at: string;
+      rubro?: string | null;
+      destino_interior?: string | null;
+      contrato?: {
+        id: string;
+        cliente: { nombre: string } | null;
+        vehiculo: { numero: string; empresa: { codigo: string } | null } | null;
+      } | null;
+    };
+
+    const raw = (rows ?? []) as unknown as Raw[];
+    const salidas = await salidasDePagos(raw.map((p) => p.id));
+    const pendientes: PagoFila[] = [];
+
+    for (const p of raw) {
+      if (!esPorRevisar(p)) continue;
+      let signedUrl: string | null = null;
       if (p.comprobante_url) {
         const { data: s } = await sb.storage.from("comprobantes").createSignedUrl(p.comprobante_url, 3600);
-        p.signedUrl = s?.signedUrl ?? null;
+        signedUrl = s?.signedUrl ?? null;
       }
+      const carroResuelto = p.contrato?.vehiculo?.numero ?? p.numero_carro ?? null;
+      const contratoLabel = p.contrato
+        ? `${p.contrato.vehiculo?.empresa?.codigo ?? "?"} · ${p.contrato.vehiculo?.numero ?? "?"} · ${p.contrato.cliente?.nombre ?? ""}`
+        : null;
+      pendientes.push({
+        id: p.id,
+        fecha: p.fecha,
+        monto: Number(p.monto),
+        banco: p.banco,
+        referencia: p.referencia,
+        numero_carro: p.numero_carro,
+        carroResuelto,
+        estado_conciliacion: p.estado_conciliacion,
+        origen: p.origen,
+        contrato_id: p.contrato_id ?? p.contrato?.id ?? null,
+        contratoLabel,
+        comprobante_url: p.comprobante_url,
+        notas: p.notas,
+        created_at: p.created_at,
+        rubro: p.rubro,
+        destino_interior: p.destino_interior,
+        signedUrl,
+        salida: salidas.get(p.id) ?? null,
+        alertaCuenta: /ALERTAS:.*cuenta/i.test(p.notas ?? ""),
+      });
     }
 
     const contratos: ContratoOpt[] = ((contratosRes.data ?? []) as unknown as {
@@ -90,28 +118,35 @@ async function getData() {
       label: `${c.vehiculo?.empresa?.codigo ?? "?"} · ${c.vehiculo?.numero ?? "?"} · ${c.cliente?.nombre ?? "sin nombre"}`,
     }));
 
-    return { pagos, contratos, error: null as string | null };
+    return { pendientes, contratos, error: null as string | null };
   } catch (e) {
-    return { pagos: [] as Pago[], contratos: [] as ContratoOpt[], error: e instanceof Error ? e.message : "Error" };
+    return {
+      pendientes: [] as PagoFila[],
+      contratos: [] as ContratoOpt[],
+      error: e instanceof Error ? e.message : "Error",
+    };
   }
 }
 
 export default async function PagosPage() {
-  const { pagos, contratos, error } = await getData();
-  const porConciliar = pagos.filter(esPorRevisar);
-  const oficina = pagos.filter(
-    (p) => p.estado_conciliacion === "manual" && p.origen === "manual",
-  );
-  const resueltos = pagos.filter(
-    (p) => !esPorRevisar(p) && !(p.estado_conciliacion === "manual" && p.origen === "manual"),
-  );
+  const { pendientes, contratos, error } = await getData();
+  const esperando = pendientes.filter((p) => !p.alertaCuenta && p.contrato_id).length;
+  const alertas = pendientes.filter((p) => p.alertaCuenta).length;
 
   return (
-    <div className="pb-16">
+    <div className="mx-auto max-w-5xl pb-16">
       <PageHeader
         eyebrow="Cartera"
-        title="Pagos por conciliar"
-        subtitle="Comprobantes de WhatsApp pendientes de cruce y salidas al interior (pago previo + aval)."
+        title="Comprobantes"
+        subtitle={`${esperando} esperando banco · ${alertas} con alerta · el cruce bancario vive en Conciliación.`}
+        action={
+          <Link
+            href="/cartera/extractos"
+            className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
+          >
+            Ir a Conciliación
+          </Link>
+        }
       />
 
       {error && (
@@ -119,193 +154,13 @@ export default async function PagosPage() {
       )}
 
       <div className="mt-6">
-        <PagoManualForm />
-      </div>
-
-      <h2 className="mt-8 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
-        {porConciliar.length} por revisar
-      </h2>
-
-      <div className="mt-4 space-y-4">
-        {porConciliar.map((p) => (
-          <PagoCard key={p.id} p={p} accionable contratos={contratos} />
-        ))}
-        {porConciliar.length === 0 && !error && (
-          <p className="rounded-lg bg-surface px-5 py-10 text-center text-sm font-light text-muted ring-1 ring-line">
-            Nada por conciliar. Cuando entre un comprobante por WhatsApp, aparecerá aquí.
+        {pendientes.length === 0 && !error ? (
+          <p className="rounded-xl bg-surface px-5 py-10 text-center text-sm text-muted ring-1 ring-line">
+            Nada pendiente. Los comprobantes de WhatsApp aparecen aquí hasta que el extracto los cruce.
           </p>
-        )}
-      </div>
-
-      {oficina.length > 0 && (
-        <>
-          <h2 className="mt-12 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
-            Oficina · ya contados · {oficina.length}
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            Efectivo o datáfono: ya suman al saldo. No van al banco ni se rechazan aquí.
-          </p>
-          <div className="mt-4 space-y-3 opacity-90">
-            {oficina.slice(0, 15).map((p) => (
-              <PagoCard key={p.id} p={p} contratos={contratos} />
-            ))}
-          </div>
-        </>
-      )}
-
-      {resueltos.length > 0 && (
-        <>
-          <h2 className="mt-12 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">
-            Resueltos recientes
-          </h2>
-          <div className="mt-4 space-y-3 opacity-80">
-            {resueltos.slice(0, 20).map((p) => (
-              <PagoCard key={p.id} p={p} contratos={contratos} />
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function PagoCard({
-  p,
-  accionable,
-  contratos,
-}: {
-  p: Pago;
-  accionable?: boolean;
-  contratos: ContratoOpt[];
-}) {
-  const necesitaContrato = Boolean(accionable && !p.contrato_id);
-  return (
-    <div className="overflow-hidden rounded-lg bg-surface ring-1 ring-line">
-      <div className="flex flex-col gap-4 p-5 sm:flex-row">
-        {/* Comprobante */}
-        {p.signedUrl ? (
-          <a href={p.signedUrl} target="_blank" rel="noreferrer" className="shrink-0">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={p.signedUrl} alt="Comprobante" className="h-28 w-28 rounded-lg object-cover ring-1 ring-line/60" />
-          </a>
         ) : (
-          <div className="flex h-28 w-28 shrink-0 items-center justify-center rounded-md bg-paper text-xs font-medium tracking-wide text-muted ring-1 ring-line">
-            Sin imagen
-          </div>
+          <ListaComprobantes pendientes={pendientes} contratos={contratos} />
         )}
-
-        {/* Datos leídos */}
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-            <span className="text-lg font-semibold tabular-nums">
-              <Money amount={p.monto} />
-            </span>
-            <StatusChip tone={estadoTone(p.estado_conciliacion)}>{p.estado_conciliacion}</StatusChip>
-            {p.numero_carro ? (
-              <StatusChip tone="neutral">Carro {p.numero_carro}</StatusChip>
-            ) : (
-              <StatusChip tone="warn">sin carro</StatusChip>
-            )}
-            {!p.contrato_id && accionable && <StatusChip tone="warn">sin contrato</StatusChip>}
-            {(p.rubro === "salida_interior" || p.salida) && (
-              <StatusChip tone={p.salida?.estado === "autorizada" ? "good" : "warn"}>
-                {p.salida
-                  ? `Interior · ${p.salida.destino} · ${p.salida.estado === "autorizada" ? "aval" : "sin aval"}`
-                  : "Salida al interior"}
-              </StatusChip>
-            )}
-          </div>
-          <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm text-muted sm:grid-cols-4">
-            <span>Fecha: {p.fecha ?? "—"}</span>
-            <span>Banco: {p.banco ?? "—"}</span>
-            <span>Ref: {p.referencia ?? "—"}</span>
-            <span>{new Date(p.created_at).toLocaleString("es-PA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-          </div>
-          {p.notas && <p className="mt-2 font-mono text-[11px] text-muted">{p.notas}</p>}
-
-          {accionable && (
-            <div className="mt-4 flex flex-wrap gap-2">
-              <form action={resolverPago} className="flex flex-wrap items-center gap-2">
-                <input type="hidden" name="pago_id" value={p.id} />
-                <input type="hidden" name="accion" value="conciliar" />
-                {necesitaContrato && (
-                  <select
-                    name="contrato_id"
-                    required
-                    defaultValue=""
-                    className="max-w-xs rounded-md bg-paper px-3 py-2 text-sm ring-1 ring-line"
-                  >
-                    <option value="" disabled>
-                      Anclar a contrato…
-                    </option>
-                    {contratos.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.label}
-                      </option>
-                    ))}
-                  </select>
-                )}
-                <button className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-surface transition hover:bg-black">
-                  Conciliar
-                </button>
-              </form>
-              <form action={resolverPago}>
-                <input type="hidden" name="pago_id" value={p.id} />
-                <input type="hidden" name="accion" value="rechazar" />
-                <button className="rounded-md bg-surface px-4 py-2 text-sm font-medium text-crit ring-1 ring-crit/30 transition hover:bg-crit/5">
-                  Rechazar
-                </button>
-              </form>
-              {!p.salida && p.rubro !== "salida_interior" && (
-                <form action={asignarPagoASalida} className="flex flex-wrap items-center gap-2">
-                  <input type="hidden" name="pago_id" value={p.id} />
-                  <input type="hidden" name="monto" value={p.monto} />
-                  <select
-                    name="destino_interior"
-                    required
-                    defaultValue=""
-                    className="rounded-md bg-paper px-3 py-2 text-sm ring-1 ring-line"
-                  >
-                    <option value="" disabled>
-                      Destino…
-                    </option>
-                    {TARIFAS_SALIDA_INTERIOR.map((d) => (
-                      <option key={d.id} value={d.id}>
-                        {d.nombre} (${d.monto})
-                      </option>
-                    ))}
-                    <option value="otro">Otro (fuera de tabla)</option>
-                  </select>
-                  <input
-                    name="destino_otro"
-                    placeholder="Si es otro…"
-                    className="w-36 rounded-md bg-paper px-3 py-2 text-sm ring-1 ring-line"
-                  />
-                  <input
-                    name="dias_viaje"
-                    type="number"
-                    min={1}
-                    max={14}
-                    defaultValue={1}
-                    title="Días"
-                    className="w-16 rounded-md bg-paper px-2 py-2 text-sm tabular-nums ring-1 ring-line"
-                  />
-                  <button className="rounded-md bg-surface px-4 py-2 text-sm font-medium ring-1 ring-line transition hover:bg-surface-2">
-                    Asignar a interior
-                  </button>
-                </form>
-              )}
-              {p.salida?.estado === "pendiente_aval" && (
-                <form action={accionDarAval}>
-                  <input type="hidden" name="salida_id" value={p.salida.id} />
-                  <button className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-surface transition hover:bg-black">
-                    Dar aval
-                  </button>
-                </form>
-              )}
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

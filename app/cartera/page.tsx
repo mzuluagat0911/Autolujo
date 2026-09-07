@@ -105,7 +105,7 @@ export default async function PanelCartera() {
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Cubeta label="Al día" valor={d.alDia} tono="good" hint="Pagaron hoy" />
               <Cubeta label="Sin pago hoy" valor={d.sinPagoHoy} tono="warn" hint="Por cobrar / llamar" href="/cartera/por-llamar" />
-              <Cubeta label="Por conciliar" valor={d.porRevisar} tono="crit" hint="Comprobantes a revisar" href="/cartera/pagos" />
+              <Cubeta label="Comprobantes" valor={d.porRevisar} tono="crit" hint="Bandeja WA / alertas" href="/cartera/pagos" />
               <Cubeta
                 label="Necesitan respuesta"
                 valor={d.necesitaRespuesta}
@@ -122,8 +122,8 @@ export default async function PanelCartera() {
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Acceso href="/cartera/por-llamar" titulo="Por llamar" desc="Quién debe hoy y no ha pagado" />
               <Acceso href="/cartera/conversaciones" titulo="Conversaciones" desc="Los chats del agente con cada arrendatario" />
-              <Acceso href="/cartera/pagos" titulo="Pagos por conciliar" desc="Comprobantes recibidos, por confirmar" />
-              <Acceso href="/cartera/extractos" titulo="Conciliación" desc="Pago en oficina o extracto bancario por empresa" />
+              <Acceso href="/cartera/pagos" titulo="Comprobantes" desc="Bandeja WhatsApp y alertas (antes del extracto)" />
+              <Acceso href="/cartera/extractos" titulo="Conciliación" desc="Oficina, extracto bancario y cruce exacto" />
               <Acceso href="/cartera/vehiculos" titulo="Carros" desc="La flota por empresa" />
               <Acceso href="/cartera/rastreo" titulo="Rastreo" desc="Dónde está cada carro ahora (Diacor)" />
               <Acceso href="/cartera/clientes" titulo="Clientes" desc="Directorio de arrendatarios" />

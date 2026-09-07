@@ -3,7 +3,8 @@
 
 import { instantePanama } from "@/lib/cartera/fecha";
 import {
-  canonCarro, extraerCarro, extraerNombre, montoExacto, fechaCubrePago,
+  canonCarro, extraerCarro, extraerNombre, extraerReferencia, canonReferencia,
+  montoExacto, fechaCubrePago,
   esCrucePerfecto, decidirMovimiento, huellaMovimiento,
   type ContratoFlota, type PagoCandidato,
 } from "@/lib/cartera/cruce";
@@ -34,6 +35,7 @@ function pago(over: Partial<PagoCandidato>): PagoCandidato {
     numeroCarro: "144",
     cuentaDestino: "****5678",
     origen: "comprobante",
+    referencia: null,
     ...over,
   };
 }
@@ -44,6 +46,13 @@ check("carro Gold con prefijo", extraerCarro("PAGO G-14 CUOTA", "GOLD"), "G14");
 check("sin palabra clave no inventa un número suelto", extraerCarro("REF 998877 monto varios", "AUTOLUJO"), null);
 check("canon quita ceros", canonCarro("0144"), "144");
 check("nombre desde transferencia", extraerNombre("TRANSFERENCIA DE EDGAR JOEL BONILLA CARRO 144"), "EDGAR JOEL BONILLA");
+
+console.log("\n· Referencia / confirmación / canje");
+check("extrae REF", extraerReferencia("TRANSFERENCIA DE JUAN REF 99887766 CARRO 144"), "99887766");
+check("extrae confirmación", extraerReferencia("Nº de confirmación: AB-12-3456 pago"), "AB123456");
+check("extrae comprobante de canje", extraerReferencia("Comprobante de canje 77889900"), "77889900");
+check("canon ignora guiones y espacios", canonReferencia("AB-12 3456"), "AB123456");
+check("refs distintas no calzan", canonReferencia("1111") === canonReferencia("2222"), false);
 
 console.log("\n· Cuenta y monto");
 check("cuenta enmascarada calza", mismaCuenta("****5678", "0412345678"), true);
@@ -85,6 +94,36 @@ check(
   esCrucePerfecto(pago({ origen: "manual" }), { monto: 30, fecha: "2026-09-01", numeroCarro: "144" }, extracto, flota[0]),
   false,
 );
+check(
+  "refs distintas bloquean aunque el carro calce",
+  esCrucePerfecto(
+    pago({ referencia: "AAA1111" }),
+    { monto: 30, fecha: "2026-09-01", numeroCarro: "144", referencia: "BBB2222" },
+    extracto,
+    flota[0],
+  ),
+  false,
+);
+check(
+  "misma ref exacta + monto + fecha sin carro en el extracto = perfecto",
+  esCrucePerfecto(
+    pago({ referencia: "9988-7766", numeroCarro: "144" }),
+    { monto: 30, fecha: "2026-09-01", numeroCarro: null, referencia: "99887766" },
+    extracto,
+    flota[0],
+  ),
+  true,
+);
+check(
+  "sin carro ni ref no es perfecto",
+  esCrucePerfecto(
+    pago({ numeroCarro: null, referencia: null, contratoId: "c-144" }),
+    { monto: 30, fecha: "2026-09-01", numeroCarro: null, referencia: null },
+    extracto,
+    flota[0],
+  ),
+  false,
+);
 
 console.log("\n· Decisión: aplicar vs sugerir");
 const d1 = decidirMovimiento(mov144, [pago({})], flota, extracto);
@@ -124,6 +163,31 @@ const dos = [
 const dAmb = decidirMovimiento(mov144, dos, flota, extracto);
 check("dos comprobantes iguales = ambiguo, no aplica el primero", dAmb.tipo, "ambiguo");
 check("ambiguo trae los dos pagos", dAmb.tipo === "ambiguo" ? dAmb.pagos.length : 0, 2);
+
+const dosConRef = [
+  pago({ id: "p1", referencia: "AAAA1111" }),
+  pago({ id: "p2", referencia: "BBBB2222" }),
+];
+const dDesempate = decidirMovimiento(
+  { ...mov144, referencia: "BBBB2222" },
+  dosConRef,
+  flota,
+  extracto,
+);
+check("referencia exacta desempata ambiguos", dDesempate.tipo, "perfecto");
+check(
+  "gana el de la misma ref",
+  dDesempate.tipo === "perfecto" ? dDesempate.pago.id : null,
+  "p2",
+);
+
+const dSoloRef = decidirMovimiento(
+  { monto: 30, fecha: "2026-09-01", numeroCarro: null, nombre: null, referencia: "99887766" },
+  [pago({ referencia: "99887766", numeroCarro: "144" })],
+  flota,
+  extracto,
+);
+check("solo ref exacta aplica si hay contrato del pago", dSoloRef.tipo, "perfecto");
 
 check(
   "misma huella si solo cambia el formato del $",

@@ -138,12 +138,14 @@ El GPS del día se cruza con el destino autorizado (o marca interior sin aval).
    ancla operativo (no la referencia bancaria).
 4. Concilia contra el **extracto** de Banco General subido a mano. Un movimiento **solo** se aplica
    solo si calza en **todo**:
-   - mismo **carro** (comentario del banco ↔ comprobante/contrato),
+   - **ancla**: mismo **carro** (comentario) y/o **referencia exacta** (confirmación /
+     comprobante / canje / ref — son el mismo ID con otro nombre),
    - **monto exacto** (centavos),
    - **fecha** del pago o el día siguiente (corte del banco),
    - **cuenta destino** de la empresa (ahorros o corriente), si el comprobante la trae.
-5. La **referencia** del banco se usa para antifraude (no duplicar el mismo comprobante), **no**
-   para el auto-cruce del extracto.
+5. Si **ambos** lados traen referencia y **no** es idéntica (canon alfanumérico) → **no**
+   auto-aplica, aunque el carro calce. La referencia también desempata cuando hay varios
+   candidatos. Sigue sirviendo para antifraude (no duplicar el mismo voucher).
 6. Match solo por nombre del titular → **nunca** aplica solo; queda en revisión humana.
 7. Si cuadra → waterfall al saldo + aviso WhatsApp (si hay ventana 24h). Si no → cola de revisión.
 

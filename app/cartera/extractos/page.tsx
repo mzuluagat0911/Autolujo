@@ -40,7 +40,7 @@ async function getData(): Promise<{
       sb
         .from("movimientos_extracto")
         .select(
-          "id, fecha, monto, descripcion, numero_carro, nombre_detectado, motivo, via, extracto:extractos_bancarios(empresa:empresas(codigo)), contrato:contratos(cliente:clientes(nombre), vehiculo:vehiculos(numero))",
+          "id, fecha, monto, descripcion, referencia, numero_carro, nombre_detectado, motivo, via, extracto:extractos_bancarios(empresa:empresas(codigo)), contrato:contratos(cliente:clientes(nombre), vehiculo:vehiculos(numero))",
         )
         .eq("estado", "revisar")
         .order("fecha", { ascending: false })
@@ -52,6 +52,7 @@ async function getData(): Promise<{
       fecha: string | null;
       monto: number;
       descripcion: string | null;
+      referencia: string | null;
       numero_carro: string | null;
       nombre_detectado: string | null;
       motivo: string | null;
@@ -66,6 +67,7 @@ async function getData(): Promise<{
       fecha: m.fecha,
       monto: Number(m.monto),
       descripcion: m.descripcion,
+      referencia: m.referencia,
       numeroCarro: m.numero_carro,
       nombreDetectado: m.nombre_detectado,
       motivo: m.motivo,

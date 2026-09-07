@@ -36,7 +36,12 @@ export const ComprobanteSchema = z.object({
     .describe(
       "Hora impresa en el comprobante en formato HH:mm (24h, hora de Panamá si se ve). Ej. '18:42', '09:05'. null si no aparece o no se lee con claridad.",
     ),
-  referencia: z.string().nullable().describe("Número de referencia / confirmación / comprobante de la transacción. En un cheque, el número del cheque."),
+  referencia: z
+    .string()
+    .nullable()
+    .describe(
+      "ID único de la transacción tal como aparece. Alias equivalentes (elige UNO, el que esté impreso): 'Referencia', 'Número de confirmación', 'Nº de comprobante', 'Comprobante de canje', 'No. Confirmación', 'Ref'. En un cheque, el número del cheque. Devuelve solo el código/número, sin la etiqueta.",
+    ),
   banco: z.string().nullable().describe("Banco o entidad EMISORA (desde dónde se pagó), si es visible."),
   banco_destino: z.string().nullable().describe("Banco o entidad que RECIBE el pago (ej. 'Banco General'), si es visible."),
   numero_carro: z
@@ -74,7 +79,10 @@ PASO 2 — Si es comprobante, extrae con MUCHA precisión:
 - fecha: la fecha EXACTA impresa en el comprobante (YYYY-MM-DD). NUNCA uses la fecha de hoy por
   defecto. Si no la puedes leer, null y baja la confianza.
 - hora: si aparece hora en el comprobante, HH:mm en 24h; si no, null.
-- referencia / número de confirmación (o número del cheque).
+- referencia: el ID de la transferencia. En apps panameñas aparece con nombres distintos
+  pero es el MISMO dato: Referencia, Número de confirmación, Nº de comprobante,
+  Comprobante de canje, No. Confirmación, Ref. Extrae el código/número (no la etiqueta).
+  En un cheque, el número del cheque.
 - banco emisor y banco destino, si se ven.
 - cuenta destino: el número de cuenta que RECIBE, tal como aparece.
 - número de carro: SOLO si el cliente lo puso en el comentario/descripción ("CARRO 144", "auto172").

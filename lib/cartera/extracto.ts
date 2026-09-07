@@ -14,6 +14,7 @@ import {
   canonCarro,
   extraerCarro,
   extraerNombre,
+  extraerReferencia,
   decidirMovimiento,
   huellaMovimiento,
   type ContratoFlota,
@@ -66,6 +67,7 @@ type MovParse = {
   saldo: number | null;
   numeroCarro: string | null;
   nombre: string | null;
+  referencia: string | null;
 };
 
 /** Parsea el PDF del extracto en movimientos estructurados. */
@@ -100,6 +102,7 @@ export async function parseExtracto(
       fecha, descripcion: desc, monto, saldo,
       numeroCarro: extraerCarro(desc, empresaCodigo),
       nombre: extraerNombre(desc),
+      referencia: extraerReferencia(desc),
     });
   }
   return { titular, movimientos };
@@ -214,13 +217,13 @@ export async function procesarExtractoPDF(
 
   let pagosQ = await sb
     .from("pagos")
-    .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion, destino_interior")
+    .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion, destino_interior, referencia")
     .eq("estado_conciliacion", "pendiente")
     .eq("origen", "comprobante");
   if (pagosQ.error && /destino_interior/i.test(pagosQ.error.message)) {
     pagosQ = (await sb
       .from("pagos")
-      .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion")
+      .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion, referencia")
       .eq("estado_conciliacion", "pendiente")
       .eq("origen", "comprobante")) as typeof pagosQ;
   }
@@ -234,6 +237,7 @@ export async function procesarExtractoPDF(
     cuenta_destino: string | null;
     origen: string | null;
     destino_interior?: string | null;
+    referencia?: string | null;
   }[])
     .filter((p) => {
       if (p.contrato_id && contratoIds.has(p.contrato_id)) return true;
@@ -249,6 +253,7 @@ export async function procesarExtractoPDF(
       numeroCarro: p.numero_carro,
       cuentaDestino: p.cuenta_destino,
       origen: p.origen,
+      referencia: p.referencia ?? null,
       destinoInterior: p.destino_interior ?? null,
     }));
 
@@ -310,7 +315,18 @@ export async function procesarExtractoPDF(
     huellasEnEstePdf.add(huella);
 
     const libres = pendientes.filter((p) => !usados.has(p.id));
-    const veredicto = decidirMovimiento(mov, libres, flota, ctxExtracto);
+    const veredicto = decidirMovimiento(
+      {
+        monto: mov.monto,
+        fecha: mov.fecha,
+        numeroCarro: mov.numeroCarro,
+        nombre: mov.nombre,
+        referencia: mov.referencia,
+      },
+      libres,
+      flota,
+      ctxExtracto,
+    );
 
     let estado = "revisar";
     let pagoId: string | null = null;
@@ -340,8 +356,8 @@ export async function procesarExtractoPDF(
         estado = pago.destinoInterior || mov.monto + 0.01 >= contrato.letra ? "aplicado" : "parcial";
         const destNom = pago.destinoInterior ? destinoPorId(pago.destinoInterior)?.nombre ?? pago.destinoInterior : null;
         motivo = destNom
-          ? `Cruce perfecto de salida a ${destNom}: carro, monto, fecha y empresa.`
-          : "Cruce perfecto: carro, monto, fecha y empresa.";
+          ? `Cruce perfecto de salida a ${destNom}: ancla (carro/ref), monto, fecha y empresa.`
+          : "Cruce perfecto: ancla (carro y/o referencia exacta), monto, fecha y empresa.";
         if (estado === "parcial") res.parciales++; else res.aplicados++;
         res.montoAplicado += mov.monto;
         porRecalcular.add(`${contrato.contratoId}|${fechaContable(pago.pagadoAt)}`);
@@ -365,6 +381,7 @@ export async function procesarExtractoPDF(
       fecha: mov.fecha,
       monto: mov.monto,
       descripcion: mov.descripcion,
+      referencia: mov.referencia,
       numero_carro: mov.numeroCarro,
       nombre_detectado: mov.nombre,
       contrato_id: contratoId,

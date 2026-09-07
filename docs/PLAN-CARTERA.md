@@ -85,7 +85,7 @@ código/base de datos, nunca de lo que "cree" el modelo.
 | Provider LLM (OpenRouter, agnóstico) | `lib/ai/provider.ts` | ✅ |
 | Motor de reglas (letra, mora, km, distribución) | `lib/cartera/rules.ts` | ✅ v1 |
 | **Router de intención** (pago / saldo / duda / queja) | `lib/ai/router.ts` | ⬜ pendiente |
-| **Motor de conciliación** (comprobante vs extracto) | `lib/cartera/cruce.ts` + `extracto.ts` + `revision-extracto.ts` | ✅ (carro+monto+fecha+cuenta; dedupe PDF) |
+| **Motor de conciliación** (comprobante vs extracto) | `lib/cartera/cruce.ts` + `extracto.ts` + `revision-extracto.ts` | ✅ (carro y/o ref exacta + monto + fecha + cuenta; dedupe PDF) |
 | **Memoria de conversación** (historial por cliente) | tabla `conversaciones` | ⬜ pendiente |
 | **Estado de cuenta diario 8am** | cron + plantilla Meta | ⬜ pendiente |
 | **Panel de revisión humana** (dudosos) | `app/cartera/...` | ⬜ pendiente |

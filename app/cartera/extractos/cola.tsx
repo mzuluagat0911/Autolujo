@@ -22,6 +22,7 @@ export type MovimientoRevision = {
   fecha: string | null;
   monto: number;
   descripcion: string | null;
+  referencia: string | null;
   numeroCarro: string | null;
   nombreDetectado: string | null;
   motivo: string | null;
@@ -177,6 +178,9 @@ function FilaRevision({
               <StatusChip tone={via.tone}>{via.label}</StatusChip>
               {m.sugeridoCarro && (
                 <StatusChip tone="azul">Carro {m.sugeridoCarro}</StatusChip>
+              )}
+              {m.referencia && (
+                <StatusChip tone="neutral">Ref {m.referencia}</StatusChip>
               )}
               {m.salidaHint && <StatusChip tone="warn">salida interior</StatusChip>}
             </div>
