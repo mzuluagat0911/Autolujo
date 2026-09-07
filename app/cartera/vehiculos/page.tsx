@@ -3,6 +3,7 @@ import { PageHeader, Kpi } from "@/components/kit";
 import { Field, Select, SubmitButton, FormCard } from "@/components/form";
 import { createVehiculo } from "./actions";
 import { hoyPanama } from "@/lib/cartera/fecha";
+import { etiquetaZona } from "@/lib/cartera/salidas-geo";
 import { lineaSalidaHoy, salidasDelDia } from "@/lib/cartera/salidas-aplicar";
 import { ListaVehiculos, type FilaVehiculo } from "./lista";
 
@@ -21,13 +22,20 @@ const ESTADOS = [
   { value: "entregado", label: "Entregado" },
 ];
 
+type UltimoVisto = {
+  at: string | null;
+  lat: number | null;
+  lng: number | null;
+  direccion: string | null;
+};
+
 async function getData() {
   try {
     const sb = createServerSupabase();
     const hoy = hoyPanama();
     const mesIni = `${hoy.slice(0, 7)}-01`;
 
-    const [emp, veh, contratos, kmMesRes, kmHoyRes, salidas] = await Promise.all([
+    const [emp, veh, contratos, kmMesRes, kmHoyRes, salidas, diasHoy, posRec] = await Promise.all([
       sb.from("empresas").select("id, codigo, nombre").order("codigo"),
       sb
         .from("vehiculos")
@@ -46,6 +54,17 @@ async function getData() {
         .eq("fecha", hoy)
         .not("vehiculo_id", "is", null),
       salidasDelDia(hoy),
+      sb
+        .from("gps_dias")
+        .select("vehiculo_id, latitud, longitud, direccion, actualizado_at")
+        .eq("fecha", hoy)
+        .not("vehiculo_id", "is", null),
+      sb
+        .from("gps_posiciones")
+        .select("vehiculo_id, latitud, longitud, direccion, tomado_at")
+        .not("vehiculo_id", "is", null)
+        .order("tomado_at", { ascending: false })
+        .limit(800),
     ]);
 
     if (emp.error) throw emp.error;
@@ -123,6 +142,43 @@ async function getData() {
       }
     }
 
+    const ultimo = new Map<string, UltimoVisto>();
+    if (!posRec.error) {
+      for (const r of (posRec.data ?? []) as {
+        vehiculo_id: string;
+        latitud: number | null;
+        longitud: number | null;
+        direccion: string | null;
+        tomado_at: string;
+      }[]) {
+        if (ultimo.has(r.vehiculo_id)) continue;
+        ultimo.set(r.vehiculo_id, {
+          at: r.tomado_at,
+          lat: r.latitud,
+          lng: r.longitud,
+          direccion: r.direccion,
+        });
+      }
+    }
+    if (!diasHoy.error) {
+      for (const r of (diasHoy.data ?? []) as {
+        vehiculo_id: string;
+        latitud: number | null;
+        longitud: number | null;
+        direccion: string | null;
+        actualizado_at: string | null;
+      }[]) {
+        const prev = ultimo.get(r.vehiculo_id);
+        if (prev?.at) continue;
+        ultimo.set(r.vehiculo_id, {
+          at: r.actualizado_at,
+          lat: r.latitud,
+          lng: r.longitud,
+          direccion: r.direccion,
+        });
+      }
+    }
+
     const porSalida = new Map<string, (typeof salidas)[number]>();
     for (const s of salidas) {
       if (s.vehiculoId && !porSalida.has(s.vehiculoId)) porSalida.set(s.vehiculoId, s);
@@ -132,6 +188,7 @@ async function getData() {
       const c = porContrato.get(v.id);
       const g = kmHoy.get(v.id);
       const s = porSalida.get(v.id);
+      const u = ultimo.get(v.id);
       return {
         id: v.id,
         numero: v.numero,
@@ -150,6 +207,9 @@ async function getData() {
         kmMes: kmMes.has(v.id) ? Math.round((kmMes.get(v.id) ?? 0) * 10) / 10 : null,
         kmHoy: g?.km ?? null,
         alertaGps: g?.alerta ?? null,
+        ultimoVistoAt: u?.at ?? null,
+        ultimoVistoZona: etiquetaZona(u?.lat ?? null, u?.lng ?? null),
+        ultimoVistoDir: u?.direccion ?? null,
         salida: s
           ? {
               destino: s.destino,
@@ -194,7 +254,7 @@ export default async function VehiculosPage() {
       <PageHeader
         eyebrow="Cartera"
         title="Vehículos"
-        subtitle="Flota por empresa: quién lo tiene, km del mes, GPS y salidas de hoy."
+        subtitle="Flota sin llamar a Diacor: histórico, zonas, placa/GPS editables. El vivo está en Rastreo."
       />
 
       <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">

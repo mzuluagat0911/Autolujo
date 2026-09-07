@@ -1,7 +1,7 @@
 // Cruza la posición GPS del día con las salidas autorizadas vigentes.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { cruzarPuntoConSalida, enInterior } from "@/lib/cartera/salidas-geo";
+import { clasificarZona, cruzarPuntoConSalida, enInterior } from "@/lib/cartera/salidas-geo";
 import { upsertAlertaSalida } from "@/lib/cartera/salidas-aplicar";
 import { vehiculoEnTaller, type VehiculoGps } from "./vincular";
 import type { PosicionGps } from "./diacor";
@@ -86,12 +86,13 @@ export async function cruzarGpsConSalidas(
 
       if (p.latitud != null && p.longitud != null && enInterior(p.latitud, p.longitud)) {
         sinAval++;
+        const zona = clasificarZona(p.latitud, p.longitud)?.nombre ?? "interior";
         await upsertAlertaSalida({
           fecha,
           tipo: "gps_sin_aval",
           vehiculoId: v.id,
           etiqueta,
-          motivo: `GPS en interior y no hay salida autorizada hoy para el carro ${v.numero}.`,
+          motivo: `GPS en ${zona} y no hay salida autorizada hoy para el carro ${v.numero}.`,
         });
       }
     }

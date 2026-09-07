@@ -117,6 +117,11 @@ check(
   cruzarPuntoConSalida(8.98, -79.52, "santiago", "Santiago").tipo,
   "en_camino",
 );
+check(
+  "anillo camino cerca de Santiago",
+  cruzarPuntoConSalida(8.25, -80.85, "santiago", "Santiago").tipo,
+  "en_camino",
+);
 check("David queda lejos de la ciudad", haversineKm({ lat: 8.98, lng: -79.52 }, { lat: 8.43, lng: -82.43 }) > 200, true);
 
 console.log(fallos === 0 ? `\n✅ Salidas en verde.` : `\n❌ ${fallos} casos fallaron.`);
