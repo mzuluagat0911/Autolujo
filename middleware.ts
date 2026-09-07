@@ -56,6 +56,9 @@ export async function middleware(req: NextRequest) {
   if ((path === "/usuarios" || path.startsWith("/usuarios/")) && eq.rol !== "admin") {
     return NextResponse.redirect(new URL("/cartera", req.url));
   }
+  if ((path === "/admin/metas" || path.startsWith("/admin/metas/")) && eq.rol !== "admin") {
+    return NextResponse.redirect(new URL("/admin", req.url));
+  }
 
   return res;
 }

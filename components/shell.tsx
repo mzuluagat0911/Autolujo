@@ -43,6 +43,7 @@ const NAV: Group[] = [
     items: [
       { label: "Empresas", href: "/cartera/empresas", status: "active" },
       { label: "Usuarios y roles", href: "/usuarios", status: "active" },
+      { label: "Meta de cobranza", href: "/admin/metas", status: "active" },
     ],
   },
   {
@@ -110,7 +111,7 @@ export function Shell({
             const items =
               equipo?.rol === "admin"
                 ? group.items
-                : group.items.filter((i) => i.href !== "/usuarios");
+                : group.items.filter((i) => i.href !== "/usuarios" && i.href !== "/admin/metas");
             if (items.length === 0) return null;
             return (
             <div key={gi} className={gi > 0 ? "mt-8" : undefined}>

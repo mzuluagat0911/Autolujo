@@ -127,3 +127,40 @@ export function fechaContable(pagadoAt: string | Date): string {
   const d = typeof pagadoAt === "string" ? new Date(pagadoAt) : pagadoAt;
   return hoyPanama(d);
 }
+
+/** Primer día del mes de una fecha "YYYY-MM-DD". */
+export function inicioMes(fecha: string): string {
+  return `${fecha.slice(0, 7)}-01`;
+}
+
+/** Último día del mes de una fecha "YYYY-MM-DD". */
+export function finMes(fecha: string): string {
+  const [y, m] = fecha.split("-").map(Number);
+  const ultimo = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(ultimo).padStart(2, "0")}`;
+}
+
+/** Lun–sáb cuentan para cobranza (domingo libre salvo deals especiales). */
+export function esDiaHabilCobranza(fecha: string): boolean {
+  return !esDomingo(fecha);
+}
+
+/** Cuenta días hábiles de cobranza en [desde, hasta] inclusive. */
+export function diasHabilesEnRango(desde: string, hasta: string): number {
+  if (hasta < desde) return 0;
+  let n = 0;
+  let d = desde;
+  while (d <= hasta) {
+    if (esDiaHabilCobranza(d)) n++;
+    d = sumarDias(d, 1);
+  }
+  return n;
+}
+
+/** "septiembre 2026" */
+export function mesLargo(fecha: string): string {
+  const [y, m] = fecha.split("-").map(Number);
+  return `${MESES[m - 1]} ${y}`;
+}
+
+export { MESES, DIAS };
