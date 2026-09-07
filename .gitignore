@@ -11,6 +11,7 @@ npm-debug.log*
 *.tsbuildinfo
 next-env.d.ts
 *.xlsx
+scripts/.cache-*.json
 *.xls
 *.DOC
 *.docx

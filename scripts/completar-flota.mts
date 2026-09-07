@@ -78,8 +78,6 @@ if (diacorConfigurado()) {
 
 console.log(`Placas desde Diacor: ${deDiacor}`);
 console.log(`
-Marca / modelo / año NO se rellenan solos:
-  1) En Carros → «Editar placa / GPS» (placa y gps_id), o
-  2) Pásame un Excel con columnas: empresa, numero, placa, marca, modelo, anio
-     y lo importamos de un tiro.
+Lo que falte de marca/modelo/año/placa sale de la Hoja de vida:
+  python3 scripts/enriquecer-desde-hv.py --commit
 `);

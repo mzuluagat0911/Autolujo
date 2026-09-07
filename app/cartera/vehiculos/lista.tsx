@@ -472,7 +472,7 @@ export function ListaVehiculos({
         <Link href="/cartera/rastreo" className="underline-offset-2 hover:underline">
           Rastreo
         </Link>
-        . Marca/modelo/año: edítelos aquí o pásenos un Excel (empresa, número, placa, marca, modelo, año).
+        . Marca/modelo/año se cargan desde la Hoja de vida (script) o con «Editar ficha».
       </p>
     </div>
   );
