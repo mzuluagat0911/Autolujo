@@ -1,6 +1,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/kit";
 import { Field, Select, SubmitButton, FormCard } from "@/components/form";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { createTarifa } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,7 @@ export default async function TarifarioPage() {
   const { empresas, tarifas, error } = await getData();
   const empOptions = [
     { value: "", label: "Todas las empresas" },
-    ...empresas.map((e) => ({ value: e.id, label: `${e.codigo} — ${e.nombre}` })),
+    ...empresas.map((e) => ({ value: e.id, label: `${siglaEmpresa(e.codigo)} — ${e.nombre}` })),
   ];
 
   return (
@@ -99,7 +100,7 @@ export default async function TarifarioPage() {
             <tbody>
               {tarifas.map((t) => (
                 <tr key={t.id} className="border-b border-line last:border-0">
-                  <td className="px-5 py-3 font-medium">{t.empresa?.codigo ?? "Todas"}</td>
+                  <td className="px-5 py-3 font-medium">{t.empresa?.codigo ? siglaEmpresa(t.empresa.codigo) : "Todas"}</td>
                   <td className="px-5 py-3 text-muted">{t.modelo ?? "Cualquiera"}</td>
                   <td className="px-5 py-3 tabular-nums text-muted">{t.anio ?? "Cualquiera"}</td>
                   <td className="px-5 py-3 font-mono tabular-nums text-muted">

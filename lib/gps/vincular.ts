@@ -1,4 +1,5 @@
 import type { PosicionGps } from "./diacor";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 
 export type VehiculoGps = {
   id: string;
@@ -68,7 +69,7 @@ export function armarFilas(posiciones: PosicionGps[], vehiculos: VehiculoGps[]):
     return {
       ...p,
       vehiculoId: v?.id ?? null,
-      carro: v ? (v.empresa ? `${v.empresa} · ${v.numero}` : v.numero) : null,
+      carro: v ? (v.empresa ? `${siglaEmpresa(v.empresa)} · ${v.numero}` : v.numero) : null,
     };
   });
 }
@@ -114,7 +115,7 @@ export function sugerenciasVinculo(
       vehiculoId: v.id,
       gps_id: p.id_dispositivo,
       via: "etiqueta",
-      detalle: `${etq.codigoEmpresa} · ${etq.numero}`,
+      detalle: `${siglaEmpresa(etq.codigoEmpresa)} · ${etq.numero}`,
     });
     usadosDisp.add(p.id_dispositivo);
     usadosVeh.add(v.id);

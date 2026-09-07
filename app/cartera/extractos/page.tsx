@@ -1,6 +1,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader, Money, StatusChip } from "@/components/kit";
 import { lineaSalidaCruce, salidasPendientesBanco } from "@/lib/cartera/salidas-aplicar";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { SubirExtracto } from "./uploader";
 import { ColaRevision, type MovimientoRevision, type CandidatoPago } from "./cola";
 import { PagoManualForm } from "../pagos/pago-manual-form";
@@ -210,7 +211,7 @@ export default async function ExtractosPage() {
           <div className="mt-4 divide-y divide-line overflow-hidden rounded-xl bg-surface ring-1 ring-line">
             {recientes.map((e) => (
               <div key={e.id} className="flex items-center justify-between px-5 py-3 text-sm">
-                <span className="font-medium">{e.empresa?.codigo ?? "—"} · {e.fecha}</span>
+                <span className="font-medium">{siglaEmpresa(e.empresa?.codigo) || "—"} · {e.fecha}</span>
                 <span className="text-[11px] tabular-nums text-muted">
                   {new Date(e.created_at).toLocaleString("es-PA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </span>

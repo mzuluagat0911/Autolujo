@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { conciliarExtracto } from "./actions";
 import { StatusChip, Money } from "@/components/kit";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 import type { ResultadoConciliacion } from "@/lib/cartera/extracto";
 
 type Empresa = { id: string; codigo: string; nombre: string };
@@ -51,7 +52,7 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
                   onChange={() => setEmpresaId(e.id)}
                   className="sr-only"
                 />
-                <p className="text-sm font-semibold">{e.codigo}</p>
+                <p className="text-sm font-semibold">{siglaEmpresa(e.codigo)}</p>
                 <p className="mt-1 text-xs leading-snug text-muted">{e.nombre}</p>
               </label>
             );
@@ -61,7 +62,7 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
         <div className="mt-6 border-t border-line pt-5">
           <label className="block text-sm font-medium">PDF · Banco General</label>
           <p className="mt-1 text-xs text-muted">
-            Descargar “Últimos movimientos” de la cuenta de {elegida?.codigo ?? "la empresa"}{" "}
+            Descargar “Últimos movimientos” de la cuenta de {elegida ? siglaEmpresa(elegida.codigo) : "la empresa"}{" "}
             (ahorros o corriente). Un archivo por empresa.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
@@ -114,7 +115,7 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
             <Resumen label="Ya vistos" value={state.duplicados} />
           </div>
           <p className="mt-3 text-sm text-muted">
-            Cruce contra <b>{state.empresa}</b> · Solo se aplica con coincidencia perfecta
+            Cruce contra <b>{siglaEmpresa(state.empresa)}</b> · Solo se aplica con coincidencia perfecta
             (carro + monto + fecha + cuenta). “Ya vistos” no se re-encolan. Total aplicado:{" "}
             <b><Money amount={state.montoAplicado} /></b>
           </p>

@@ -3,6 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { StatusChip } from "@/components/kit";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { guardarEdicionMasiva, completarPlacasDesdeDiacor } from "./actions";
 
 export type FilaVehiculo = {
@@ -320,7 +321,7 @@ export function ListaVehiculos({
               return (
                 <tr key={v.id} className="border-b border-line last:border-0 hover:bg-surface-2/60">
                   <td className="px-5 py-3 font-medium tabular-nums">
-                    {v.empresa ? `${v.empresa} · ` : ""}
+                    {v.empresa ? `${siglaEmpresa(v.empresa)} · ` : ""}
                     {v.numero}
                   </td>
                   <td className="px-5 py-3">

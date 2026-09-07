@@ -1,8 +1,9 @@
 import type { ConversacionLista } from "./types";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 
 export function tituloConv(c: Pick<ConversacionLista, "vehiculo" | "etiqueta">): string {
   if (c.vehiculo) {
-    const emp = c.vehiculo.empresa?.codigo;
+    const emp = siglaEmpresa(c.vehiculo.empresa?.codigo);
     return `${emp ? emp + " · " : ""}Carro ${c.vehiculo.numero}`;
   }
   return c.etiqueta ?? "Sin carro asignado";

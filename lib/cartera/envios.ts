@@ -73,6 +73,8 @@ async function registrar(
       contrato_id: e.contratoId,
       fecha,
       saldo_cuentas: e.cuenta,
+      cuotas_pagadas: e.cuotasPagadas,
+      cuotas_restantes: e.cuotasDebe,
       canal: "whatsapp",
       estado,
       enviado_at: estado === "enviado" ? new Date().toISOString() : null,

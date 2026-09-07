@@ -1,5 +1,11 @@
 import { PageHeader, Money } from "@/components/kit";
-import { estadosCuentaHoy, money, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
+import {
+  estadosCuentaHoy,
+  money,
+  textoValorCuotas,
+  type EstadoCuenta,
+} from "@/lib/cartera/estado-cuenta";
+import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { PruebaEnvio } from "./prueba";
 
 export const dynamic = "force-dynamic";
@@ -45,7 +51,7 @@ export default async function EstadosCuentaPage() {
                 <tr className="border-b border-line text-left font-mono text-[11px] uppercase tracking-wide text-muted">
                   <th className="px-4 py-3">Carro</th>
                   <th className="px-4 py-3">Cliente</th>
-                  <th className="px-4 py-3 text-right">Cuenta</th>
+                  <th className="px-4 py-3">Valor</th>
                   <th className="px-4 py-3 text-right">Recargo</th>
                   <th className="px-4 py-3 text-right">Total hoy</th>
                   <th className="px-4 py-3">Desglose (mensaje)</th>
@@ -55,14 +61,16 @@ export default async function EstadosCuentaPage() {
                 {estados.slice(0, 250).map((e) => (
                   <tr key={e.contratoId} className="border-b border-line last:border-0">
                     <td className="px-4 py-2.5 font-semibold">
-                      {e.empresa ? `${e.empresa} · ` : ""}{e.vehiculoNumero}
+                      {etiquetaCarroUi(e.empresa, e.vehiculoNumero)}
                     </td>
                     <td className="px-4 py-2.5 text-muted">{e.clienteNombre}</td>
-                    <td className="px-4 py-2.5 text-right tabular-nums"><Money amount={e.cuenta} /></td>
+                    <td className="px-4 py-2.5 tabular-nums text-ink">{textoValorCuotas(e)}</td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ambar">
                       {e.recargo > 0 ? <Money amount={e.recargo} /> : "—"}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-semibold tabular-nums"><Money amount={e.totalHoy} /></td>
+                    <td className="px-4 py-2.5 text-right font-semibold tabular-nums">
+                      <Money amount={e.totalHoy} />
+                    </td>
                     <td className="px-4 py-2.5 font-mono text-[11px] text-muted">{e.desglose}</td>
                   </tr>
                 ))}
@@ -70,7 +78,6 @@ export default async function EstadosCuentaPage() {
             </table>
           </div>
 
-          {/* Vista previa del mensaje real */}
           {estados[0] && (
             <div className="mt-8">
               <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">

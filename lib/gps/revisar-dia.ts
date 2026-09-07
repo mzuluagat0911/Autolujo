@@ -1,5 +1,6 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { esDomingo, hoyPanama, sumarDias } from "@/lib/cartera/fecha";
+import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { diacorConfigurado, posicionesGps, recorridoDia, type PosicionGps } from "./diacor";
 import { clasificarKmDia, textoAlertaGps, type TipoAlertaGps } from "./alertas-dia";
 import { casarPosicion, vehiculoEnTaller, type VehiculoGps } from "./vincular";
@@ -46,7 +47,7 @@ async function enTandas<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>): 
 }
 
 function etiquetaDe(p: PosicionGps, v: VehiculoGps | null): string {
-  if (v) return `${v.empresa ? `${v.empresa} · ` : ""}${v.numero}`;
+  if (v) return etiquetaCarroUi(v.empresa, v.numero);
   return p.nombre ?? p.placa ?? p.id_dispositivo;
 }
 

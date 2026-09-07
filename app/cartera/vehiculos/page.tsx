@@ -3,6 +3,7 @@ import { PageHeader, Kpi } from "@/components/kit";
 import { Field, Select, SubmitButton, FormCard } from "@/components/form";
 import { createVehiculo } from "./actions";
 import { hoyPanama } from "@/lib/cartera/fecha";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { etiquetaZona } from "@/lib/cartera/salidas-geo";
 import { lineaSalidaHoy, salidasDelDia } from "@/lib/cartera/salidas-aplicar";
 import { ListaVehiculos, type FilaVehiculo } from "./lista";
@@ -242,7 +243,7 @@ async function getData() {
 
 export default async function VehiculosPage() {
   const { empresas, filas, salidas, error } = await getData();
-  const empOptions = empresas.map((e) => ({ value: e.id, label: `${e.codigo} — ${e.nombre}` }));
+  const empOptions = empresas.map((e) => ({ value: e.id, label: `${siglaEmpresa(e.codigo)} — ${e.nombre}` }));
 
   const conContrato = filas.filter((v) => v.contratoId).length;
   const sinGps = filas.filter((v) => !v.gps_id).length;

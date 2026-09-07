@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/kit";
 import { salidasDePagos } from "@/lib/cartera/salidas-aplicar";
+import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { ListaComprobantes, type ContratoOpt, type PagoFila } from "./lista";
 
 export const dynamic = "force-dynamic";
@@ -84,7 +85,7 @@ async function getData() {
       }
       const carroResuelto = p.contrato?.vehiculo?.numero ?? p.numero_carro ?? null;
       const contratoLabel = p.contrato
-        ? `${p.contrato.vehiculo?.empresa?.codigo ?? "?"} · ${p.contrato.vehiculo?.numero ?? "?"} · ${p.contrato.cliente?.nombre ?? ""}`
+        ? `${etiquetaCarroUi(p.contrato.vehiculo?.empresa?.codigo, p.contrato.vehiculo?.numero)} · ${p.contrato.cliente?.nombre ?? ""}`
         : null;
       pendientes.push({
         id: p.id,
@@ -115,7 +116,7 @@ async function getData() {
       vehiculo: { numero: string; empresa: { codigo: string } | null } | null;
     }[]).map((c) => ({
       id: c.id,
-      label: `${c.vehiculo?.empresa?.codigo ?? "?"} · ${c.vehiculo?.numero ?? "?"} · ${c.cliente?.nombre ?? "sin nombre"}`,
+      label: `${etiquetaCarroUi(c.vehiculo?.empresa?.codigo, c.vehiculo?.numero)} · ${c.cliente?.nombre ?? "sin nombre"}`,
     }));
 
     return { pendientes, contratos, error: null as string | null };

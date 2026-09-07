@@ -54,6 +54,12 @@ export type EstadoCuenta = Cifras & {
   diasAdelantados: number;
   cubiertoHasta: string | null;
   estadoContrato: string;
+  /** Total de cuotas del deal (ej. 1095 / 1200). */
+  numCuotasTotal: number | null;
+  /** Equivalente en cuotas ya abonadas a renta (aprox.). */
+  cuotasPagadas: number | null;
+  /** Cuotas que aún faltan del total del contrato. */
+  cuotasDebe: number | null;
   desglose: string;
   fecha: string;
   templateVars: [string, string, string, string, string];
@@ -64,12 +70,48 @@ type ContratoRow = TerminosCuota & {
   cliente_id: string | null;
   estado: string;
   fecha_inicio: string | null;
+  num_cuotas_total: number | null;
   vehiculo: {
     numero: string;
     empresa: { id: string; codigo: string; nombre: string } | null;
   } | null;
   cliente: { nombre: string; whatsapp: string | null } | null;
 };
+
+/**
+ * Traduce dinero abonado a renta → número de cuotas.
+ * "de 1200 cuotas debe 890" = total del deal − cuotas ya cubiertas.
+ */
+export function resumenCuotas(opts: {
+  numTotal: number | null | undefined;
+  letra: number;
+  pagadoTotal: number;
+  extrasTotal: number;
+}): { numCuotasTotal: number | null; cuotasPagadas: number | null; cuotasDebe: number | null } {
+  const numTotal =
+    opts.numTotal != null && Number.isFinite(opts.numTotal) && opts.numTotal > 0
+      ? Math.round(Number(opts.numTotal))
+      : null;
+  const letra = Number(opts.letra) || 0;
+  if (!(letra > 0)) {
+    return { numCuotasTotal: numTotal, cuotasPagadas: null, cuotasDebe: null };
+  }
+  const rentaAbonada = Math.max(Number(opts.pagadoTotal) - Number(opts.extrasTotal), 0);
+  const cuotasPagadas = Math.max(0, Math.round(rentaAbonada / letra));
+  const cuotasDebe = numTotal != null ? Math.max(numTotal - cuotasPagadas, 0) : null;
+  return { numCuotasTotal: numTotal, cuotasPagadas, cuotasDebe };
+}
+
+/** Texto de pantalla: "de 1.200 cuotas debe 890". */
+export function textoValorCuotas(e: {
+  numCuotasTotal: number | null;
+  cuotasDebe: number | null;
+}): string {
+  if (e.numCuotasTotal == null) return "—";
+  const total = e.numCuotasTotal.toLocaleString("es-PA");
+  if (e.cuotasDebe == null) return `de ${total} cuotas`;
+  return `de ${total} cuotas debe ${e.cuotasDebe.toLocaleString("es-PA")}`;
+}
 
 function armar(
   c: ContratoRow,
@@ -88,6 +130,9 @@ function armar(
     cumpleMotivo: string | null;
     fechaNacimiento: string | null;
     estadoContrato: string;
+    numCuotasTotal: number | null;
+    cuotasPagadas: number | null;
+    cuotasDebe: number | null;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -137,6 +182,9 @@ function armar(
     diasAdelantados,
     cubiertoHasta,
     estadoContrato: extra.estadoContrato,
+    numCuotasTotal: extra.numCuotasTotal,
+    cuotasPagadas: extra.cuotasPagadas,
+    cuotasDebe: extra.cuotasDebe,
     desglose,
     fecha,
     templateVars: [nombre, carro, fecha, desglose, money(cifras.totalHoy)],
@@ -182,7 +230,52 @@ function terminosDe(c: ContratoRow): TerminosCuota {
 }
 
 const SEL =
-  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+
+/** Pagos a renta vs cargos extras, por contrato → resumen de cuotas. */
+async function cuotasPorContrato(
+  contratoIds: string[],
+  letraDe: (id: string) => number,
+  numTotalDe: (id: string) => number | null,
+): Promise<Map<string, ReturnType<typeof resumenCuotas>>> {
+  const out = new Map<string, ReturnType<typeof resumenCuotas>>();
+  const ids = contratoIds.filter(Boolean);
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const [pg, ext] = await Promise.all([
+    sb
+      .from("pagos")
+      .select("contrato_id, monto")
+      .in("contrato_id", ids)
+      .in("estado_conciliacion", ["conciliado", "manual"]),
+    sb
+      .from("cargos")
+      .select("contrato_id, monto")
+      .in("contrato_id", ids)
+      .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)"),
+  ]);
+  const pagado = new Map<string, number>();
+  for (const p of (pg.data ?? []) as { contrato_id: string | null; monto: number }[]) {
+    if (!p.contrato_id) continue;
+    pagado.set(p.contrato_id, (pagado.get(p.contrato_id) ?? 0) + Number(p.monto || 0));
+  }
+  const extras = new Map<string, number>();
+  for (const x of (ext.data ?? []) as { contrato_id: string; monto: number }[]) {
+    extras.set(x.contrato_id, (extras.get(x.contrato_id) ?? 0) + Number(x.monto || 0));
+  }
+  for (const id of ids) {
+    out.set(
+      id,
+      resumenCuotas({
+        numTotal: numTotalDe(id),
+        letra: letraDe(id),
+        pagadoTotal: pagado.get(id) ?? 0,
+        extrasTotal: extras.get(id) ?? 0,
+      }),
+    );
+  }
+  return out;
+}
 
 /**
  * Fecha de nacimiento por cliente. En una consulta aparte y a prueba de fallos:
@@ -226,7 +319,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   if (!c) return null;
   const row = c as unknown as ContratoRow;
 
-  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado] = await Promise.all([
+  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap] = await Promise.all([
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
     pagoHoyContrato(contratoId, hoy),
     sb.from("cargos").select("id").eq("contrato_id", contratoId).eq("fecha", hoy)
@@ -235,6 +328,11 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     comprobantePendienteContrato(contratoId, hoy),
     acuerdosActivos(),
     aplicadoArregloHoyContrato(contratoId, hoy),
+    cuotasPorContrato(
+      [contratoId],
+      () => Number(row.letra_diaria) || 0,
+      () => row.num_cuotas_total ?? null,
+    ),
   ]);
 
   const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
@@ -262,6 +360,12 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   const cifrasBase = calcularCifras(entrada);
   const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
   const cumple = evaluarCumple(row, nac, hoy, cifrasBase, entrada);
+  const cuotas = cuotasMap.get(contratoId) ?? resumenCuotas({
+    numTotal: row.num_cuotas_total,
+    letra: Number(row.letra_diaria) || 0,
+    pagadoTotal: 0,
+    extrasTotal: 0,
+  });
 
   return armar(row, cumple.cifras, {
     hoy,
@@ -277,6 +381,9 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     cumpleMotivo: cumple.motivo,
     fechaNacimiento: nac,
     estadoContrato: row.estado,
+    numCuotasTotal: cuotas.numCuotasTotal,
+    cuotasPagadas: cuotas.cuotasPagadas,
+    cuotasDebe: cuotas.cuotasDebe,
   });
 }
 
@@ -323,7 +430,25 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
   }
   const multaHoy = new Set((multasHoy.data ?? []).map((g: { contrato_id: string }) => g.contrato_id));
 
-  const filasContrato = (contratos.data ?? []) as unknown as ContratoRow[];
+  let filasContrato = (contratos.data ?? []) as unknown as ContratoRow[];
+  if (contratos.error && /num_cuotas_total/i.test(contratos.error.message)) {
+    const retry = await sb
+      .from("contratos")
+      .select(
+        "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)",
+      )
+      .eq("estado", "activo");
+    filasContrato = ((retry.data ?? []) as unknown as ContratoRow[]).map((c) => ({
+      ...c,
+      num_cuotas_total: null,
+    }));
+  }
+
+  const cuotasMap = await cuotasPorContrato(
+    filasContrato.map((c) => c.id),
+    (id) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0,
+    (id) => filasContrato.find((c) => c.id === id)?.num_cuotas_total ?? null,
+  );
   const nacMap = await nacimientosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
 
   return filasContrato
@@ -351,6 +476,11 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
       const cifrasBase = calcularCifras(entrada);
       const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;
       const cumple = evaluarCumple(c, nac, hoy, cifrasBase, entrada);
+      const cuotas = cuotasMap.get(c.id) ?? {
+        numCuotasTotal: c.num_cuotas_total ?? null,
+        cuotasPagadas: null,
+        cuotasDebe: null,
+      };
       return armar(c, cumple.cifras, {
         hoy,
         pagoHoy,
@@ -365,6 +495,9 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
         cumpleMotivo: cumple.motivo,
         fechaNacimiento: nac,
         estadoContrato: c.estado,
+        numCuotasTotal: cuotas.numCuotasTotal,
+        cuotasPagadas: cuotas.cuotasPagadas,
+        cuotasDebe: cuotas.cuotasDebe,
       });
     })
     // Quien cubrió el día (o tiene comprobante en validación) no recibe cobro.

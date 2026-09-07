@@ -7,6 +7,7 @@ import {
   resolverMovimientoExtracto,
 } from "./actions";
 import { StatusChip, Money } from "@/components/kit";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 import type { ResultadoRevision } from "@/lib/cartera/revision-extracto";
 
 export type CandidatoPago = {
@@ -174,7 +175,7 @@ function FilaRevision({
               <span className="text-lg font-semibold">
                 <Money amount={m.monto} />
               </span>
-              {m.empresa && <StatusChip tone="neutral">{m.empresa}</StatusChip>}
+              {m.empresa && <StatusChip tone="neutral">{siglaEmpresa(m.empresa)}</StatusChip>}
               <StatusChip tone={via.tone}>{via.label}</StatusChip>
               {m.sugeridoCarro && (
                 <StatusChip tone="azul">Carro {m.sugeridoCarro}</StatusChip>

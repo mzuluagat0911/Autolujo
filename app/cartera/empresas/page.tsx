@@ -1,5 +1,6 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader } from "@/components/kit";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 
 export const dynamic = "force-dynamic";
 
@@ -46,7 +47,7 @@ export default async function EmpresasPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-line bg-surface text-left font-mono text-xs uppercase tracking-wide text-muted">
-                <th className="px-5 py-3">Código</th>
+                <th className="px-5 py-3">Sigla</th>
                 <th className="px-5 py-3">Nombre</th>
                 <th className="px-5 py-3">Rango de carros</th>
               </tr>
@@ -54,7 +55,7 @@ export default async function EmpresasPage() {
             <tbody>
               {data.map((e) => (
                 <tr key={e.id} className="border-b border-line bg-surface last:border-0">
-                  <td className="px-5 py-3 font-semibold">{e.codigo}</td>
+                  <td className="px-5 py-3 font-semibold">{siglaEmpresa(e.codigo)}</td>
                   <td className="px-5 py-3">{e.nombre}</td>
                   <td className="px-5 py-3 font-mono tabular-nums text-muted">
                     {e.prefijo_carro}

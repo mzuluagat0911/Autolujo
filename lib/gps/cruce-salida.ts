@@ -3,6 +3,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { clasificarZona, cruzarPuntoConSalida, enInterior } from "@/lib/cartera/salidas-geo";
 import { upsertAlertaSalida } from "@/lib/cartera/salidas-aplicar";
+import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { vehiculoEnTaller, type VehiculoGps } from "./vincular";
 import type { PosicionGps } from "./diacor";
 
@@ -46,7 +47,7 @@ export async function cruzarGpsConSalidas(
       const v = (p.id_dispositivo && porGps.get(p.id_dispositivo)) || null;
       if (!v || vehiculoEnTaller(v)) continue;
       const salida = porVeh.get(v.id);
-      const etiqueta = `${v.empresa ? `${v.empresa} · ` : ""}${v.numero}`;
+      const etiqueta = etiquetaCarroUi(v.empresa, v.numero);
 
       if (salida) {
         const cruce = cruzarPuntoConSalida(p.latitud, p.longitud, salida.destino_id, salida.destino);

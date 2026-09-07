@@ -1,5 +1,6 @@
 import { PageHeader, Money, StatusChip, EmptyState } from "@/components/kit";
 import { paraLlamarHoy } from "@/lib/cartera/recordatorios";
+import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,9 @@ export default async function PorLlamarPage() {
                 const tel = normalizarTelefono(e.waNumero);
                 return (
                   <tr key={e.contratoId} className="border-b border-line last:border-0 hover:bg-surface-2">
-                    <td className="px-4 py-3 font-medium tabular-nums">{e.vehiculoNumero}</td>
+                    <td className="px-4 py-3 font-medium tabular-nums">
+                      {etiquetaCarroUi(e.empresa, e.vehiculoNumero)}
+                    </td>
                     <td className="px-4 py-3">
                       <div>{e.clienteNombre}</div>
                       <div className="text-xs text-muted">{e.desglose}</div>
