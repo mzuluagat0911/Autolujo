@@ -171,7 +171,8 @@ export async function registrarPagoManual(
   }
   const error = pagoInsert.error;
   if (error) return { ok: false, msg: error.message };
-  const pagoId = (pagoInsert as { id: string }).id;
+  const pagoId = (pagoInsert.data as { id: string } | null)?.id;
+  if (!pagoId) return { ok: false, msg: "No se pudo crear el pago." };
   if (dest) {
     try {
       await etiquetarPagoSalida(pagoId, dest);

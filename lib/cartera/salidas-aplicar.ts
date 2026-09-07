@@ -179,7 +179,7 @@ export async function upsertSalidaAutorizada(opts: {
     await registrarAlertasOperativas({
       salidaId: id,
       fecha: opts.fecha,
-      fechaHasta: hasta,
+      fechaHasta: hasta ?? opts.fecha,
       vehiculoId: opts.vehiculoId ?? null,
       dest: opts.dest,
     });
@@ -330,7 +330,7 @@ export async function salidasPendientesAval(): Promise<
       .order("created_at", { ascending: true })
       .limit(40);
     if (error) return [];
-    return ((data ?? []) as {
+    return ((data ?? []) as unknown as {
       id: string;
       destino: string;
       monto: number;
@@ -459,7 +459,7 @@ export async function salidasDelDia(fecha: string): Promise<SalidaHoyVista[]> {
         .eq("fecha", fecha)
         .neq("estado", "rechazada");
       if (retry.error) return [];
-      return ((retry.data ?? []) as {
+      return ((retry.data ?? []) as unknown as {
         id: string;
         destino: string;
         monto: number;
@@ -480,7 +480,7 @@ export async function salidasDelDia(fecha: string): Promise<SalidaHoyVista[]> {
       }));
     }
     if (error) return [];
-    return ((data ?? []) as {
+    return ((data ?? []) as unknown as {
       id: string;
       destino: string;
       monto: number;
@@ -532,7 +532,7 @@ export async function salidasPendientesBanco(): Promise<SalidaHoyVista[]> {
       .order("created_at", { ascending: false })
       .limit(60);
     if (error) return [];
-    return ((data ?? []) as {
+    return ((data ?? []) as unknown as {
       id: string;
       destino: string;
       monto: number;

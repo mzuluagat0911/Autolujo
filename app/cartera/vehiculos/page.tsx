@@ -87,7 +87,7 @@ async function getData() {
       { contratoId: string; cliente: string | null; letra: number | null }
     >();
     if (!contratos.error) {
-      for (const c of (contratos.data ?? []) as {
+      for (const c of (contratos.data ?? []) as unknown as {
         id: string;
         vehiculo_id: string;
         letra_diaria: number | null;

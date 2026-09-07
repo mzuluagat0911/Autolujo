@@ -186,11 +186,11 @@ export async function procesarExtractoPDF(
     .eq("estado_conciliacion", "pendiente")
     .eq("origen", "comprobante");
   if (pagosQ.error && /destino_interior/i.test(pagosQ.error.message)) {
-    pagosQ = await sb
+    pagosQ = (await sb
       .from("pagos")
       .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion")
       .eq("estado_conciliacion", "pendiente")
-      .eq("origen", "comprobante");
+      .eq("origen", "comprobante")) as typeof pagosQ;
   }
 
   const pendientes: PagoCandidato[] = ((pagosQ.data ?? []) as {
