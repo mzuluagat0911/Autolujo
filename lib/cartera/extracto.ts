@@ -15,6 +15,7 @@ import {
   extraerCarro,
   extraerNombre,
   decidirMovimiento,
+  huellaMovimiento,
   type ContratoFlota,
   type PagoCandidato,
 } from "./cruce";
@@ -113,6 +114,7 @@ export type ResultadoConciliacion = {
   aplicados: number;
   parciales: number;
   revisar: number;
+  duplicados: number;
   montoAplicado: number;
   detalle: {
     fecha: string | null;
@@ -126,7 +128,7 @@ export type ResultadoConciliacion = {
 };
 
 const VACIO: ResultadoConciliacion = {
-  ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [],
+  ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, detalle: [],
 };
 
 /** Procesa el PDF completo: parsea, concilia y persiste. */
@@ -252,8 +254,32 @@ export async function procesarExtractoPDF(
 
   const res: ResultadoConciliacion = {
     ok: true, aviso, empresa: empresa.codigo, total: movimientos.length,
-    aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [],
+    aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, detalle: [],
   };
+
+  // Movimientos ya vistos de esta empresa (misma huella → no re-encolar).
+  const desde = sumarDias(hoyPanama(), -60);
+  const { data: extractosPrev } = await sb
+    .from("extractos_bancarios")
+    .select("id")
+    .eq("empresa_id", empresa.id)
+    .gte("fecha", desde)
+    .limit(200);
+  const extractoIds = ((extractosPrev ?? []) as { id: string }[]).map((e) => e.id);
+  const huellasVistas = new Set<string>();
+  if (extractoIds.length > 0) {
+    const { data: previosRaw } = await sb
+      .from("movimientos_extracto")
+      .select("fecha, monto, descripcion")
+      .in("extracto_id", extractoIds);
+    for (const row of (previosRaw ?? []) as {
+      fecha: string | null;
+      monto: number;
+      descripcion: string | null;
+    }[]) {
+      huellasVistas.add(huellaMovimiento(row.fecha, Number(row.monto), row.descripcion ?? ""));
+    }
+  }
 
   const usados = new Set<string>();
   const porRecalcular = new Set<string>();
@@ -264,8 +290,25 @@ export async function procesarExtractoPDF(
     numeroCuenta: cuentaRow?.numero_cuenta ?? null,
     numerosCuenta: numerosCuenta,
   };
+  const huellasEnEstePdf = new Set<string>();
 
   for (const mov of movimientos) {
+    const huella = huellaMovimiento(mov.fecha, mov.monto, mov.descripcion);
+    if (huellasVistas.has(huella) || huellasEnEstePdf.has(huella)) {
+      res.duplicados++;
+      res.detalle.push({
+        fecha: mov.fecha,
+        descripcion: mov.descripcion,
+        monto: mov.monto,
+        carro: mov.numeroCarro,
+        via: null,
+        estado: "duplicado",
+        motivo: "Ya estaba en un extracto anterior (o repetido en este PDF). No lo re-encolo.",
+      });
+      continue;
+    }
+    huellasEnEstePdf.add(huella);
+
     const libres = pendientes.filter((p) => !usados.has(p.id));
     const veredicto = decidirMovimiento(mov, libres, flota, ctxExtracto);
 
@@ -305,7 +348,10 @@ export async function procesarExtractoPDF(
         aplicarPagoIds.push(pago.id);
       }
     } else if (veredicto.tipo === "ambiguo") {
-      motivo = veredicto.motivo;
+      const ids = veredicto.pagos.map((p) => p.id).join(",");
+      motivo = `${veredicto.motivo} [ids:${ids}]`;
+      via = "carro";
+      contratoId = null;
       res.revisar++;
     } else {
       motivo = veredicto.motivo;
@@ -342,6 +388,9 @@ export async function procesarExtractoPDF(
     if (pagoId && movId) {
       await sb.from("pagos").update({ movimiento_extracto_id: movId }).eq("id", pagoId);
     }
+
+    // Para no re-detectar esta misma línea si el insert falló a medias, igual marcamos vista.
+    huellasVistas.add(huella);
 
     res.detalle.push({
       fecha: mov.fecha,

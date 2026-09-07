@@ -121,6 +121,8 @@ export async function aplicarMovimientoExtracto(opts: {
   movimientoId: string;
   contratoId: string | null;
   carro: string | null;
+  /** Si hay varios comprobantes que calzan, el equipo elige cuál. */
+  pagoId?: string | null;
 }): Promise<ResultadoRevision> {
   const { movimientoId } = opts;
   if (!movimientoId) return { ok: false, error: "Falta el movimiento." };
@@ -166,7 +168,40 @@ export async function aplicarMovimientoExtracto(opts: {
   }
 
   const monto = Number(mov.monto);
-  const pendiente = await comprobantePendienteCalza(contrato.id, monto, mov.fecha);
+  let pendiente: { id: string; pagadoAt: string } | null = null;
+
+  if (opts.pagoId) {
+    const { data: elegido } = await sb
+      .from("pagos")
+      .select("id, monto, pagado_at, estado_conciliacion, origen, contrato_id, numero_carro")
+      .eq("id", opts.pagoId)
+      .maybeSingle();
+    const p = elegido as {
+      id: string;
+      monto: number;
+      pagado_at: string;
+      estado_conciliacion: string;
+      origen: string | null;
+      contrato_id: string | null;
+      numero_carro: string | null;
+    } | null;
+    if (!p || p.estado_conciliacion !== "pendiente" || p.origen !== "comprobante") {
+      return { ok: false, error: "Ese comprobante ya no está pendiente." };
+    }
+    if (!montoExacto(Number(p.monto), monto) || !fechaCubrePago(p.pagado_at, mov.fecha)) {
+      return { ok: false, error: "Ese comprobante no calza en monto/fecha con el movimiento." };
+    }
+    if (p.contrato_id && p.contrato_id !== contrato.id) {
+      return { ok: false, error: "Ese comprobante pertenece a otro contrato." };
+    }
+    if (p.numero_carro && canonCarro(p.numero_carro) !== canonCarro(contrato.numero)) {
+      return { ok: false, error: "Ese comprobante es de otro carro." };
+    }
+    pendiente = { id: p.id, pagadoAt: p.pagado_at };
+  } else {
+    pendiente = await comprobantePendienteCalza(contrato.id, monto, mov.fecha);
+  }
+
   let pagoId: string;
   let pagadoAt: string;
 
@@ -242,4 +277,65 @@ export async function aplicarMovimientoExtracto(opts: {
   }
 
   return { ok: true };
+}
+
+/** Aplica en lote lo que ya tiene carro sugerido (vía carro). */
+export async function aplicarSugeridosEnLote(): Promise<{ ok: number; fail: number; msg: string }> {
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("movimientos_extracto")
+    .select("id, numero_carro, via, contrato:contratos(vehiculo:vehiculos(numero))")
+    .eq("estado", "revisar")
+    .eq("via", "carro")
+    .order("fecha", { ascending: true })
+    .limit(80);
+  if (error) return { ok: 0, fail: 0, msg: error.message };
+
+  type Row = {
+    id: string;
+    numero_carro: string | null;
+    contrato: { vehiculo: { numero: string } | null } | null;
+  };
+  const filas = (data ?? []) as unknown as Row[];
+  let ok = 0;
+  let fail = 0;
+  for (const m of filas) {
+    const carro = m.numero_carro ?? m.contrato?.vehiculo?.numero ?? null;
+    if (!carro) {
+      fail++;
+      continue;
+    }
+    const r = await aplicarMovimientoExtracto({
+      movimientoId: m.id,
+      contratoId: null,
+      carro,
+    });
+    if (r.ok) ok++;
+    else fail++;
+  }
+  return {
+    ok,
+    fail,
+    msg: ok === 0 && fail === 0
+      ? "No hay movimientos con carro sugerido para aplicar en lote."
+      : `Aplicados ${ok}${fail ? ` · ${fail} no se pudieron` : ""}.`,
+  };
+}
+
+/** Ignora en lote movimientos marcados (fees, sin carro, etc.). */
+export async function ignorarMovimientosEnLote(ids: string[]): Promise<{ ok: number; fail: number; msg: string }> {
+  const unicos = [...new Set(ids.map((id) => String(id).trim()).filter(Boolean))];
+  if (unicos.length === 0) return { ok: 0, fail: 0, msg: "No hay movimientos seleccionados." };
+  let ok = 0;
+  let fail = 0;
+  for (const id of unicos) {
+    const r = await ignorarMovimientoExtracto(id);
+    if (r.ok) ok++;
+    else fail++;
+  }
+  return {
+    ok,
+    fail,
+    msg: `Ignorados ${ok}${fail ? ` · ${fail} no se pudieron` : ""}.`,
+  };
 }

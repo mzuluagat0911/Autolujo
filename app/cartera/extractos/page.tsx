@@ -2,8 +2,9 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader, Money, StatusChip } from "@/components/kit";
 import { lineaSalidaCruce, salidasPendientesBanco } from "@/lib/cartera/salidas-aplicar";
 import { SubirExtracto } from "./uploader";
-import { ColaRevision, type MovimientoRevision } from "./cola";
+import { ColaRevision, type MovimientoRevision, type CandidatoPago } from "./cola";
 import { PagoManualForm } from "../pagos/pago-manual-form";
+import { fechaCubrePago, montoExacto } from "@/lib/cartera/cruce";
 
 export const dynamic = "force-dynamic";
 
@@ -73,7 +74,42 @@ async function getData(): Promise<{
       sugeridoCliente: m.contrato?.cliente?.nombre ?? null,
       empresa: m.extracto?.empresa?.codigo ?? null,
       salidaHint: null as string | null,
+      candidatos: [] as CandidatoPago[],
     }));
+
+    const ambiguos = revision.filter((r) => r.motivo?.includes("Varios comprobantes") || r.motivo?.includes("[ids:"));
+    if (ambiguos.length > 0) {
+      const { data: pend } = await sb
+        .from("pagos")
+        .select("id, monto, pagado_at, numero_carro, referencia")
+        .eq("estado_conciliacion", "pendiente")
+        .eq("origen", "comprobante")
+        .limit(300);
+      const pendientes = (pend ?? []) as {
+        id: string;
+        monto: number;
+        pagado_at: string;
+        numero_carro: string | null;
+        referencia: string | null;
+      }[];
+      for (const r of ambiguos) {
+        if (!r.fecha) continue;
+        const idsMotivo = /\[ids:([^\]]+)\]/.exec(r.motivo ?? "")?.[1]?.split(",").map((s) => s.trim()) ?? [];
+        r.candidatos = pendientes
+          .filter((p) => {
+            if (idsMotivo.length > 0) return idsMotivo.includes(p.id);
+            return montoExacto(Number(p.monto), r.monto) && fechaCubrePago(p.pagado_at, r.fecha!);
+          })
+          .map((p) => ({
+            id: p.id,
+            monto: Number(p.monto),
+            numeroCarro: p.numero_carro,
+            pagadoAt: p.pagado_at,
+            referencia: p.referencia,
+          }));
+      }
+    }
+
     for (const r of revision) {
       const hit = salidasBanco.find(
         (s) =>

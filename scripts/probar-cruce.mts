@@ -4,7 +4,7 @@
 import { instantePanama } from "@/lib/cartera/fecha";
 import {
   canonCarro, extraerCarro, extraerNombre, montoExacto, fechaCubrePago,
-  esCrucePerfecto, decidirMovimiento,
+  esCrucePerfecto, decidirMovimiento, huellaMovimiento,
   type ContratoFlota, type PagoCandidato,
 } from "@/lib/cartera/cruce";
 import { mismaCuenta } from "@/lib/cartera/cuenta";
@@ -123,6 +123,18 @@ const dos = [
 ];
 const dAmb = decidirMovimiento(mov144, dos, flota, extracto);
 check("dos comprobantes iguales = ambiguo, no aplica el primero", dAmb.tipo, "ambiguo");
+check("ambiguo trae los dos pagos", dAmb.tipo === "ambiguo" ? dAmb.pagos.length : 0, 2);
+
+check(
+  "misma huella si solo cambia el formato del $",
+  huellaMovimiento("2026-09-01", 30, "TRANSFERENCIA DE JUAN CARRO 144 $30.00"),
+  huellaMovimiento("2026-09-01", 30, "TRANSFERENCIA DE JUAN CARRO 144"),
+);
+check(
+  "huella distinta si cambia el monto",
+  huellaMovimiento("2026-09-01", 30, "X") === huellaMovimiento("2026-09-01", 35, "X"),
+  false,
+);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

@@ -11,7 +11,8 @@
 **El dinero lo maneja el CÓDIGO. El LLM solo VE imágenes y HABLA lenguaje.**
 
 - Los saldos, la letra diaria, la mora, la distribución de un pago y la conciliación se
-  calculan en **código determinista** (`lib/cartera/rules.ts`, `lib/cartera/conciliacion.ts`).
+  calculan en **código determinista** (`lib/cartera/rules.ts`, `lib/cartera/cruce.ts`,
+  `lib/cartera/extracto.ts`, `lib/cartera/revision-extracto.ts`).
 - El LLM **nunca** hace aritmética ni decide cuánto debe alguien. Se le prohíbe en el prompt.
 - Un modelo puede equivocarse; la plata no. Por eso separamos los roles.
 
@@ -84,7 +85,7 @@ código/base de datos, nunca de lo que "cree" el modelo.
 | Provider LLM (OpenRouter, agnóstico) | `lib/ai/provider.ts` | ✅ |
 | Motor de reglas (letra, mora, km, distribución) | `lib/cartera/rules.ts` | ✅ v1 |
 | **Router de intención** (pago / saldo / duda / queja) | `lib/ai/router.ts` | ⬜ pendiente |
-| **Motor de conciliación** (comprobante vs extracto) | `lib/cartera/conciliacion.ts` | ⬜ pendiente |
+| **Motor de conciliación** (comprobante vs extracto) | `lib/cartera/cruce.ts` + `extracto.ts` + `revision-extracto.ts` | ✅ (carro+monto+fecha+cuenta; dedupe PDF) |
 | **Memoria de conversación** (historial por cliente) | tabla `conversaciones` | ⬜ pendiente |
 | **Estado de cuenta diario 8am** | cron + plantilla Meta | ⬜ pendiente |
 | **Panel de revisión humana** (dudosos) | `app/cartera/...` | ⬜ pendiente |

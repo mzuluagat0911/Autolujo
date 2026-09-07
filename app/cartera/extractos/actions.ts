@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { procesarExtractoPDF, type ResultadoConciliacion } from "@/lib/cartera/extracto";
 import {
   aplicarMovimientoExtracto,
+  aplicarSugeridosEnLote,
   ignorarMovimientoExtracto,
+  ignorarMovimientosEnLote,
   type ResultadoRevision,
 } from "@/lib/cartera/revision-extracto";
 
@@ -16,7 +18,7 @@ function refrescarCartera() {
 }
 
 const VACIO: ResultadoConciliacion = {
-  ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, montoAplicado: 0, detalle: [],
+  ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, detalle: [],
 };
 
 export async function conciliarExtracto(
@@ -52,15 +54,29 @@ export async function resolverMovimientoExtracto(
   const accion = String(formData.get("accion") ?? "").trim();
   const contratoId = String(formData.get("contrato_id") ?? "").trim() || null;
   const carro = String(formData.get("carro") ?? "").trim() || null;
+  const pagoId = String(formData.get("pago_id") ?? "").trim() || null;
 
   let res: ResultadoRevision;
   if (accion === "ignorar") {
     res = await ignorarMovimientoExtracto(movimientoId);
   } else if (accion === "aplicar") {
-    res = await aplicarMovimientoExtracto({ movimientoId, contratoId, carro });
+    res = await aplicarMovimientoExtracto({ movimientoId, contratoId, carro, pagoId });
   } else {
     res = { ok: false, error: "Acción inválida." };
   }
   if (res.ok) refrescarCartera();
+  return res;
+}
+
+export async function loteAplicarSugeridos(): Promise<{ ok: number; fail: number; msg: string }> {
+  const res = await aplicarSugeridosEnLote();
+  if (res.ok > 0) refrescarCartera();
+  return res;
+}
+
+export async function loteIgnorarSeleccionados(formData: FormData): Promise<{ ok: number; fail: number; msg: string }> {
+  const ids = formData.getAll("movimiento_id").map((v) => String(v));
+  const res = await ignorarMovimientosEnLote(ids);
+  if (res.ok > 0) refrescarCartera();
   return res;
 }

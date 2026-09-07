@@ -82,13 +82,31 @@ export type ContratoFlota = {
 
 export type VeredictoCruce =
   | { tipo: "perfecto"; pago: PagoCandidato; contrato: ContratoFlota }
-  | { tipo: "ambiguo"; motivo: string }
+  | { tipo: "ambiguo"; motivo: string; pagos: PagoCandidato[] }
   | {
       tipo: "revisar";
       motivo: string;
       sugerido: ContratoFlota | null;
       via: "carro" | "nombre" | null;
     };
+
+/** Huella estable para no re-encolar el mismo movimiento al re-subir el PDF. */
+export function huellaMovimiento(
+  fecha: string | null,
+  monto: number,
+  descripcion: string,
+): string {
+  const desc = String(descripcion)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .replace(/\$[\d.,]+/g, " ")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 140);
+  return `${fecha ?? ""}|${Math.round(Number(monto) * 100)}|${desc}`;
+}
 
 function contratoPorCarro(
   flota: ContratoFlota[],
@@ -182,7 +200,11 @@ export function decidirMovimiento(
     return { tipo: "perfecto", pago: perfectos[0].pago, contrato: perfectos[0].contrato };
   }
   if (perfectos.length > 1) {
-    return { tipo: "ambiguo", motivo: "Varios comprobantes calzan con este movimiento: hay que elegir a mano." };
+    return {
+      tipo: "ambiguo",
+      motivo: `Varios comprobantes calzan con este movimiento (${perfectos.length}): hay que elegir a mano.`,
+      pagos: perfectos.map((p) => p.pago),
+    };
   }
 
   if (cuantos > 1) {

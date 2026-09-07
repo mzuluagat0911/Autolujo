@@ -16,6 +16,7 @@ type Pago = {
   numero_carro: string | null;
   estado_conciliacion: string;
   origen?: string | null;
+  contrato_id?: string | null;
   comprobante_url: string | null;
   notas: string | null;
   created_at: string;
@@ -24,6 +25,8 @@ type Pago = {
   signedUrl?: string | null;
   salida?: SalidaFila | null;
 };
+
+type ContratoOpt = { id: string; label: string };
 
 /** Solo comprobantes pendientes o WA sin contrato. Oficina (manual+origen manual) ya cuenta. */
 function esPorRevisar(p: Pago): boolean {
@@ -42,29 +45,33 @@ function estadoTone(e: string): "good" | "warn" | "crit" | "neutral" {
 async function getData() {
   try {
     const sb = createServerSupabase();
-    const { data, error } = await sb
-      .from("pagos")
-      .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, origen, comprobante_url, notas, created_at, rubro, destino_interior")
-      .order("created_at", { ascending: false })
-      .limit(100);
-    if (error && /rubro|destino_interior|origen/i.test(error.message)) {
+    const [pagosRes, contratosRes] = await Promise.all([
+      sb
+        .from("pagos")
+        .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, origen, contrato_id, comprobante_url, notas, created_at, rubro, destino_interior")
+        .order("created_at", { ascending: false })
+        .limit(100),
+      sb
+        .from("contratos")
+        .select("id, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo))")
+        .eq("estado", "activo")
+        .limit(400),
+    ]);
+
+    let pagosRaw = pagosRes.data;
+    let error = pagosRes.error;
+    if (error && /rubro|destino_interior|origen|contrato_id/i.test(error.message)) {
       const retry = await sb
         .from("pagos")
         .select("id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, comprobante_url, notas, created_at")
         .order("created_at", { ascending: false })
         .limit(100);
       if (retry.error) throw retry.error;
-      const pagos = (retry.data as Pago[]) ?? [];
-      for (const p of pagos) {
-        if (p.comprobante_url) {
-          const { data: s } = await sb.storage.from("comprobantes").createSignedUrl(p.comprobante_url, 3600);
-          p.signedUrl = s?.signedUrl ?? null;
-        }
-      }
-      return { pagos, error: null as string | null };
+      pagosRaw = retry.data as typeof pagosRes.data;
+      error = null;
     }
     if (error) throw error;
-    const pagos = (data as Pago[]) ?? [];
+    const pagos = (pagosRaw as Pago[]) ?? [];
     const salidas = await salidasDePagos(pagos.map((p) => p.id));
     for (const p of pagos) {
       p.salida = salidas.get(p.id) ?? null;
@@ -73,14 +80,24 @@ async function getData() {
         p.signedUrl = s?.signedUrl ?? null;
       }
     }
-    return { pagos, error: null as string | null };
+
+    const contratos: ContratoOpt[] = ((contratosRes.data ?? []) as unknown as {
+      id: string;
+      cliente: { nombre: string } | null;
+      vehiculo: { numero: string; empresa: { codigo: string } | null } | null;
+    }[]).map((c) => ({
+      id: c.id,
+      label: `${c.vehiculo?.empresa?.codigo ?? "?"} · ${c.vehiculo?.numero ?? "?"} · ${c.cliente?.nombre ?? "sin nombre"}`,
+    }));
+
+    return { pagos, contratos, error: null as string | null };
   } catch (e) {
-    return { pagos: [] as Pago[], error: e instanceof Error ? e.message : "Error" };
+    return { pagos: [] as Pago[], contratos: [] as ContratoOpt[], error: e instanceof Error ? e.message : "Error" };
   }
 }
 
 export default async function PagosPage() {
-  const { pagos, error } = await getData();
+  const { pagos, contratos, error } = await getData();
   const porConciliar = pagos.filter(esPorRevisar);
   const oficina = pagos.filter(
     (p) => p.estado_conciliacion === "manual" && p.origen === "manual",
@@ -111,7 +128,7 @@ export default async function PagosPage() {
 
       <div className="mt-4 space-y-4">
         {porConciliar.map((p) => (
-          <PagoCard key={p.id} p={p} accionable />
+          <PagoCard key={p.id} p={p} accionable contratos={contratos} />
         ))}
         {porConciliar.length === 0 && !error && (
           <p className="rounded-lg bg-surface px-5 py-10 text-center text-sm font-light text-muted ring-1 ring-line">
@@ -130,7 +147,7 @@ export default async function PagosPage() {
           </p>
           <div className="mt-4 space-y-3 opacity-90">
             {oficina.slice(0, 15).map((p) => (
-              <PagoCard key={p.id} p={p} />
+              <PagoCard key={p.id} p={p} contratos={contratos} />
             ))}
           </div>
         </>
@@ -143,7 +160,7 @@ export default async function PagosPage() {
           </h2>
           <div className="mt-4 space-y-3 opacity-80">
             {resueltos.slice(0, 20).map((p) => (
-              <PagoCard key={p.id} p={p} />
+              <PagoCard key={p.id} p={p} contratos={contratos} />
             ))}
           </div>
         </>
@@ -152,7 +169,16 @@ export default async function PagosPage() {
   );
 }
 
-function PagoCard({ p, accionable }: { p: Pago; accionable?: boolean }) {
+function PagoCard({
+  p,
+  accionable,
+  contratos,
+}: {
+  p: Pago;
+  accionable?: boolean;
+  contratos: ContratoOpt[];
+}) {
+  const necesitaContrato = Boolean(accionable && !p.contrato_id);
   return (
     <div className="overflow-hidden rounded-lg bg-surface ring-1 ring-line">
       <div className="flex flex-col gap-4 p-5 sm:flex-row">
@@ -180,6 +206,7 @@ function PagoCard({ p, accionable }: { p: Pago; accionable?: boolean }) {
             ) : (
               <StatusChip tone="warn">sin carro</StatusChip>
             )}
+            {!p.contrato_id && accionable && <StatusChip tone="warn">sin contrato</StatusChip>}
             {(p.rubro === "salida_interior" || p.salida) && (
               <StatusChip tone={p.salida?.estado === "autorizada" ? "good" : "warn"}>
                 {p.salida
@@ -198,9 +225,26 @@ function PagoCard({ p, accionable }: { p: Pago; accionable?: boolean }) {
 
           {accionable && (
             <div className="mt-4 flex flex-wrap gap-2">
-              <form action={resolverPago}>
+              <form action={resolverPago} className="flex flex-wrap items-center gap-2">
                 <input type="hidden" name="pago_id" value={p.id} />
                 <input type="hidden" name="accion" value="conciliar" />
+                {necesitaContrato && (
+                  <select
+                    name="contrato_id"
+                    required
+                    defaultValue=""
+                    className="max-w-xs rounded-md bg-paper px-3 py-2 text-sm ring-1 ring-line"
+                  >
+                    <option value="" disabled>
+                      Anclar a contrato…
+                    </option>
+                    {contratos.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.label}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <button className="rounded-md bg-ink px-4 py-2 text-sm font-medium text-surface transition hover:bg-black">
                   Conciliar
                 </button>

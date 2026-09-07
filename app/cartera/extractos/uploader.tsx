@@ -11,6 +11,7 @@ function tone(estado: string): "good" | "warn" | "crit" | "neutral" {
   if (estado === "aplicado") return "good";
   if (estado === "parcial") return "warn";
   if (estado === "revisar") return "crit";
+  if (estado === "duplicado") return "neutral";
   return "neutral";
 }
 
@@ -105,15 +106,16 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
 
       {state && state.ok && (
         <div className="mt-6">
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
             <Resumen label="Movimientos" value={state.total} />
             <Resumen label="Aplicados" value={state.aplicados} tone="good" />
             <Resumen label="Parciales" value={state.parciales} tone="warn" />
             <Resumen label="Por revisar" value={state.revisar} tone={state.revisar > 0 ? "crit" : "neutral"} />
+            <Resumen label="Ya vistos" value={state.duplicados} />
           </div>
           <p className="mt-3 text-sm text-muted">
             Cruce contra <b>{state.empresa}</b> · Solo se aplica con coincidencia perfecta
-            (carro + monto + fecha + empresa). El resto queda para revisión. Total aplicado:{" "}
+            (carro + monto + fecha + cuenta). “Ya vistos” no se re-encolan. Total aplicado:{" "}
             <b><Money amount={state.montoAplicado} /></b>
           </p>
 

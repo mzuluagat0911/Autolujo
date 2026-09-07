@@ -132,11 +132,20 @@ El GPS del día se cruza con el destino autorizado (o marca interior sin aval).
 
 1. El cliente paga en el banco y **pone el # de carro en el comentario**
    (*"CARRO 144"*), luego manda el comprobante por WhatsApp.
-2. El sistema lee el comprobante → extrae **monto, fecha, referencia, banco, cuenta destino
+2. El sistema lee el comprobante → extrae **monto, fecha, hora (si aparece), referencia, banco, cuenta destino
    y # de carro del comentario**.
-3. Con el **# de carro** → busca el `vehiculo` → su **contrato activo** → aplica el pago ahí.
-4. Concilia contra el **extracto bancario** subido (casa por referencia/monto/fecha).
-5. Si cuadra → actualiza saldo y responde. Si no → marca para **revisión humana**.
+3. Con el **# de carro** → busca el `vehiculo` → su **contrato activo**. Ese número de carro es el
+   ancla operativo (no la referencia bancaria).
+4. Concilia contra el **extracto** de Banco General subido a mano. Un movimiento **solo** se aplica
+   solo si calza en **todo**:
+   - mismo **carro** (comentario del banco ↔ comprobante/contrato),
+   - **monto exacto** (centavos),
+   - **fecha** del pago o el día siguiente (corte del banco),
+   - **cuenta destino** de la empresa (ahorros o corriente), si el comprobante la trae.
+5. La **referencia** del banco se usa para antifraude (no duplicar el mismo comprobante), **no**
+   para el auto-cruce del extracto.
+6. Match solo por nombre del titular → **nunca** aplica solo; queda en revisión humana.
+7. Si cuadra → waterfall al saldo + aviso WhatsApp (si hay ventana 24h). Si no → cola de revisión.
 
 ### Cuentas bancarias (KOWUA S.A.)
 - Banco General **AHORROS**: `0469976106024`
