@@ -1,3 +1,5 @@
+import { destinoPorId } from "./salidas-interior";
+
 // Dónde queda cada destino y en qué zona del país está el pin.
 // Radios: centro del pueblo (fino) + anillo de llegada; el metro PA no es interior.
 
@@ -81,12 +83,35 @@ export function enMetroPanama(lat: number, lng: number): boolean {
 
 /**
  * Solo provincias del interior conocidas (Coclé, Veraguas, etc.).
- * Si el pin no cae en ninguna caja, NO se inventa “interior” (antes alarmaba
- * a carros en Pacora / bordes de ciudad).
+ * Si el pin no cae en ninguna caja, NO se inventa “interior”.
  */
 export function enInterior(lat: number, lng: number): boolean {
   const z = clasificarZona(lat, lng);
   return Boolean(z?.interior);
+}
+
+/**
+ * ¿Está el pin cerca de un destino CON tarifa de salida?
+ * (Penonomé, Aguadulce, Santiago, Chitré, Las Tablas, Chiriquí, David).
+ * Eso es lo único que dispara “interior sin aval”.
+ */
+export function destinoTarifaCercano(
+  lat: number,
+  lng: number,
+): { id: string; nombre: string; monto: number; km: number } | null {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const p = { lat, lng };
+  let best: { id: string; nombre: string; monto: number; km: number } | null = null;
+  for (const g of GEO_DESTINOS) {
+    const tarifa = destinoPorId(g.id);
+    if (!tarifa) continue;
+    const km = haversineKm(p, { lat: g.lat, lng: g.lng });
+    if (km > g.radioKm) continue;
+    if (!best || km < best.km) {
+      best = { id: g.id, nombre: tarifa.nombre, monto: tarifa.monto, km };
+    }
+  }
+  return best;
 }
 
 export function geoDestino(id: string): PuntoDestino | null {

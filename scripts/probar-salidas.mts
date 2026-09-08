@@ -9,7 +9,7 @@ import {
   partirMontoInterior,
   TARIFAS_SALIDA_INTERIOR,
 } from "@/lib/cartera/salidas-interior";
-import { cruzarPuntoConSalida, enInterior, enMetroPanama, haversineKm } from "@/lib/cartera/salidas-geo";
+import { cruzarPuntoConSalida, enInterior, enMetroPanama, haversineKm, destinoTarifaCercano } from "@/lib/cartera/salidas-geo";
 import { montoQueCubreCuota } from "@/lib/cartera/salidas-aplicar";
 import { textoComoSeAplico, PRIORIDAD } from "@/lib/cartera/aplicar-pago";
 import { distribuirPago } from "@/lib/cartera/rules";
@@ -105,6 +105,9 @@ check("Santiago es interior", enInterior(8.10, -80.97), true);
 check("Pacora (borde ciudad) no es interior", enInterior(9.08, -79.22), false);
 check("punto sin caja no se inventa interior", enInterior(8.50, -79.00), false);
 check("Pacora sigue siendo metro amplio", enMetroPanama(9.08, -79.22), true);
+check("Santiago cerca dispara tarifa", destinoTarifaCercano(8.10, -80.97)?.id, "santiago");
+check("ciudad no dispara tarifa", destinoTarifaCercano(8.98, -79.52), null);
+check("Coclé lejos de Penonomé no dispara", destinoTarifaCercano(8.70, -80.10), null);
 check(
   "GPS en Santiago con aval a Santiago",
   cruzarPuntoConSalida(8.10, -80.97, "santiago", "Santiago").tipo,
