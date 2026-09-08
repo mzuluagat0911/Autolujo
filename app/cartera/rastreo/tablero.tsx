@@ -6,6 +6,7 @@ import { StatusChip } from "@/components/kit";
 import {
   cargarHistorialFecha,
   cargarSerieGps,
+  cargarKmDelMes,
   revisarRecorridoHoy,
   vincularPorPlaca,
   type TableroRastreo,
@@ -145,8 +146,28 @@ export function TableroRastreo({
             >
               {pending ? "Revisando…" : "Revisar km de hoy"}
             </button>
+            <button
+              type="button"
+              onClick={() => {
+                start(async () => {
+                  setMsg("Pedí a Diacor el km de todo septiembre… puede tardar un par de minutos.");
+                  const r = await cargarKmDelMes();
+                  if (!r.ok) setMsg(r.error);
+                  else {
+                    setMsg(
+                      `Cargué ${r.desde} → ${r.hasta}: ${r.guardados} lecturas, ${Math.round(r.kmTotal).toLocaleString("es-PA")} km en total (${r.errores} errores).`,
+                    );
+                    router.refresh();
+                  }
+                });
+              }}
+              disabled={pending}
+              className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+            >
+              {pending ? "Cargando mes…" : "Cargar km del mes"}
+            </button>
             <p className="text-xs text-muted">
-              Se guarda el día en la plataforma. El km sale del odómetro; Diacor solo si falta.
+              “Del mes” pide a Diacor el recorrido día por día (1 → hoy) y llena la columna Km mes.
             </p>
           </div>
           {msg && <p className="text-sm text-muted">{msg}</p>}

@@ -10,6 +10,7 @@
     "probar": "npm run probar:fechas && npm run probar:guard && npm run probar:cruce && npm run probar:vacios && npm run probar:aplicar && npm run probar:aviso && npm run probar:charla && npm run probar:gps && npm run probar:salidas",
     "probar:salidas": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-salidas.mts",
     "probar:gps": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-gps.mts",
+    "cargar:km-mes": "node --experimental-strip-types --env-file=.env.local --import ./scripts/resolver.mjs scripts/cargar-km-mes.mts",
     "probar:charla": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-charla.mts",
     "probar:aviso": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-aviso.mts",
     "probar:fechas": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-fechas.mts",

@@ -184,3 +184,42 @@ export async function revisarRecorridoHoy(): Promise<{
     };
   }
 }
+
+/** Pide a Diacor el km de cada día del mes en curso (1 → hoy) y lo guarda. */
+export async function cargarKmDelMes(): Promise<{
+  ok: boolean;
+  desde: string;
+  hasta: string;
+  guardados: number;
+  errores: number;
+  kmTotal: number;
+  error: string | null;
+}> {
+  const { cargarKmRango, rangoMesEnCurso } = await import("@/lib/gps/cargar-km-rango");
+  if (!diacorConfigurado()) {
+    return {
+      ok: false, desde: "", hasta: "", guardados: 0, errores: 0, kmTotal: 0,
+      error: "Diacor no está configurado.",
+    };
+  }
+  try {
+    const { desde, hasta } = rangoMesEnCurso();
+    const r = await cargarKmRango(desde, hasta);
+    revalidatePath("/cartera/rastreo");
+    revalidatePath("/cartera/vehiculos");
+    return {
+      ok: r.ok,
+      desde: r.desde,
+      hasta: r.hasta,
+      guardados: r.guardados,
+      errores: r.errores,
+      kmTotal: r.kmTotal,
+      error: r.error ?? null,
+    };
+  } catch (e) {
+    return {
+      ok: false, desde: "", hasta: "", guardados: 0, errores: 0, kmTotal: 0,
+      error: e instanceof Error ? e.message : "No pude cargar el mes.",
+    };
+  }
+}
