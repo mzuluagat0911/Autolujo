@@ -6,8 +6,6 @@ import { StatusChip } from "@/components/kit";
 import {
   cargarHistorialFecha,
   cargarSerieGps,
-  cargarKmDelMes,
-  revisarRecorridoHoy,
   vincularPorPlaca,
   type TableroRastreo,
 } from "./actions";
@@ -127,47 +125,8 @@ export function TableroRastreo({
             >
               {pending ? "Vinculando…" : "Amarrar GPS"}
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                start(async () => {
-                  const r = await revisarRecorridoHoy();
-                  if (!r.ok) setMsg(r.error);
-                  else {
-                    setMsg(
-                      `Revisé el día: ${r.excesos} con más de 350 km, ${r.parados} sin recorrido (${r.porOdometro} por odómetro, ${r.porRecorrido} pedí a Diacor).`,
-                    );
-                    router.refresh();
-                  }
-                });
-              }}
-              disabled={pending}
-              className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-            >
-              {pending ? "Revisando…" : "Revisar km de hoy"}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                start(async () => {
-                  setMsg("Pedí a Diacor el km de todo septiembre… puede tardar un par de minutos.");
-                  const r = await cargarKmDelMes();
-                  if (!r.ok) setMsg(r.error);
-                  else {
-                    setMsg(
-                      `Cargué ${r.desde} → ${r.hasta}: ${r.guardados} lecturas, ${Math.round(r.kmTotal).toLocaleString("es-PA")} km en total (${r.errores} errores).`,
-                    );
-                    router.refresh();
-                  }
-                });
-              }}
-              disabled={pending}
-              className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-            >
-              {pending ? "Cargando mes…" : "Cargar km del mes"}
-            </button>
             <p className="text-xs text-muted">
-              “Del mes” pide a Diacor el recorrido día por día (1 → hoy) y llena la columna Km mes.
+              El km del día lo guarda el cron; se ve en Carros (Km hoy / Km mes).
             </p>
           </div>
           {msg && <p className="text-sm text-muted">{msg}</p>}
@@ -328,7 +287,7 @@ function Historico({
             {filas.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-muted">
-                  Aún no hay histórico de ese día. Pulse “Revisar km de hoy” o espere el cron.
+                  Aún no hay histórico de ese día. El cron de GPS lo va llenando; en Carros podés forzar “Actualizar km”.
                 </td>
               </tr>
             )}

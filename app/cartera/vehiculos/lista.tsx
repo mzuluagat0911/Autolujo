@@ -2,9 +2,15 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { StatusChip } from "@/components/kit";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
-import { guardarEdicionMasiva, completarPlacasDesdeDiacor } from "./actions";
+import {
+  guardarEdicionMasiva,
+  completarPlacasDesdeDiacor,
+  actualizarKmHoy,
+  rellenarKmDelMes,
+} from "./actions";
 
 export type FilaVehiculo = {
   id: string;
@@ -85,12 +91,18 @@ export function ListaVehiculos({
   filas: FilaVehiculo[];
   topeKmMes: number;
 }) {
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [editando, setEditando] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [msg, setMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
+
+  const sinKmMes = useMemo(
+    () => filas.filter((v) => v.gps_id && (v.kmMes == null || v.kmMes === 0)).length,
+    [filas],
+  );
 
   const visibles = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -214,6 +226,24 @@ export function ListaVehiculos({
     start(async () => {
       const r = await completarPlacasDesdeDiacor();
       setMsg(r.msg);
+      if (r.ok) router.refresh();
+    });
+  }
+
+  function syncKmHoy() {
+    start(async () => {
+      const r = await actualizarKmHoy();
+      setMsg(r.msg);
+      if (r.ok) router.refresh();
+    });
+  }
+
+  function syncKmMes() {
+    start(async () => {
+      setMsg("Rellenando el mes desde Diacor… puede tardar un minuto.");
+      const r = await rellenarKmDelMes();
+      setMsg(r.msg);
+      if (r.ok) router.refresh();
     });
   }
 
@@ -232,6 +262,26 @@ export function ListaVehiculos({
           </p>
           {!editando ? (
             <>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={syncKmHoy}
+                className="rounded-lg px-3 py-2 text-sm text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                title="Guarda el km de hoy; el mes es la suma de los días"
+              >
+                {pending ? "…" : "Actualizar km"}
+              </button>
+              {sinKmMes > 40 && (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={syncKmMes}
+                  className="rounded-lg px-3 py-2 text-sm text-muted ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                  title="Solo si faltan días del mes en gps_dias"
+                >
+                  Rellenar mes
+                </button>
+              )}
               <button
                 type="button"
                 disabled={pending}
@@ -300,6 +350,7 @@ export function ListaVehiculos({
               <th className="px-5 py-3">Vehículo</th>
               <th className="px-5 py-3">Arrendatario</th>
               <th className="px-5 py-3">Km</th>
+              <th className="px-5 py-3">Km hoy</th>
               <th className="px-5 py-3">Km mes</th>
               <th className="px-5 py-3">GPS</th>
               <th className="px-5 py-3">Último visto</th>
@@ -391,6 +442,27 @@ export function ListaVehiculos({
                   <td className="px-5 py-3 tabular-nums text-muted">
                     {v.km_actual != null ? v.km_actual.toLocaleString("es-PA") : "—"}
                   </td>
+                  <td
+                    className={`px-5 py-3 tabular-nums ${
+                      v.alertaGps === "exceso_km_dia"
+                        ? "font-medium text-rojo"
+                        : v.alertaGps === "sin_recorrido"
+                          ? "text-ambar"
+                          : "text-ink"
+                    }`}
+                  >
+                    {v.kmHoy != null ? Math.round(v.kmHoy).toLocaleString("es-PA") : "—"}
+                    {v.alertaGps === "exceso_km_dia" && (
+                      <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-wide text-rojo">
+                        +350
+                      </span>
+                    )}
+                    {v.alertaGps === "sin_recorrido" && (
+                      <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-wide text-ambar">
+                        sin recorrido
+                      </span>
+                    )}
+                  </td>
                   <td className={`px-5 py-3 tabular-nums ${exceso ? "font-medium text-rojo" : "text-muted"}`}>
                     {v.kmMes != null ? Math.round(v.kmMes).toLocaleString("es-PA") : "—"}
                     {exceso ? (
@@ -415,23 +487,12 @@ export function ListaVehiculos({
                     ) : !v.gps_id ? (
                       <StatusChip tone="neutral">Sin amarre</StatusChip>
                     ) : (
-                      <div className="space-y-1">
-                        <Link
-                          href="/cartera/rastreo"
-                          className="font-mono text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
-                        >
-                          {v.gps_id}
-                        </Link>
-                        {v.alertaGps === "exceso_km_dia" && (
-                          <StatusChip tone="crit">+350 km hoy</StatusChip>
-                        )}
-                        {v.alertaGps === "sin_recorrido" && (
-                          <StatusChip tone="warn">Sin recorrido</StatusChip>
-                        )}
-                        {v.kmHoy != null && !v.alertaGps && (
-                          <p className="text-[11px] text-muted">{Math.round(v.kmHoy)} km hoy</p>
-                        )}
-                      </div>
+                      <Link
+                        href="/cartera/rastreo"
+                        className="font-mono text-xs text-muted underline-offset-2 hover:text-ink hover:underline"
+                      >
+                        {v.gps_id}
+                      </Link>
                     )}
                   </td>
                   <td className="px-5 py-3">

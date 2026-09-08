@@ -142,3 +142,50 @@ export async function completarPlacasDesdeDiacor(): Promise<ResultadoMasivo> {
     return { ok: false, msg: e instanceof Error ? e.message : "No pude leer Diacor.", actualizados: 0 };
   }
 }
+
+/** Guarda el km de hoy (odómetro / Diacor) y lo suma al mes en gps_dias. */
+export async function actualizarKmHoy(): Promise<ResultadoMasivo> {
+  const { diacorConfigurado } = await import("@/lib/gps/diacor");
+  const { revisarGpsDelDia } = await import("@/lib/gps/revisar-dia");
+  if (!diacorConfigurado()) {
+    return { ok: false, msg: "Diacor no está configurado en el servidor.", actualizados: 0 };
+  }
+  try {
+    const r = await revisarGpsDelDia(undefined, { alertarParado: false });
+    revalidatePath("/cartera/vehiculos");
+    revalidatePath("/cartera/rastreo");
+    return {
+      ok: true,
+      msg: `Km de hoy: ${r.revisados} carros (${r.porOdometro} odómetro, ${r.porRecorrido} Diacor).`,
+      actualizados: r.revisados,
+    };
+  } catch (e) {
+    return { ok: false, msg: e instanceof Error ? e.message : "No pude actualizar km.", actualizados: 0 };
+  }
+}
+
+/**
+ * Una sola vez / huecos: pide a Diacor el recorrido 1 del mes → hoy.
+ * El día a día lo lleva el cron; esto solo rellena lo que falte del mes.
+ */
+export async function rellenarKmDelMes(): Promise<ResultadoMasivo> {
+  const { diacorConfigurado } = await import("@/lib/gps/diacor");
+  const { cargarKmRango, rangoMesEnCurso } = await import("@/lib/gps/cargar-km-rango");
+  if (!diacorConfigurado()) {
+    return { ok: false, msg: "Diacor no está configurado en el servidor.", actualizados: 0 };
+  }
+  try {
+    const { desde, hasta } = rangoMesEnCurso();
+    const r = await cargarKmRango(desde, hasta);
+    revalidatePath("/cartera/vehiculos");
+    revalidatePath("/cartera/rastreo");
+    if (!r.ok) return { ok: false, msg: r.error ?? "No pude rellenar el mes.", actualizados: 0 };
+    return {
+      ok: true,
+      msg: `Mes ${desde}→${hasta}: ${r.guardados} lecturas, ${Math.round(r.kmTotal).toLocaleString("es-PA")} km.`,
+      actualizados: r.guardados,
+    };
+  } catch (e) {
+    return { ok: false, msg: e instanceof Error ? e.message : "No pude rellenar el mes.", actualizados: 0 };
+  }
+}

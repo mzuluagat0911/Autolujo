@@ -255,7 +255,7 @@ export default async function VehiculosPage() {
       <PageHeader
         eyebrow="Cartera"
         title="Vehículos"
-        subtitle="Flota sin llamar a Diacor: histórico, zonas, placa/GPS editables. El vivo está en Rastreo."
+        subtitle="Flota, km del día y del mes, zonas y ficha. El mapa en vivo está en Rastreo."
       />
 
       <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
