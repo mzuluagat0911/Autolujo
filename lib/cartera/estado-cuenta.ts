@@ -107,10 +107,50 @@ export function textoValorCuotas(e: {
   numCuotasTotal: number | null;
   cuotasDebe: number | null;
 }): string {
-  if (e.numCuotasTotal == null) return "—";
+  if (e.numCuotasTotal == null) {
+    if (e.cuotasDebe == null) return "—";
+    return `debe ${e.cuotasDebe.toLocaleString("es-PA")} cuotas`;
+  }
   const total = e.numCuotasTotal.toLocaleString("es-PA");
   if (e.cuotasDebe == null) return `de ${total} cuotas`;
   return `de ${total} cuotas debe ${e.cuotasDebe.toLocaleString("es-PA")}`;
+}
+
+/**
+ * Atraso operativo (cuotas diarias pendientes), no el plan completo del deal.
+ * 0 = al día (solo le toca la de hoy o ya cubrió).
+ */
+export function cuotasAtraso(e: {
+  letra: number;
+  pendienteAnterior: number;
+  faltaHoy: number;
+  pagoPuntual: boolean;
+  totalHoy: number;
+}): number {
+  const letra = Number(e.letra) || 0;
+  if (!(letra > 0)) return 0;
+  const atrasadas = Math.max(0, Math.round(Number(e.pendienteAnterior) / letra));
+  const debeHoy = !e.pagoPuntual && (Number(e.faltaHoy) > 0.009 || Number(e.totalHoy) > 0.009);
+  // Si solo debe hoy y no hay saldo anterior → 0 (al día / le toca la de hoy).
+  if (atrasadas === 0) return debeHoy ? 0 : 0;
+  return atrasadas;
+}
+
+/** "Al día" · "Le toca la de hoy" · "Debe 1 cuota" · "Debe 12 cuotas". */
+export function textoSituacionCuotas(e: {
+  letra: number;
+  pendienteAnterior: number;
+  faltaHoy: number;
+  pagoPuntual: boolean;
+  totalHoy: number;
+  pendiente: boolean;
+}): string {
+  if (e.pendiente) return "Comprobante en validación";
+  if (e.pagoPuntual || e.totalHoy <= 0.009) return "Al día";
+  const atrasadas = cuotasAtraso(e);
+  if (atrasadas <= 0) return "Le toca la de hoy";
+  if (atrasadas === 1) return "Debe 1 cuota";
+  return `Debe ${atrasadas.toLocaleString("es-PA")} cuotas`;
 }
 
 function armar(

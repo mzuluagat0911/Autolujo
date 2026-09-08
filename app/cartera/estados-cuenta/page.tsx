@@ -2,6 +2,7 @@ import { PageHeader, Money } from "@/components/kit";
 import {
   estadosCuentaHoy,
   money,
+  textoSituacionCuotas,
   textoValorCuotas,
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
@@ -21,7 +22,7 @@ export default async function EstadosCuentaPage() {
   }
 
   const totalACobrar = estados.reduce((a, e) => a + e.totalHoy, 0);
-  const conRecargo = estados.filter((e) => e.recargo > 0).length;
+  const conRecargo = estados.filter((e) => e.recargo > 0 || e.recargoSiTarda > 0).length;
 
   return (
     <div className="mx-auto max-w-6xl py-10">
@@ -46,32 +47,57 @@ export default async function EstadosCuentaPage() {
           </div>
 
           <div className="mt-6 overflow-x-auto rounded-2xl bg-surface ring-1 ring-line/60">
-            <table className="w-full text-sm">
+            <table className="w-full min-w-[52rem] text-sm">
               <thead>
                 <tr className="border-b border-line text-left font-mono text-[11px] uppercase tracking-wide text-muted">
-                  <th className="px-4 py-3">Carro</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Carro</th>
                   <th className="px-4 py-3">Cliente</th>
-                  <th className="px-4 py-3">Valor</th>
-                  <th className="px-4 py-3 text-right">Recargo</th>
-                  <th className="px-4 py-3 text-right">Total hoy</th>
-                  <th className="px-4 py-3">Desglose (mensaje)</th>
+                  <th className="px-4 py-3 text-right whitespace-nowrap">Valor</th>
+                  <th className="px-4 py-3 text-right whitespace-nowrap">Recargo</th>
+                  <th className="px-4 py-3 whitespace-nowrap">Total hoy</th>
+                  <th className="px-4 py-3">Situación</th>
                 </tr>
               </thead>
               <tbody>
                 {estados.slice(0, 250).map((e) => (
                   <tr key={e.contratoId} className="border-b border-line last:border-0">
-                    <td className="px-4 py-2.5 font-semibold">
+                    <td className="px-4 py-2.5 font-semibold whitespace-nowrap tabular-nums">
                       {etiquetaCarroUi(e.empresa, e.vehiculoNumero)}
                     </td>
                     <td className="px-4 py-2.5 text-muted">{e.clienteNombre}</td>
-                    <td className="px-4 py-2.5 tabular-nums text-ink">{textoValorCuotas(e)}</td>
+                    <td className="px-4 py-2.5 text-right tabular-nums">
+                      {e.letra > 0.009 ? <Money amount={e.letra} /> : "—"}
+                    </td>
                     <td className="px-4 py-2.5 text-right tabular-nums text-ambar">
-                      {e.recargo > 0 ? <Money amount={e.recargo} /> : "—"}
+                      {e.recargo > 0.009 ? (
+                        <Money amount={e.recargo} />
+                      ) : e.recargoSiTarda > 0.009 ? (
+                        <span className="text-xs text-muted" title="Si no completa antes de las 7 p.m.">
+                          +<Money amount={e.recargoSiTarda} />
+                        </span>
+                      ) : (
+                        "—"
+                      )}
                     </td>
-                    <td className="px-4 py-2.5 text-right font-semibold tabular-nums">
-                      <Money amount={e.totalHoy} />
+                    <td className="px-4 py-2.5 font-medium tabular-nums whitespace-nowrap">
+                      {textoValorCuotas(e)}
                     </td>
-                    <td className="px-4 py-2.5 font-mono text-[11px] text-muted">{e.desglose}</td>
+                    <td className="px-4 py-2.5">
+                      <p
+                        className={
+                          e.pagoPuntual || e.totalHoy <= 0.009
+                            ? "font-medium text-verde"
+                            : e.pendienteAnterior > 0.009
+                              ? "font-medium text-rojo"
+                              : "font-medium text-ambar"
+                        }
+                      >
+                        {textoSituacionCuotas(e)}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-muted tabular-nums">
+                        A pagar hoy <Money amount={e.totalHoy} />
+                      </p>
+                    </td>
                   </tr>
                 ))}
               </tbody>
