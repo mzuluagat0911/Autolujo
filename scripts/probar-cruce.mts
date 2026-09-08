@@ -42,6 +42,8 @@ function pago(over: Partial<PagoCandidato>): PagoCandidato {
 
 console.log("\n· Parseo de descripción");
 check("carro con palabra clave", extraerCarro("TRANSFERENCIA DE JUAN PEREZ CARRO 144", "AUTOLUJO"), "144");
+check("carro con auto", extraerCarro("pagos del auto 97", "AUTOLUJO"), "97");
+check("carro con cr", extraerCarro("cr323", "AUTOLUJO"), "323");
 check("carro Gold con prefijo", extraerCarro("PAGO G-14 CUOTA", "GOLD"), "G14");
 check("sin palabra clave no inventa un número suelto", extraerCarro("REF 998877 monto varios", "AUTOLUJO"), null);
 check("canon quita ceros", canonCarro("0144"), "144");

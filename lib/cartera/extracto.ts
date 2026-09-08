@@ -1,8 +1,9 @@
 // Conciliación por extracto bancario (Banco General).
-// Sube el PDF → parsea movimientos → cruza contra comprobantes pendientes.
-// Solo aplica dinero con cruce PERFECTO (ver lib/cartera/cruce.ts).
-// El match por nombre solo sugiere; no crea ni concilia un pago.
+// Acepta Excel de “Movimientos cuenta de ahorros” (formato operativo) o PDF
+// de “Últimos movimientos”. Parsea → cruza → aplica solo cruce PERFECTO
+// (ver lib/cartera/cruce.ts). El match por nombre solo sugiere.
 
+import { unzipSync } from "fflate";
 import { extractText, getDocumentProxy } from "unpdf";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, fechaContable, sumarDias } from "./fecha";
@@ -12,7 +13,9 @@ import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { destinoPorId } from "./salidas-interior";
 import {
   canonCarro,
+  canonReferencia,
   extraerCarro,
+  extraerCarroCeldas,
   extraerNombre,
   extraerReferencia,
   decidirMovimiento,
@@ -23,39 +26,66 @@ import {
 
 const BUCKET = "comprobantes";
 
-async function guardarPdfExtracto(
+export type FormatoExtracto = "pdf" | "xlsx";
+
+async function guardarArchivoExtracto(
   buffer: Buffer,
   empresaCodigo: string,
   fecha: string,
+  formato: FormatoExtracto,
 ): Promise<string | null> {
   try {
     const sb = createServerSupabase();
-    const path = `extractos/${empresaCodigo}/${fecha}-${crypto.randomUUID()}.pdf`;
+    const ext = formato === "xlsx" ? "xlsx" : "pdf";
+    const contentType =
+      formato === "xlsx"
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "application/pdf";
+    const path = `extractos/${empresaCodigo}/${fecha}-${crypto.randomUUID()}.${ext}`;
     const { error } = await sb.storage.from(BUCKET).upload(path, buffer, {
-      contentType: "application/pdf",
+      contentType,
       upsert: false,
     });
     if (error) {
-      console.error("[extracto] no pude guardar el PDF:", error.message);
+      console.error("[extracto] no pude guardar el archivo:", error.message);
       return null;
     }
     return path;
   } catch (e) {
-    console.error("[extracto] no pude guardar el PDF:", e);
+    console.error("[extracto] no pude guardar el archivo:", e);
     return null;
   }
 }
+
+/** Meses ES + EN (el Excel BG exporta `06-Aug-2026`; el PDF usa `6-sep-2026`). */
 const MESES: Record<string, string> = {
-  ene: "01", feb: "02", mar: "03", abr: "04", may: "05", jun: "06",
-  jul: "07", ago: "08", sep: "09", oct: "10", nov: "11", dic: "12",
+  ene: "01", jan: "01",
+  feb: "02",
+  mar: "03",
+  abr: "04", apr: "04",
+  may: "05",
+  jun: "06",
+  jul: "07",
+  ago: "08", aug: "08",
+  sep: "09",
+  oct: "10",
+  nov: "11",
+  dic: "12", dec: "12",
 };
 
-function parseFecha(s: string): string | null {
-  const m = /(\d{1,2})-([a-zA-Záéíóú]{3})[a-z]*-(\d{4})/i.exec(s);
+export function parseFechaExtracto(s: string): string | null {
+  const m = /(\d{1,2})-([a-zA-Záéíóú]{3})[a-z]*-(\d{4})/i.exec(s.trim());
   if (!m) return null;
   const mes = MESES[m[2].toLowerCase().slice(0, 3)];
   if (!mes) return null;
   return `${m[3]}-${mes}-${m[1].padStart(2, "0")}`;
+}
+
+function parseMoneyCell(s: string): number | null {
+  const t = String(s ?? "").replace(/[$\s]/g, "").replace(/,/g, "").trim();
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
 }
 
 export { canonCarro, extraerCarro };
@@ -69,6 +99,90 @@ type MovParse = {
   nombre: string | null;
   referencia: string | null;
 };
+
+function cellInlineText(cellXml: string): string {
+  return [...cellXml.matchAll(/<t[^>]*>([^<]*)<\/t>/g)]
+    .map((m) => m[1])
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function celdasDeFila(rowXml: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const m of rowXml.matchAll(/<c r="([A-Z]+)\d+"[^>]*>([\s\S]*?)<\/c>/g)) {
+    out[m[1]] = cellInlineText(m[2]);
+  }
+  return out;
+}
+
+/**
+ * Excel JasperReports de Banco General:
+ * “MOVIMIENTOS-CUENTA-DE-AHORROS-….xlsx”
+ * Columnas: Fecha | Referencia | Ref1–4 | Transacción | Descripción | Débito | Crédito | Saldo.
+ * Solo entran créditos (ingresos). Los débitos son traspasos internos.
+ */
+export function parseExtractoXlsx(
+  buffer: Buffer,
+  empresaCodigo: string,
+): { titular: string; movimientos: MovParse[] } {
+  const files = unzipSync(new Uint8Array(buffer));
+  const sheetEntry =
+    files["xl/worksheets/sheet1.xml"] ??
+    Object.entries(files).find(([k]) => /xl\/worksheets\/sheet\d+\.xml$/i.test(k))?.[1];
+  if (!sheetEntry) {
+    throw new Error("El Excel no trae hoja de cálculo legible.");
+  }
+  const xml = new TextDecoder("utf-8").decode(sheetEntry);
+  const rows = [...xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)].map((m) => m[1]);
+
+  let titular = "";
+  let headerSeen = false;
+  const movimientos: MovParse[] = [];
+
+  for (const row of rows) {
+    const c = celdasDeFila(row);
+    const b = c.B ?? "";
+    if (!titular) {
+      const emp = /Empresa:\s*(.+)/i.exec(b);
+      if (emp) titular = emp[1].trim();
+    }
+    if (!headerSeen) {
+      if (b === "Fecha" && (c.D === "Referencia 1" || c.I === "Descripción" || c.K === "Crédito")) {
+        headerSeen = true;
+      }
+      continue;
+    }
+    const fecha = parseFechaExtracto(b);
+    if (!fecha) continue;
+    const credito = parseMoneyCell(c.K ?? "");
+    if (!(credito != null && credito > 0.009)) continue; // solo ingresos
+
+    const desc = (c.I ?? "").trim();
+    const ref1 = (c.D ?? "").trim();
+    const ref2 = (c.E ?? "").trim();
+    const saldo = parseMoneyCell(c.L ?? "");
+    const memoUtil =
+      ref2 && ref2.toUpperCase() !== "A TERCEROS" && !desc.toLowerCase().includes(ref2.toLowerCase())
+        ? ref2
+        : "";
+    const descripcion = [desc, memoUtil].filter(Boolean).join(" · ").replace(/\s+/g, " ").trim()
+      || ref1
+      || "Movimiento";
+
+    movimientos.push({
+      fecha,
+      descripcion,
+      monto: credito,
+      saldo,
+      numeroCarro: extraerCarroCeldas(desc, ref2, empresaCodigo),
+      nombre: extraerNombre(desc),
+      referencia: canonReferencia(ref1) ?? extraerReferencia(descripcion),
+    });
+  }
+
+  return { titular, movimientos };
+}
 
 /** Parsea el PDF del extracto en movimientos estructurados. */
 export async function parseExtracto(
@@ -90,7 +204,7 @@ export async function parseExtracto(
   const re = /(\d{1,2}-[a-zA-Záéíóú]{3,}-\d{4})([\s\S]*?)(?=\d{1,2}-[a-zA-Záéíóú]{3,}-\d{4}|$)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(body))) {
-    const fecha = parseFecha(m[1]);
+    const fecha = parseFechaExtracto(m[1]);
     const chunk = m[2];
     const amounts = [...chunk.matchAll(/\$([\d.,]+)/g)].map((a) => parseFloat(a[1].replace(/,/g, "")));
     if (amounts.length < 1 || !fecha) continue;
@@ -106,6 +220,32 @@ export async function parseExtracto(
     });
   }
   return { titular, movimientos };
+}
+
+export function detectarFormatoExtracto(
+  buffer: Buffer,
+  nombreArchivo?: string | null,
+): FormatoExtracto {
+  const name = (nombreArchivo ?? "").toLowerCase();
+  if (name.endsWith(".xlsx") || name.endsWith(".xls")) return "xlsx";
+  if (name.endsWith(".pdf")) return "pdf";
+  // PK.. = zip/xlsx; %PDF = pdf
+  if (buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b) return "xlsx";
+  if (buffer.length >= 4 && buffer.subarray(0, 4).toString("utf8") === "%PDF") return "pdf";
+  throw new Error("Formato no reconocido. Sube el Excel de movimientos o el PDF de Banco General.");
+}
+
+export async function parseExtractoArchivo(
+  buffer: Buffer,
+  empresaCodigo: string,
+  formato: FormatoExtracto,
+): Promise<{ titular: string; movimientos: MovParse[]; formato: FormatoExtracto }> {
+  if (formato === "xlsx") {
+    const r = parseExtractoXlsx(buffer, empresaCodigo);
+    return { ...r, formato };
+  }
+  const r = await parseExtracto(buffer, empresaCodigo);
+  return { ...r, formato };
 }
 
 export type ResultadoConciliacion = {
@@ -134,11 +274,12 @@ const VACIO: ResultadoConciliacion = {
   ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, detalle: [],
 };
 
-/** Procesa el PDF completo: parsea, concilia y persiste. */
-export async function procesarExtractoPDF(
+/** Procesa el extracto (Excel o PDF): parsea, concilia y persiste. */
+export async function procesarExtracto(
   buffer: Buffer,
   cargadoPor: string,
   empresaId: string,
+  nombreArchivo?: string | null,
 ): Promise<ResultadoConciliacion> {
   if (!empresaId) {
     return { ...VACIO, error: "Elige la empresa de este extracto." };
@@ -149,9 +290,23 @@ export async function procesarExtractoPDF(
   const empresa = emp.data as { id: string; codigo: string; nombre: string } | null;
   if (!empresa) return { ...VACIO, error: "Esa empresa no existe." };
 
-  const { titular, movimientos } = await parseExtracto(buffer, empresa.codigo);
+  let formato: FormatoExtracto;
+  try {
+    formato = detectarFormatoExtracto(buffer, nombreArchivo);
+  } catch (e) {
+    return { ...VACIO, empresa: empresa.codigo, error: e instanceof Error ? e.message : "Formato inválido." };
+  }
+
+  const { titular, movimientos } = await parseExtractoArchivo(buffer, empresa.codigo, formato);
   if (movimientos.length === 0) {
-    return { ...VACIO, empresa: empresa.codigo, error: "No encontré movimientos en el PDF. ¿Es el de “Últimos movimientos” de Banco General?" };
+    return {
+      ...VACIO,
+      empresa: empresa.codigo,
+      error:
+        formato === "xlsx"
+          ? "No encontré créditos en el Excel. ¿Es el de “Movimientos cuenta de ahorros” de Banco General?"
+          : "No encontré movimientos en el PDF. ¿Es el de “Últimos movimientos” de Banco General?",
+    };
   }
 
   const { data: contratos } = await sb
@@ -188,20 +343,20 @@ export async function procesarExtractoPDF(
   let aviso: string | undefined;
   if (titular) {
     const tU = titular.toUpperCase();
-    const delPdf = tU.includes("GOLD")
+    const delArchivo = tU.includes("GOLD")
       ? "GOLD"
       : tU.includes("KOWUA")
         ? "KOWUA"
         : /LUJO|AUTO/.test(tU)
           ? "AUTOLUJO"
           : null;
-    if (delPdf && delPdf !== empresa.codigo) {
-      aviso = `El PDF parece de ${delPdf} (titular “${titular}”) y tú elegiste ${empresa.codigo}. No mezclo flotas: revisa que sea la cuenta correcta.`;
+    if (delArchivo && delArchivo !== empresa.codigo) {
+      aviso = `El archivo parece de ${delArchivo} (titular “${titular}”) y tú elegiste ${empresa.codigo}. No mezclo flotas: revisa que sea la cuenta correcta.`;
     }
   }
 
   const fechaExtracto = movimientos.find((m) => m.fecha)?.fecha ?? hoyPanama();
-  const archivoUrl = await guardarPdfExtracto(buffer, empresa.codigo, fechaExtracto);
+  const archivoUrl = await guardarArchivoExtracto(buffer, empresa.codigo, fechaExtracto, formato);
   const { data: extracto } = await sb
     .from("extractos_bancarios")
     .insert({
@@ -295,11 +450,11 @@ export async function procesarExtractoPDF(
     numeroCuenta: cuentaRow?.numero_cuenta ?? null,
     numerosCuenta: numerosCuenta,
   };
-  const huellasEnEstePdf = new Set<string>();
+  const huellasEnEsteArchivo = new Set<string>();
 
   for (const mov of movimientos) {
     const huella = huellaMovimiento(mov.fecha, mov.monto, mov.descripcion);
-    if (huellasVistas.has(huella) || huellasEnEstePdf.has(huella)) {
+    if (huellasVistas.has(huella) || huellasEnEsteArchivo.has(huella)) {
       res.duplicados++;
       res.detalle.push({
         fecha: mov.fecha,
@@ -308,11 +463,11 @@ export async function procesarExtractoPDF(
         carro: mov.numeroCarro,
         via: null,
         estado: "duplicado",
-        motivo: "Ya estaba en un extracto anterior (o repetido en este PDF). No lo re-encolo.",
+        motivo: "Ya estaba en un extracto anterior (o repetido en este archivo). No lo re-encolo.",
       });
       continue;
     }
-    huellasEnEstePdf.add(huella);
+    huellasEnEsteArchivo.add(huella);
 
     const libres = pendientes.filter((p) => !usados.has(p.id));
     const veredicto = decidirMovimiento(
@@ -442,7 +597,7 @@ export async function procesarExtractoPDF(
     }
   }
 
-  // Comprobantes de días que SÍ vinieron en este PDF y no calzaron: el recargo
+  // Comprobantes de días que SÍ vinieron en este archivo y no calzaron: el recargo
   // diferido se revisa. Si la gracia venció, entra; si el pago era bueno y el
   // banco no lo trajo, el equipo lo ve en "por revisar".
   for (const p of pendientes) {
@@ -458,4 +613,13 @@ export async function procesarExtractoPDF(
   }
 
   return res;
+}
+
+/** @deprecated Usar procesarExtracto. */
+export async function procesarExtractoPDF(
+  buffer: Buffer,
+  cargadoPor: string,
+  empresaId: string,
+): Promise<ResultadoConciliacion> {
+  return procesarExtracto(buffer, cargadoPor, empresaId, "extracto.pdf");
 }

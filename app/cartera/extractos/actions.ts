@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { procesarExtractoPDF, type ResultadoConciliacion } from "@/lib/cartera/extracto";
+import { procesarExtracto, type ResultadoConciliacion } from "@/lib/cartera/extracto";
 import {
   aplicarMovimientoExtracto,
   aplicarSugeridosEnLote,
@@ -31,18 +31,19 @@ export async function conciliarExtracto(
   }
   const file = formData.get("archivo");
   if (!(file instanceof File) || file.size === 0) {
-    return { ...VACIO, error: "Sube el PDF del extracto." };
+    return { ...VACIO, error: "Sube el Excel (o PDF) del extracto." };
   }
-  if (!file.name.toLowerCase().endsWith(".pdf")) {
-    return { ...VACIO, error: "El archivo debe ser un PDF." };
+  const nombre = file.name.toLowerCase();
+  if (!nombre.endsWith(".xlsx") && !nombre.endsWith(".xls") && !nombre.endsWith(".pdf")) {
+    return { ...VACIO, error: "El archivo debe ser Excel (.xlsx) o PDF de Banco General." };
   }
   try {
     const buf = Buffer.from(await file.arrayBuffer());
-    const res = await procesarExtractoPDF(buf, "Equipo", empresaId);
+    const res = await procesarExtracto(buf, "Equipo", empresaId, file.name);
     refrescarCartera();
     return res;
   } catch (e) {
-    return { ...VACIO, error: e instanceof Error ? e.message : "Error procesando el PDF." };
+    return { ...VACIO, error: e instanceof Error ? e.message : "Error procesando el extracto." };
   }
 }
 

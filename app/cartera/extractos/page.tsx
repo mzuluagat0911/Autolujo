@@ -192,7 +192,7 @@ export default async function ExtractosPage() {
           2 · Extracto bancario
         </h2>
         <p className="mt-1 mb-4 text-sm text-muted">
-          Elige la empresa y sube el PDF de “Últimos movimientos” de Banco General. Lo que calce solo se aplica; lo demás queda en la cola de arriba.
+          Elige la empresa y sube el Excel de movimientos de Banco General (también sirve el PDF). Lo que calce solo se aplica; lo demás queda en la cola de arriba.
         </p>
         {empresas.length === 0 ? (
           <p className="rounded-xl bg-surface p-4 text-sm text-muted ring-1 ring-line">

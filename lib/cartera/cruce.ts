@@ -26,8 +26,33 @@ export function extraerCarro(desc: string, empresa: string | null): string | nul
     const m = /\bG\s*-?\s*0*(\d{1,3})\b/i.exec(desc);
     return m ? "G" + parseInt(m[1], 10) : null;
   }
-  const m = /\b(?:carro|cuota|veh[ií]culo|unidad|#)\s*#?\s*0*(\d{1,3})\b/i.exec(desc);
+  // "carro 68", "auto 97", "unidad 54", "cr323" (comentario de banca móvil).
+  const m =
+    /\b(?:carro|auto|cuota|veh[ií]culo|unidad|#)\s*#?\s*0*(\d{1,3})\b/i.exec(desc) ||
+    /\bcr\s*-?\s*0*(\d{1,3})\b/i.exec(desc);
   return m ? String(parseInt(m[1], 10)) : null;
+}
+
+/**
+ * Carro desde celdas del Excel BG: descripción + "Referencia 2".
+ * Ref2 a veces trae solo el número ("66", "313") — eso sí lo tomamos.
+ */
+export function extraerCarroCeldas(
+  descripcion: string,
+  ref2: string | null | undefined,
+  empresa: string | null,
+): string | null {
+  const memo = (ref2 ?? "").trim();
+  const blob = [descripcion, memo].filter(Boolean).join(" ");
+  const desdeTexto = extraerCarro(blob, empresa);
+  if (desdeTexto) return desdeTexto;
+  if (!memo) return null;
+  if (empresa === "GOLD") {
+    const g = /^g\s*-?\s*0*(\d{1,3})$/i.exec(memo);
+    return g ? "G" + parseInt(g[1], 10) : null;
+  }
+  if (/^\d{1,3}$/.test(memo)) return String(parseInt(memo, 10));
+  return null;
 }
 
 export function extraerNombre(desc: string): string | null {
