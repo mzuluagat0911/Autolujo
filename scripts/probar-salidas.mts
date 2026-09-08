@@ -102,6 +102,9 @@ check("2 días", detectarDiasViaje(["voy 2 días a Santiago"]), 2);
 check("1 día no cuenta", detectarDiasViaje(["voy a Santiago"]), null);
 check("Panamá centro no es interior", enMetroPanama(8.98, -79.52), true);
 check("Santiago es interior", enInterior(8.10, -80.97), true);
+check("Pacora (borde ciudad) no es interior", enInterior(9.08, -79.22), false);
+check("punto sin caja no se inventa interior", enInterior(8.50, -79.00), false);
+check("Pacora sigue siendo metro amplio", enMetroPanama(9.08, -79.22), true);
 check(
   "GPS en Santiago con aval a Santiago",
   cruzarPuntoConSalida(8.10, -80.97, "santiago", "Santiago").tipo,

@@ -1,7 +1,7 @@
 // Cruza la posición GPS del día con las salidas autorizadas vigentes.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { clasificarZona, cruzarPuntoConSalida, enInterior } from "@/lib/cartera/salidas-geo";
+import { clasificarZona, cruzarPuntoConSalida } from "@/lib/cartera/salidas-geo";
 import { upsertAlertaSalida } from "@/lib/cartera/salidas-aplicar";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { vehiculoEnTaller, type VehiculoGps } from "./vincular";
@@ -42,6 +42,8 @@ export async function cruzarGpsConSalidas(
     }
 
     const porGps = new Map(vehiculos.filter((v) => v.gps_id).map((v) => [v.gps_id as string, v]));
+    /** Vehículos que SÍ están en interior sin aval (para no cerrar su alerta). */
+    const enInteriorSinAval = new Set<string>();
 
     for (const p of posiciones) {
       const v = (p.id_dispositivo && porGps.get(p.id_dispositivo)) || null;
@@ -85,17 +87,33 @@ export async function cruzarGpsConSalidas(
         continue;
       }
 
-      if (p.latitud != null && p.longitud != null && enInterior(p.latitud, p.longitud)) {
-        sinAval++;
-        const zona = clasificarZona(p.latitud, p.longitud)?.nombre ?? "interior";
-        await upsertAlertaSalida({
-          fecha,
-          tipo: "gps_sin_aval",
-          vehiculoId: v.id,
-          etiqueta,
-          motivo: `GPS en ${zona} y no hay salida autorizada hoy para el carro ${v.numero}.`,
-        });
-      }
+      // Solo provincias interior conocidas (Coclé, Santiago, David…). Ciudad / borde ≠ alerta.
+      if (p.latitud == null || p.longitud == null) continue;
+      const zona = clasificarZona(p.latitud, p.longitud);
+      if (!zona?.interior) continue;
+
+      sinAval++;
+      enInteriorSinAval.add(v.id);
+      await upsertAlertaSalida({
+        fecha,
+        tipo: "gps_sin_aval",
+        vehiculoId: v.id,
+        etiqueta,
+        motivo: `GPS en ${zona.nombre} y no hay salida autorizada hoy para el carro ${v.numero}.`,
+      });
+    }
+
+    // Cierra falsas alarmas del día: estaban “en interior” por el bug de zona desconocida.
+    const { data: abiertas } = await sb
+      .from("salidas_alertas")
+      .select("id, vehiculo_id")
+      .eq("fecha", fecha)
+      .eq("tipo", "gps_sin_aval")
+      .is("vista_at", null);
+    const ahora = new Date().toISOString();
+    for (const a of (abiertas ?? []) as { id: string; vehiculo_id: string | null }[]) {
+      if (!a.vehiculo_id || enInteriorSinAval.has(a.vehiculo_id)) continue;
+      await sb.from("salidas_alertas").update({ vista_at: ahora }).eq("id", a.id);
     }
 
     return { desvios, sinAval };

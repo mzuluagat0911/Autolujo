@@ -33,9 +33,11 @@ export type ZonaGeo = {
 
 /** Cajas aproximadas (orden: más específica primero). */
 export const ZONAS_GEO: ZonaGeo[] = [
-  { id: "metro", nombre: "Metro Panamá", interior: false, latMin: 8.90, latMax: 9.22, lngMin: -79.62, lngMax: -79.28 },
-  { id: "oeste", nombre: "Arraiján / Chorrera", interior: false, latMin: 8.78, latMax: 9.12, lngMin: -79.92, lngMax: -79.55 },
-  { id: "colon", nombre: "Colón", interior: false, latMin: 9.22, latMax: 9.45, lngMin: -79.95, lngMax: -79.55 },
+  // Operación normal (ciudad / costa): NO exigen salida al interior.
+  { id: "metro", nombre: "Metro Panamá", interior: false, latMin: 8.85, latMax: 9.35, lngMin: -79.70, lngMax: -79.15 },
+  { id: "oeste", nombre: "Arraiján / Chorrera", interior: false, latMin: 8.70, latMax: 9.20, lngMin: -80.05, lngMax: -79.50 },
+  { id: "colon", nombre: "Colón", interior: false, latMin: 9.15, latMax: 9.50, lngMin: -80.05, lngMax: -79.50 },
+  // Interior del país (sí exige permiso / aval).
   { id: "cocle", nombre: "Coclé", interior: true, latMin: 8.15, latMax: 8.75, lngMin: -80.70, lngMax: -80.05 },
   { id: "veraguas", nombre: "Veraguas", interior: true, latMin: 7.70, latMax: 8.55, lngMin: -81.40, lngMax: -80.55 },
   { id: "herrera", nombre: "Herrera / Los Santos", interior: true, latMin: 7.40, latMax: 8.15, lngMin: -80.85, lngMax: -80.05 },
@@ -45,7 +47,7 @@ export const ZONAS_GEO: ZonaGeo[] = [
 ];
 
 /** Caja amplia ciudad + oeste (compat). */
-const METRO_AMPLO = { latMin: 8.78, latMax: 9.22, lngMin: -79.92, lngMax: -79.28 };
+const METRO_AMPLO = { latMin: 8.70, latMax: 9.35, lngMin: -80.05, lngMax: -79.15 };
 
 export function haversineKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
   const R = 6371;
@@ -68,7 +70,7 @@ export function etiquetaZona(lat: number | null, lng: number | null): string | n
   if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   const z = clasificarZona(lat, lng);
   if (z) return z.nombre;
-  return enInterior(lat, lng) ? "Interior (sin zona)" : "Ciudad / costa";
+  return enMetroPanama(lat, lng) ? "Ciudad / costa" : "Fuera de mapa";
 }
 
 export function enMetroPanama(lat: number, lng: number): boolean {
@@ -77,10 +79,14 @@ export function enMetroPanama(lat: number, lng: number): boolean {
   return lat >= METRO_AMPLO.latMin && lat <= METRO_AMPLO.latMax && lng >= METRO_AMPLO.lngMin && lng <= METRO_AMPLO.lngMax;
 }
 
+/**
+ * Solo provincias del interior conocidas (Coclé, Veraguas, etc.).
+ * Si el pin no cae en ninguna caja, NO se inventa “interior” (antes alarmaba
+ * a carros en Pacora / bordes de ciudad).
+ */
 export function enInterior(lat: number, lng: number): boolean {
   const z = clasificarZona(lat, lng);
-  if (z) return z.interior;
-  return !enMetroPanama(lat, lng);
+  return Boolean(z?.interior);
 }
 
 export function geoDestino(id: string): PuntoDestino | null {
