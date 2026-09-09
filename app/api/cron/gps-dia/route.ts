@@ -3,7 +3,8 @@ import { revisarGpsDelDia } from "@/lib/gps/revisar-dia";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Cierre del día en Panamá (~11 p.m.): exceso de 350 km y carros sin recorrido.
+// Cierre del día en Panamá (~11 p.m.): exceso de 350 km (campana).
+// El km del día (y “sin recorrido” solo en histórico) se guarda en gps_dias.
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (secret) {

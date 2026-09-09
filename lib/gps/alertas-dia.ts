@@ -1,6 +1,6 @@
-// Alertas de uso del día: más de 350 km, o sin recorrido.
-// El contrato cobra exceso MENSUAL (8.000 km). Estas dos son operativas:
-// alguien del equipo las ve; no se le cobra solo al cliente.
+// Alertas de uso del día: más de 350 km (operativo).
+// “Sin recorrido” se marca en gps_dias para el histórico, pero NO entra a la campana:
+// la flota suele pasar noches quieta y Diacor a menudo reporta 0 km sin ser real.
 
 export const KM_ALERTA_DIA = 350;
 export const KM_PARADO = 1;

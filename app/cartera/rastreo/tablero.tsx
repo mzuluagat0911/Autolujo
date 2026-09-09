@@ -151,7 +151,7 @@ export function TableroRastreo({
           <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ambar">
             Alertas de uso · {inicial.alertas.length}
           </p>
-          <ul className="mt-2 space-y-1.5">
+          <ul className="mt-2 max-h-40 space-y-1.5 overflow-y-auto">
             {inicial.alertas.map((a) => (
               <li key={a.id} className="text-sm text-ink">
                 <span className="font-medium">{a.titulo}</span>
