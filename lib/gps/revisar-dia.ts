@@ -239,6 +239,20 @@ export async function revisarGpsDelDia(
     console.error("[gps] cruce salidas", e);
   }
 
+  // De día no alertamos “parado”: si quedó alguna prematura, la cerramos.
+  if (!alertarParado) {
+    try {
+      await sb
+        .from("gps_alertas")
+        .update({ vista_at: new Date().toISOString() })
+        .eq("fecha", fecha)
+        .eq("tipo", "sin_recorrido")
+        .is("vista_at", null);
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
     fecha,
     revisados: posiciones.length,
@@ -250,6 +264,28 @@ export async function revisarGpsDelDia(
   };
 }
 
+/**
+ * “Sin recorrido” solo sirve el día del cierre y el día siguiente (mañana del equipo).
+ * Todo lo más viejo se marca visto y ya no aparece en la campana / Rastreo.
+ */
+export async function cerrarAlertasSinRecorridoViejas(hoy = hoyPanama()): Promise<number> {
+  const sb = createServerSupabase();
+  const limite = sumarDias(hoy, -1); // conservar hoy y ayer
+  const ahora = new Date().toISOString();
+  const { data, error } = await sb
+    .from("gps_alertas")
+    .update({ vista_at: ahora })
+    .eq("tipo", "sin_recorrido")
+    .lt("fecha", limite)
+    .is("vista_at", null)
+    .select("id");
+  if (error) {
+    console.error("[gps] cerrar sin_recorrido viejas", error.message);
+    return 0;
+  }
+  return (data ?? []).length;
+}
+
 export async function alertasGpsPendientes(): Promise<{
   id: string;
   titulo: string;
@@ -259,26 +295,39 @@ export async function alertasGpsPendientes(): Promise<{
 }[]> {
   try {
     const sb = createServerSupabase();
+    const hoy = hoyPanama();
+    await cerrarAlertasSinRecorridoViejas(hoy);
+    const desdeFecha = sumarDias(hoy, -1);
+
     const { data, error } = await sb
       .from("gps_alertas")
-      .select("id, tipo, etiqueta, km, created_at")
+      .select("id, tipo, etiqueta, km, fecha, created_at")
       .is("vista_at", null)
+      .gte("fecha", desdeFecha)
       .order("created_at", { ascending: false })
       .limit(80);
     if (error) throw error;
+
     return ((data ?? []) as {
       id: string;
       tipo: TipoAlertaGps;
       etiqueta: string | null;
       km: number | null;
+      fecha: string;
       created_at: string;
-    }[]).map((a) => ({
-      id: `gps:${a.id}`,
-      titulo: a.etiqueta ? `Carro ${a.etiqueta}` : "GPS",
-      motivo: textoAlertaGps(a.tipo, a.km == null ? null : Number(a.km)),
-      desde: a.created_at,
-      tipo: a.tipo,
-    }));
+    }[])
+      // Sin recorrido: solo hoy/ayer. Exceso del día se deja ver en la misma ventana.
+      .filter((a) => a.tipo !== "sin_recorrido" || a.fecha >= desdeFecha)
+      .map((a) => ({
+        id: `gps:${a.id}`,
+        titulo: a.etiqueta ? `Carro ${a.etiqueta}` : "GPS",
+        motivo:
+          a.tipo === "sin_recorrido" && a.fecha < hoy
+            ? `Ayer no tuvo recorrido (${a.fecha}).`
+            : textoAlertaGps(a.tipo, a.km == null ? null : Number(a.km)),
+        desde: a.created_at,
+        tipo: a.tipo,
+      }));
   } catch {
     return [];
   }
