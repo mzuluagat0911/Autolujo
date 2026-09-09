@@ -14,23 +14,32 @@ export type TableroRastreo = {
   sinVincular: number;
   enLinea: number;
   porVincular: number;
+  enMovimiento: number;
+  detenidos: number;
+  sinSenal: number;
   alertas: { id: string; titulo: string; motivo: string }[];
   historial: FilaHistorialGps[];
   fechaHistorial: string;
+  cargadoAt: string;
   error: string | null;
 };
 
 export async function cargarTableroRastreo(fechaHist?: string): Promise<TableroRastreo> {
   const fecha = fechaHist && /^\d{4}-\d{2}-\d{2}$/.test(fechaHist) ? fechaHist : hoyPanama();
+  const { estadoGps } = await import("@/lib/gps/ui");
   const vacio: TableroRastreo = {
     configurado: diacorConfigurado(),
     filas: [],
     sinVincular: 0,
     enLinea: 0,
     porVincular: 0,
+    enMovimiento: 0,
+    detenidos: 0,
+    sinSenal: 0,
     alertas: [],
     historial: [],
     fechaHistorial: fecha,
+    cargadoAt: new Date().toISOString(),
     error: null,
   };
   if (!vacio.configurado) {
@@ -44,15 +53,28 @@ export async function cargarTableroRastreo(fechaHist?: string): Promise<TableroR
       historialDelDia(fecha).catch(() => [] as FilaHistorialGps[]),
     ]);
     const filas = armarFilas(posiciones, vehiculos);
+    let mov = 0;
+    let det = 0;
+    let sin = 0;
+    for (const f of filas) {
+      const e = estadoGps(f);
+      if (e === "movimiento") mov += 1;
+      else if (e === "detenido") det += 1;
+      else sin += 1;
+    }
     return {
       configurado: true,
       filas,
       sinVincular: filas.filter((f) => !f.vehiculoId).length,
-      enLinea: filas.filter((f) => f.gps_en_linea).length,
+      enLinea: mov + det,
       porVincular: sugerenciasVinculo(posiciones, vehiculos).length,
+      enMovimiento: mov,
+      detenidos: det,
+      sinSenal: sin,
       alertas,
       historial,
       fechaHistorial: fecha,
+      cargadoAt: new Date().toISOString(),
       error: null,
     };
   } catch (e) {

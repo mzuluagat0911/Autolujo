@@ -249,16 +249,16 @@ export function ListaVehiculos({
 
   return (
     <div className="mt-8 space-y-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-3 rounded-xl bg-surface p-3 ring-1 ring-line sm:flex-row sm:items-center sm:justify-between">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar carro, placa, cliente, zona…"
-          className="w-full max-w-md rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
+          className="w-full max-w-md rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
         />
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm text-muted">
-            {visibles.length} de {filas.length}
+            <span className="font-medium tabular-nums text-ink">{visibles.length}</span> de {filas.length}
           </p>
           {!editando ? (
             <>
@@ -266,7 +266,7 @@ export function ListaVehiculos({
                 type="button"
                 disabled={pending}
                 onClick={syncKmHoy}
-                className="rounded-lg px-3 py-2 text-sm text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
                 title="Guarda el km de hoy; el mes es la suma de los días"
               >
                 {pending ? "…" : "Actualizar km"}
@@ -288,8 +288,14 @@ export function ListaVehiculos({
                 onClick={placasDiacor}
                 className="rounded-lg px-3 py-2 text-sm text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
               >
-                {pending ? "…" : "Placas desde Diacor"}
+                {pending ? "…" : "Placas Diacor"}
               </button>
+              <a
+                href="/cartera/rastreo"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+              >
+                Mapa flota
+              </a>
               <button
                 type="button"
                 onClick={entrarEdicion}

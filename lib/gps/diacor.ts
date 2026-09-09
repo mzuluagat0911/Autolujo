@@ -90,12 +90,25 @@ async function post<T>(path: string, body: Record<string, unknown>, token?: stri
   };
   if (token) headers.Authorization = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/${path.replace(/^\//, "")}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      cache: "no-store",
+      signal: AbortSignal.timeout(25_000),
+    });
+  } catch (e) {
+    const name = e instanceof Error ? e.name : "";
+    if (name === "TimeoutError" || name === "AbortError") {
+      throw new DiacorError("Diacor no respondió a tiempo (25 s). Reintentá en un momento.", "timeout");
+    }
+    throw new DiacorError(
+      e instanceof Error ? e.message : "No pude conectar con Diacor.",
+      "network",
+    );
+  }
   let json: unknown = null;
   try {
     json = await res.json();

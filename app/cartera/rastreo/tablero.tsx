@@ -11,6 +11,15 @@ import {
 } from "./actions";
 import type { FilaHistorialGps, PuntoSerie } from "@/lib/gps/historico";
 import type { FilaRastreo } from "@/lib/gps/vincular";
+import {
+  estadoGps,
+  estadoLabel,
+  etiquetaHash,
+  formatFechaGps,
+  formatHoraCarga,
+  tonoEstado,
+} from "@/lib/gps/ui";
+import { MapaFlota } from "./mapa-flota";
 
 function osmEmbed(lat: number, lng: number): string {
   const d = 0.018;
@@ -21,6 +30,12 @@ function mapsUrl(lat: number, lng: number): string {
   return `https://www.google.com/maps?q=${lat},${lng}`;
 }
 
+const TABS = [
+  { id: "mapa" as const, label: "Mapa flota" },
+  { id: "ahora" as const, label: "Lista" },
+  { id: "historico" as const, label: "Histórico" },
+];
+
 export function TableroRastreo({
   inicial,
   resaltarCarro,
@@ -29,7 +44,7 @@ export function TableroRastreo({
   resaltarCarro?: string | null;
 }) {
   const router = useRouter();
-  const [vista, setVista] = useState<"ahora" | "historico">("ahora");
+  const [vista, setVista] = useState<"mapa" | "ahora" | "historico">("mapa");
   const selInicial = useMemo(() => {
     if (resaltarCarro) {
       const key = resaltarCarro.toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -48,11 +63,27 @@ export function TableroRastreo({
   const [hist, setHist] = useState<FilaHistorialGps[]>(inicial.historial);
   const [selH, setSelH] = useState<string | null>(inicial.historial[0]?.id_dispositivo ?? null);
   const [serie, setSerie] = useState<PuntoSerie[]>([]);
+  const [qLista, setQLista] = useState("");
 
   const fila = useMemo(
     () => inicial.filas.find((f) => f.id_dispositivo === sel) ?? inicial.filas[0] ?? null,
     [inicial.filas, sel],
   );
+
+  const filasLista = useMemo(() => {
+    const qn = qLista.trim().toLowerCase();
+    const rows = [...inicial.filas].sort((a, b) =>
+      (a.carro ?? etiquetaHash(a)).localeCompare(b.carro ?? etiquetaHash(b), "es", { numeric: true }),
+    );
+    if (!qn) return rows;
+    return rows.filter((f) =>
+      [f.carro, f.placa, f.nombre, f.direccion, etiquetaHash(f), f.id_dispositivo]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(qn),
+    );
+  }, [inicial.filas, qLista]);
 
   function vincular() {
     start(async () => {
@@ -86,23 +117,50 @@ export function TableroRastreo({
   const filaH = hist.find((x) => x.id_dispositivo === selH) ?? hist[0] ?? null;
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => setVista("ahora")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${vista === "ahora" ? "bg-ink text-white" : "text-ink ring-1 ring-line hover:bg-surface-2"}`}
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div
+          role="tablist"
+          aria-label="Vistas de rastreo"
+          className="inline-flex rounded-lg bg-surface-2 p-1 ring-1 ring-line"
         >
-          Ahora
-        </button>
-        <button
-          type="button"
-          onClick={() => setVista("historico")}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium ${vista === "historico" ? "bg-ink text-white" : "text-ink ring-1 ring-line hover:bg-surface-2"}`}
-        >
-          Histórico
-        </button>
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={vista === t.id}
+              onClick={() => setVista(t.id)}
+              className={`rounded-md px-3.5 py-1.5 text-sm font-medium transition ${
+                vista === t.id ? "bg-ink text-white" : "text-muted hover:text-ink"
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {inicial.cargadoAt && (
+          <p className="text-[11px] tabular-nums text-muted">
+            Datos Diacor · {formatHoraCarga(inicial.cargadoAt)}
+          </p>
+        )}
       </div>
+
+      {inicial.alertas.length > 0 && vista !== "historico" && (
+        <div className="rounded-xl bg-ambar-wash px-4 py-3 ring-1 ring-ambar/20">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ambar">
+            Alertas de uso · {inicial.alertas.length}
+          </p>
+          <ul className="mt-2 space-y-1.5">
+            {inicial.alertas.map((a) => (
+              <li key={a.id} className="text-sm text-ink">
+                <span className="font-medium">{a.titulo}</span>
+                <span className="text-muted"> — {a.motivo}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {vista === "historico" ? (
         <Historico
@@ -114,64 +172,86 @@ export function TableroRastreo({
           onFecha={cambiarFecha}
           onPick={pickHist}
         />
+      ) : vista === "mapa" ? (
+        <MapaFlota
+          filas={inicial.filas}
+          sel={sel}
+          onPick={setSel}
+          cargadoAt={inicial.cargadoAt}
+        />
       ) : (
-        <div className="space-y-6">
-          <div className="flex flex-wrap items-center gap-3">
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 rounded-xl bg-surface p-3 ring-1 ring-line sm:flex-row sm:items-center">
+            <div className="relative min-w-[12rem] flex-1">
+              <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" aria-hidden>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="11" cy="11" r="7" />
+                  <path d="M20 20l-3-3" />
+                </svg>
+              </span>
+              <input
+                value={qLista}
+                onChange={(e) => setQLista(e.target.value)}
+                placeholder="Buscar carro, placa o dirección…"
+                className="w-full rounded-lg bg-paper py-2 pl-9 pr-3 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink/20"
+              />
+            </div>
+            <p className="text-sm text-muted sm:mr-auto">
+              <span className="font-medium tabular-nums text-ink">{filasLista.length}</span> de{" "}
+              {inicial.filas.length}
+            </p>
             <button
               type="button"
               onClick={vincular}
               disabled={pending}
-              className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
             >
-              {pending ? "Vinculando…" : "Amarrar GPS"}
+              {pending ? "Amarrando…" : "Amarrar GPS"}
             </button>
-            <p className="text-xs text-muted">
-              El km del día lo guarda el cron; se ve en Carros (Km hoy / Km mes).
-            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setVista("mapa");
+              }}
+              className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:bg-black"
+            >
+              Ver en mapa
+            </button>
           </div>
-          {msg && <p className="text-sm text-muted">{msg}</p>}
 
-          {inicial.alertas.length > 0 && (
-            <div className="rounded-xl bg-ambar-wash px-4 py-3 ring-1 ring-ambar/20">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-ambar">Alertas de uso</p>
-              <ul className="mt-2 space-y-1.5">
-                {inicial.alertas.map((a) => (
-                  <li key={a.id} className="text-sm text-ink">
-                    <span className="font-medium">{a.titulo}</span>
-                    <span className="text-muted"> — {a.motivo}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+          {msg && <p className="text-sm text-muted">{msg}</p>}
+          {inicial.porVincular > 0 && (
+            <p className="text-xs text-ambar">
+              {inicial.porVincular} dispositivo{inicial.porVincular === 1 ? "" : "s"} calzan con la flota y
+              aún no tienen gps_id. Usá “Amarrar GPS”.
+            </p>
           )}
 
-          {fila?.latitud != null && fila.longitud != null ? (
-            <Mapa
+          {fila?.latitud != null && fila.longitud != null && (
+            <MapaDetalle
               titulo={fila.carro ?? fila.nombre ?? fila.placa ?? fila.id_dispositivo}
               lat={fila.latitud}
               lng={fila.longitud}
               direccion={fila.direccion}
+              estado={estadoGps(fila)}
+              velocidad={fila.velocidad}
             />
-          ) : (
-            <p className="rounded-xl bg-surface px-4 py-8 text-center text-sm text-muted ring-1 ring-line">
-              Seleccione un carro con coordenadas para ver el mapa.
-            </p>
           )}
 
-          <div className="overflow-x-auto rounded-xl ring-1 ring-line">
+          <div className="overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-line text-left text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
                   <th className="px-4 py-3">Carro</th>
-                  <th className="px-4 py-3">Diacor</th>
-                  <th className="px-4 py-3">Señal</th>
+                  <th className="px-4 py-3">Estado</th>
                   <th className="px-4 py-3">Vel.</th>
                   <th className="px-4 py-3">Última</th>
                   <th className="px-4 py-3">Dónde</th>
+                  <th className="px-4 py-3">Diacor</th>
                 </tr>
               </thead>
               <tbody>
-                {inicial.filas.map((f) => (
+                {filasLista.map((f) => (
                   <Fila
                     key={f.id_dispositivo}
                     f={f}
@@ -179,10 +259,12 @@ export function TableroRastreo({
                     onPick={() => setSel(f.id_dispositivo)}
                   />
                 ))}
-                {inicial.filas.length === 0 && (
+                {filasLista.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-muted">
-                      Diacor no devolvió dispositivos en esta cuenta.
+                    <td colSpan={6} className="px-4 py-10 text-center text-muted">
+                      {inicial.filas.length === 0
+                        ? "Diacor no devolvió dispositivos en esta cuenta."
+                        : "Ningún carro coincide con la búsqueda."}
                     </td>
                   </tr>
                 )}
@@ -213,36 +295,65 @@ function Historico({
   onPick: (id: string) => void;
 }) {
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-3">
+    <div className="space-y-4">
+      <div className="flex flex-col gap-3 rounded-xl bg-surface p-3 ring-1 ring-line sm:flex-row sm:items-end">
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Día</span>
           <input
             type="date"
             value={fecha}
             onChange={(e) => onFecha(e.target.value)}
-            className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+            className="rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
           />
         </label>
-        <p className="text-xs text-muted">
-          {pending ? "Cargando…" : `${filas.length} carros ese día. El mes suma el km para el tope de 8.000.`}
+        <p className="pb-1 text-sm text-muted sm:ml-2">
+          {pending ? (
+            "Cargando…"
+          ) : (
+            <>
+              <span className="font-medium tabular-nums text-ink">{filas.length}</span> carros ese día.
+              El mes suma km (tope 8.000).
+            </>
+          )}
         </p>
       </div>
 
       {fila?.latitud != null && fila.longitud != null && (
-        <Mapa titulo={fila.etiqueta} lat={fila.latitud} lng={fila.longitud} direccion={fila.direccion} />
+        <MapaDetalle
+          titulo={fila.etiqueta}
+          lat={fila.latitud}
+          lng={fila.longitud}
+          direccion={fila.direccion}
+        />
       )}
 
       {serie.length > 0 && (
-        <div className="overflow-x-auto rounded-xl ring-1 ring-line">
+        <div className="overflow-hidden rounded-xl bg-surface ring-1 ring-line">
           <p className="border-b border-line px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-            Últimos días · {fila?.etiqueta}
+            Últimos 14 días · {fila?.etiqueta}
           </p>
-          <div className="flex gap-2 overflow-x-auto px-4 py-3">
+          <div className="flex gap-1 overflow-x-auto px-3 py-3">
             {serie.map((s) => (
-              <div key={s.fecha} className="min-w-[4.5rem] text-center">
+              <div
+                key={s.fecha}
+                className={`min-w-[3.25rem] rounded-lg px-2 py-2 text-center ${
+                  s.alerta === "exceso_km_dia"
+                    ? "bg-rojo-wash"
+                    : s.alerta === "sin_recorrido"
+                      ? "bg-ambar-wash"
+                      : "bg-surface-2"
+                }`}
+              >
                 <p className="text-[10px] uppercase tracking-wide text-faint">{s.fecha.slice(8)}</p>
-                <p className={`text-sm tabular-nums ${s.alerta === "exceso_km_dia" ? "text-rojo" : s.alerta === "sin_recorrido" ? "text-ambar" : "text-ink"}`}>
+                <p
+                  className={`mt-0.5 text-sm font-medium tabular-nums ${
+                    s.alerta === "exceso_km_dia"
+                      ? "text-rojo"
+                      : s.alerta === "sin_recorrido"
+                        ? "text-ambar"
+                        : "text-ink"
+                  }`}
+                >
                   {s.km == null ? "—" : Math.round(s.km)}
                 </p>
               </div>
@@ -251,7 +362,7 @@ function Historico({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl ring-1 ring-line">
+      <div className="overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-line text-left text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
@@ -267,12 +378,18 @@ function Historico({
               <tr
                 key={f.id_dispositivo}
                 onClick={() => onPick(f.id_dispositivo)}
-                className={`cursor-pointer border-b border-line last:border-0 ${f.id_dispositivo === fila?.id_dispositivo ? "bg-surface-2" : "hover:bg-surface-2"}`}
+                className={`cursor-pointer border-b border-line last:border-0 ${
+                  f.id_dispositivo === fila?.id_dispositivo ? "bg-surface-2" : "hover:bg-surface-2"
+                }`}
               >
                 <td className="px-4 py-3 font-medium">{f.etiqueta}</td>
-                <td className="px-4 py-3 tabular-nums">{f.km == null ? "—" : `${Math.round(f.km)} km`}</td>
-                <td className={`px-4 py-3 tabular-nums ${f.kmMes > 8000 ? "text-rojo" : "text-muted"}`}>
-                  {Math.round(f.kmMes)}
+                <td className="px-4 py-3 tabular-nums">
+                  {f.km == null ? "—" : `${Math.round(f.km)} km`}
+                </td>
+                <td
+                  className={`px-4 py-3 tabular-nums ${f.kmMes > 8000 ? "font-medium text-rojo" : "text-muted"}`}
+                >
+                  {Math.round(f.kmMes).toLocaleString("es-PA")}
                 </td>
                 <td className="px-4 py-3">
                   {f.alerta === "exceso_km_dia" && <StatusChip tone="crit">+350 km</StatusChip>}
@@ -286,8 +403,9 @@ function Historico({
             ))}
             {filas.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted">
-                  Aún no hay histórico de ese día. El cron de GPS lo va llenando; en Carros podés forzar “Actualizar km”.
+                <td colSpan={5} className="px-4 py-10 text-center text-muted">
+                  Aún no hay histórico de ese día. El cron de GPS lo va llenando; en Carros podés forzar
+                  “Actualizar km”.
                 </td>
               </tr>
             )}
@@ -298,19 +416,42 @@ function Historico({
   );
 }
 
-function Mapa({ titulo, lat, lng, direccion }: { titulo: string; lat: number; lng: number; direccion: string | null }) {
+function MapaDetalle({
+  titulo,
+  lat,
+  lng,
+  direccion,
+  estado,
+  velocidad,
+}: {
+  titulo: string;
+  lat: number;
+  lng: number;
+  direccion: string | null;
+  estado?: ReturnType<typeof estadoGps>;
+  velocidad?: number | null;
+}) {
   return (
-    <div className="overflow-hidden rounded-xl ring-1 ring-line">
-      <iframe title={`Mapa ${titulo}`} src={osmEmbed(lat, lng)} className="h-72 w-full border-0" />
-      <div className="flex items-center justify-between gap-4 border-t border-line px-4 py-3">
-        <p className="min-w-0 truncate text-sm text-muted">{direccion ?? "Sin dirección"}</p>
+    <div className="overflow-hidden rounded-xl bg-surface ring-1 ring-line">
+      <iframe title={`Mapa ${titulo}`} src={osmEmbed(lat, lng)} className="h-56 w-full border-0 sm:h-64" />
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-medium text-ink">{titulo}</p>
+            {estado && <StatusChip tone={tonoEstado(estado)}>{estadoLabel(estado)}</StatusChip>}
+            {velocidad != null && (
+              <span className="text-xs tabular-nums text-muted">{Math.round(velocidad)} km/h</span>
+            )}
+          </div>
+          <p className="mt-0.5 truncate text-xs text-muted">{direccion ?? "Sin dirección"}</p>
+        </div>
         <a
           href={mapsUrl(lat, lng)}
           target="_blank"
           rel="noreferrer"
-          className="shrink-0 text-sm font-medium text-ink underline-offset-2 hover:underline"
+          className="shrink-0 rounded-lg px-3 py-1.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
         >
-          Abrir mapa
+          Maps
         </a>
       </div>
     </div>
@@ -318,6 +459,7 @@ function Mapa({ titulo, lat, lng, direccion }: { titulo: string; lat: number; ln
 }
 
 function Fila({ f, activa, onPick }: { f: FilaRastreo; activa: boolean; onPick: () => void }) {
+  const e = estadoGps(f);
   return (
     <tr
       onClick={onPick}
@@ -327,21 +469,21 @@ function Fila({ f, activa, onPick }: { f: FilaRastreo; activa: boolean; onPick: 
         <p className="font-medium tabular-nums">{f.carro ?? "Sin vincular"}</p>
         <p className="text-xs text-muted">{f.placa ?? "sin placa"}</p>
       </td>
-      <td className="px-4 py-3 text-muted">
-        <p>{f.nombre ?? "—"}</p>
-        <p className="font-mono text-[11px]">{f.id_dispositivo}</p>
-      </td>
       <td className="px-4 py-3">
-        <StatusChip tone={f.gps_en_linea ? "good" : "neutral"}>{f.gps_en_linea ? "En línea" : "Sin señal"}</StatusChip>
+        <StatusChip tone={tonoEstado(e)}>{estadoLabel(e)}</StatusChip>
         {f.encendido === true && <p className="mt-1 text-[11px] text-muted">Encendido</p>}
         {f.encendido === false && <p className="mt-1 text-[11px] text-muted">Apagado</p>}
       </td>
       <td className="px-4 py-3 tabular-nums text-muted">
-        {f.velocidad != null ? `${Math.round(f.velocidad)} km/h` : "—"}
+        {f.velocidad != null ? `${Math.round(f.velocidad)}` : "—"}
       </td>
-      <td className="px-4 py-3 text-xs text-muted">{f.fecha ?? "—"}</td>
+      <td className="px-4 py-3 text-xs tabular-nums text-muted">{formatFechaGps(f.fecha)}</td>
       <td className="max-w-[16rem] px-4 py-3 text-xs text-muted">
         <span className="line-clamp-2">{f.direccion ?? "—"}</span>
+      </td>
+      <td className="px-4 py-3 text-muted">
+        <p className="text-xs">{f.nombre ?? "—"}</p>
+        <p className="font-mono text-[10px] text-faint">{f.id_dispositivo}</p>
       </td>
     </tr>
   );
