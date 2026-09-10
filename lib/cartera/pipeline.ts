@@ -265,7 +265,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       : `- Todavía NO son las 7:00 p.m.: si paga hoy antes de esa hora, conserva el descuento.`,
     ``,
     `DATOS EXACTOS del contrato de ESTE cliente (usa SOLO estos números; nunca inventes ni estimes otros):`,
-    `- Cliente: ${est.clienteNombre} (si te pregunta su nombre o para saludarlo, usa su primer nombre).`,
+    `- Cliente: ${est.clienteNombre}. Tratamiento: ${est.clienteTratamiento || est.clienteNombre.split(" ")[0] || "cliente"} (usa Sr./Sra. SOLO si viene en este tratamiento; si es solo el nombre, no inventes género).`,
     `- Carro: ${est.vehiculoNumero}`,
     `- Cuota diaria pagando PUNTUAL (antes de las 7:00 p.m.): ${m(est.letra)}.`,
     `- Si paga después del corte se le suman ${m(est.penalidad)} (pierde el descuento de ESE día).`,
@@ -533,12 +533,15 @@ export async function devolverAlAgente(conversacionId: string): Promise<void> {
     .eq("id", conversacionId);
 }
 
-/** Marca que la conversación necesita a una persona (escalada del agente). */
+/**
+ * El agente pidió ayuda humana, PERO sigue respondiendo hasta que alguien
+ * pulse “Tomar chat”. Solo marca la campana; no cambia `modo`.
+ */
 export async function marcarEscalada(conversacionId: string, motivo: string | null): Promise<void> {
   const sb = createServerSupabase();
   await sb
     .from("conversaciones")
-    .update({ modo: "humano", necesita_humano: true, motivo_escalada: motivo })
+    .update({ necesita_humano: true, motivo_escalada: motivo })
     .eq("id", conversacionId);
   await arrancarEspera(conversacionId);
 }
@@ -658,7 +661,7 @@ export async function completarMensaje(
 export async function registrarMensaje(opts: {
   conversacionId: string;
   direccion: "in" | "out";
-  tipo?: "text" | "image" | "system";
+  tipo?: "text" | "image" | "system" | "audio";
   texto?: string | null;
   mediaUrl?: string | null;
   waMessageId?: string | null;
@@ -689,7 +692,8 @@ export async function registrarMensaje(opts: {
   });
 
   const resumen =
-    opts.texto ?? (opts.tipo === "image" ? "📷 Comprobante" : "Mensaje");
+    opts.texto ??
+    (opts.tipo === "image" ? "📷 Comprobante" : opts.tipo === "audio" ? "🎤 Nota de voz" : "Mensaje");
   await sb
     .from("conversaciones")
     .update({

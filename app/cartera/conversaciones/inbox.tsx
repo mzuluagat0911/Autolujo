@@ -15,6 +15,7 @@ import {
   accionTomarChat,
   cargarBandeja,
   cargarDetalle,
+  enviarAudioHumano,
   enviarRespuestaHumana,
 } from "./actions";
 import type { ConversacionDetalle, ConversacionLista, FiltroBandeja, Mensaje } from "./types";
@@ -402,7 +403,12 @@ function ConvRow({
           {c.ultimo_texto ?? "Sin mensajes"}
         </p>
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-          {c.necesita_humano && <MiniChip tone="warn">Responder</MiniChip>}
+          {c.necesita_humano && c.modo === "agente" && (
+            <MiniChip tone="warn">Ayuda pedida</MiniChip>
+          )}
+          {c.necesita_humano && c.modo === "humano" && (
+            <MiniChip tone="warn">Responder</MiniChip>
+          )}
           {c.modo === "humano" && !c.necesita_humano && <MiniChip tone="neutral">Humano</MiniChip>}
           {c.modo === "agente" && !c.necesita_humano && <MiniChip tone="good">Agente</MiniChip>}
           {c.no_leidos > 0 && (
@@ -545,18 +551,29 @@ function ChatPanel({
             <button
               type="button"
               disabled={pending}
-              onClick={() => runAccion(accionTomarChat, "Chat tomado")}
-              className="rounded-md bg-ink px-3 py-2 text-xs font-medium text-surface transition hover:bg-black disabled:opacity-50"
+              onClick={() => runAccion(accionTomarChat, "Chat tomado — el agente ya no responde")}
+              className={`rounded-md px-3 py-2 text-xs font-medium text-surface transition hover:bg-black disabled:opacity-50 ${
+                detalle.necesita_humano ? "bg-ambar" : "bg-ink"
+              }`}
             >
-              Tomar chat
+              {detalle.necesita_humano ? "Tomar control" : "Tomar chat"}
             </button>
           )}
         </div>
       </div>
 
-      {detalle.necesita_humano && (
+      {detalle.necesita_humano && !esHumano && (
         <div className="shrink-0 bg-ambar-wash px-4 py-2.5 text-sm text-ambar ring-1 ring-inset ring-ambar/25 sm:px-5">
-          <b className="font-semibold">Necesita respuesta.</b>{" "}
+          <b className="font-semibold">El agente pidió ayuda</b>
+          {detalle.motivo_escalada ? ` — ${detalle.motivo_escalada}` : "."}{" "}
+          Sigue respondiendo lo que puede. Pulsá <b className="font-semibold">Tomar control</b> para
+          callarlo y escribir vos (texto o audio).
+        </div>
+      )}
+
+      {detalle.necesita_humano && esHumano && (
+        <div className="shrink-0 bg-ambar-wash px-4 py-2.5 text-sm text-ambar ring-1 ring-inset ring-ambar/25 sm:px-5">
+          <b className="font-semibold">Lo llevás vos.</b>{" "}
           {detalle.motivo_escalada
             ? `Motivo: ${detalle.motivo_escalada}`
             : "Hay un mensaje del cliente esperando."}
@@ -653,7 +670,10 @@ function Thread({
                     : "bg-gris-wash text-ink"
               }`}
             >
-              {m.signedUrl && (
+              {m.signedUrl && m.tipo === "audio" && (
+                <audio controls src={m.signedUrl} className="mb-2 max-w-full" preload="metadata" />
+              )}
+              {m.signedUrl && m.tipo !== "audio" && (
                 <a href={m.signedUrl} target="_blank" rel="noreferrer" className="mb-2 block">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -715,6 +735,11 @@ function Composer({
 }) {
   const [texto, setTexto] = useState("");
   const [pending, startTransition] = useTransition();
+  const [grabando, setGrabando] = useState(false);
+  const [secs, setSecs] = useState(0);
+  const mediaRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<BlobPart[]>([]);
+  const tickRef = useRef<number | null>(null);
   const puede = esHumano && ventanaAbierta && !pending;
 
   function enviar(raw?: string) {
@@ -729,13 +754,14 @@ function Composer({
     const fd = new FormData();
     fd.set("conversacion_id", conversacionId);
     fd.set("texto", body);
+    setTexto("");
     startTransition(async () => {
       const r = await enviarRespuestaHumana(fd);
       if (!r.ok) {
         onError(r.error ?? "No se pudo enviar.");
+        setTexto(body);
         return;
       }
-      setTexto("");
       await onSent(body);
     });
   }
@@ -752,17 +778,76 @@ function Composer({
     enviar();
   }
 
+  async function iniciarGrabacion() {
+    if (!puede || demo || grabando) return;
+    onError(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferidos = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+      const mime = preferidos.find((m) => MediaRecorder.isTypeSupported(m)) ?? "";
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        if (tickRef.current) window.clearInterval(tickRef.current);
+        tickRef.current = null;
+        setGrabando(false);
+        setSecs(0);
+        void enviarGrabacion(new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" }));
+      };
+      mediaRef.current = rec;
+      rec.start();
+      setGrabando(true);
+      setSecs(0);
+      tickRef.current = window.setInterval(() => setSecs((s) => s + 1), 1000);
+    } catch {
+      onError("No pude usar el micrófono. Revisá el permiso del navegador.");
+    }
+  }
+
+  function detenerGrabacion() {
+    const rec = mediaRef.current;
+    if (rec && rec.state !== "inactive") rec.stop();
+    mediaRef.current = null;
+  }
+
+  async function enviarGrabacion(blob: Blob) {
+    if (blob.size < 200) {
+      onError("La nota quedó vacía. Probá de nuevo.");
+      return;
+    }
+    startTransition(async () => {
+      try {
+        const wav = await blobAWav(blob);
+        const fd = new FormData();
+        fd.set("conversacion_id", conversacionId);
+        fd.set("audio", wav, "nota.wav");
+        const r = await enviarAudioHumano(fd);
+        if (!r.ok) {
+          onError(r.error ?? "No se pudo enviar el audio.");
+          return;
+        }
+        await onSent("🎤 Nota de voz");
+      } catch (e) {
+        onError(e instanceof Error ? e.message : "No se pudo preparar el audio.");
+      }
+    });
+  }
+
   return (
     <div className="shrink-0 border-t border-line bg-surface px-3 py-3 sm:px-5">
       {!esHumano && (
         <p className="mb-2 text-xs text-muted">
-          El agente está manejando este chat. Pulsa <b className="font-medium">Tomar chat</b> para
-          escribir tú.
+          El agente está manejando este chat. Pulsá <b className="font-medium">Tomar control</b> para
+          escribir o mandar audio.
         </p>
       )}
       {esHumano && !ventanaAbierta && (
         <p className="mb-2 rounded-md bg-ambar-wash px-3 py-2 text-xs text-ambar ring-1 ring-ambar/25">
-          Ventana de 24h cerrada. El cliente debe escribir primero para poder responder por texto.
+          Ventana de 24h cerrada. El cliente debe escribir primero para poder responder.
         </p>
       )}
 
@@ -783,6 +868,20 @@ function Composer({
       )}
 
       <form onSubmit={onSubmit} className="flex items-end gap-2">
+        <button
+          type="button"
+          disabled={!puede || demo}
+          onClick={grabando ? detenerGrabacion : iniciarGrabacion}
+          title={grabando ? "Detener y enviar" : "Grabar nota de voz"}
+          aria-label={grabando ? "Detener grabación" : "Grabar audio"}
+          className={`shrink-0 rounded-lg px-3 py-2.5 text-sm font-medium ring-1 transition disabled:opacity-40 ${
+            grabando
+              ? "bg-rojo text-white ring-rojo"
+              : "bg-paper text-ink ring-line hover:bg-surface-2"
+          }`}
+        >
+          {grabando ? `■ ${secs}s` : "🎤"}
+        </button>
         <textarea
           value={texto}
           onChange={(e) => setTexto(e.target.value)}
@@ -790,17 +889,19 @@ function Composer({
           rows={2}
           placeholder={
             !esHumano
-              ? "Toma el chat para escribir…"
+              ? "Tomá el control para escribir…"
               : !ventanaAbierta
                 ? "Ventana de 24h cerrada"
-                : "Escribe tu respuesta… (Enter envía)"
+                : grabando
+                  ? "Grabando… pulsá ■ para enviar"
+                  : "Escribe tu respuesta… (Enter envía)"
           }
-          disabled={!esHumano || !ventanaAbierta || pending}
+          disabled={!esHumano || !ventanaAbierta || pending || grabando}
           className="flex-1 resize-none rounded-lg bg-paper px-3.5 py-2.5 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink/20 disabled:opacity-50"
         />
         <button
           type="submit"
-          disabled={!puede || !texto.trim()}
+          disabled={!puede || !texto.trim() || grabando}
           className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black disabled:opacity-40"
         >
           {pending ? "…" : "Enviar"}
@@ -808,6 +909,56 @@ function Composer({
       </form>
     </div>
   );
+}
+
+/** Convierte la grabación del navegador a WAV PCM (aceptado por WhatsApp). */
+async function blobAWav(blob: Blob): Promise<File> {
+  const ctx = new AudioContext();
+  try {
+    const raw = await blob.arrayBuffer();
+    const audio = await ctx.decodeAudioData(raw.slice(0));
+    const wav = encodeWav(audio);
+    return new File([wav], "nota.wav", { type: "audio/wav" });
+  } finally {
+    await ctx.close().catch(() => undefined);
+  }
+}
+
+function encodeWav(buffer: AudioBuffer): ArrayBuffer {
+  const numCh = 1;
+  const sampleRate = buffer.sampleRate;
+  const samples = buffer.length;
+  const dataSize = samples * numCh * 2;
+  const out = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(out);
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) view.setUint8(off + i, s.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numCh, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numCh * 2, true);
+  view.setUint16(32, numCh * 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  const ch0 = buffer.getChannelData(0);
+  const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+  let offset = 44;
+  for (let i = 0; i < samples; i++) {
+    let s = ch0[i] ?? 0;
+    if (ch1) s = (s + (ch1[i] ?? 0)) / 2;
+    const n = Math.max(-1, Math.min(1, s));
+    view.setInt16(offset, n < 0 ? n * 0x8000 : n * 0x7fff, true);
+    offset += 2;
+  }
+  return out;
 }
 
 function MiniChip({
@@ -840,10 +991,12 @@ function SearchIcon({ className = "" }: { className?: string }) {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      strokeWidth="2"
+      strokeWidth="1.5"
+      aria-hidden
     >
       <circle cx="11" cy="11" r="7" />
-      <path d="M20 20l-3-3" strokeLinecap="round" />
+      <path d="M20 20l-3-3" />
     </svg>
   );
 }
+

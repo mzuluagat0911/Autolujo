@@ -1,8 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
-import { createServerSupabase } from "@/lib/supabase/server";
-import { sendText } from "@/lib/whatsapp/client";
+import { sendText, sendAudioBytes } from "@/lib/whatsapp/client";
 import {
   tomarChat,
   devolverAlAgente,
@@ -10,6 +8,8 @@ import {
   ventanaAbierta,
   marcarLeida,
 } from "@/lib/cartera/pipeline";
+import { createServerSupabase } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
 import type { ConversacionDetalle, ConversacionLista, Mensaje } from "./types";
 import { alertasGpsPendientes, marcarAlertaGpsVista } from "@/lib/gps/revisar-dia";
 import { marcarAlertaSalidaVista, salidasAlertasPendientes, salidasPendientesAval } from "@/lib/cartera/salidas-aplicar";
@@ -101,6 +101,83 @@ export async function enviarRespuestaHumana(
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "No se pudo enviar." };
+  }
+}
+
+/** Envía una nota de voz desde el inbox (mismo hilo de WhatsApp). */
+export async function enviarAudioHumano(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const id = String(formData.get("conversacion_id") ?? "");
+  const file = formData.get("audio");
+  if (!id) return { ok: false, error: "Falta la conversación." };
+  if (!(file instanceof File) || file.size < 1) {
+    return { ok: false, error: "Falta el audio." };
+  }
+  if (file.size > 16 * 1024 * 1024) {
+    return { ok: false, error: "El audio es demasiado pesado (máx. 16 MB)." };
+  }
+
+  try {
+    const sb = createServerSupabase();
+    const { data: conv, error } = await sb
+      .from("conversaciones")
+      .select("wa_numero, ultimo_entrante_at, modo")
+      .eq("id", id)
+      .single();
+    if (error || !conv) return { ok: false, error: "No se encontró la conversación." };
+
+    if ((conv.modo as string) !== "humano") {
+      return { ok: false, error: "Primero toma el chat para poder enviar audio." };
+    }
+
+    if (!ventanaAbierta(conv.ultimo_entrante_at as string | null)) {
+      return {
+        ok: false,
+        error:
+          "La ventana de 24h está cerrada. El cliente debe escribir primero para poder responder.",
+      };
+    }
+
+    const mimeRaw = (file.type || "audio/wav").split(";")[0]!.trim().toLowerCase();
+    const mime =
+      mimeRaw.includes("wav") ? "audio/wav"
+      : mimeRaw.includes("mpeg") || mimeRaw.includes("mp3") ? "audio/mpeg"
+      : mimeRaw.includes("mp4") || mimeRaw.includes("m4a") || mimeRaw.includes("aac") ? "audio/mp4"
+      : mimeRaw.includes("ogg") ? "audio/ogg"
+      : "audio/wav";
+    const ext = mime.includes("mpeg") ? "mp3" : mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "wav";
+    const bytes = Buffer.from(await file.arrayBuffer());
+
+    await sendAudioBytes(conv.wa_numero as string, bytes, mime, `nota.${ext}`);
+
+    const path = `chat-audio/${id}/${Date.now()}.${ext}`;
+    const { error: upErr } = await sb.storage.from("comprobantes").upload(path, bytes, {
+      contentType: mime,
+      upsert: false,
+    });
+    if (upErr) {
+      console.warn("[enviarAudioHumano] storage:", upErr.message);
+    }
+
+    await registrarMensaje({
+      conversacionId: id,
+      direccion: "out",
+      tipo: "audio",
+      texto: "🎤 Nota de voz",
+      mediaUrl: upErr ? null : path,
+      enviadoPor: "Equipo",
+    });
+
+    await sb
+      .from("conversaciones")
+      .update({ necesita_humano: false, no_leidos: 0, escalada_at: null })
+      .eq("id", id);
+
+    revalidar(id);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo enviar el audio." };
   }
 }
 

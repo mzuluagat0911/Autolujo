@@ -24,6 +24,7 @@ import {
 import { ultimoDiaDevengado } from "./devengo";
 import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
 import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
+import { tratamientoCliente } from "./tratamiento";
 
 export function money(n: number): string {
   const v = Math.round(n * 100) / 100;
@@ -37,6 +38,8 @@ export type EstadoCuenta = Cifras & {
   empresaId: string | null;
   empresaNombre: string | null;
   clienteNombre: string;
+  clienteGenero: string | null;
+  clienteTratamiento: string;
   waNumero: string | null;
   pagoHoy: boolean;
   pagoPuntual: boolean;
@@ -75,7 +78,7 @@ type ContratoRow = TerminosCuota & {
     numero: string;
     empresa: { id: string; codigo: string; nombre: string } | null;
   } | null;
-  cliente: { nombre: string; whatsapp: string | null } | null;
+  cliente: { nombre: string; whatsapp: string | null; genero?: string | null } | null;
 };
 
 /**
@@ -205,6 +208,8 @@ function armar(
     empresaId: emp?.id ?? null,
     empresaNombre: emp?.nombre ?? null,
     clienteNombre: c.cliente?.nombre ?? "Sin nombre",
+    clienteGenero: c.cliente?.genero ?? null,
+    clienteTratamiento: tratamientoCliente(c.cliente?.nombre, c.cliente?.genero ?? null),
     waNumero: c.cliente?.whatsapp ?? null,
     pagoHoy: extra.pagoHoy,
     pagoPuntual: extra.pagoPuntual,
@@ -335,6 +340,20 @@ async function nacimientosDe(clienteIds: string[]): Promise<Map<string, string |
   return out;
 }
 
+/** Género (Sr./Sra.). Consulta aparte: si falta la migración 0023, no rompe cartera. */
+async function generosDe(clienteIds: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>();
+  const ids = clienteIds.filter(Boolean);
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const { data, error } = await sb.from("clientes").select("id, genero").in("id", ids);
+  if (error) return out;
+  for (const r of (data ?? []) as { id: string; genero: string | null }[]) {
+    out.set(r.id, r.genero ?? null);
+  }
+  return out;
+}
+
 async function acuerdosActivos(): Promise<Map<string, AcuerdoActivo[]>> {
   const sb = createServerSupabase();
   const { data } = await sb
@@ -359,7 +378,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   if (!c) return null;
   const row = c as unknown as ContratoRow;
 
-  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap] = await Promise.all([
+  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos] = await Promise.all([
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
     pagoHoyContrato(contratoId, hoy),
     sb.from("cargos").select("id").eq("contrato_id", contratoId).eq("fecha", hoy)
@@ -373,7 +392,12 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
       () => Number(row.letra_diaria) || 0,
       () => row.num_cuotas_total ?? null,
     ),
+    generosDe(row.cliente_id ? [row.cliente_id] : []),
   ]);
+
+  if (row.cliente) {
+    row.cliente = { ...row.cliente, genero: generos.get(row.cliente_id!) ?? null };
+  }
 
   const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
   const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy), arregloAplicado);
@@ -490,9 +514,13 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
     (id) => filasContrato.find((c) => c.id === id)?.num_cuotas_total ?? null,
   );
   const nacMap = await nacimientosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
+  const genMap = await generosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
 
   return filasContrato
     .map((c) => {
+      if (c.cliente && c.cliente_id) {
+        c = { ...c, cliente: { ...c.cliente, genero: genMap.get(c.cliente_id) ?? null } };
+      }
       const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(c.id) ?? [], hoy), arregloMap.get(c.id) ?? 0);
       const pagoHoy = pagaronHoy.has(c.id);
       const pagoPuntual = cubrieron.has(c.id);

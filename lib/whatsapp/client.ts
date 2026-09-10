@@ -39,6 +39,51 @@ export function sendText(to: string, body: string) {
   });
 }
 
+/**
+ * Sube un archivo a la Cloud API y devuelve el media id.
+ * Hace falta para audio/imagen saliente (no se manda el binario en el mensaje).
+ */
+export async function uploadWhatsAppMedia(
+  bytes: Buffer,
+  mime: string,
+  filename: string,
+): Promise<string> {
+  const { phoneId, token } = creds();
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mime.split(";")[0]!.trim());
+  form.append("file", new Blob([new Uint8Array(bytes)], { type: mime }), filename);
+
+  const res = await fetch(`${GRAPH}/${phoneId}/media`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`WhatsApp upload media falló (${res.status}): ${err}`);
+  }
+  const json = (await res.json()) as { id?: string };
+  if (!json.id) throw new Error("WhatsApp no devolvió media id.");
+  return json.id;
+}
+
+/** Nota de voz / audio (ventana de 24h). Preferir ogg/opus o mp4/aac. */
+export async function sendAudio(to: string, mediaId: string) {
+  return post({
+    messaging_product: "whatsapp",
+    to,
+    type: "audio",
+    audio: { id: mediaId },
+  });
+}
+
+/** Sube bytes y envía el audio en un solo paso. */
+export async function sendAudioBytes(to: string, bytes: Buffer, mime: string, filename = "nota.ogg") {
+  const id = await uploadWhatsAppMedia(bytes, mime, filename);
+  return sendAudio(to, id);
+}
+
 /** Mensaje de plantilla (para iniciar conversación, ej. estado de cuenta 8am). */
 export function sendTemplate(
   to: string,
