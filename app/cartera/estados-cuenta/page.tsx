@@ -7,7 +7,9 @@ import {
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
+import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas";
 import { PruebaEnvio } from "./prueba";
+import { DeudoresCerrados } from "./deudores-cerrados";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,14 @@ export default async function EstadosCuentaPage() {
     estados = [];
     error = e instanceof Error ? e.message : "Error";
   }
+
+  let cerradas: DeudaCerrada[] = [];
+  try {
+    cerradas = await deudasCerradas();
+  } catch {
+    cerradas = [];
+  }
+  const deudaCerradaTotal = cerradas.reduce((a, d) => a + d.saldo, 0);
 
   const totalACobrar = estados.reduce((a, e) => a + e.totalHoy, 0);
   const conRecargo = estados.filter((e) => e.recargo > 0 || e.recargoSiTarda > 0).length;
@@ -36,10 +46,11 @@ export default async function EstadosCuentaPage() {
         <p className="mt-8 rounded-2xl bg-surface p-6 font-mono text-xs text-muted ring-1 ring-line/60">{error}</p>
       ) : (
         <>
-          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Tarjeta label="Carros" valor={String(estados.length)} />
             <Tarjeta label="Total a cobrar hoy" valor={money(totalACobrar)} />
             <Tarjeta label="Con recargo" valor={String(conRecargo)} />
+            <Tarjeta label="Deuda ex-clientes" valor={money(deudaCerradaTotal)} />
           </div>
 
           <div className="mt-6">
@@ -102,6 +113,16 @@ export default async function EstadosCuentaPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div className="mt-10">
+            <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">
+              Ex-clientes con deuda (contratos cerrados)
+            </h2>
+            <p className="mt-1 text-sm text-muted">
+              Entregaron el carro debiendo. No corre cuota diaria; se cobra el saldo pendiente.
+            </p>
+            <DeudoresCerrados deudas={cerradas} />
           </div>
 
           {estados[0] && (

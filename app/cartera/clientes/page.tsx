@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { PageHeader, StatusChip } from "@/components/kit";
 import { Field, Select, FormCard, SubmitButton } from "@/components/form";
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -99,12 +100,15 @@ export default async function ClientesPage() {
                 <th className="px-5 py-3">Cédula</th>
                 <th className="px-5 py-3">WhatsApp</th>
                 <th className="px-5 py-3">Score</th>
+                <th className="px-5 py-3" />
               </tr>
             </thead>
             <tbody>
               {data.map((c) => (
-                <tr key={c.id} className="border-b border-line bg-surface last:border-0">
-                  <td className="px-5 py-3 font-medium">{c.nombre}</td>
+                <tr key={c.id} className="border-b border-line bg-surface last:border-0 transition hover:bg-surface-2">
+                  <td className="px-5 py-3 font-medium">
+                    <Link href={`/cartera/clientes/${c.id}`} className="hover:underline">{c.nombre}</Link>
+                  </td>
                   <td className="px-5 py-3">
                     {c.genero ? (
                       <StatusChip tone={c.genero === "f" ? "purpura" : "azul"}>
@@ -117,11 +121,14 @@ export default async function ClientesPage() {
                   <td className="px-5 py-3 text-muted">{c.cedula ?? "—"}</td>
                   <td className="px-5 py-3 font-mono text-muted">{c.whatsapp ?? "—"}</td>
                   <td className="px-5 py-3 tabular-nums">{c.score_financiero}</td>
+                  <td className="px-5 py-3 text-right">
+                    <Link href={`/cartera/clientes/${c.id}`} className="text-muted hover:text-ink">ver →</Link>
+                  </td>
                 </tr>
               ))}
               {data.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-muted">
+                  <td colSpan={6} className="px-5 py-8 text-center text-muted">
                     Aún no hay clientes. Creá el primero arriba.
                   </td>
                 </tr>

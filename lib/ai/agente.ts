@@ -2,6 +2,7 @@ import { generateObject } from "ai";
 import { z } from "zod";
 import { modeloTexto } from "./provider";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
+import { clausulasCobroTexto } from "@/lib/cartera/clausulas";
 import { NOMBRE_AGENTE } from "./identidad";
 
 // El agente conversacional de cartera. Habla como una persona real del equipo.
@@ -154,6 +155,17 @@ SI EL CLIENTE DICE QUE "NO DEBE ESO" O RECLAMA EL SALDO (¡NO lo escales de una!
 - Solo si DESPUÉS de tu explicación sigue en desacuerdo, o pide una rebaja/ajuste/acuerdo, ahí sí
   pásalo a una persona (pasar_a_humano = true).
 
+COBRANZA FIRME (esto es cobranza, sé DIRECTO; el CONTEXTO te dice si está en mora fuerte):
+- Si el cliente debe VARIAS cuotas (3 o más) o pide espera / prórroga / "pagar después" / rebaja:
+  sé FIRME y directo, sin ablandarte ni prometer que "no pasa nada". Pídele que CONSIGNE hoy
+  mismo, cuanto antes, a la cuenta de su empresa, y dile el monto exacto que debe.
+- Cuando aplique, menciónale la consecuencia REAL del contrato: 3 cuotas sin pagar permiten dar
+  por terminado el contrato y RETIRAR el vehículo, además de reporte a la APC (buró) y cobro
+  jurídico. Usa SOLO las cláusulas que aparecen en la sección "CLÁUSULAS DE COBRO"; no inventes
+  consecuencias ni montos, y NUNCA amenaces ni faltes el respeto: es firmeza factual citando el contrato.
+- El acuerdo/prórroga en sí lo aprueba una persona (escala), pero en el MISMO mensaje deja claro
+  el monto, la urgencia y la cláusula. Nada de mensajes suaves tipo "con gusto le ayudan".
+
 SI PIDE UNA LLAMADA O DICE "¿PUEDO LLAMAR?" / "LLÁMENME":
 - Dile que lo llaman del equipo, corto. Ej: "Dale, ahora le pido a alguien que lo llame."
   Marca pasar_a_humano = true con motivo "Pidió llamada".
@@ -204,11 +216,13 @@ export async function responderAgente(opts: {
     role: (m.direccion === "in" ? "user" : "assistant") as "user" | "assistant",
     content: m.texto,
   }));
+  // Las cláusulas de cobro son conocimiento fijo: van siempre para poder citarlas.
+  const base = `${SISTEMA}\n\n${clausulasCobroTexto()}`;
   // Con CONTEXTO, el resumen del contrato ya trae la cuenta de la empresa del
   // carro + las oficinas. Sin contexto, damos solo la info general de oficinas.
   const system = opts.contexto
-    ? `${SISTEMA}\n\nCONTEXTO DEL CLIENTE:\n${opts.contexto}`
-    : `${SISTEMA}\n\nMEDIOS DE PAGO (info general):\n${pagoEnOficinaTexto()}\nPara TRANSFERIR, la cuenta depende de la empresa del carro; si no la tienes, pídele el número de carro o dile: "La cuenta se la confirmo en un momento."`;
+    ? `${base}\n\nCONTEXTO DEL CLIENTE:\n${opts.contexto}`
+    : `${base}\n\nMEDIOS DE PAGO (info general):\n${pagoEnOficinaTexto()}\nPara TRANSFERIR, la cuenta depende de la empresa del carro; si no la tienes, pídele el número de carro o dile: "La cuenta se la confirmo en un momento."`;
 
   const { object } = await generateObject({
     model: modeloTexto(),

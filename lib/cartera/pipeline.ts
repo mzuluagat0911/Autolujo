@@ -6,7 +6,8 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
 import { hoyPanama, horaPanama, pasoCorte, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm } from "@/lib/cartera/fecha";
-import { estadoCuentaContrato, money } from "@/lib/cartera/estado-cuenta";
+import { estadoCuentaContrato, money, cuotasAtraso } from "@/lib/cartera/estado-cuenta";
+import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
 import { aplicarPagoEnObligaciones, textoComoSeAplico } from "./aplicar-pago";
@@ -341,6 +342,19 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `- Si pregunta cuánto debe, su saldo, su total, o lo discute: NO le des NINGUNA cifra de`,
       `  saldo/total. Di "El saldo se lo confirmo en un momento" (sin decir "el sistema")`,
       `  y marca pasar_a_humano = true.`,
+    );
+  }
+
+  // Mora fuerte: si debe muchas cuotas, el agente cobra con firmeza y cita la cláusula.
+  const atrasadas = cuotasAtraso(est);
+  if (est.estadoContrato === "activo" && atrasadas >= CUOTAS_PARA_TERMINACION) {
+    lineas.push(
+      ``,
+      `🔴 MORA FUERTE: este cliente debe ${atrasadas} cuotas. COBRA CON FIRMEZA (sin ablandarte):`,
+      `- Dile el monto exacto que debe y pídele que CONSIGNE HOY, cuanto antes, a la cuenta de su empresa.`,
+      `- Recuérdale la cláusula: ${CUOTAS_PARA_TERMINACION} cuotas sin pagar permiten dar por terminado el`,
+      `  contrato y RETIRAR el vehículo, además de reporte a la APC (buró) y cobro jurídico. Cítalo con`,
+      `  respeto pero directo; no amenaces ni inventes otras consecuencias.`,
     );
   }
 
