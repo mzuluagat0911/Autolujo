@@ -3,6 +3,7 @@ import { z } from "zod";
 import { modeloTexto } from "./provider";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
 import { clausulasCobroTexto } from "@/lib/cartera/clausulas";
+import { reglasOperacionesCliente } from "@/lib/operaciones/reglas-cliente";
 import { NOMBRE_AGENTE } from "./identidad";
 
 // El agente conversacional de cartera. Habla como una persona real del equipo.
@@ -216,8 +217,8 @@ export async function responderAgente(opts: {
     role: (m.direccion === "in" ? "user" : "assistant") as "user" | "assistant",
     content: m.texto,
   }));
-  // Las cláusulas de cobro son conocimiento fijo: van siempre para poder citarlas.
-  const base = `${SISTEMA}\n\n${clausulasCobroTexto()}`;
+  // Cláusulas de cobro + reglas de operaciones (cliente): conocimiento fijo, van siempre.
+  const base = `${SISTEMA}\n\n${clausulasCobroTexto()}\n\n${reglasOperacionesCliente()}`;
   // Con CONTEXTO, el resumen del contrato ya trae la cuenta de la empresa del
   // carro + las oficinas. Sin contexto, damos solo la info general de oficinas.
   const system = opts.contexto
