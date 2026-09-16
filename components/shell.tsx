@@ -39,6 +39,15 @@ const NAV: Group[] = [
     ],
   },
   {
+    section: "Operaciones",
+    items: [
+      { label: "Panel", href: "/operaciones", status: "active" },
+      { label: "Licencias", href: "/cartera/licencias", status: "active" },
+      { label: "Mantenimiento", href: "/cartera/mantenimiento", status: "active" },
+      { label: "Placas y revisado", href: "/cartera/placas", status: "active" },
+    ],
+  },
+  {
     section: "Configuración",
     items: [
       { label: "Empresas", href: "/cartera/empresas", status: "active" },
@@ -51,7 +60,6 @@ const NAV: Group[] = [
     section: "Módulos del negocio",
     items: [
       { label: "Comercial y Atención", href: "/comercial", status: "pronto" },
-      { label: "Operaciones", href: "/operaciones", status: "pronto" },
       { label: "Seguros", href: "/seguros", status: "pronto" },
       { label: "Administrativo", href: "/administrativo", status: "pronto" },
     ],

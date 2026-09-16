@@ -184,12 +184,20 @@ export default async function ResumenPage() {
           </div>
         </Band>
 
-        <Band title="Operaciones" status="pronto">
+        <Band title="Operaciones" status="active">
           <div className="grid grid-cols-2 gap-x-10 gap-y-8 lg:grid-cols-4">
-            <Kpi label="Novedades" value="" tone="pronto" />
-            <Kpi label="Flota activa" value="" tone="pronto" />
-            <Kpi label="En taller" value="" tone="pronto" />
-            <Kpi label="Mantenimientos" value="" tone="pronto" />
+            <Link href="/operaciones" className="block transition hover:opacity-80">
+              <Kpi label="Panel" value="→" hint="Licencias · mant. · placas" />
+            </Link>
+            <Link href="/cartera/licencias" className="block transition hover:opacity-80">
+              <Kpi label="Licencias" value="→" hint="Semáforo de vencimiento" />
+            </Link>
+            <Link href="/cartera/mantenimiento" className="block transition hover:opacity-80">
+              <Kpi label="Mantenimiento" value="→" hint="FULL cada 6.000 km" />
+            </Link>
+            <Link href="/cartera/placas" className="block transition hover:opacity-80">
+              <Kpi label="Placas / revisado" value="→" hint="Vencimientos" />
+            </Link>
           </div>
         </Band>
 
@@ -206,7 +214,7 @@ export default async function ResumenPage() {
           <div className="divide-y divide-line border-y border-line">
             <AgentRow nombre="Cartera" estado="activo" nota="WhatsApp · cobra y concilia" />
             <AgentRow nombre="Comercial y Atención" estado="activando" />
-            <AgentRow nombre="Operaciones" estado="activando" />
+            <AgentRow nombre="Operaciones" estado="activo" nota="Licencias · mantenimiento · placas" />
             <AgentRow nombre="Seguros" estado="activando" />
           </div>
         </Band>
