@@ -20,7 +20,7 @@ export default async function LicenciasPage() {
   const rojos = items.filter((i) => i.nivel === "rojo" || i.nivel === "vencido").length;
 
   return (
-    <div className="mx-auto max-w-4xl py-10">
+    <div className="mx-auto max-w-5xl py-10">
       <PageHeader
         eyebrow="Operaciones"
         title="Licencias"
@@ -43,6 +43,7 @@ export default async function LicenciasPage() {
             <thead>
               <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
                 <th className="px-4 py-3 font-medium">Cliente</th>
+                <th className="px-4 py-3 font-medium">Carro</th>
                 <th className="px-4 py-3 font-medium">Vence</th>
                 <th className="px-4 py-3 font-medium">Situación</th>
                 <th className="px-4 py-3 font-medium">Contacto</th>
@@ -53,6 +54,15 @@ export default async function LicenciasPage() {
                 <tr key={i.id} className="border-b border-line last:border-0 hover:bg-surface-2">
                   <td className="px-4 py-3 font-medium">
                     <Link href={`/cartera/clientes/${i.id}`} className="hover:underline">{i.nombre}</Link>
+                  </td>
+                  <td className="px-4 py-3 font-semibold tabular-nums">
+                    {i.vehiculoId && i.carro ? (
+                      <Link href={`/operaciones/hoja-vida/${i.vehiculoId}`} className="hover:underline">
+                        {i.carro}
+                      </Link>
+                    ) : (
+                      <span className="text-muted">—</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 tabular-nums text-muted">{i.fecha}</td>
                   <td className="px-4 py-3"><StatusChip tone={tono(i.nivel)}>{etiqueta(i.dias)}</StatusChip></td>

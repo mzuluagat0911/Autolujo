@@ -4,6 +4,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "@/lib/cartera/fecha";
+import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 
 export const KM_MANTENIMIENTO = 6000;
 export const KM_AVISO = 5000; // "pronto" antes de llegar a los 6.000
@@ -39,7 +40,45 @@ async function clientePorVehiculoActivo(): Promise<Map<string, { nombre: string;
   return out;
 }
 
-export type LicenciaItem = { id: string; nombre: string; contacto: string | null; fecha: string; dias: number; nivel: NivelSemaforo };
+export type LicenciaItem = {
+  id: string;
+  nombre: string;
+  contacto: string | null;
+  fecha: string;
+  dias: number;
+  nivel: NivelSemaforo;
+  carro: string | null;
+  vehiculoId: string | null;
+};
+
+/** Mapa cliente_id → carro del contrato activo. */
+async function carroPorClienteActivo(): Promise<
+  Map<string, { etiqueta: string; vehiculoId: string }>
+> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("contratos")
+    .select("cliente_id, vehiculo:vehiculos(id, numero, empresa:empresas(codigo))")
+    .eq("estado", "activo");
+  const out = new Map<string, { etiqueta: string; vehiculoId: string }>();
+  for (const r of (data ?? []) as unknown as {
+    cliente_id: string;
+    vehiculo: {
+      id: string;
+      numero: string;
+      empresa: { codigo: string } | { codigo: string }[] | null;
+    } | null;
+  }[]) {
+    if (!r.cliente_id || !r.vehiculo) continue;
+    const empRaw = r.vehiculo.empresa;
+    const emp = Array.isArray(empRaw) ? empRaw[0]?.codigo ?? null : empRaw?.codigo ?? null;
+    out.set(r.cliente_id, {
+      etiqueta: etiquetaCarroUi(emp, r.vehiculo.numero),
+      vehiculoId: r.vehiculo.id,
+    });
+  }
+  return out;
+}
 
 export async function licenciasSemaforo(): Promise<{ disponible: boolean; items: LicenciaItem[] }> {
   const sb = createServerSupabase();
@@ -48,11 +87,29 @@ export async function licenciasSemaforo(): Promise<{ disponible: boolean; items:
     .select("id, nombre, whatsapp, telefono, fecha_vencimiento_licencia")
     .not("fecha_vencimiento_licencia", "is", null);
   if (error) return { disponible: false, items: [] };
+
+  const carros = await carroPorClienteActivo();
   const hoy = hoyPanama();
-  const items = ((data ?? []) as unknown as { id: string; nombre: string; whatsapp: string | null; telefono: string | null; fecha_vencimiento_licencia: string }[])
+  const items = ((data ?? []) as unknown as {
+    id: string;
+    nombre: string;
+    whatsapp: string | null;
+    telefono: string | null;
+    fecha_vencimiento_licencia: string;
+  }[])
     .map((c) => {
       const dias = diasHasta(c.fecha_vencimiento_licencia, hoy);
-      return { id: c.id, nombre: c.nombre, contacto: c.whatsapp ?? c.telefono ?? null, fecha: c.fecha_vencimiento_licencia, dias, nivel: nivelPorDias(dias) };
+      const carro = carros.get(c.id);
+      return {
+        id: c.id,
+        nombre: c.nombre,
+        contacto: c.whatsapp ?? c.telefono ?? null,
+        fecha: c.fecha_vencimiento_licencia,
+        dias,
+        nivel: nivelPorDias(dias),
+        carro: carro?.etiqueta ?? null,
+        vehiculoId: carro?.vehiculoId ?? null,
+      };
     })
     .sort((a, b) => a.dias - b.dias);
   return { disponible: true, items };
