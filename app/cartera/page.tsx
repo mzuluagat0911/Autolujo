@@ -101,7 +101,7 @@ export default async function PanelCartera() {
 
           {/* Cubetas del día — el trabajo */}
           <div>
-            <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">El día de hoy</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">El día de hoy</h2>
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Cubeta label="Al día" valor={d.alDia} tono="good" hint="Pagaron hoy" />
               <Cubeta label="Sin pago hoy" valor={d.sinPagoHoy} tono="warn" hint="Por cobrar / llamar" href="/cartera/por-llamar" />
@@ -118,7 +118,7 @@ export default async function PanelCartera() {
 
           {/* Accesos del módulo */}
           <div>
-            <h2 className="font-mono text-xs font-semibold uppercase tracking-[0.16em] text-muted">Herramientas</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Herramientas</h2>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <Acceso href="/cartera/por-llamar" titulo="Por llamar" desc="Quién debe hoy y no ha pagado" />
               <Acceso href="/cartera/conversaciones" titulo="Conversaciones" desc="Los chats del agente con cada arrendatario" />

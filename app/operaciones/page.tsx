@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PageHeader, Kpi, SubCard } from "@/components/kit";
+import { PageHeader, Kpi, SubCard, PageShell } from "@/components/kit";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
   KM_MANTENIMIENTO,
@@ -25,7 +25,7 @@ export default async function OperacionesPage() {
   const revCrit = rev.items.filter((i) => i.nivel === "vencido" || i.nivel === "rojo").length;
 
   return (
-    <div className="pb-16">
+    <PageShell>
       <PageHeader
         eyebrow="Operaciones"
         title="Operaciones"
@@ -88,6 +88,6 @@ export default async function OperacionesPage() {
           Ir a Carros
         </Link>
       </p>
-    </div>
+    </PageShell>
   );
 }

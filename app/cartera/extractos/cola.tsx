@@ -6,7 +6,7 @@ import {
   loteIgnorarSeleccionados,
   resolverMovimientoExtracto,
 } from "./actions";
-import { StatusChip, Money } from "@/components/kit";
+import { StatusChip, Money, EmptyState } from "@/components/kit";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import type { ResultadoRevision } from "@/lib/cartera/revision-extracto";
 
@@ -56,9 +56,10 @@ export function ColaRevision({ movimientos }: { movimientos: MovimientoRevision[
 
   if (movimientos.length === 0) {
     return (
-      <p className="rounded-xl bg-surface px-5 py-10 text-center text-sm text-muted ring-1 ring-line">
-        Nada por revisar. Al subir un extracto, lo que no calce perfecto aparece aquí.
-      </p>
+      <EmptyState
+        title="Nada por revisar"
+        hint="Al subir un extracto, lo que no calce perfecto aparece aquí."
+      />
     );
   }
 

@@ -90,6 +90,8 @@ function seccionDeRuta(pathname: string): string | null {
 // Rutas públicas (sin menú ni chrome de la app): landing y páginas legales.
 const RUTAS_PUBLICAS = ["/", "/privacidad", "/terminos", "/ingreso"];
 
+const NAV_STORAGE = "autolujo:nav-abiertas";
+
 export function Shell({
   children,
   equipo,
@@ -101,10 +103,35 @@ export function Shell({
   const [open, setOpen] = useState(false);
   const seccionActiva = seccionDeRuta(pathname);
   const [abiertas, setAbiertas] = useState<Record<string, boolean>>({});
+  const [navListo, setNavListo] = useState(false);
 
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  // Restaurar qué secciones el usuario dejó abiertas.
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(NAV_STORAGE);
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, boolean>;
+        if (parsed && typeof parsed === "object") setAbiertas(parsed);
+      }
+    } catch {
+      /* ignore */
+    }
+    setNavListo(true);
+  }, []);
+
+  // Persistir toggles del acordeón.
+  useEffect(() => {
+    if (!navListo) return;
+    try {
+      sessionStorage.setItem(NAV_STORAGE, JSON.stringify(abiertas));
+    } catch {
+      /* ignore */
+    }
+  }, [abiertas, navListo]);
 
   // La sección de la ruta actual siempre queda abierta.
   useEffect(() => {

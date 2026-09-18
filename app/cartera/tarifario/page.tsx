@@ -1,5 +1,5 @@
 import { createServerSupabase } from "@/lib/supabase/server";
-import { PageHeader } from "@/components/kit";
+import { PageHeader, EmptyState } from "@/components/kit";
 import { Field, Select, SubmitButton, FormCard } from "@/components/form";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { createTarifa } from "./actions";
@@ -85,11 +85,18 @@ export default async function TarifarioPage() {
         <p className="mt-4 rounded-xl bg-surface p-4 font-mono text-xs text-muted ring-1 ring-line/60">
           {error}
         </p>
+      ) : tarifas.length === 0 ? (
+        <div className="mt-4">
+          <EmptyState
+            title="Aún no hay tarifas"
+            hint="Agregá la primera arriba (ej. $25 para carro 2020)."
+          />
+        </div>
       ) : (
         <div className="mt-4 overflow-x-auto rounded-2xl bg-surface ring-1 ring-line/60">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-line text-left font-mono text-[11px] uppercase tracking-wide text-muted">
+              <tr className="border-b border-line text-left text-[11px] uppercase tracking-wide text-muted">
                 <th className="px-5 py-3">Empresa</th>
                 <th className="px-5 py-3">Modelo</th>
                 <th className="px-5 py-3">Año</th>
@@ -111,13 +118,6 @@ export default async function TarifarioPage() {
                   </td>
                 </tr>
               ))}
-              {tarifas.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-muted">
-                    Aún no hay tarifas. Agrega la primera arriba (ej. $25 para carro 2020).
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>

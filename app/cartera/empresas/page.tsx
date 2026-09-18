@@ -46,7 +46,7 @@ export default async function EmpresasPage() {
         <div className="mt-6 overflow-x-auto rounded-xl border border-line">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-line bg-surface text-left font-mono text-xs uppercase tracking-wide text-muted">
+              <tr className="border-b border-line bg-surface text-left text-xs uppercase tracking-wide text-muted">
                 <th className="px-5 py-3">Sigla</th>
                 <th className="px-5 py-3">Nombre</th>
                 <th className="px-5 py-3">Rango de carros</th>

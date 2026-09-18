@@ -16,13 +16,13 @@ Esto es lo que **existe hoy**. No crees `components/ui/`. No uses tokens que no 
 | Qué | Dónde |
 |---|---|
 | Tokens CSS / Tailwind | `app/globals.css` (`@theme`) |
-| Encabezado, KPI, chips, empty, cards de módulo | `components/kit.tsx` |
+| Encabezado, KPI, chips, empty, FiltersBar, PageShell, Toast | `components/kit.tsx` |
 | Inputs, select, submit, form card | `components/form.tsx` |
 | Sidebar, layout, tema claro/oscuro | `components/shell.tsx` |
 | Logo sidebar | `components/brand.tsx` |
 | Fuentes | `app/layout.tsx` |
 
-**No hay** (aún): `Button`, `Badge`, `Tabs`, `Toggle`, `Stepper`, Lucide, ni carpeta `components/ui/`. **Sí hay** `FiltersBar` / `FilterChip` en `kit.tsx`. Si hace falta un patrón nuevo, reutiliza `kit`/`form` o extiende esos archivos y actualiza esta skill.
+**No hay** (aún): `Button`, `Badge`, `Toggle`, `Stepper`, Lucide, ni carpeta `components/ui/`. **Sí hay** `FiltersBar` / `FilterChip` / `PageShell` / `Toast` / `Tabs` en `kit.tsx`. Si hace falta un patrón nuevo, reutiliza `kit`/`form` o extiende esos archivos y actualiza esta skill.
 
 ## 1. Principios
 1. **Blanco de base, negro para acción y texto.** Color en dosis pequeñas con significado.
@@ -125,20 +125,31 @@ Patrón canónico: `FiltersBar` + `FilterChip` en `kit.tsx`.
 ```
 - Search: `rounded-lg ring-1 ring-line`, focus `ring-ink/20`.
 - Chip activo: `bg-ink text-white`. Inactivo: `ring-line text-muted`.
-- Contador opcional en el label (`Crítico · 8`).
-- Ejemplo de uso: Carros, Estado de cuenta, Licencias/Mant/Placas.
+- Contador opcional (`label · n`); no se muestra en `todos`/`todas`.
+- Varios grupos: prop `chipGroups` (ej. flota + estado en Rastreo).
+- Variante `bare`: sin card, para paneles que ya tienen borde (Inbox).
+- Usado en: Carros, Estado de cuenta, Licencias/Mant/Placas, Inbox, Pagos, Rastreo.
 
-### Filtros / búsqueda (legado)
-Patrón: input con lupa + chips de estado. Ejemplo histórico en `inbox.tsx` (migrar a `FiltersBar` cuando se toque).
+### `PageShell`
+Anchos: `list` (`max-w-6xl`) · `form` (`max-w-3xl`) · `fluid`. `mx-auto py-10`.
 
-### Tablas
-Header 11–12px `text-muted`. Filas `border-b border-line hover:bg-surface-2`, `px-4 py-3`. Contenedor `rounded-xl ring-1 ring-line overflow-x-auto`. Empty: `EmptyState`.
+### `Toast`
+Presentacional, fijo abajo-derecha. `tone`: `neutral` | `good` | `warn` | `crit`. El padre controla show/hide.
+
+### Tipografía mono
+`font-mono` solo para datos monoespaciados (placas, IDs, dumps de error). **No** en labels de sección ni headers de tabla.
+
+### `EmptyState`
+`title` · `hint?` · `action?` (CTA opcional, ej. link o botón). Bordes dashed. Usar siempre en listas vacías / filtros sin match.
 
 ### Chat (`inbox.tsx`)
-Sin avatares. Entrante: `bg-gris-wash text-ink rounded-2xl`. Saliente: `bg-ink text-white`, alineado a la derecha. Sistema: `bg-rojo-wash text-rojo`. Timestamp 10px muted. Composer: textarea + `Enviar` primario.
+Sin avatares. Entrante: `bg-gris-wash text-ink rounded-2xl`. Saliente: `bg-ink text-white`, alineado a la derecha. Sistema: `bg-rojo-wash text-rojo`. Timestamp 10px muted. Composer: textarea + `Enviar` primario. Toast con componente `Toast` del kit.
 
 ### Sidebar (`shell.tsx`)
-Ancho **17.5rem (280px)**, fondo **negro**, texto blanco. Secciones (**Cartera**, **Operaciones**, etc.) son **acordeón**: clic en el label gold uppercase + chevron despliega/oculta los ítems. **Resumen** queda siempre visible (sin sección). La sección de la ruta actual se abre sola. Activo: `text-gold` + barra gold 2px a la izquierda. Inactivo: `text-white/60 hover:text-white`. Drawer bajo `md`. Topbar móvil negra. **No hay íconos Lucide** en nav (solo label + chevron SVG inline). `ThemeToggle` abajo.
+Ancho **17.5rem (280px)**, fondo **negro**, texto blanco. Secciones (**Cartera**, **Operaciones**, etc.) son **acordeón**: clic en el label gold uppercase + chevron despliega/oculta los ítems. **Resumen** queda siempre visible (sin sección). La sección de la ruta actual se abre sola. El estado abierto/cerrado se **persiste en `sessionStorage`** (`autolujo:nav-abiertas`). Activo: `text-gold` + barra gold 2px a la izquierda. Inactivo: `text-white/60 hover:text-white`. Drawer bajo `md`. Topbar móvil negra. **No hay íconos Lucide** en nav (solo label + chevron SVG inline). `ThemeToggle` abajo.
+
+### `Tabs`
+Controlados en `kit.tsx`. Activo: `border-ink` + texto ink. Contador opcional. Ejemplo: Conciliación (Revisión · Subir · Historial).
 
 ### Formularios (`form.tsx`)
 `Field`, `Select`, `SubmitButton`, `FormCard`. Label 11px uppercase muted. Input `rounded-lg ring-1 ring-line`. Error: `text-rojo` + ring rojo.
@@ -146,11 +157,11 @@ Ancho **17.5rem (280px)**, fondo **negro**, texto blanco. Secciones (**Cartera**
 ## 5b–5i. El resto (sin alucinar componentes)
 
 - **Íconos:** SVG inline outline 16px, `strokeWidth` 1.5. No emoji como ícono de UI (emoji solo en copy/chat).
-- **Layout:** `main` padding `px-5 sm:px-8 lg:px-12`. Algunas páginas envuelven `max-w-6xl mx-auto py-10`. Tablas `overflow-x-auto`. Sin scroll horizontal del body.
+- **Layout:** `main` padding `px-5 sm:px-8 lg:px-12`. Preferí `PageShell` para anchos. Tablas `overflow-x-auto`. Sin scroll horizontal del body.
 - **Movimiento:** 150–200ms hover; respeta `prefers-reduced-motion` (ya en `globals.css`).
 - **Copy es-PA:** sentence case. Fechas con `Intl` `es-PA`. Botones dicen la acción.
 - **A11y:** contraste ink/muted sobre blanco; focus visible; color + texto en estados; `aria-label` en botones solo-ícono.
-- **No hay** toasts/modales/steppers/gráficas como componentes compartidos. Si los añades: toast abajo-derecha, semántica en el ícono; modal overlay `bg-black/40`.
+- **Modales:** overlay `bg-black/40`. Toasts: componente `Toast` en `kit.tsx`.
 
 ## 6. Do / Don't
 - ✅ Color solo para estado/categoría. ❌ Fondos grandes de color.
@@ -159,9 +170,10 @@ Ancho **17.5rem (280px)**, fondo **negro**, texto blanco. Secciones (**Cartera**
 - ✅ Inter en dashboard. ❌ `font-serif` / PT Serif / Montserrat en `/admin` y `/cartera`.
 - ✅ Importar de `@/components/kit` y `@/components/form`. ❌ Inventar `components/ui/Button`.
 - ✅ Tokens `paper`, `ink`, `verde`, `ambar`… ❌ `--color-bg` u otros nombres que no están en `@theme`.
+- ✅ `FiltersBar` / `PageShell` / `Toast` del kit. ❌ Reinventar barras de filtro o toasts ad-hoc.
 
 ## 7. Cómo aplicar
 1. Parte de blanco + negro; color solo en chips/estados según §2.
-2. Reutiliza `PageHeader`, `Kpi`, `StatusChip`, `EmptyState`, `Field`.
+2. Reutiliza `PageHeader`, `PageShell`, `Kpi`, `StatusChip`, `EmptyState`, `FiltersBar`, `Tabs`, `Toast`, `Field`.
 3. Si falta un patrón, impleméntalo en `kit`/`form` y actualiza **esta** skill (y `.cursor/skills/design-system/SKILL.md`).
 4. No copies la landing al dashboard ni al revés.

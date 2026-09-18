@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { PageHeader } from "@/components/kit";
+import { PageHeader, PageShell, EmptyState } from "@/components/kit";
 import { salidasDePagos } from "@/lib/cartera/salidas-aplicar";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { ListaComprobantes, type ContratoOpt, type PagoFila } from "./lista";
@@ -135,7 +135,7 @@ export default async function PagosPage() {
   const alertas = pendientes.filter((p) => p.alertaCuenta).length;
 
   return (
-    <div className="mx-auto max-w-5xl pb-16">
+    <PageShell>
       <PageHeader
         eyebrow="Cartera"
         title="Comprobantes"
@@ -156,13 +156,22 @@ export default async function PagosPage() {
 
       <div className="mt-6">
         {pendientes.length === 0 && !error ? (
-          <p className="rounded-xl bg-surface px-5 py-10 text-center text-sm text-muted ring-1 ring-line">
-            Nada pendiente. Los comprobantes de WhatsApp aparecen aquí hasta que el extracto los cruce.
-          </p>
+          <EmptyState
+            title="Nada pendiente"
+            hint="Los comprobantes de WhatsApp aparecen aquí hasta que el extracto los cruce."
+            action={
+              <Link
+                href="/cartera/extractos"
+                className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
+              >
+                Ir a Conciliación
+              </Link>
+            }
+          />
         ) : (
           <ListaComprobantes pendientes={pendientes} contratos={contratos} />
         )}
       </div>
-    </div>
+    </PageShell>
   );
 }

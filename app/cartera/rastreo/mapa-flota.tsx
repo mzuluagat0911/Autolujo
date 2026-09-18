@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Map as LeafletMap, LayerGroup } from "leaflet";
-import { StatusChip } from "@/components/kit";
+import { StatusChip, FiltersBar } from "@/components/kit";
 import { destinoTarifaCercano, etiquetaZona } from "@/lib/cartera/salidas-geo";
 import type { FilaRastreo } from "@/lib/gps/vincular";
 import {
@@ -259,78 +259,56 @@ export function MapaFlota({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl bg-surface p-3 ring-1 ring-line sm:flex-row sm:flex-wrap sm:items-center">
-        <div className="relative min-w-[12rem] flex-1">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" aria-hidden>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <circle cx="11" cy="11" r="7" />
-              <path d="M20 20l-3-3" />
-            </svg>
-          </span>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar carro o placa…"
-            className="w-full rounded-lg bg-paper py-2 pl-9 pr-3 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink/20"
-          />
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(["todas", "AL", "KW", "GD"] as const).map((k) => (
+      <FiltersBar
+        search={{ value: q, onChange: setQ }}
+        searchPlaceholder="Buscar carro o placa…"
+        chipGroups={[
+          {
+            chips: [
+              { id: "todas", label: "Todas" },
+              { id: "AL", label: "AL" },
+              { id: "KW", label: "KW" },
+              { id: "GD", label: "GD" },
+            ],
+            active: flota,
+            onChip: (id) => setFlota(id as FlotaFiltro),
+          },
+          {
+            chips: [
+              { id: "todos", label: "Todos" },
+              { id: "movimiento", label: "Movimiento" },
+              { id: "detenido", label: "Detenidos" },
+              { id: "sin_senal", label: "Sin señal" },
+            ],
+            active: estado,
+            onChip: (id) => setEstado(id as EstadoFiltro),
+          },
+        ]}
+        actions={
+          <>
+            {cargadoAt && (
+              <p className="text-[11px] tabular-nums text-muted">
+                Diacor · {formatHoraCarga(cargadoAt)}
+              </p>
+            )}
             <button
-              key={k}
               type="button"
-              onClick={() => setFlota(k)}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${flota === k ? "bg-ink text-white" : "text-muted ring-1 ring-line hover:bg-surface-2 hover:text-ink"}`}
+              onClick={actualizar}
+              disabled={refreshing}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
             >
-              {k === "todas" ? "Todas" : k}
+              {refreshing ? "Actualizando…" : "Actualizar"}
             </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          {(
-            [
-              ["todos", "Todos"],
-              ["movimiento", "Movimiento"],
-              ["detenido", "Detenidos"],
-              ["sin_senal", "Sin señal"],
-            ] as const
-          ).map(([k, label]) => (
             <button
-              key={k}
               type="button"
-              onClick={() => setEstado(k)}
-              className={`rounded-lg px-2.5 py-1.5 text-xs font-medium ${estado === k ? "bg-ink text-white" : "text-muted ring-1 ring-line hover:bg-surface-2 hover:text-ink"}`}
+              onClick={copiarInforme}
+              className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white hover:bg-black"
             >
-              {label}
+              {copiado ? "Copiado" : "Copiar informe"}
             </button>
-          ))}
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-          {cargadoAt && (
-            <p className="text-[11px] tabular-nums text-muted">
-              Diacor · {formatHoraCarga(cargadoAt)}
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={actualizar}
-            disabled={refreshing}
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-          >
-            {refreshing ? "Actualizando…" : "Actualizar"}
-          </button>
-          <button
-            type="button"
-            onClick={copiarInforme}
-            className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white hover:bg-black"
-          >
-            {copiado ? "Copiado" : "Copiar informe"}
-          </button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
         <span className="text-muted">

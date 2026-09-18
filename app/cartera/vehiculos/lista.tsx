@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { StatusChip, FiltersBar } from "@/components/kit";
+import { StatusChip, FiltersBar, EmptyState } from "@/components/kit";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import {
   guardarEdicionMasiva,
@@ -264,45 +264,56 @@ export function ListaVehiculos({
               <>
                 <button
                   type="button"
-                  disabled={pending}
-                  onClick={syncKmHoy}
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-                  title="Guarda el km de hoy; el mes es la suma de los días"
-                >
-                  {pending ? "…" : "Actualizar km"}
-                </button>
-                {sinKmMes > 40 && (
-                  <button
-                    type="button"
-                    disabled={pending}
-                    onClick={syncKmMes}
-                    className="rounded-lg px-3 py-2 text-sm text-muted ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-                    title="Solo si faltan días del mes en gps_dias"
-                  >
-                    Rellenar mes
-                  </button>
-                )}
-                <button
-                  type="button"
-                  disabled={pending}
-                  onClick={placasDiacor}
-                  className="rounded-lg px-3 py-2 text-sm text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-                >
-                  {pending ? "…" : "Placas Diacor"}
-                </button>
-                <a
-                  href="/cartera/rastreo"
-                  className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
-                >
-                  Mapa flota
-                </a>
-                <button
-                  type="button"
                   onClick={entrarEdicion}
                   className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-surface hover:bg-black"
                 >
                   Editar ficha
                 </button>
+                {/* Desktop: todas las acciones secundarias visibles */}
+                <div className="hidden flex-wrap items-center gap-2 sm:flex">
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={syncKmHoy}
+                    className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                    title="Guarda el km de hoy; el mes es la suma de los días"
+                  >
+                    {pending ? "…" : "Actualizar km"}
+                  </button>
+                  {sinKmMes > 40 && (
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={syncKmMes}
+                      className="rounded-lg px-3 py-2 text-sm text-muted ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                      title="Solo si faltan días del mes en gps_dias"
+                    >
+                      Rellenar mes
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={placasDiacor}
+                    className="rounded-lg px-3 py-2 text-sm text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                  >
+                    {pending ? "…" : "Placas Diacor"}
+                  </button>
+                  <a
+                    href="/cartera/rastreo"
+                    className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+                  >
+                    Mapa flota
+                  </a>
+                </div>
+                {/* Móvil: secundarias detrás de «Más» */}
+                <MasAccionesMovil
+                  pending={pending}
+                  sinKmMes={sinKmMes}
+                  onKmHoy={syncKmHoy}
+                  onKmMes={syncKmMes}
+                  onPlacas={placasDiacor}
+                />
               </>
             ) : (
               <>
@@ -330,6 +341,9 @@ export function ListaVehiculos({
 
       {msg && <p className="text-sm text-muted">{msg}</p>}
 
+      {visibles.length === 0 ? (
+        <EmptyState title="Nada calza con ese filtro" hint="Probá otro chip o búsqueda." />
+      ) : (
       <div className="overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
         <table className="w-full text-sm">
           <thead>
@@ -514,16 +528,10 @@ export function ListaVehiculos({
                 </tr>
               );
             })}
-            {visibles.length === 0 && (
-              <tr>
-                <td colSpan={10} className="px-5 py-10 text-center text-muted">
-                  Nada calza con ese filtro.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       </div>
+      )}
       <p className="text-xs text-muted">
         Carros no llama a Diacor en cada visita: el histórico y el amarre viven acá; el mapa en vivo en{" "}
         <Link href="/cartera/rastreo" className="underline-offset-2 hover:underline">
@@ -562,4 +570,88 @@ function HoyChip({ v }: { v: FilaVehiculo }) {
   ].filter(Boolean);
 
   return <StatusChip tone={tone}>{bits.join(" · ")}</StatusChip>;
+}
+
+/** En móvil, las acciones secundarias van detrás de «Más» para no pelear con el search. */
+function MasAccionesMovil({
+  pending,
+  sinKmMes,
+  onKmHoy,
+  onKmMes,
+  onPlacas,
+}: {
+  pending: boolean;
+  sinKmMes: number;
+  onKmHoy: () => void;
+  onKmMes: () => void;
+  onPlacas: () => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+
+  return (
+    <div className="relative sm:hidden">
+      <button
+        type="button"
+        onClick={() => setAbierto((v) => !v)}
+        aria-expanded={abierto}
+        className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+      >
+        Más{abierto ? " ·" : ""}
+      </button>
+      {abierto && (
+        <>
+          <button
+            type="button"
+            aria-label="Cerrar menú"
+            className="fixed inset-0 z-10 cursor-default"
+            onClick={() => setAbierto(false)}
+          />
+          <div className="absolute right-0 z-20 mt-1 min-w-[11rem] overflow-hidden rounded-lg bg-surface py-1 shadow-lg ring-1 ring-line">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setAbierto(false);
+                onKmHoy();
+              }}
+              className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
+            >
+              Actualizar km
+            </button>
+            {sinKmMes > 40 && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setAbierto(false);
+                  onKmMes();
+                }}
+                className="block w-full px-3 py-2 text-left text-sm text-muted hover:bg-surface-2 disabled:opacity-50"
+              >
+                Rellenar mes
+              </button>
+            )}
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setAbierto(false);
+                onPlacas();
+              }}
+              className="block w-full px-3 py-2 text-left text-sm text-ink hover:bg-surface-2 disabled:opacity-50"
+            >
+              Placas Diacor
+            </button>
+            <a
+              href="/cartera/rastreo"
+              className="block w-full px-3 py-2 text-left text-sm font-medium text-ink hover:bg-surface-2"
+              onClick={() => setAbierto(false)}
+            >
+              Mapa flota
+            </a>
+          </div>
+        </>
+      )}
+    </div>
+  );
 }

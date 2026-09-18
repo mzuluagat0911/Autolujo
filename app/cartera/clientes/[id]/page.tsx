@@ -100,6 +100,11 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
 
       {/* Contratos del cliente */}
       <h2 className="mt-8 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Contratos</h2>
+      {contratos.length === 0 ? (
+        <div className="mt-3">
+          <EmptyState title="Sin contratos" hint="Cuando se asigne un carro, el contrato aparecerá aquí." />
+        </div>
+      ) : (
       <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         {contratos.map((c) => (
           <div key={c.id} className="rounded-xl bg-surface p-4 ring-1 ring-line">
@@ -111,8 +116,8 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
             <p className="mt-2 text-sm">Saldo: <span className="font-semibold tabular-nums"><Money amount={saldoMap.get(c.id) ?? 0} /></span></p>
           </div>
         ))}
-        {contratos.length === 0 && <p className="text-sm text-muted">Sin contratos.</p>}
       </div>
+      )}
 
       {/* Histórico de pagos */}
       <h2 className="mt-10 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Histórico de pagos</h2>

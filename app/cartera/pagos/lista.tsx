@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { StatusChip, Money } from "@/components/kit";
+import { StatusChip, Money, FiltersBar, EmptyState } from "@/components/kit";
 import { accionDarAval, asignarPagoASalida, resolverPago } from "./actions";
 import { TARIFAS_SALIDA_INTERIOR } from "@/lib/cartera/salidas-interior";
 import type { SalidaFila } from "@/lib/cartera/salidas-aplicar";
@@ -94,32 +94,19 @@ export function ListaComprobantes({
     });
   }, [pendientes, filtro]);
 
-  const chips: { id: Filtro; label: string }[] = [
-    { id: "todos", label: `Todos (${pendientes.length})` },
-    { id: "banco", label: `Esperando banco (${counts.banco})` },
-    { id: "alerta", label: `Alerta cuenta (${counts.alerta})` },
-    { id: "contrato", label: `Sin contrato (${counts.contrato})` },
-    { id: "interior", label: `Interior (${counts.interior})` },
-  ];
-
   return (
     <div>
-      <div className="flex flex-wrap gap-2">
-        {chips.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => setFiltro(c.id)}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
-              filtro === c.id
-                ? "bg-ink text-white ring-ink"
-                : "bg-surface text-muted ring-line hover:bg-surface-2"
-            }`}
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
+      <FiltersBar
+        chips={[
+          { id: "todos", label: "Todos", count: pendientes.length },
+          { id: "banco", label: "Esperando banco", count: counts.banco },
+          { id: "alerta", label: "Alerta cuenta", count: counts.alerta },
+          { id: "contrato", label: "Sin contrato", count: counts.contrato },
+          { id: "interior", label: "Interior", count: counts.interior },
+        ]}
+        activeChip={filtro}
+        onChip={(id) => setFiltro(id as Filtro)}
+      />
 
       <p className="mt-3 text-sm text-muted">
         El cierre con el banco está en{" "}
@@ -130,9 +117,9 @@ export function ListaComprobantes({
       </p>
 
       {filas.length === 0 ? (
-        <p className="mt-4 rounded-xl bg-surface px-5 py-8 text-center text-sm text-muted ring-1 ring-line">
-          Nada en este filtro.
-        </p>
+        <div className="mt-4">
+          <EmptyState title="Nada en este filtro" hint="No hay comprobantes que coincidan." />
+        </div>
       ) : (
         <div className="mt-4 divide-y divide-line overflow-hidden rounded-xl bg-surface ring-1 ring-line">
           {filas.map((p) => (

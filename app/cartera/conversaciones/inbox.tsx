@@ -32,6 +32,7 @@ import {
   tiempoRelativo,
   tituloConv,
 } from "./utils";
+import { FiltersBar, Toast } from "@/components/kit";
 
 const RESPUESTAS_RAPIDAS = [
   "Recibí su mensaje, le confirmo en un momento.",
@@ -62,7 +63,7 @@ export function InboxConversaciones({
   const [detalle, setDetalle] = useState<ConversacionDetalle | null>(seleccionInicial ?? null);
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [configError] = useState<string | null>(errorInicial ?? null);
-  const [toast, setToast] = useState<{ tone: "ok" | "err"; text: string } | null>(null);
+  const [toast, setToast] = useState<{ tone: "good" | "crit"; text: string } | null>(null);
 
   // Sync URL (preserva ?demo=1).
   useEffect(() => {
@@ -111,7 +112,7 @@ export function InboxConversaciones({
     };
   }, [selectedId, demo]);
 
-  function showToast(tone: "ok" | "err", text: string) {
+  function showToast(tone: "good" | "crit", text: string) {
     setToast({ tone, text });
     window.setTimeout(() => setToast(null), 3200);
   }
@@ -129,7 +130,7 @@ export function InboxConversaciones({
     const { detalle: d, error: err } = await cargarDetalle(id);
     setCargandoDetalle(false);
     if (err) {
-      showToast("err", err);
+      showToast("crit", err);
       return;
     }
     setDetalle(d);
@@ -183,44 +184,19 @@ export function InboxConversaciones({
           }`}
         >
           <div className="shrink-0 space-y-3 border-b border-line p-3">
-            <label className="relative block">
-              <span className="sr-only">Buscar</span>
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Buscar carro, cliente o teléfono…"
-                className="w-full rounded-lg bg-paper py-2.5 pl-9 pr-3 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink/20"
-              />
-              <SearchIcon className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
-            </label>
-            <div className="flex gap-1 overflow-x-auto pb-0.5">
-              {(
-                [
-                  ["todas", "Todas"],
-                  ["responder", "Responder"],
-                  ["humano", "En humano"],
-                  ["agente", "Agente"],
-                ] as const
-              ).map(([key, label]) => {
-                const active = filtro === key;
-                const n = contadores[key];
-                return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setFiltro(key)}
-                    className={`shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium uppercase tracking-[0.08em] transition ${
-                      active
-                        ? "bg-ink text-surface"
-                        : "bg-paper text-muted ring-1 ring-line hover:text-ink"
-                    }`}
-                  >
-                    {label}
-                    {n > 0 && key !== "todas" ? ` · ${n}` : ""}
-                  </button>
-                );
-              })}
-            </div>
+            <FiltersBar
+              variant="bare"
+              search={{ value: q, onChange: setQ }}
+              searchPlaceholder="Buscar carro, cliente o teléfono…"
+              chips={[
+                { id: "todas", label: "Todas", count: contadores.todas },
+                { id: "responder", label: "Responder", count: contadores.responder },
+                { id: "humano", label: "En humano", count: contadores.humano },
+                { id: "agente", label: "Agente", count: contadores.agente },
+              ]}
+              activeChip={filtro}
+              onChip={(id) => setFiltro(id as FiltroBandeja)}
+            />
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto">
@@ -297,7 +273,7 @@ export function InboxConversaciones({
                 if (d) setDetalle(d);
                 setConvs(next);
               }}
-              onFlash={(msg) => showToast("ok", msg)}
+              onFlash={(msg) => showToast("good", msg)}
               onLocalPatch={(patch) => {
                 setDetalle((prev) => (prev ? { ...prev, ...patch } : prev));
                 setConvs((prev) =>
@@ -331,13 +307,11 @@ export function InboxConversaciones({
       </div>
 
       {toast && (
-        <div
-          className={`fixed bottom-4 left-1/2 z-50 -translate-x-1/2 rounded-md px-4 py-2.5 text-sm shadow-lg ${
-            toast.tone === "err" ? "bg-crit text-white" : "bg-ink text-surface"
-          }`}
-        >
-          {toast.text}
-        </div>
+        <Toast
+          message={toast.text}
+          tone={toast.tone}
+          onDismiss={() => setToast(null)}
+        />
       )}
     </div>
   );
@@ -982,21 +956,4 @@ function MiniChip({
   );
 }
 
-function SearchIcon({ className = "" }: { className?: string }) {
-  return (
-    <svg
-      className={className}
-      width="14"
-      height="14"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      aria-hidden
-    >
-      <circle cx="11" cy="11" r="7" />
-      <path d="M20 20l-3-3" />
-    </svg>
-  );
-}
 

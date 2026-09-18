@@ -53,7 +53,7 @@ export function DeudoresCerrados({ deudas }: { deudas: DeudaCerrada[] }) {
       <div className="overflow-x-auto rounded-2xl bg-surface ring-1 ring-line/60">
         <table className="w-full min-w-[40rem] text-sm">
           <thead>
-            <tr className="border-b border-line text-left font-mono text-[11px] uppercase tracking-wide text-muted">
+            <tr className="border-b border-line text-left text-[11px] uppercase tracking-wide text-muted">
               <th className="px-4 py-3 whitespace-nowrap">Carro</th>
               <th className="px-4 py-3">Ex-cliente</th>
               <th className="px-4 py-3">Estado</th>
