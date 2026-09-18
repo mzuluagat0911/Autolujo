@@ -128,7 +128,7 @@ Header 11–12px `text-muted`. Filas `border-b border-line hover:bg-surface-2`, 
 Sin avatares. Entrante: `bg-gris-wash text-ink rounded-2xl`. Saliente: `bg-ink text-white`, alineado a la derecha. Sistema: `bg-rojo-wash text-rojo`. Timestamp 10px muted. Composer: textarea + `Enviar` primario.
 
 ### Sidebar (`shell.tsx`)
-Ancho **17.5rem (280px)**, fondo **negro**, texto blanco. Sección en gold uppercase. Activo: `text-gold` + barra gold 2px a la izquierda. Inactivo: `text-white/60 hover:text-white`. Drawer bajo `md`. Topbar móvil negra. **No hay íconos Lucide** en nav (solo label). `ThemeToggle` abajo.
+Ancho **17.5rem (280px)**, fondo **negro**, texto blanco. Secciones (**Cartera**, **Operaciones**, etc.) son **acordeón**: clic en el label gold uppercase + chevron despliega/oculta los ítems. **Resumen** queda siempre visible (sin sección). La sección de la ruta actual se abre sola. Activo: `text-gold` + barra gold 2px a la izquierda. Inactivo: `text-white/60 hover:text-white`. Drawer bajo `md`. Topbar móvil negra. **No hay íconos Lucide** en nav (solo label + chevron SVG inline). `ThemeToggle` abajo.
 
 ### Formularios (`form.tsx`)
 `Field`, `Select`, `SubmitButton`, `FormCard`. Label 11px uppercase muted. Input `rounded-lg ring-1 ring-line`. Error: `text-rojo` + ring rojo.

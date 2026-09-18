@@ -69,7 +69,22 @@ const NAV: Group[] = [
 
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
+  // Paneles raíz: solo exacto (si no, /cartera marca todo Cartera).
+  if (href === "/admin" || href === "/cartera" || href === "/operaciones") {
+    return pathname === href;
+  }
   return pathname === href || pathname.startsWith(href + "/");
+}
+
+function seccionDeRuta(pathname: string): string | null {
+  for (const g of NAV) {
+    if (!g.section) continue;
+    for (const item of g.items) {
+      if (item.status === "pronto") continue;
+      if (isActive(pathname, item.href)) return g.section;
+    }
+  }
+  return null;
 }
 
 // Rutas públicas (sin menú ni chrome de la app): landing y páginas legales.
@@ -84,10 +99,28 @@ export function Shell({
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const seccionActiva = seccionDeRuta(pathname);
+  const [abiertas, setAbiertas] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  // La sección de la ruta actual siempre queda abierta.
+  useEffect(() => {
+    if (!seccionActiva) return;
+    setAbiertas((prev) => (prev[seccionActiva] ? prev : { ...prev, [seccionActiva]: true }));
+  }, [seccionActiva]);
+
+  function toggleSeccion(nombre: string) {
+    setAbiertas((prev) => ({ ...prev, [nombre]: !prev[nombre] }));
+  }
+
+  function estaAbierta(nombre: string) {
+    if (abiertas[nombre] != null) return abiertas[nombre]!;
+    // Primera visita: abierta solo la sección de la ruta actual.
+    return nombre === seccionActiva;
+  }
 
   // Páginas públicas: sin barra lateral ni topbar.
   if (RUTAS_PUBLICAS.some((r) => pathname === r || pathname.startsWith(r + "/"))) {
@@ -122,21 +155,50 @@ export function Shell({
                 ? group.items
                 : group.items.filter((i) => i.href !== "/usuarios" && i.href !== "/admin/metas");
             if (items.length === 0) return null;
-            return (
-            <div key={gi} className={gi > 0 ? "mt-8" : undefined}>
-              {group.section && (
-                <div className="mb-3 px-3 text-[10px] font-medium uppercase tracking-[0.28em] text-gold/80">
-                  {group.section}
+
+            // Resumen y links sueltos: siempre visibles.
+            if (!group.section) {
+              return (
+                <div key={gi} className={gi > 0 ? "mt-6" : undefined}>
+                  <ul>
+                    {items.map((item) => (
+                      <li key={item.href}>
+                        <NavRow item={item} active={isActive(pathname, item.href)} />
+                      </li>
+                    ))}
+                  </ul>
                 </div>
-              )}
-              <ul>
-                {items.map((item) => (
-                  <li key={item.href}>
-                    <NavRow item={item} active={isActive(pathname, item.href)} />
-                  </li>
-                ))}
-              </ul>
-            </div>
+              );
+            }
+
+            const abierta = estaAbierta(group.section);
+            const enEsta = seccionActiva === group.section;
+
+            return (
+              <div key={gi} className="mt-5">
+                <button
+                  type="button"
+                  onClick={() => toggleSeccion(group.section!)}
+                  aria-expanded={abierta}
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left transition hover:bg-white/[0.04] ${
+                    enEsta ? "text-gold" : "text-gold/80"
+                  }`}
+                >
+                  <span className="text-[10px] font-medium uppercase tracking-[0.28em]">
+                    {group.section}
+                  </span>
+                  <ChevronIcon open={abierta} />
+                </button>
+                {abierta && (
+                  <ul className="mt-1">
+                    {items.map((item) => (
+                      <li key={item.href}>
+                        <NavRow item={item} active={isActive(pathname, item.href)} />
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             );
           })}
         </nav>
@@ -262,6 +324,22 @@ function MenuIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
       <path d="M3 6h18M3 12h18M3 18h18" strokeLinecap="round" />
+    </svg>
+  );
+}
+function ChevronIcon({ open }: { open: boolean }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.5"
+      className={`shrink-0 text-gold/60 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+      aria-hidden
+    >
+      <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
