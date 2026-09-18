@@ -378,8 +378,14 @@ export function ListaVehiculos({
               return (
                 <tr key={v.id} className="border-b border-line last:border-0 hover:bg-surface-2/60">
                   <td className="px-5 py-3 font-medium tabular-nums">
-                    {v.empresa ? `${siglaEmpresa(v.empresa)} · ` : ""}
-                    {v.numero}
+                    <Link
+                      href={`/operaciones/hoja-vida/${v.id}`}
+                      className="hover:underline"
+                      title="Hoja de vida"
+                    >
+                      {v.empresa ? `${siglaEmpresa(v.empresa)} · ` : ""}
+                      {v.numero}
+                    </Link>
                   </td>
                   <td className="px-5 py-3">
                     {editando ? (
@@ -540,7 +546,11 @@ export function ListaVehiculos({
         <Link href="/cartera/rastreo" className="underline-offset-2 hover:underline">
           Rastreo
         </Link>
-        . Marca/modelo/año se cargan desde la Hoja de vida (script) o con «Editar ficha».
+        . Marca/modelo/año se cargan desde la Hoja de vida o con «Editar ficha». El número del carro abre su{" "}
+        <Link href="/operaciones/hoja-vida" className="underline-offset-2 hover:underline">
+          hoja de vida
+        </Link>
+        .
       </p>
     </div>
   );

@@ -42,6 +42,7 @@ const NAV: Group[] = [
     section: "Operaciones",
     items: [
       { label: "Panel", href: "/operaciones", status: "active" },
+      { label: "Hoja de vida", href: "/operaciones/hoja-vida", status: "active" },
       { label: "Licencias", href: "/cartera/licencias", status: "active" },
       { label: "Mantenimiento", href: "/cartera/mantenimiento", status: "active" },
       { label: "Placas y revisado", href: "/cartera/placas", status: "active" },

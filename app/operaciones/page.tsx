@@ -29,7 +29,7 @@ export default async function OperacionesPage() {
       <PageHeader
         eyebrow="Operaciones"
         title="Operaciones"
-        subtitle="Licencias, mantenimiento FULL cada 6.000 km y placas/revisado."
+        subtitle="Hoja de vida, licencias, mantenimiento FULL cada 6.000 km y placas/revisado."
       />
 
       <div className="mt-8 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -58,7 +58,12 @@ export default async function OperacionesPage() {
         En taller ahora: <span className="font-medium tabular-nums text-ink">{taller.count ?? 0}</span>
       </p>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-3">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <SubCard
+          href="/operaciones/hoja-vida"
+          title="Hoja de vida"
+          desc="Historial editable del carro: mantos, chapistería, entregas y novedades."
+        />
         <SubCard
           href="/cartera/licencias"
           title="Licencias"

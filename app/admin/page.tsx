@@ -186,8 +186,8 @@ export default async function ResumenPage() {
 
         <Band title="Operaciones" status="active">
           <div className="grid grid-cols-2 gap-x-10 gap-y-8 lg:grid-cols-4">
-            <Link href="/operaciones" className="block transition hover:opacity-80">
-              <Kpi label="Panel" value="→" hint="Licencias · mant. · placas" />
+            <Link href="/operaciones/hoja-vida" className="block transition hover:opacity-80">
+              <Kpi label="Hoja de vida" value="→" hint="Historial editable del carro" />
             </Link>
             <Link href="/cartera/licencias" className="block transition hover:opacity-80">
               <Kpi label="Licencias" value="→" hint="Semáforo de vencimiento" />
@@ -214,7 +214,7 @@ export default async function ResumenPage() {
           <div className="divide-y divide-line border-y border-line">
             <AgentRow nombre="Cartera" estado="activo" nota="WhatsApp · cobra y concilia" />
             <AgentRow nombre="Comercial y Atención" estado="activando" />
-            <AgentRow nombre="Operaciones" estado="activo" nota="Licencias · mantenimiento · placas" />
+            <AgentRow nombre="Operaciones" estado="activo" nota="Hoja de vida · licencias · mant. · placas" />
             <AgentRow nombre="Seguros" estado="activando" />
           </div>
         </Band>

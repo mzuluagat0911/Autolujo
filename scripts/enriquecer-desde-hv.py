@@ -26,9 +26,12 @@ warnings.filterwarnings("ignore")
 
 COMMIT = "--commit" in sys.argv
 ROOT = Path(__file__).resolve().parents[1]
-HOJA = ROOT / "Hoja de vida carros Autolujo Actualizadas 2025.xlsx"
-if not HOJA.exists():
-    HOJA = Path.home() / "Downloads" / "Hoja de vida carros Autolujo Actualizadas 2025.xlsx"
+CANDIDATOS = [
+    Path.home() / "Downloads" / "Hoja de vida carros Autolujo Actualizadas 2025 (1).xlsx",
+    Path.home() / "Downloads" / "Hoja de vida carros Autolujo Actualizadas 2025.xlsx",
+    ROOT / "Hoja de vida carros Autolujo Actualizadas 2025.xlsx",
+]
+HOJA = next((p for p in CANDIDATOS if p.exists()), CANDIDATOS[0])
 
 env: dict[str, str] = {}
 for line in (ROOT / ".env.local").read_text().splitlines():
@@ -155,7 +158,7 @@ def extract_placa(text: str) -> str | None:
         p = placa_ok(m.group(1))
         if p:
             scored.append((0, p))
-    for m in re.finditer(r"PLACA(?:\s+PARTICULAR)?\s+([A-Za-z]{1,3}\d{3,4})", t, re.I):
+    for m in re.finditer(r"PLACA(?:\s+PARTICULAR)?\s*:?\s*([A-Za-z]{1,3}\d{3,4})", t, re.I):
         p = placa_ok(m.group(1))
         if p:
             scored.append((1, p))
@@ -173,6 +176,23 @@ def extract_placa(text: str) -> str | None:
             scored.append((1, p))
     scored.sort()
     return scored[0][1] if scored else None
+
+
+def infer_desde_bitacora(blob: str) -> tuple[str | None, str | None, int | None]:
+    """Señales débiles de las primeras filas (retiro concesionario, etc.)."""
+    u = re.sub(r"\s+", " ", str(blob).upper())
+    marca = modelo = anio = None
+    # Compra / retiro en Hyundai → flota histórica Grand i10
+    if re.search(r"(RETIRA|SALE|SALIO|SALIDA).{0,40}HYUNDAI|DE LA HYUNDAI|HUYNDAI", u):
+        marca = "Hyundai"
+        modelo = "Grand i10"
+    elif re.search(r"\bSOLUTO\b", u) or (re.search(r"\bKIA\b", u) and re.search(r"NUEVO\s*20", u)):
+        marca = "Kia"
+        modelo = "Soluto"
+    m = re.search(r"NUEVO\s*(20(?:1[6-9]|2[0-8]))", u)
+    if m:
+        anio = int(m.group(1))
+    return marca, modelo, anio
 
 
 SKIP_SHEET = re.compile(r"VENDID|PERDIDA|MOTO|TRASPASO", re.I)
@@ -197,24 +217,27 @@ def leer_hoja_vida() -> dict[str, dict]:
         km = None
         # Solo título + primeras filas (ficha de alta), no toda la bitácora
         fuentes_ficha = [name]
+        blob_inicio: list[str] = []
 
-        for i, row in enumerate(ws.iter_rows(max_row=12, max_col=4, values_only=True), 1):
+        for i, row in enumerate(ws.iter_rows(max_row=20, max_col=4, values_only=True), 1):
             for cell in row:
                 if cell is None:
                     continue
                 s = str(cell)
+                if i <= 15:
+                    blob_inicio.append(s[:800])
                 if i == 1 and isinstance(cell, str) and "CARRO" in cell.upper():
                     title = cell.strip()
                     fuentes_ficha.append(title)
                 if i <= 4:
                     # ficha / alta / contrato corto
                     if i <= 2 or re.search(
-                        r"CARRO|KIA|GRAND|SOLUTO|HYUNDAI|PLACA|CHASIS|👉🏼|👉",
+                        r"CARRO|KIA|GRAND|SOLUTO|HYUNDAI|HUYNDAI|PLACA|CHASIS|👉🏼|👉",
                         s,
                         re.I,
                     ):
                         fuentes_ficha.append(s[:1200])
-                if placa is None and i <= 6:
+                if placa is None and i <= 12:
                     p = extract_placa(s)
                     if p:
                         placa = p
@@ -258,6 +281,13 @@ def leer_hoja_vida() -> dict[str, dict]:
         if an:
             anio = an
 
+        # Si el título no trae ficha, inferir de retiro en concesionario / NUEVO20xx
+        if not marca or not modelo:
+            ma, mo, an = infer_desde_bitacora(" ".join(blob_inicio))
+            marca = marca or ma
+            modelo = modelo or mo
+            anio = anio or an
+
         # Si hay Kia/Soluto o Grand i10 en título sin año, no inventar
         rec = {
             "numero": key,
@@ -284,6 +314,7 @@ def leer_hoja_vida() -> dict[str, dict]:
 
 
 def main() -> None:
+    print(f"Excel: {HOJA}")
     fichas = leer_hoja_vida()
     print(f"Hojas útiles: {len(fichas)}")
     print(
