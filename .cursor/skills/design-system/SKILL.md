@@ -22,7 +22,7 @@ Esto es lo que **existe hoy**. No crees `components/ui/`. No uses tokens que no 
 | Logo sidebar | `components/brand.tsx` |
 | Fuentes | `app/layout.tsx` |
 
-**No hay** (aún): `Button`, `Badge`, `FiltersBar`, `Tabs`, `Toggle`, `Stepper`, Lucide, ni carpeta `components/ui/`. Si hace falta un patrón nuevo, reutiliza `kit`/`form` o extiende esos archivos y actualiza esta skill.
+**No hay** (aún): `Button`, `Badge`, `Tabs`, `Toggle`, `Stepper`, Lucide, ni carpeta `components/ui/`. **Sí hay** `FiltersBar` / `FilterChip` en `kit.tsx`. Si hace falta un patrón nuevo, reutiliza `kit`/`form` o extiende esos archivos y actualiza esta skill.
 
 ## 1. Principios
 1. **Blanco de base, negro para acción y texto.** Color en dosis pequeñas con significado.
@@ -119,7 +119,17 @@ Eyebrow 11px muted uppercase · título 24–28 bold · subtítulo 14 muted · `
 Card `rounded-xl ring-1 ring-line`. Label uppercase muted. Valor `text-2xl` (hero `text-4xl`–`5xl`). `tone`: `default` | `good` | `warn` | `crit` | `pronto`.
 
 ### Filtros / búsqueda
-Patrón: input con lupa + chips de estado. Ejemplo en `inbox.tsx`. Search: `rounded-lg ring-1 ring-line`, focus ink.
+Patrón canónico: `FiltersBar` + `FilterChip` en `kit.tsx`.
+```
+[ 🔍 search ]  [chip] [chip] …     [acciones]
+```
+- Search: `rounded-lg ring-1 ring-line`, focus `ring-ink/20`.
+- Chip activo: `bg-ink text-white`. Inactivo: `ring-line text-muted`.
+- Contador opcional en el label (`Crítico · 8`).
+- Ejemplo de uso: Carros, Estado de cuenta, Licencias/Mant/Placas.
+
+### Filtros / búsqueda (legado)
+Patrón: input con lupa + chips de estado. Ejemplo histórico en `inbox.tsx` (migrar a `FiltersBar` cuando se toque).
 
 ### Tablas
 Header 11–12px `text-muted`. Filas `border-b border-line hover:bg-surface-2`, `px-4 py-3`. Contenedor `rounded-xl ring-1 ring-line overflow-x-auto`. Empty: `EmptyState`.

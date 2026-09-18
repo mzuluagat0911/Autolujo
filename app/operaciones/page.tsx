@@ -65,17 +65,17 @@ export default async function OperacionesPage() {
           desc="Historial editable del carro: mantos, chapistería, entregas y novedades."
         />
         <SubCard
-          href="/cartera/licencias"
+          href="/operaciones/licencias"
           title="Licencias"
           desc="Semáforo por vencimiento. Rojo 0–30 días; si vence, apagar o retirar."
         />
         <SubCard
-          href="/cartera/mantenimiento"
+          href="/operaciones/mantenimiento"
           title="Mantenimiento"
           desc={`FULL cada ${KM_MANTENIMIENTO.toLocaleString("es-PA")} km. Citar los que ya llegaron.`}
         />
         <SubCard
-          href="/cartera/placas"
+          href="/operaciones/placas"
           title="Placas y revisado"
           desc="Vencimiento del revisado y retiro de sticker hasta el 30."
         />

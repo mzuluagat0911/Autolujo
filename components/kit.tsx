@@ -182,3 +182,94 @@ export function SubCard({
     </Link>
   );
 }
+
+/** Chip de filtro (activo = tinta negra). */
+export function FilterChip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 rounded-lg px-3 py-1.5 text-sm transition ${
+        active
+          ? "bg-ink font-medium text-white"
+          : "bg-paper text-muted ring-1 ring-line hover:text-ink"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export type FilterChipItem = { id: string; label: string; count?: number };
+
+/**
+ * Barra canónica de filtros del dashboard:
+ * [ buscar ]  [chip] [chip] …   [acciones]
+ */
+export function FiltersBar({
+  search,
+  searchPlaceholder = "Buscar…",
+  chips,
+  activeChip,
+  onChip,
+  actions,
+  className = "",
+}: {
+  search?: { value: string; onChange: (v: string) => void };
+  searchPlaceholder?: string;
+  chips?: FilterChipItem[];
+  activeChip?: string;
+  onChip?: (id: string) => void;
+  actions?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`flex flex-col gap-3 rounded-xl bg-surface p-3 ring-1 ring-line sm:flex-row sm:flex-wrap sm:items-center ${className}`}
+    >
+      {search && (
+        <label className="relative block min-w-0 flex-1 sm:max-w-md">
+          <span className="sr-only">Buscar</span>
+          <input
+            value={search.value}
+            onChange={(e) => search.onChange(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="w-full rounded-lg bg-paper py-2.5 pl-9 pr-3 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
+          />
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-faint"
+            aria-hidden
+          >
+            <circle cx="11" cy="11" r="7" />
+            <path d="M20 20l-3-3" strokeLinecap="round" />
+          </svg>
+        </label>
+      )}
+      {chips && chips.length > 0 && onChip && (
+        <div className="flex flex-wrap gap-1.5">
+          {chips.map((c) => (
+            <FilterChip key={c.id} active={activeChip === c.id} onClick={() => onChip(c.id)}>
+              {c.label}
+              {c.count != null && c.id !== "todas" && c.count > 0 ? ` · ${c.count}` : ""}
+            </FilterChip>
+          ))}
+        </div>
+      )}
+      {actions && <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{actions}</div>}
+    </div>
+  );
+}

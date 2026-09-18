@@ -3,7 +3,7 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { StatusChip } from "@/components/kit";
+import { StatusChip, FiltersBar } from "@/components/kit";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import {
   guardarEdicionMasiva,
@@ -249,103 +249,86 @@ export function ListaVehiculos({
 
   return (
     <div className="mt-8 space-y-4">
-      <div className="flex flex-col gap-3 rounded-xl bg-surface p-3 ring-1 ring-line sm:flex-row sm:items-center sm:justify-between">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar carro, placa, cliente, zona…"
-          className="w-full max-w-md rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm text-muted">
-            <span className="font-medium tabular-nums text-ink">{visibles.length}</span> de {filas.length}
-          </p>
-          {!editando ? (
-            <>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={syncKmHoy}
-                className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-                title="Guarda el km de hoy; el mes es la suma de los días"
-              >
-                {pending ? "…" : "Actualizar km"}
-              </button>
-              {sinKmMes > 40 && (
+      <FiltersBar
+        search={{ value: q, onChange: setQ }}
+        searchPlaceholder="Buscar carro, placa, cliente, zona…"
+        chips={chips.map((c) => ({ id: c.id, label: c.label, count: c.n }))}
+        activeChip={filtro}
+        onChip={(id) => setFiltro(id as typeof filtro)}
+        actions={
+          <>
+            <p className="text-sm text-muted">
+              <span className="font-medium tabular-nums text-ink">{visibles.length}</span> de {filas.length}
+            </p>
+            {!editando ? (
+              <>
                 <button
                   type="button"
                   disabled={pending}
-                  onClick={syncKmMes}
-                  className="rounded-lg px-3 py-2 text-sm text-muted ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-                  title="Solo si faltan días del mes en gps_dias"
+                  onClick={syncKmHoy}
+                  className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                  title="Guarda el km de hoy; el mes es la suma de los días"
                 >
-                  Rellenar mes
+                  {pending ? "…" : "Actualizar km"}
                 </button>
-              )}
-              <button
-                type="button"
-                disabled={pending}
-                onClick={placasDiacor}
-                className="rounded-lg px-3 py-2 text-sm text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-              >
-                {pending ? "…" : "Placas Diacor"}
-              </button>
-              <a
-                href="/cartera/rastreo"
-                className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
-              >
-                Mapa flota
-              </a>
-              <button
-                type="button"
-                onClick={entrarEdicion}
-                className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-surface hover:bg-black"
-              >
-                Editar ficha
-              </button>
-            </>
-          ) : (
-            <>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={guardar}
-                className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-surface hover:bg-black disabled:opacity-50"
-              >
-                {pending ? "Guardando…" : "Guardar cambios"}
-              </button>
-              <button
-                type="button"
-                disabled={pending}
-                onClick={() => setEditando(false)}
-                className="rounded-lg px-3 py-2 text-sm text-muted ring-1 ring-line hover:bg-surface-2"
-              >
-                Cancelar
-              </button>
-            </>
-          )}
-        </div>
-      </div>
+                {sinKmMes > 40 && (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={syncKmMes}
+                    className="rounded-lg px-3 py-2 text-sm text-muted ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                    title="Solo si faltan días del mes en gps_dias"
+                  >
+                    Rellenar mes
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={placasDiacor}
+                  className="rounded-lg px-3 py-2 text-sm text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                >
+                  {pending ? "…" : "Placas Diacor"}
+                </button>
+                <a
+                  href="/cartera/rastreo"
+                  className="rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+                >
+                  Mapa flota
+                </a>
+                <button
+                  type="button"
+                  onClick={entrarEdicion}
+                  className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-surface hover:bg-black"
+                >
+                  Editar ficha
+                </button>
+              </>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={guardar}
+                  className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-surface hover:bg-black disabled:opacity-50"
+                >
+                  {pending ? "Guardando…" : "Guardar cambios"}
+                </button>
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => setEditando(false)}
+                  className="rounded-lg px-3 py-2 text-sm text-muted ring-1 ring-line hover:bg-surface-2"
+                >
+                  Cancelar
+                </button>
+              </>
+            )}
+          </>
+        }
+      />
 
       {msg && <p className="text-sm text-muted">{msg}</p>}
-
-      <div className="flex flex-wrap gap-2">
-        {chips.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={() => setFiltro(c.id)}
-            className={`rounded-lg px-3 py-1.5 text-sm ${
-              filtro === c.id
-                ? "bg-ink font-medium text-surface"
-                : "text-muted ring-1 ring-line hover:bg-surface-2 hover:text-ink"
-            }`}
-          >
-            {c.label}
-            <span className="ml-1.5 tabular-nums opacity-70">{c.n}</span>
-          </button>
-        ))}
-      </div>
 
       <div className="overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
         <table className="w-full text-sm">
