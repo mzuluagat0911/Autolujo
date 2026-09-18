@@ -13,7 +13,7 @@
 import type { RespuestaAgente } from "./agente";
 
 /** Lo que se responde cuando el mensaje original no pasó la revisión. */
-const MENSAJE_SEGURO = "Déme un toque, lo reviso y le escribo.";
+const MENSAJE_SEGURO = "Deme un momento, lo reviso y le escribo.";
 
 /**
  * Afirmaciones que dan por hecho algo que el sistema no ha confirmado, o que

@@ -278,7 +278,7 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
     await responderYEscalar(
       conv.id,
       from,
-      "Déme un toque, le escribo ya.",
+      "Deme un momento, le escribo ya.",
       "El agente no pudo responder (falla técnica).",
     );
   }
