@@ -32,23 +32,29 @@ async function listarFlota(q: string): Promise<{ filas: Fila[]; error: string | 
     const conteo = new Map<string, { n: number; ultimo: string | null }>();
 
     if (ids.length > 0) {
-      const { data: evs, error: e2 } = await sb
-        .from("vehiculo_eventos")
-        .select("vehiculo_id, fecha")
-        .in("vehiculo_id", ids);
-      if (e2) {
-        if (/vehiculo_eventos|does not exist|schema cache/i.test(e2.message)) {
-          // Migración pendiente: listamos flota sin conteos
-        } else {
+      // PostgREST limita a 1000 filas: hay que paginar o la mayoría de carros
+      // aparecen con 0 eventos aunque la bitácora sí esté cargada.
+      const pageSize = 1000;
+      let from = 0;
+      for (;;) {
+        const { data: evs, error: e2 } = await sb
+          .from("vehiculo_eventos")
+          .select("vehiculo_id, fecha")
+          .in("vehiculo_id", ids)
+          .range(from, from + pageSize - 1);
+        if (e2) {
+          if (/vehiculo_eventos|does not exist|schema cache/i.test(e2.message)) break;
           throw e2;
         }
-      } else {
-        for (const e of evs ?? []) {
+        const batch = evs ?? [];
+        for (const e of batch) {
           const cur = conteo.get(e.vehiculo_id) ?? { n: 0, ultimo: null };
           cur.n += 1;
           if (!cur.ultimo || e.fecha > cur.ultimo) cur.ultimo = e.fecha;
           conteo.set(e.vehiculo_id, cur);
         }
+        if (batch.length < pageSize) break;
+        from += pageSize;
       }
     }
 

@@ -143,16 +143,25 @@ export async function borrarEvento(fd: FormData): Promise<AccionResultado> {
 
 export async function listarEventos(vehiculoId: string): Promise<EventoHv[]> {
   const sb = createServerSupabase();
-  const { data, error } = await sb
-    .from("vehiculo_eventos")
-    .select("*")
-    .eq("vehiculo_id", vehiculoId)
-    .order("fecha", { ascending: false })
-    .order("created_at", { ascending: false });
-  if (error) {
-    // Tabla aún no migrada
-    if (/vehiculo_eventos|does not exist|schema cache/i.test(error.message)) return [];
-    throw new Error(error.message);
+  const out: EventoHv[] = [];
+  const pageSize = 1000;
+  let from = 0;
+  for (;;) {
+    const { data, error } = await sb
+      .from("vehiculo_eventos")
+      .select("*")
+      .eq("vehiculo_id", vehiculoId)
+      .order("fecha", { ascending: false })
+      .order("created_at", { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (error) {
+      if (/vehiculo_eventos|does not exist|schema cache/i.test(error.message)) return [];
+      throw new Error(error.message);
+    }
+    const batch = (data as EventoHv[]) ?? [];
+    out.push(...batch);
+    if (batch.length < pageSize) break;
+    from += pageSize;
   }
-  return (data as EventoHv[]) ?? [];
+  return out;
 }
