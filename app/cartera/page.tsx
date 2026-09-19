@@ -128,6 +128,11 @@ export default async function PanelCartera() {
               <Acceso href="/cartera/rastreo" titulo="Rastreo" desc="Dónde está cada carro ahora (Diacor)" />
               <Acceso href="/cartera/clientes" titulo="Clientes" desc="Directorio de arrendatarios" />
               <Acceso href="/cartera/tarifario" titulo="Tarifario" desc="Letra diaria por modelo" />
+              <Acceso
+                href="/cartera/cobros-taller"
+                titulo="Cobros de taller"
+                desc="Chapistería / novedades: ítems y montos a cargar al contrato"
+              />
               <Acceso href="/operaciones/licencias" titulo="Licencias" desc="Semáforo por vencimiento de licencia" />
               <Acceso href="/operaciones/mantenimiento" titulo="Mantenimiento" desc="Carros por km (FULL cada 6.000)" />
               <Acceso href="/operaciones/placas" titulo="Placas y revisado" desc="Vencimientos del revisado" />

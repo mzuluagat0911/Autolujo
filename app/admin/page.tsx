@@ -185,15 +185,18 @@ export default async function ResumenPage() {
         </Band>
 
         <Band title="Operaciones" status="active">
-          <div className="grid grid-cols-2 gap-x-10 gap-y-8 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-x-10 gap-y-8 lg:grid-cols-3 xl:grid-cols-5">
             <Link href="/operaciones/hoja-vida" className="block transition hover:opacity-80">
               <Kpi label="Hoja de vida" value="→" hint="Historial editable del carro" />
             </Link>
+            <Link href="/operaciones/mantenimiento" className="block transition hover:opacity-80">
+              <Kpi label="Mantenimiento" value="→" hint="FULL 6.000 · kit 60.000" />
+            </Link>
+            <Link href="/operaciones/chapisteria" className="block transition hover:opacity-80">
+              <Kpi label="Chapistería" value="→" hint="Tarifas, cajas y talleres" />
+            </Link>
             <Link href="/operaciones/licencias" className="block transition hover:opacity-80">
               <Kpi label="Licencias" value="→" hint="Semáforo de vencimiento" />
-            </Link>
-            <Link href="/operaciones/mantenimiento" className="block transition hover:opacity-80">
-              <Kpi label="Mantenimiento" value="→" hint="FULL cada 6.000 km" />
             </Link>
             <Link href="/operaciones/placas" className="block transition hover:opacity-80">
               <Kpi label="Placas / revisado" value="→" hint="Vencimientos" />

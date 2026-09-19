@@ -36,6 +36,7 @@ const NAV: Group[] = [
       { label: "Rastreo", href: "/cartera/rastreo", status: "active" },
       { label: "Clientes", href: "/cartera/clientes", status: "active" },
       { label: "Tarifario", href: "/cartera/tarifario", status: "active" },
+      { label: "Cobros de taller", href: "/cartera/cobros-taller", status: "active" },
     ],
   },
   {
@@ -43,8 +44,9 @@ const NAV: Group[] = [
     items: [
       { label: "Panel", href: "/operaciones", status: "active" },
       { label: "Hoja de vida", href: "/operaciones/hoja-vida", status: "active" },
-      { label: "Licencias", href: "/operaciones/licencias", status: "active" },
       { label: "Mantenimiento", href: "/operaciones/mantenimiento", status: "active" },
+      { label: "Chapistería", href: "/operaciones/chapisteria", status: "active" },
+      { label: "Licencias", href: "/operaciones/licencias", status: "active" },
       { label: "Placas y revisado", href: "/operaciones/placas", status: "active" },
     ],
   },

@@ -8,6 +8,11 @@ import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 
 export const KM_MANTENIMIENTO = 6000;
 export const KM_AVISO = 5000; // "pronto" antes de llegar a los 6.000
+/** Kit de tiempo: preventivo ~cada 60.000 km; ventana de citación 55–65 mil del ciclo. */
+export const KM_KIT_TIEMPO = 60_000;
+export const KM_KIT_AVISO = 5_000;
+export const KM_KIT_HOLGURA = 5_000; // hasta +5k se considera “por hacer”
+
 
 export type NivelSemaforo = "vencido" | "rojo" | "amarillo" | "verde";
 
@@ -163,6 +168,75 @@ export async function mantenimientoKm(): Promise<{ disponible: boolean; items: M
       return { vehiculoNumero: v.numero, empresa: v.empresa?.codigo ?? null, cliente: c?.nombre ?? null, contacto: c?.contacto ?? null, desde: v.fecha_ultimo_mantenimiento, kmDesde, faltan, estado };
     })
     .sort((a, b) => b.kmDesde - a.kmDesde);
+  return { disponible: true, items };
+}
+
+export type KitTiempoItem = {
+  vehiculoNumero: string;
+  empresa: string | null;
+  cliente: string | null;
+  contacto: string | null;
+  kmActual: number;
+  marcaKm: number;
+  faltan: number;
+  estado: "vencido" | "pronto" | "ok";
+};
+
+/** Próxima marca de kit (60k, 120k, …) y estado de citación. */
+export function evaluarKitTiempo(kmActual: number): {
+  marcaKm: number;
+  faltan: number;
+  estado: KitTiempoItem["estado"];
+} {
+  const km = Math.max(0, Math.round(kmActual));
+  const ciclo = Math.floor(km / KM_KIT_TIEMPO);
+  const ultima = ciclo * KM_KIT_TIEMPO;
+  const siguiente = (ciclo + 1) * KM_KIT_TIEMPO;
+
+  // Pasó la marca y sigue en holgura (ej. 60–65k) → citar ya.
+  if (ultima >= KM_KIT_TIEMPO && km < ultima + KM_KIT_HOLGURA) {
+    return { marcaKm: ultima, faltan: ultima - km, estado: "vencido" };
+  }
+  const faltan = siguiente - km;
+  if (faltan <= KM_KIT_AVISO) {
+    return { marcaKm: siguiente, faltan, estado: "pronto" };
+  }
+  return { marcaKm: siguiente, faltan, estado: "ok" };
+}
+
+export async function kitTiempoKm(): Promise<{ disponible: boolean; items: KitTiempoItem[] }> {
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("vehiculos")
+    .select("id, numero, km_actual, empresa:empresas(codigo)")
+    .not("km_actual", "is", null)
+    .neq("estado", "entregado");
+  if (error) return { disponible: false, items: [] };
+
+  const clientes = await clientePorVehiculoActivo();
+  const items = ((data ?? []) as unknown as {
+    id: string;
+    numero: string;
+    km_actual: number;
+    empresa: { codigo: string } | null;
+  }[])
+    .map((v) => {
+      const ev = evaluarKitTiempo(Number(v.km_actual));
+      const c = clientes.get(v.id);
+      return {
+        vehiculoNumero: v.numero,
+        empresa: v.empresa?.codigo ?? null,
+        cliente: c?.nombre ?? null,
+        contacto: c?.contacto ?? null,
+        kmActual: Math.round(Number(v.km_actual)),
+        marcaKm: ev.marcaKm,
+        faltan: ev.faltan,
+        estado: ev.estado,
+      };
+    })
+    .filter((i) => i.estado !== "ok")
+    .sort((a, b) => a.faltan - b.faltan);
+
   return { disponible: true, items };
 }
 
