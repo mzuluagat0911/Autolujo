@@ -1,6 +1,6 @@
 import { PageHeader, Kpi, Money } from "@/components/kit";
 import { estadosCuentaHoy, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
-import { previewEstadoCuenta, estaAlDia } from "@/lib/cartera/envios";
+import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
 import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas";
 import { PruebaEnvio } from "./prueba";
 import { DeudoresCerrados } from "./deudores-cerrados";
@@ -28,6 +28,15 @@ export default async function EstadosCuentaPage() {
 
   const totalACobrar = estados.reduce((a, e) => a + e.totalHoy, 0);
   const conRecargo = estados.filter((e) => e.recargo > 0 || e.recargoSiTarda > 0).length;
+
+  let preview: string | null = null;
+  let previewLabel = "";
+  if (estados[0]) {
+    const e = estados[0];
+    const ctx = await enrichExtracto(e);
+    preview = previewEstadoCuenta(e, ctx);
+    previewLabel = `Vista previa del mensaje (carro ${e.vehiculoNumero}${estaAlDia(e) ? " · al día" : " · con atraso"})`;
+  }
 
   return (
     <div className="mx-auto max-w-6xl py-10">
@@ -64,21 +73,16 @@ export default async function EstadosCuentaPage() {
             </div>
           </div>
 
-          {estados[0] && (() => {
-            const e = estados[0];
-            const alDia = estaAlDia(e);
-            return (
-              <div className="mt-8">
-                <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-                  Vista previa del mensaje (carro {e.vehiculoNumero}
-                  {alDia ? " · al día" : " · con atraso"})
-                </h2>
-                <div className="mt-3 max-w-md whitespace-pre-wrap rounded-xl bg-ink p-5 text-sm text-paper">
-                  {previewEstadoCuenta(e)}
-                </div>
+          {preview && (
+            <div className="mt-8">
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                {previewLabel}
+              </h2>
+              <div className="mt-3 max-w-md whitespace-pre-wrap rounded-xl bg-ink p-5 text-sm text-paper">
+                {preview}
               </div>
-            );
-          })()}
+            </div>
+          )}
         </>
       )}
     </div>
