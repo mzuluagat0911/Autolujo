@@ -47,6 +47,13 @@ export function horaPanama(d: Date = new Date()): string {
   return `${String(hora).padStart(2, "0")}:${String(minuto).padStart(2, "0")}`;
 }
 
+/** ¿Fuera del horario operativo de WhatsApp para emergencias de carro?
+ *  Atención operativa: 8:00 a.m. – 7:00 p.m. Panamá. */
+export function fueraHorarioOperativo(d: Date = new Date()): boolean {
+  const { hora } = partesPanama(d);
+  return hora < 8 || hora >= 19;
+}
+
 /** ¿Ya pasaron las 7:00 p.m. en Panamá? (se perdió el descuento del día) */
 export function pasoCorte(d: Date = new Date()): boolean {
   return partesPanama(d).hora >= HORA_CORTE;

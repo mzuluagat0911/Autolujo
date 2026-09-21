@@ -1,5 +1,11 @@
-// Envío del estado de cuenta por WhatsApp (template aprobado `estado_cuenta_diario`).
+// Envío del estado de cuenta por WhatsApp.
 // Usado por: el botón manual (piloto) y el cron diario de las 8am.
+//
+// Plantillas:
+// - `extracto_al_dia`     → ayer pagó / sin atraso (solo cuota de hoy).
+// - `extracto_con_atraso` → con días de atraso (cuotas + recargos).
+// - `estado_cuenta_diario` → fallback si Meta aún no aprueba las nuevas.
+// Todos los montos salen del contrato (letra_diaria / descuento_puntual).
 
 import { sendTemplate } from "@/lib/whatsapp/client";
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -8,13 +14,129 @@ import { normalizarTelefono } from "./telefono";
 import {
   estadoCuentaContrato,
   estadosCuentaHoy,
+  money,
   type EstadoCuenta,
 } from "./estado-cuenta";
 
-const TEMPLATE = "estado_cuenta_diario";
+const TEMPLATE_AL_DIA = "extracto_al_dia";
+const TEMPLATE_CON_ATRASO = "extracto_con_atraso";
+const TEMPLATE_FALLBACK = "estado_cuenta_diario";
+
+/** Sin saldo de días anteriores: solo le toca la cuota de hoy. */
+export function estaAlDia(e: EstadoCuenta): boolean {
+  return e.pendienteAnterior <= 0.009 && e.recargo <= 0.009;
+}
+
+function templatePara(e: EstadoCuenta): string {
+  return estaAlDia(e) ? TEMPLATE_AL_DIA : TEMPLATE_CON_ATRASO;
+}
+
+/**
+ * Separa "cuenta" (cuotas del contrato) vs "por no pagar" (recargos).
+ * Busca n×letra + k×penalidad ≈ totalHoy para que el desglose sea del contrato,
+ * no montos fijos.
+ */
+function montosAtraso(e: EstadoCuenta): { cuenta: number; recargo: number; total: number } {
+  const total = e.totalHoy;
+  const letra = e.letra;
+  const pen = e.penalidad;
+
+  if (letra > 0.009 && pen > 0.009) {
+    let best: { cuenta: number; recargo: number } | null = null;
+    for (let n = 1; n <= 60; n++) {
+      for (let k = 0; k <= n + 1; k++) {
+        const cuenta = n * letra;
+        const recargo = k * pen;
+        if (Math.abs(cuenta + recargo - total) < 0.05) {
+          // Preferir más días de cuota (explica mejor varios días seguidos).
+          if (!best || cuenta > best.cuenta) best = { cuenta, recargo };
+        }
+      }
+    }
+    if (best) return { ...best, total };
+  }
+
+  // Fallback: recargo explícito de hoy / una penalidad si hay atraso en saldo.
+  const deLinea = e.lineas.find((l) => l.concepto === "por no pagar a tiempo");
+  let recargo = deLinea && deLinea.monto > 0.009 ? deLinea.monto : e.recargo;
+  if (recargo <= 0.009 && e.pendienteAnterior > 0.009 && pen > 0.009) recargo = pen;
+  return { cuenta: Math.max(total - recargo, 0), recargo, total };
+}
+
+/** Vars según plantilla (al día: 6 · con atraso: 7). Todo dinámico del contrato. */
+function varsPara(e: EstadoCuenta): string[] {
+  const [nombre, carro, fecha] = e.templateVars;
+  // Aviso de lo que se suma HOY si no paga antes de las 7 (descuento_puntual del contrato).
+  const avisoRecargo = money(e.recargoSiTarda > 0.009 ? e.recargoSiTarda : e.penalidad);
+  if (estaAlDia(e)) {
+    return [
+      nombre,
+      carro,
+      fecha,
+      `${money(e.cuenta)} cuenta`,
+      money(e.totalHoy),
+      avisoRecargo,
+    ];
+  }
+  const m = montosAtraso(e);
+  return [
+    nombre,
+    carro,
+    fecha,
+    `${money(m.cuenta)} cuenta`,
+    `${money(m.recargo)} por no pagar`,
+    money(m.total),
+    avisoRecargo,
+  ];
+}
 
 function componentes(vars: string[]) {
   return [{ type: "body", parameters: vars.map((v) => ({ type: "text", text: v })) }];
+}
+
+export function previewEstadoCuenta(e: EstadoCuenta): string {
+  const vars = varsPara(e);
+  if (estaAlDia(e)) {
+    const [nombre, carro, fecha, desglose, total, avisoRecargo] = vars;
+    return [
+      `Buen día ${nombre} 🌞`,
+      ``,
+      `❌ EXTRACTO DIARIO`,
+      ``,
+      fecha,
+      ``,
+      `🔹 Carro ${carro}`,
+      ``,
+      desglose,
+      ``,
+      `*DEBE TOTAL PAGAR HOY: ${total}*`,
+      ``,
+      `*RECUERDE:* El sistema cierra a las 7:00 p.m.`,
+      `*Se genera ${avisoRecargo} de recargo por no pagar.*`,
+      ``,
+      `Envíanos tu comprobante por aquí. ¡Gracias!`,
+    ].join("\n");
+  }
+  const [nombre, carro, fecha, lineaCuenta, lineaRecargo, total, avisoRecargo] = vars;
+  return [
+    `Buen día ${nombre} 🌞`,
+    ``,
+    `❌ EXTRACTO DIARIO`,
+    ``,
+    fecha,
+    ``,
+    `🔹 Carro ${carro}`,
+    ``,
+    lineaCuenta,
+    lineaRecargo,
+    ``,
+    `*DEBE TOTAL PAGAR HOY: ${total}*`,
+    ``,
+    `*RECUERDE:* El sistema cierra a las 7:00 p.m.`,
+    `*Se genera ${avisoRecargo} de recargo por no pagar.*`,
+    ``,
+    `Envíanos tu comprobante por aquí. ¡Gracias!`,
+  ].join("\n");
 }
 
 function hoyStr(): string {
@@ -53,7 +175,17 @@ export async function enviarYRegistrar(
   }
 
   try {
-    await sendTemplate(to, TEMPLATE, "es", componentes(e.templateVars));
+    const vars = varsPara(e);
+    try {
+      await sendTemplate(to, templatePara(e), "es", componentes(vars));
+    } catch (err) {
+      // Si la plantilla nueva aún no está APPROVED, no dejamos sin extracto.
+      console.error(
+        `[envios] ${templatePara(e)} falló, uso ${TEMPLATE_FALLBACK}:`,
+        err instanceof Error ? err.message : err,
+      );
+      await sendTemplate(to, TEMPLATE_FALLBACK, "es", componentes(e.templateVars));
+    }
     await registrar(sb, e, fecha, "enviado");
     return { ok: true };
   } catch (err) {
@@ -119,11 +251,12 @@ export async function enviarEstadoCuentaPrueba(
   const dest = normalizarTelefono(numeroDestino?.trim() || e.waNumero);
   if (!dest) return { ok: false, error: "No hay número destino válido (ni del cliente ni indicado)." };
 
-  const [nombre, carro, fecha, desglose, total] = e.templateVars;
-  const preview = `Buen día ${nombre} 🌞\n📋 Extracto diario · Carro ${carro} — ${fecha}\n${desglose}\nTotal a pagar hoy: ${total}`;
+  const tpl = templatePara(e);
+  const vars = varsPara(e);
+  const preview = previewEstadoCuenta(e);
 
   try {
-    await sendTemplate(dest, TEMPLATE, "es", componentes(e.templateVars));
+    await sendTemplate(dest, tpl, "es", componentes(vars));
     return { ok: true, preview };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Error al enviar." };

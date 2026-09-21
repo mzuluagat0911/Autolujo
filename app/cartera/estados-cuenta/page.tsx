@@ -1,5 +1,6 @@
 import { PageHeader, Kpi, Money } from "@/components/kit";
-import { estadosCuentaHoy, money, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
+import { estadosCuentaHoy, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
+import { previewEstadoCuenta, estaAlDia } from "@/lib/cartera/envios";
 import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas";
 import { PruebaEnvio } from "./prueba";
 import { DeudoresCerrados } from "./deudores-cerrados";
@@ -63,16 +64,21 @@ export default async function EstadosCuentaPage() {
             </div>
           </div>
 
-          {estados[0] && (
-            <div className="mt-8">
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-                Vista previa del mensaje (carro {estados[0].vehiculoNumero})
-              </h2>
-              <div className="mt-3 max-w-md whitespace-pre-wrap rounded-xl bg-ink p-5 text-sm text-paper">
-                {`Buen día ${estados[0].templateVars[0]} 🌞\n\n📋 Extracto diario · Carro ${estados[0].templateVars[1]} — ${estados[0].templateVars[2]}\n\n${estados[0].templateVars[3]}\n\nTotal a pagar hoy: ${estados[0].templateVars[4]}\n\nRecuerda: el sistema cierra a las 7:00 p.m., luego se genera recargo. Envíanos tu comprobante por aquí. ¡Gracias!`}
+          {estados[0] && (() => {
+            const e = estados[0];
+            const alDia = estaAlDia(e);
+            return (
+              <div className="mt-8">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+                  Vista previa del mensaje (carro {e.vehiculoNumero}
+                  {alDia ? " · al día" : " · con atraso"})
+                </h2>
+                <div className="mt-3 max-w-md whitespace-pre-wrap rounded-xl bg-ink p-5 text-sm text-paper">
+                  {previewEstadoCuenta(e)}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </>
       )}
     </div>

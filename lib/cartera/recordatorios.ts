@@ -1,10 +1,10 @@
 // Escalera de recordatorios de pago.
 //
 // Tras el estado de cuenta de las 8am, si el cliente aún no paga, se le
-// reengancha durante el día (mediodía y cierre). Reutiliza el template
-// aprobado `estado_cuenta_diario` (muestra lo que debe hoy → sirve de
-// recordatorio). Quien ya pagó o mandó comprobante NO recibe recordatorio:
-// eso lo garantiza `estadosCuentaHoy()`, que ya los excluye.
+// reengancha durante el día (mediodía y cierre) con plantillas dedicadas
+// ya aprobadas en Meta: `recordatorio_pago` y `ultimo_aviso_pago`
+// (vars: nombre, carro). Quien ya pagó o mandó comprobante NO recibe
+// recordatorio: eso lo garantiza `estadosCuentaHoy()`, que ya los excluye.
 //
 // La "lista por llamar" (quién debe hoy y no ha pagado al cierre) se calcula
 // en vivo con `paraLlamarHoy()`; la bitácora `recordatorios` solo evita repetir
@@ -16,11 +16,20 @@ import { hoyPanama } from "./fecha";
 import { normalizarTelefono } from "./telefono";
 import { estadosCuentaHoy, type EstadoCuenta } from "./estado-cuenta";
 
-const TEMPLATE = "estado_cuenta_diario";
-export type NivelRecordatorio = "mediodia" | "cierre";
+const TEMPLATE_POR_NIVEL = {
+  mediodia: "recordatorio_pago",
+  cierre: "ultimo_aviso_pago",
+} as const;
+export type NivelRecordatorio = keyof typeof TEMPLATE_POR_NIVEL;
 
-function componentes(vars: string[]) {
-  return [{ type: "body", parameters: vars.map((v) => ({ type: "text", text: v })) }];
+function componentesRecordatorio(e: EstadoCuenta) {
+  const [nombre, carro] = e.templateVars;
+  return [
+    {
+      type: "body",
+      parameters: [nombre, carro].map((v) => ({ type: "text", text: v })),
+    },
+  ];
 }
 
 /** ¿Ya se mandó este nivel hoy? Defensivo: si la tabla no existe, no bloquea. */
@@ -67,7 +76,7 @@ async function enviarUno(
   if (!to) return "sin_numero";
   if (await yaEnviado(sb, e.contratoId, fecha, nivel)) return "ya";
   try {
-    await sendTemplate(to, TEMPLATE, "es", componentes(e.templateVars));
+    await sendTemplate(to, TEMPLATE_POR_NIVEL[nivel], "es", componentesRecordatorio(e));
     await registrar(sb, e.contratoId, fecha, nivel, "enviado");
     return "enviado";
   } catch {

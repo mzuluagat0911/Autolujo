@@ -22,8 +22,20 @@ import { responderAgente } from "@/lib/ai/agente";
 import { revisarRespuesta } from "@/lib/ai/guard";
 import { destinarCharla } from "@/lib/ai/filtro-charla";
 import { transcribirAudio } from "@/lib/ai/transcribir";
+import { fueraHorarioOperativo } from "@/lib/cartera/fecha";
 
 type Conv = Conversacion;
+
+/** Pie de atención fuera de 8:00 a.m. – 7:00 p.m. (validación queda para Claudia). */
+function pieFueraHorarioCartera(): string | null {
+  if (!fueraHorarioOperativo()) return null;
+  return "Nuestro horario de atención es de 8:00 a.m. a 7:00 p.m. Cuando Claudia empiece su día valida su pago y le confirma.";
+}
+
+function conPieHorario(base: string): string {
+  const pie = pieFueraHorarioCartera();
+  return pie ? `${base} ${pie}` : base;
+}
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -375,9 +387,11 @@ async function procesarComprobante(
       .map(({ c, res }) => armarRespuestaComprobante(c, res).escalarMotivo)
       .filter((m): m is string => !!m);
     const cabeza = `Vi ${items.length} comprobantes en esa foto.`;
-    const cola = motivos.length
-      ? "Hay uno que reviso yo y le escribo."
-      : "Los cruzo con el banco y le confirmo.";
+    const cola = fueraHorarioOperativo()
+      ? pieFueraHorarioCartera()!
+      : motivos.length
+        ? "Hay uno que reviso yo y le escribo."
+        : "Los cruzo con el banco y le confirmo.";
     await responder(conversacionId, from, `${cabeza}\n${lineas.join("\n")}\n${cola}`, primerPago ?? undefined);
     if (motivos.length) {
       await marcarPendienteDeRespuesta(conversacionId, `Foto con varios comprobantes: ${motivos.join(" · ")}`);
@@ -395,10 +409,13 @@ async function procesarComprobante(
 
 type ResPago = Awaited<ReturnType<typeof procesarPagoComprobante>>;
 
-/** Respuesta al cliente para UN comprobante ya procesado. No confirma "al día". */
+/** Respuesta al cliente para UN comprobante ya procesado. No confirma "al día".
+ *  Fuera de horario: el pago ya quedó en plataforma; avisa que Claudia valida al día. */
 function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: string; escalarMotivo: string | null } {
   const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : null;
   const alerta = (codigo: string) => res.veredicto.alertas.some((a) => a.codigo === codigo);
+  const fuera = fueraHorarioOperativo();
+
   if (res.estadoConciliacion === "duplicado") {
     return {
       respuesta: "Ese comprobante ya me aparece. Si fue otro pago, mándeme esa captura.",
@@ -407,55 +424,77 @@ function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: s
   }
   if (alerta("cuenta_otra_empresa")) {
     return {
-      respuesta: "Ese depósito fue a otra cuenta de las nuestras, no a la del carro. Lo reviso y le confirmo.",
+      respuesta: conPieHorario(
+        "Ese depósito fue a otra cuenta de las nuestras, no a la del carro. Ya quedó registrado para revisión.",
+      ),
       escalarMotivo: "Comprobante a la cuenta de otra empresa (no la del carro).",
     };
   }
   if (alerta("cuenta_ajena")) {
     return {
-      respuesta: "Esa transferencia no fue a la cuenta del carro. Revise el número de cuenta. Lo veo yo y le escribo.",
+      respuesta: conPieHorario(
+        "Esa transferencia no fue a la cuenta del carro. Revise el número de cuenta. Ya quedó registrado para revisión.",
+      ),
       escalarMotivo: "Comprobante a una cuenta que no es de la empresa.",
     };
   }
   if (alerta("moneda_no_esperada")) {
     return {
-      respuesta: "Ese comprobante no se ve en dólares. Lo reviso y le escribo.",
+      respuesta: conPieHorario("Ese comprobante no se ve en dólares. Ya quedó registrado para revisión."),
       escalarMotivo: "Comprobante en moneda distinta a USD.",
     };
   }
   if (alerta("fecha_vieja") || alerta("fecha_futura")) {
     return {
-      respuesta: "Vi el comprobante pero la fecha no me cuadra con hoy. Lo reviso y le escribo.",
+      respuesta: conPieHorario(
+        "Vi el comprobante pero la fecha no me cuadra con hoy. Ya quedó registrado para revisión.",
+      ),
       escalarMotivo: "La fecha del comprobante no cuadra (viejo o futuro).",
-    };
-  }
-  if (!monto || c.confianza === "baja") {
-    return {
-      respuesta: "Vi el comprobante. Lo cruzo con el banco y le confirmo.",
-      escalarMotivo: null,
     };
   }
   if (res.salida) {
     return {
-      respuesta: `Vi el comprobante de ${monto} de la salida a ${res.salida.destino}. Ese pago va a la salida al interior, no a la cuota. El equipo le da el aval en un momento.`,
-      escalarMotivo: null,
-    };
-  }
-  if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
-    const carro = res.resolucion.etiqueta ?? "su carro";
-    return {
-      respuesta: `Vi el comprobante de ${monto} del ${carro}. Lo cruzo con el banco y le confirmo.`,
+      respuesta: fuera
+        ? conPieHorario(
+            `Vi el comprobante de ${monto} de la salida a ${res.salida.destino}. Ese pago va a la salida al interior, no a la cuota. Ya quedó registrado.`,
+          )
+        : `Vi el comprobante de ${monto} de la salida a ${res.salida.destino}. Ese pago va a la salida al interior, no a la cuota. El equipo le da el aval en un momento.`,
       escalarMotivo: null,
     };
   }
   if (res.resolucion.estado === "sin_carro") {
     return {
-      respuesta: `Vi el comprobante de ${monto}. ¿De qué carro es?`,
+      respuesta: `Vi el comprobante${monto ? ` de ${monto}` : ""}. ¿De qué carro es?`,
+      escalarMotivo: null,
+    };
+  }
+  if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
+    const carro = res.resolucion.etiqueta ?? "su carro";
+    if (fuera) {
+      return {
+        respuesta: conPieHorario(
+          `Vi el comprobante${monto ? ` de ${monto}` : ""} del ${carro}. Ya quedó registrado en la plataforma.`,
+        ),
+        escalarMotivo: null,
+      };
+    }
+    return {
+      respuesta: `Vi el comprobante de ${monto} del ${carro}. Lo cruzo con el banco y le confirmo.`,
+      escalarMotivo: null,
+    };
+  }
+  if (!monto || c.confianza === "baja") {
+    return {
+      respuesta: fuera
+        ? conPieHorario("Vi el comprobante. Ya quedó registrado en la plataforma.")
+        : "Vi el comprobante. Lo cruzo con el banco y le confirmo.",
       escalarMotivo: null,
     };
   }
   return {
-    respuesta: `Vi el comprobante de ${monto}. Lo cruzo con el banco y le confirmo.`,
+    respuesta: fuera
+      ? conPieHorario(`Vi el comprobante de ${monto}. Ya quedó registrado en la plataforma.`)
+      : `Vi el comprobante de ${monto}. Lo cruzo con el banco y le confirmo.`,
     escalarMotivo: null,
   };
 }

@@ -7,6 +7,7 @@ import {
 } from "@/lib/operaciones/alertas";
 import { MantenimientoVista } from "./vista";
 import { KitTiempoVista } from "./kit-vista";
+import { TarifarioMecanicaVista } from "./tarifario-vista";
 
 export const dynamic = "force-dynamic";
 
@@ -74,6 +75,16 @@ export default async function MantenimientoPage() {
         ) : (
           <KitTiempoVista items={kit.items} />
         )}
+      </section>
+
+      <section className="mt-12">
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+          Tarifario de mano de obra (mecánica)
+        </h2>
+        <p className="mt-1 text-sm text-muted">
+          Precios de mano de obra para cobrar y para cuadrar cuentas el día del mantenimiento.
+        </p>
+        <TarifarioMecanicaVista />
       </section>
     </PageShell>
   );

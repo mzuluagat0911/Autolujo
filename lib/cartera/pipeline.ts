@@ -5,7 +5,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
-import { hoyPanama, horaPanama, pasoCorte, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm } from "@/lib/cartera/fecha";
+import { hoyPanama, horaPanama, pasoCorte, fueraHorarioOperativo, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm } from "@/lib/cartera/fecha";
 import { estadoCuentaContrato, money, cuotasAtraso } from "@/lib/cartera/estado-cuenta";
 import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
@@ -264,6 +264,12 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     yaCorte
       ? `- El corte de las 7:00 p.m. YA PASÓ hoy: si paga ahora, es sin descuento.`
       : `- Todavía NO son las 7:00 p.m.: si paga hoy antes de esa hora, conserva el descuento.`,
+    `- EMERGENCIAS DEL CARRO: si reporta colisión/daño/seguro → Santiago +507 6929-1946; si es`,
+    `  mecánica / no funciona → Néstor +507 6330-3437. Dale el número SIEMPRE (dentro o fuera de`,
+    `  horario). Ahora son las ${horaPanama()}${fueraHorarioOperativo() ? " (fuera de 8:00–19:00)" : " (dentro de 8:00–19:00)"}.`,
+    fueraHorarioOperativo()
+      ? `- HORARIO CARTERA: AHORA está FUERA (antes de 8:00 a.m. o desde las 7:00 p.m.). Para temas de cobro/saldo/cuota/acuerdo NO entres a cobrar: dile que el horario de atención es de 8:00 a.m. a 7:00 p.m. Si ya mandó comprobante, el sistema lo registra; dile que Claudia lo valida cuando empiece su día. Emergencias del carro: sí da Santiago/Néstor.`
+      : `- HORARIO CARTERA: AHORA está DENTRO (8:00 a.m. – 7:00 p.m.). Atiende cobranza con normalidad.`,
     ``,
     `DATOS EXACTOS del contrato de ESTE cliente (usa SOLO estos números; nunca inventes ni estimes otros):`,
     `- Cliente: ${est.clienteNombre}. Tratamiento: ${est.clienteTratamiento || est.clienteNombre.split(" ")[0] || "cliente"} (usa Sr./Sra. SOLO si viene en este tratamiento; si es solo el nombre, no inventes género).`,
