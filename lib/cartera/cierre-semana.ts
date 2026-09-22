@@ -18,7 +18,6 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, diaSemana } from "./fecha";
 import { estadosCuentaHoy } from "./estado-cuenta";
-import { filtrarEstadosPorEmpresaEnvio } from "./empresas-envio";
 
 const MONTO_CIERRE = 10;
 
@@ -56,9 +55,7 @@ export async function aplicarCierreSemana(fecha = hoyPanama()): Promise<Resultad
   // La cuota nueva del martes no cuenta (es del día de hoy).
   // Quién NO cerró la letra diaria de la semana (lunes o antes).
   // No contar acuerdos / domingos / otros como motivo del $10.
-  const deudores = filtrarEstadosPorEmpresaEnvio(await estadosCuentaHoy()).filter(
-    (e) => atrasoLetraDiaria(e),
-  );
+  const deudores = (await estadosCuentaHoy()).filter((e) => atrasoLetraDiaria(e));
   res.deudores = deudores.length;
   if (deudores.length === 0) return res;
 

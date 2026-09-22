@@ -54,6 +54,7 @@ const NAV: Group[] = [
     section: "Configuración",
     items: [
       { label: "Empresas", href: "/cartera/empresas", status: "active" },
+      { label: "Alcance de cartera", href: "/admin/alcance", status: "active" },
       { label: "Usuarios y roles", href: "/usuarios", status: "active" },
       { label: "Meta de cobranza", href: "/admin/metas", status: "active" },
     ],

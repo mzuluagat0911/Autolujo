@@ -24,7 +24,6 @@ import {
   textoDesgloseExtracto,
   type LineaExtracto,
 } from "./extracto-desglose";
-import { filtrarEstadosPorEmpresaEnvio } from "./empresas-envio";
 
 const TEMPLATE_DETALLE = "extracto_detalle";
 const TEMPLATE_AL_DIA = "extracto_al_dia";
@@ -261,14 +260,14 @@ export async function enviarEstadoCuentaPrueba(
   }
 }
 
-/** Envío MASIVO del día (para el cron 8am). Respeta CARTERA_EMPRESAS si está set. */
+/** Envío MASIVO del día (cron 8am). Respeta alcance de cartera (DB) + ENVIOS_MASIVOS. */
 export async function enviarEstadosCuentaHoy(): Promise<{
   total: number;
   enviados: number;
   fallidos: number;
   sinNumero: number;
 }> {
-  const estados = filtrarEstadosPorEmpresaEnvio(await estadosCuentaHoy());
+  const estados = await estadosCuentaHoy(); // ya filtra por alcance
   const ids = estados.map((e) => e.contratoId);
   const [saldos, extras] = await Promise.all([
     acuerdosSaldoPorContrato(ids),

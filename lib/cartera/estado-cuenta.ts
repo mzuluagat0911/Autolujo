@@ -25,6 +25,7 @@ import { ultimoDiaDevengado } from "./devengo";
 import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
 import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
 import { tratamientoCliente } from "./tratamiento";
+import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
 
 export function money(n: number): string {
   const v = Math.round(n * 100) / 100;
@@ -506,6 +507,14 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
       ...c,
       num_cuotas_total: null,
     }));
+  }
+
+  // Alcance piloto (admin): solo esas empresas en panel + envíos. GPS no usa esto.
+  const allow = await empresasAlcanceCodigos();
+  if (allow) {
+    filasContrato = filasContrato.filter((c) =>
+      enAlcanceCodigo(c.vehiculo?.empresa?.codigo ?? null, allow),
+    );
   }
 
   const cuotasMap = await cuotasPorContrato(

@@ -2,8 +2,9 @@ import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, fechaConDia } from "@/lib/cartera/fecha";
 import { conversacionesEnEspera } from "@/lib/cartera/pipeline";
-import { PageHeader, Kpi, Money } from "@/components/kit";
+import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
 import { lineaSalidaHoy, salidasDelDia } from "@/lib/cartera/salidas-aplicar";
+import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +24,23 @@ type Datos = {
 /** A partir de aquí, un chat escalado ya se está quedando sin respuesta. */
 const MINUTOS_ESPERA = 120;
 
-async function getDatos(): Promise<Datos> {
+async function idsContratosAlcance(
+  empresaIds: string[] | null,
+): Promise<string[] | null> {
+  // null = sin filtro (todas)
+  if (!empresaIds) return null;
+  if (empresaIds.length === 0) return [];
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("contratos")
+    .select("id, vehiculo:vehiculos!inner(empresa_id)")
+    .eq("estado", "activo")
+    .in("vehiculo.empresa_id", empresaIds);
+  if (error) throw error;
+  return ((data ?? []) as { id: string }[]).map((r) => r.id);
+}
+
+async function getDatos(contratoIds: string[] | null): Promise<Datos> {
   const base: Datos = {
     ok: false, contratosActivos: 0, saldoTotal: 0, cobradoHoy: 0, alDia: 0,
     sinPagoHoy: 0, porRevisar: 0, necesitaRespuesta: 0, esperandoHace: 0, error: null,
@@ -31,11 +48,36 @@ async function getDatos(): Promise<Datos> {
   try {
     const sb = createServerSupabase();
     const hoy = hoyPanama();
+
+    // Alcance vacío explícito (piloto mal configurado) → ceros.
+    if (contratoIds && contratoIds.length === 0) {
+      return { ...base, ok: true };
+    }
+
+    let cActQ = sb.from("contratos").select("*", { count: "exact", head: true }).eq("estado", "activo");
+    let saldosQ = sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual");
+    let pagosHoyQ = sb
+      .from("pagos")
+      .select("contrato_id, monto")
+      .eq("fecha", hoy)
+      .in("estado_conciliacion", ["conciliado", "manual"]);
+    let porRevQ = sb
+      .from("pagos")
+      .select("*", { count: "exact", head: true })
+      .eq("estado_conciliacion", "pendiente");
+
+    if (contratoIds) {
+      cActQ = cActQ.in("id", contratoIds);
+      saldosQ = saldosQ.in("contrato_id", contratoIds);
+      pagosHoyQ = pagosHoyQ.in("contrato_id", contratoIds);
+      porRevQ = porRevQ.in("contrato_id", contratoIds);
+    }
+
     const [cAct, saldos, pagosHoy, porRev, necesita, esperando] = await Promise.all([
-      sb.from("contratos").select("*", { count: "exact", head: true }).eq("estado", "activo"),
-      sb.from("vw_saldo_contrato").select("saldo_actual"),
-      sb.from("pagos").select("contrato_id, monto").eq("fecha", hoy).in("estado_conciliacion", ["conciliado", "manual"]),
-      sb.from("pagos").select("*", { count: "exact", head: true }).eq("estado_conciliacion", "pendiente"),
+      cActQ,
+      saldosQ,
+      pagosHoyQ,
+      porRevQ,
       sb.from("conversaciones").select("*", { count: "exact", head: true }).eq("necesita_humano", true),
       conversacionesEnEspera(MINUTOS_ESPERA),
     ]);
@@ -43,12 +85,24 @@ async function getDatos(): Promise<Datos> {
     if (err) throw err;
 
     const contratosActivos = cAct.count ?? 0;
-    const saldoTotal = (saldos.data ?? []).reduce((a, r: { saldo_actual: number | null }) => a + Number(r.saldo_actual ?? 0), 0);
-    const cobradoHoy = (pagosHoy.data ?? []).reduce((a, r: { monto: number | null }) => a + Number(r.monto ?? 0), 0);
-    const alDia = new Set((pagosHoy.data ?? []).map((r: { contrato_id: string | null }) => r.contrato_id)).size;
+    const saldoTotal = (saldos.data ?? []).reduce(
+      (a, r: { saldo_actual: number | null }) => a + Number(r.saldo_actual ?? 0),
+      0,
+    );
+    const cobradoHoy = (pagosHoy.data ?? []).reduce(
+      (a, r: { monto: number | null }) => a + Number(r.monto ?? 0),
+      0,
+    );
+    const alDia = new Set(
+      (pagosHoy.data ?? []).map((r: { contrato_id: string | null }) => r.contrato_id),
+    ).size;
 
     return {
-      ok: true, contratosActivos, saldoTotal, cobradoHoy, alDia,
+      ok: true,
+      contratosActivos,
+      saldoTotal,
+      cobradoHoy,
+      alDia,
       sinPagoHoy: Math.max(contratosActivos - alDia, 0),
       porRevisar: porRev.count ?? 0,
       necesitaRespuesta: necesita.count ?? 0,
@@ -63,22 +117,51 @@ async function getDatos(): Promise<Datos> {
 const HOY = fechaConDia(hoyPanama());
 
 export default async function PanelCartera() {
-  const [d, salidasHoy] = await Promise.all([getDatos(), salidasDelDia(hoyPanama())]);
+  const alcance = await leerAlcance();
+  const contratoIds = await idsContratosAlcance(alcance.empresaIds);
+  const [d, salidasHoy] = await Promise.all([getDatos(contratoIds), salidasDelDia(hoyPanama())]);
+  const etiqueta = etiquetaAlcance(alcance.codigos);
 
   return (
     <div className="mx-auto max-w-6xl py-10">
-      <PageHeader eyebrow="Módulo · Cartera" title="Panel de cartera" subtitle={`Tu día de cobranza · ${HOY}`} />
+      <PageHeader
+        eyebrow="Módulo · Cartera"
+        title="Panel de cartera"
+        subtitle={`Tu día de cobranza · ${HOY}`}
+      />
+
+      {etiqueta && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <StatusChip tone="warn">Alcance · {etiqueta}</StatusChip>
+          <Link
+            href="/admin/alcance"
+            className="text-xs font-medium text-muted underline-offset-2 hover:underline"
+          >
+            Cambiar
+          </Link>
+        </div>
+      )}
 
       {d.error ? (
-        <p className="mt-8 rounded-2xl bg-surface p-6 font-mono text-xs text-muted ring-1 ring-line/60">{d.error}</p>
+        <p className="mt-8 rounded-2xl bg-surface p-6 font-mono text-xs text-muted ring-1 ring-line/60">
+          {d.error}
+        </p>
       ) : (
         <div className="mt-8 space-y-10">
-          {/* Resumen del módulo */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.15fr_2fr]">
-            <Kpi size="hero" label="Saldo en cartera" value={<Money amount={d.saldoTotal} />} hint="Total por cobrar en la flota activa" />
+            <Kpi
+              size="hero"
+              label="Saldo en cartera"
+              value={<Money amount={d.saldoTotal} />}
+              hint={etiqueta ? `Por cobrar · ${etiqueta}` : "Total por cobrar en la flota activa"}
+            />
             <div className="grid grid-cols-2 gap-4">
               <Kpi label="Cobrado hoy" value={<Money amount={d.cobradoHoy} />} hint="Conciliado del día" />
-              <Kpi label="Contratos activos" value={d.contratosActivos} hint="Carros con arrendatario" />
+              <Kpi
+                label="Contratos activos"
+                value={d.contratosActivos}
+                hint={etiqueta ? `En alcance · ${etiqueta}` : "Carros con arrendatario"}
+              />
             </div>
           </div>
 
@@ -99,7 +182,6 @@ export default async function PanelCartera() {
             </div>
           )}
 
-          {/* Cubetas del día — el trabajo */}
           <div>
             <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">El día de hoy</h2>
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -116,7 +198,6 @@ export default async function PanelCartera() {
             </div>
           </div>
 
-          {/* Accesos del módulo */}
           <div>
             <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Herramientas</h2>
             <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

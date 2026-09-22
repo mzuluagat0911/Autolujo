@@ -1,7 +1,9 @@
-import { PageHeader, Kpi, Money } from "@/components/kit";
+import Link from "next/link";
+import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
 import { estadosCuentaHoy, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
 import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
 import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas";
+import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
 import { PruebaEnvio } from "./prueba";
 import { DeudoresCerrados } from "./deudores-cerrados";
 import { EstadosTabla } from "./tabla";
@@ -17,6 +19,9 @@ export default async function EstadosCuentaPage() {
     estados = [];
     error = e instanceof Error ? e.message : "Error";
   }
+
+  const alcance = await leerAlcance();
+  const etiqueta = etiquetaAlcance(alcance.codigos);
 
   let cerradas: DeudaCerrada[] = [];
   try {
@@ -45,6 +50,18 @@ export default async function EstadosCuentaPage() {
         title="Estado de cuenta del día"
         subtitle="Lo que debe pagar hoy cada carro. Este es el mensaje que se enviará a primera hora."
       />
+
+      {etiqueta && (
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <StatusChip tone="warn">Alcance · {etiqueta}</StatusChip>
+          <Link
+            href="/admin/alcance"
+            className="text-xs font-medium text-muted underline-offset-2 hover:underline"
+          >
+            Cambiar
+          </Link>
+        </div>
+      )}
 
       {error ? (
         <p className="mt-8 rounded-xl bg-surface p-6 text-sm text-rojo ring-1 ring-line">{error}</p>
