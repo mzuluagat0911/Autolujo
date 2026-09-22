@@ -53,7 +53,14 @@ type ContratoDevengo = TerminosCuota & {
   id: string;
   cliente_id: string | null;
   fecha_inicio: string;
+  /** Si existe, la letra diaria empieza aquí (no en fecha_inicio). */
+  fecha_inicio_letra: string | null;
 };
+
+/** Día desde el cual corre la letra diaria. */
+function inicioLetraDe(c: { fecha_inicio: string; fecha_inicio_letra?: string | null }): string {
+  return (c.fecha_inicio_letra && c.fecha_inicio_letra.trim()) || c.fecha_inicio;
+}
 
 /**
  * Fechas de nacimiento por cliente, a prueba de fallos: si la columna aún no
@@ -115,7 +122,7 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
 
   const { data: contratos, error } = await sb
     .from("contratos")
-    .select("id, cliente_id, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+    .select("id, cliente_id, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
     .eq("estado", "activo");
   if (error) throw error;
 
@@ -137,7 +144,7 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
   const filas: Record<string, unknown>[] = [];
 
   for (const c of ((contratos ?? []) as unknown as ContratoDevengo[])) {
-    if (c.fecha_inicio && c.fecha_inicio > fecha) continue;
+    if (inicioLetraDe(c) > fecha) continue;
     if (yaTiene.has(c.id)) { res.yaEstaban++; continue; }
     const monto = cuotaDeFecha(c, fecha);
     if (monto <= 0) { res.sinCuota++; continue; }
@@ -186,7 +193,7 @@ export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRec
 
   const { data: contratos, error } = await sb
     .from("contratos")
-    .select("id, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+    .select("id, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
     .eq("estado", "activo");
   if (error) throw error;
 
@@ -211,7 +218,7 @@ export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRec
   const filas: Record<string, unknown>[] = [];
 
   for (const c of ((contratos ?? []) as unknown as ContratoDevengo[])) {
-    if (c.fecha_inicio && c.fecha_inicio > fecha) continue;
+    if (inicioLetraDe(c) > fecha) continue;
     if (!tieneRenta.has(c.id)) continue; // domingo libre u otro día sin cuota
     if (pagaronPuntual.has(c.id)) continue;
     if ((saldoMap.get(c.id) ?? 1) <= 0.009) continue; // adelantado / al día: sin recargo

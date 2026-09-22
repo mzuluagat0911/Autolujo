@@ -17,12 +17,14 @@ import {
 import {
   acuerdoSaldoContrato,
   acuerdosSaldoPorContrato,
+  armarExtractoDiario,
   cargosExtraAgrupados,
   cargosExtraPorContrato,
   lineasExtractoBase,
   textoDesgloseExtracto,
   type LineaExtracto,
 } from "./extracto-desglose";
+import { filtrarEstadosPorEmpresaEnvio } from "./empresas-envio";
 
 const TEMPLATE_DETALLE = "extracto_detalle";
 const TEMPLATE_AL_DIA = "extracto_al_dia";
@@ -43,7 +45,7 @@ function avisoRecargoDe(e: EstadoCuenta): string {
 /** Vars de `extracto_detalle`: nombre, fecha, carro, desglose, total, avisoRecargo. */
 export function varsExtractoDetalle(e: EstadoCuenta, ctx?: ExtraCtx): string[] {
   const [nombre, carro, fecha] = e.templateVars;
-  const lineas = lineasExtractoBase(e, {
+  const armado = armarExtractoDiario(e, {
     acuerdoSaldo: ctx?.acuerdoSaldo ?? 0,
     extras: ctx?.extras ?? [],
   });
@@ -51,8 +53,8 @@ export function varsExtractoDetalle(e: EstadoCuenta, ctx?: ExtraCtx): string[] {
     nombre,
     fecha,
     carro,
-    textoDesgloseExtracto(lineas),
-    money(e.totalHoy),
+    textoDesgloseExtracto(armado.lineas),
+    money(armado.totalCobrarHoy),
     avisoRecargoDe(e),
   ];
 }
@@ -259,14 +261,14 @@ export async function enviarEstadoCuentaPrueba(
   }
 }
 
-/** Envío MASIVO del día (para el cron 8am). Manda a todos los contratos activos. */
+/** Envío MASIVO del día (para el cron 8am). Respeta CARTERA_EMPRESAS si está set. */
 export async function enviarEstadosCuentaHoy(): Promise<{
   total: number;
   enviados: number;
   fallidos: number;
   sinNumero: number;
 }> {
-  const estados = await estadosCuentaHoy();
+  const estados = filtrarEstadosPorEmpresaEnvio(await estadosCuentaHoy());
   const ids = estados.map((e) => e.contratoId);
   const [saldos, extras] = await Promise.all([
     acuerdosSaldoPorContrato(ids),

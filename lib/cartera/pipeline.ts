@@ -305,13 +305,13 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     // Datos COMPLETOS: entregamos el total con confianza.
     lineas.push(
       ``,
-      `RESUMEN DE LA CUENTA (para "cuánto debo hoy" responde PRIMERO la CUOTA DEL DÍA, no el total):`,
-      `- CUOTA DE HOY (lo que le toca pagar por el día de hoy): ${m(est.cuotaHoy + est.recargo)}${est.recargo > 0.009 ? ` (ya pasó el corte de las 7 p.m.: incluye ${m(est.recargo)} de recargo)` : ""}.`,
-      `- ATRASO acumulado de días anteriores: ${m(est.pendienteAnterior)}.`,
-      `- Total de la cuenta (cuota de hoy + atraso): ${m(est.totalHoy)}. OJO: este es el ACUMULADO; NO lo presentes como "lo que debe pagar hoy". Solo dalo si piden el total/saldo completo.`,
-      `- Desglose completo: ${est.desglose}.`,
+      `RESUMEN DE LA CUENTA (para "cuánto debo hoy" responde PRIMERO lo del EXTRACTO DE HOY, no el saldo completo de todos los cargos):`,
+      `- CUOTA DE HOY (letra del día): ${m(est.cuotaHoy + est.recargo)}${est.recargo > 0.009 ? ` (ya pasó el corte de las 7 p.m.: incluye ${m(est.recargo)} de recargo)` : ""}.`,
+      `- ATRASO acumulado de días anteriores (letra): ${m(est.pendienteAnterior)}.`,
+      `- Total ledger (cuota + atraso + cargos en saldo): ${m(est.totalHoy)}. OJO: puede incluir VARIOS cargos extras; NO lo presentes como "lo que debe pagar hoy" si hay más de un ítem adicional. Solo dalo si piden el saldo completo.`,
+      `- Desglose ledger: ${est.desglose}.`,
       `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
-      `  no cubrió cuota + arreglo, pierde el descuento de ese día y el resto se va a mañana.`,
+      `  no cubrió lo del extracto de hoy (letra + el un ítem adicional del día), pierde el descuento de ese día y el resto se va a mañana.`,
       yaCorte || est.pagoPuntual || est.pendiente
         ? `- Ese monto ya considera la situación de hoy.`
         : `- Si a las 7 p.m. no ha cubierto lo de hoy: ${m(est.totalHoyTarde)}.`,
@@ -423,6 +423,18 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         `discute un cobro, explícaselo con este detalle (concepto, monto y fecha). No lo enumeres si no lo pide.`,
       );
     }
+
+    lineas.push(
+      ``,
+      `REGLA DE COBRO DIARIO (OBLIGATORIA — “cuánto debo HOY” / extracto):`,
+      `- SIEMPRE se cobra: letra del día + saldo anterior de letra + recargo/cierre de semana si aplica.`,
+      `- Además, SOLO UN ítem adicional por día (aunque deba varios). Orden de prioridad:`,
+      `  1) Acuerdos de pago (incluye abono inicial restante a cuota diaria)  2) Mantenimiento  3) Cualquier otro (domingo, extensión, km, etc.) eligiendo el de MENOR saldo.`,
+      `- Ese ítem se sigue cobrando día a día hasta quedar en cero; después entra el siguiente.`,
+      `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL A PAGAR HOY solo incluye letra/recargo/cierre + ese un ítem.`,
+      `- NO sumes mantenimiento + acuerdos + domingo el mismo día en el total de hoy.`,
+      `- Clientes nuevos: pueden deber panapass/domingos de entrada y abono parcial; la letra puede empezar en fecha distinta a la del contrato. Respeta las cifras del sistema.`,
+    );
   }
 
   // Cuántas CUOTAS (número, no dinero) ha pagado — cuando pregunta "¿cuántas cuotas llevo?".

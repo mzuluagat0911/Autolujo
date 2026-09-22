@@ -1,10 +1,21 @@
 // Desglose del extracto diario (plantilla `extracto_detalle`).
-// Arma las líneas que ve el cliente: cuenta, recargos, arreglo, cargos extras.
-// El TOTAL a pagar hoy sigue siendo `e.totalHoy` (cifras); saldos de acuerdo /
-// conceptos grandes se muestran como líneas informativas.
+// Arma las líneas que ve el cliente: cuenta, recargos, acuerdos, cargos extras.
+//
+// TOTAL A PAGAR HOY = letra/recargo/cierre/abono + UN solo ítem adicional
+// (prioridad: acuerdos → mantenimiento → saldo menor). El mensaje lista todo
+// lo debido; los ítems no cobrados hoy llevan “(pendiente)”.
+//
+// Acuerdos: UNA sola línea con la cuota del día + saldo al lado.
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
+import {
+  candidatosDesdeExtracto,
+  elegirExtraDelDia,
+  esCargoBase,
+  totalConUnExtra,
+  type ItemExtraElegido,
+} from "./prioridad-extras";
 
 export type LineaExtracto = { etiqueta: string; monto: number };
 
@@ -21,16 +32,20 @@ export function etiquetaCargo(concepto: string | null, codigo: string | null, ti
   if (c === "SALIDA_INT") return (concepto ?? "salida al interior").trim() || "salida al interior";
   if (c === "COBRO_DOM") return "recogida del vehículo";
   if (c === "APERTURA") return "apertura remota";
-  if (tipo === "panapass") return "multa negativo panapass";
+  if (c === "DOMINGOS") return "domingo";
+  if (c === "PANAPASS") return "panapass";
+  if (c === "AFILIACION") return "abono inicial";
+  if (tipo === "panapass") return "panapass";
   if (tipo === "afiliacion") return "abono inicial";
   const t = (concepto ?? "").trim().toLowerCase();
   if (!t) return tipo || "cargo";
-  if (/panapass/.test(t)) return "multa negativo panapass";
+  if (/panapass/.test(t)) return "panapass";
+  if (/abono\s*inicial|afiliaci[oó]n/.test(t)) return "abono inicial";
   if (/mantenimiento/.test(t)) return "mantenimiento";
   if (/cierre\s+de\s+semana/.test(t)) return "cierre de semana";
   if (/exceso/.test(t) && /km|kilom/.test(t)) return "exceso de kilometraje";
   if (/recogida|domicilio/.test(t)) return "recogida del vehículo";
-  if (/domingo/.test(t)) return "domingo 30";
+  if (/domingo/.test(t)) return "domingo";
   if (/penonom/.test(t)) return "extensión a penonomé";
   if (/extensi[oó]n/.test(t) && /contrato/.test(t)) return "extensión en el contrato";
   if (/seguro/.test(t) && /edad|menor/.test(t)) return "seguro menor edad";
@@ -62,49 +77,107 @@ function cuentaYRecargo(e: EstadoCuenta): { cuenta: number; recargo: number } {
     if (best) return best;
   }
 
+  // Solo el recargo REAL (ya pasado el corte o multa registrada). Nunca inventar
+  // $5 “por no pagar” solo porque hay saldo anterior — eso ensucia el extracto.
   const deLinea = e.lineas.find((l) => l.concepto === "por no pagar a tiempo");
-  let recargo = deLinea && deLinea.monto > 0.009 ? deLinea.monto : e.recargo;
-  if (recargo <= 0.009 && e.pendienteAnterior > 0.009 && pen > 0.009) recargo = pen;
+  const recargo = deLinea && deLinea.monto > 0.009 ? deLinea.monto : e.recargo;
   return { cuenta: Math.max(base - recargo, 0), recargo };
 }
 
-/** Líneas base solo con cifras del estado (sin ir a BD). */
+export type ExtractoArmado = {
+  lineas: LineaExtracto[];
+  /** Monto que se pide HOY (letra + recargo/cierre + un ítem extra). */
+  totalCobrarHoy: number;
+  /** Ítem adicional elegido hoy, o null. */
+  extraElegido: ItemExtraElegido | null;
+};
+
+/** Líneas + total con la regla de un solo ítem adicional. */
+export function armarExtractoDiario(
+  e: EstadoCuenta,
+  opts?: { acuerdoSaldo?: number; extras?: LineaExtracto[] },
+): ExtractoArmado {
+  const extrasAll = (opts?.extras ?? []).filter((x) => x.monto > 0.009);
+  const extrasBase = extrasAll.filter((x) => esCargoBase(x.etiqueta)); // ej. cierre
+  const extrasCompetidores = extrasAll.filter((x) => !esCargoBase(x.etiqueta));
+  const extrasSum = extrasAll.reduce((s, x) => s + x.monto, 0);
+
+  let { cuenta, recargo } = cuentaYRecargo(e);
+  // Extras ya van en saldo/totalHoy: sacarlos de “cuenta” para no duplicar.
+  cuenta = Math.max(cuenta - extrasSum, 0);
+
+  const lineasBase: LineaExtracto[] = [];
+  if (cuenta > 0.009) lineasBase.push({ etiqueta: "cuenta", monto: cuenta });
+
+  const abono = e.lineas.find((l) => l.concepto === "pagado hoy" && l.monto < -0.009);
+  if (abono) lineasBase.push({ etiqueta: "abono", monto: Math.abs(abono.monto) });
+
+  if (recargo > 0.009) lineasBase.push({ etiqueta: "por no pagar", monto: recargo });
+
+  for (const x of extrasBase) {
+    lineasBase.push(x);
+  }
+
+  const baseMonto = lineasBase.reduce((s, l) => s + l.monto, 0);
+
+  const candidatos = candidatosDesdeExtracto({
+    acuerdoHoy: e.acuerdoHoy,
+    acuerdoSaldo: opts?.acuerdoSaldo,
+    extras: extrasCompetidores,
+  });
+  const extraElegido = elegirExtraDelDia(candidatos);
+  const totalCobrarHoy = Math.round(totalConUnExtra(baseMonto, extraElegido) * 100) / 100;
+
+  const out: LineaExtracto[] = [...lineasBase];
+
+  // Acuerdos: siempre visible si hay; “(pendiente)” si hoy no es el ítem elegido.
+  if (e.acuerdoHoy > 0.009) {
+    const saldoAcuerdo = Math.max(Number(opts?.acuerdoSaldo) || 0, 0);
+    const cobrando =
+      extraElegido?.categoria === "acuerdo" &&
+      Math.abs(extraElegido.montoHoy - e.acuerdoHoy) < 0.05;
+    const etiquetaBase =
+      saldoAcuerdo > e.acuerdoHoy + 0.009
+        ? `acuerdos (saldo ${money(saldoAcuerdo)})`
+        : "acuerdos";
+    out.push({
+      etiqueta: cobrando ? etiquetaBase : `${etiquetaBase} (pendiente)`,
+      monto: e.acuerdoHoy,
+    });
+  }
+
+  // Aviso de domingo MAÑANA (cuota del día domingo, no saldo arrastrado).
+  if (e.domingo && e.domingo > 0.009) {
+    out.push({
+      etiqueta: `domingo ${e.domingoDia ?? ""}`.trim(),
+      monto: e.domingo,
+    });
+  }
+
+  for (const x of extrasCompetidores) {
+    const esElegido =
+      extraElegido != null &&
+      extraElegido.categoria !== "acuerdo" &&
+      extraElegido.etiqueta === x.etiqueta &&
+      Math.abs(extraElegido.montoHoy - x.monto) < 0.05;
+    out.push({
+      etiqueta: esElegido ? x.etiqueta : `${x.etiqueta} (pendiente)`,
+      monto: x.monto,
+    });
+  }
+
+  if (out.length === 0 && totalCobrarHoy > 0.009) {
+    out.push({ etiqueta: "cuenta", monto: totalCobrarHoy });
+  }
+  return { lineas: out, totalCobrarHoy, extraElegido };
+}
+
+/** Compat: solo líneas (mismo criterio visual que `armarExtractoDiario`). */
 export function lineasExtractoBase(
   e: EstadoCuenta,
   opts?: { acuerdoSaldo?: number; extras?: LineaExtracto[] },
 ): LineaExtracto[] {
-  const out: LineaExtracto[] = [];
-  const { cuenta, recargo } = cuentaYRecargo(e);
-
-  if (cuenta > 0.009) out.push({ etiqueta: "cuenta", monto: cuenta });
-
-  const abono = e.lineas.find((l) => l.concepto === "pagado hoy" && l.monto < -0.009);
-  if (abono) out.push({ etiqueta: "abono", monto: Math.abs(abono.monto) });
-
-  if (recargo > 0.009) out.push({ etiqueta: "por no pagar", monto: recargo });
-
-  if (e.acuerdoHoy > 0.009) {
-    out.push({ etiqueta: "acuerdo", monto: e.acuerdoHoy });
-  }
-
-  const saldoAcuerdo = Math.max(Number(opts?.acuerdoSaldo) || 0, 0);
-  if (saldoAcuerdo > e.acuerdoHoy + 0.009) {
-    out.push({ etiqueta: "acuerdos", monto: saldoAcuerdo });
-  }
-
-  // Aviso de domingo mañana (si el contrato cobra domingo).
-  if (e.domingo && e.domingo > 0.009) {
-    out.push({ etiqueta: `domingo ${e.domingoDia ?? ""}`.trim(), monto: e.domingo });
-  }
-
-  for (const x of opts?.extras ?? []) {
-    if (x.monto > 0.009) out.push(x);
-  }
-
-  if (out.length === 0 && e.totalHoy > 0.009) {
-    out.push({ etiqueta: "cuenta", monto: e.totalHoy });
-  }
-  return out;
+  return armarExtractoDiario(e, opts).lineas;
 }
 
 /** Une líneas para la variable Meta (sin saltos: Meta no los acepta en params). */

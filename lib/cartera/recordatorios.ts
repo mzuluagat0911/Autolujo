@@ -15,6 +15,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "./fecha";
 import { normalizarTelefono } from "./telefono";
 import { estadosCuentaHoy, type EstadoCuenta } from "./estado-cuenta";
+import { filtrarEstadosPorEmpresaEnvio } from "./empresas-envio";
 
 const TEMPLATE_POR_NIVEL = {
   mediodia: "recordatorio_pago",
@@ -94,7 +95,7 @@ export async function enviarRecordatoriosHoy(nivel: NivelRecordatorio): Promise<
 }> {
   const sb = createServerSupabase();
   const fecha = hoyPanama();
-  const estados = await estadosCuentaHoy(); // ya excluye a quien pagó o tiene comprobante pendiente
+  const estados = filtrarEstadosPorEmpresaEnvio(await estadosCuentaHoy());
 
   let enviados = 0, fallidos = 0, sinNumero = 0, yaEstaban = 0;
   const TANDA = 10;
@@ -117,5 +118,5 @@ export async function enviarRecordatoriosHoy(nivel: NivelRecordatorio): Promise<
  * que sirve en cualquier momento del día para que el equipo levante el teléfono.
  */
 export async function paraLlamarHoy(): Promise<EstadoCuenta[]> {
-  return estadosCuentaHoy();
+  return filtrarEstadosPorEmpresaEnvio(await estadosCuentaHoy());
 }

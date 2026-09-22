@@ -1,20 +1,36 @@
 // Cierre de semana (regla del contrato): el cliente tiene hasta el LUNES para
-// dejar la semana cerrada, INCLUIDA la cuota del lunes. Si el MARTES en la
-// mañana aún arrastra deuda del lunes o antes, se le cobra $10 (CIERRE_SEMANA).
+// dejar la **letra diaria** al día (incluida la del lunes). Si el MARTES en la
+// mañana aún arrastra atraso de PAGOS DIARIOS del lunes o antes, se cobra $10
+// (CIERRE_SEMANA).
+//
+// IMPORTANTE — el $10 NO aplica por:
+//   - acuerdos / abonos de arreglo
+//   - domingos pendientes
+//   - mantenimiento u otros recargos
+// Solo por demora o saldo de la CUOTA DIARIA (letra).
 //
 // Corre el martes a primera hora, junto con el cobro de las 8am, para que el
 // recargo salga en el estado de cuenta de la mañana.
 //
-// "No cerró la semana" = tiene ATRASO de días anteriores (pendienteAnterior),
-// es decir, algo del lunes o antes sin pagar. La cuota nueva del martes NO
-// cuenta (esa es del día de hoy). Reutiliza `estadosCuentaHoy()`, que ya excluye
-// a quien pagó, adelantó, tiene comprobante en validación o contrato cerrado.
+// "No cerró la semana" = atraso de letra de días anteriores (pendienteAnterior
+// atribuible a renta diaria). La cuota nueva del martes NO cuenta.
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, diaSemana } from "./fecha";
 import { estadosCuentaHoy } from "./estado-cuenta";
+import { filtrarEstadosPorEmpresaEnvio } from "./empresas-envio";
 
 const MONTO_CIERRE = 10;
+
+/**
+ * Atraso que dispara el $10: solo demora de LETRA DIARIA.
+ * Acuerdos, domingos y otros recargos NO cuentan (ver comentario de archivo).
+ * Hoy usamos pendienteAnterior del motor; el piloto Gold / Excel usa la columna
+ * `atrasado` o la falta de letra del lunes — nunca DEBE OTROS ni acuerdos.
+ */
+function atrasoLetraDiaria(e: { pendienteAnterior: number }): boolean {
+  return e.pendienteAnterior > 0.009;
+}
 
 export type ResultadoCierreSemana = {
   fecha: string;
@@ -38,7 +54,11 @@ export async function aplicarCierreSemana(fecha = hoyPanama()): Promise<Resultad
 
   // Quién NO cerró la semana: tiene atraso del lunes o antes (pendienteAnterior).
   // La cuota nueva del martes no cuenta (es del día de hoy).
-  const deudores = (await estadosCuentaHoy()).filter((e) => e.pendienteAnterior > 0.009);
+  // Quién NO cerró la letra diaria de la semana (lunes o antes).
+  // No contar acuerdos / domingos / otros como motivo del $10.
+  const deudores = filtrarEstadosPorEmpresaEnvio(await estadosCuentaHoy()).filter(
+    (e) => atrasoLetraDiaria(e),
+  );
   res.deudores = deudores.length;
   if (deudores.length === 0) return res;
 
