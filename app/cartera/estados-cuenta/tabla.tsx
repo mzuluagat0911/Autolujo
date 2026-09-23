@@ -8,9 +8,11 @@ import {
   textoSituacionCuotas,
   esAdelantado,
   esAlDiaHoy,
+  gravedadSituacion,
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
+import { DetalleEstadoModal } from "./detalle";
 
 type Filtro = "todas" | "pendiente" | "recargo" | "aldia" | "adelantado";
 type OrdenCol =
@@ -51,6 +53,7 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [orden, setOrden] = useState<OrdenCol>("totalHoy");
   const [asc, setAsc] = useState(false);
+  const [detalle, setDetalle] = useState<EstadoCuenta | null>(null);
 
   function clickCabecera(col: OrdenCol) {
     if (orden === col) {
@@ -58,6 +61,7 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
       return;
     }
     setOrden(col);
+    // Situación / montos: más delicado (mayor) primero. Texto: A→Z.
     setAsc(col === "carro" || col === "cliente");
   }
 
@@ -126,11 +130,8 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
           break;
         case "totalHoy":
         default:
-          if (esAdelantado(a) || esAdelantado(b)) {
-            r = (a.diasAdelantados || 0) - (b.diasAdelantados || 0);
-          } else {
-            r = a.totalHoy - b.totalHoy;
-          }
+          // Más delicado = quien más debe.
+          r = gravedadSituacion(a) - gravedadSituacion(b);
           break;
       }
       return r * dir;
@@ -160,11 +161,17 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
             activo ? "text-ink" : "text-muted"
           }`}
           title={
-            activo
-              ? asc
-                ? "Menor → mayor (clic para invertir)"
-                : "Mayor → menor (clic para invertir)"
-              : "Ordenar"
+            col === "totalHoy"
+              ? activo
+                ? asc
+                  ? "Menos delicado → más (clic para invertir)"
+                  : "Más delicado primero · quien más debe (clic para invertir)"
+                : "Ordenar por gravedad (quien más debe)"
+              : activo
+                ? asc
+                  ? "Menor → mayor (clic para invertir)"
+                  : "Mayor → menor (clic para invertir)"
+                : "Ordenar"
           }
         >
           {label}
@@ -182,9 +189,9 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
         chips={[
           { id: "todas", label: "Todas", count: estados.length },
           { id: "pendiente", label: "Pendiente", count: contadores.pendiente },
-          { id: "adelantado", label: "Adelantado", count: contadores.adelantado },
-          { id: "aldia", label: "Al día", count: contadores.aldia },
           { id: "recargo", label: "Con recargo", count: contadores.recargo },
+          { id: "aldia", label: "Al día", count: contadores.aldia },
+          { id: "adelantado", label: "Adelantado", count: contadores.adelantado },
         ]}
         activeChip={filtro}
         onChip={(id) => setFiltro(id as Filtro)}
@@ -215,12 +222,26 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
               {visibles.slice(0, 250).map((e) => (
                 <tr
                   key={e.contratoId}
-                  className="border-b border-line last:border-0 hover:bg-surface-2"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => setDetalle(e)}
+                  onKeyDown={(ev) => {
+                    if (ev.key === "Enter" || ev.key === " ") {
+                      ev.preventDefault();
+                      setDetalle(e);
+                    }
+                  }}
+                  className="group cursor-pointer border-b border-line last:border-0 transition-colors hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:outline-none"
+                  title="Ver detalle del estado de cuenta"
                 >
                   <td className="px-4 py-2.5 font-semibold whitespace-nowrap tabular-nums">
                     {etiquetaCarroUi(e.empresa, e.vehiculoNumero)}
                   </td>
-                  <td className="px-4 py-2.5 text-muted">{e.clienteNombre}</td>
+                  <td className="px-4 py-2.5">
+                    <span className="font-medium text-ink underline-offset-2 group-hover:underline">
+                      {e.clienteNombre}
+                    </span>
+                  </td>
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     {e.letra > 0.009 ? <Money amount={e.letra} /> : "—"}
                   </td>
@@ -268,6 +289,10 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
             </tbody>
           </table>
         </div>
+      )}
+
+      {detalle && (
+        <DetalleEstadoModal estado={detalle} onClose={() => setDetalle(null)} />
       )}
     </div>
   );

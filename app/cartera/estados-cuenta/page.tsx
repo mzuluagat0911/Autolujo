@@ -50,7 +50,7 @@ export default async function EstadosCuentaPage() {
       <PageHeader
         eyebrow="Cartera"
         title="Estado de cuenta del día"
-        subtitle="Lo que debe pagar hoy cada carro. Este es el mensaje que se enviará a primera hora."
+        subtitle="Lo que debe pagar hoy cada carro. Clic en una fila para ver el detalle completo."
       />
 
       {etiqueta && (

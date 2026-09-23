@@ -798,25 +798,33 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
 }
 
 /**
+ * Gravedad operativa para ordenar Situación: a mayor valor, más delicado.
+ * Quien más debe hoy va primero; al día y adelantado al final.
+ */
+export function gravedadSituacion(e: {
+  diasAdelantados: number;
+  pagoPuntual: boolean;
+  totalHoy: number;
+  pendiente: boolean;
+  pendienteMonto?: number;
+  recargosAcumulados?: number;
+}): number {
+  if (esAdelantado(e)) return -1_000_000 - (Number(e.diasAdelantados) || 0);
+  if (esAlDiaHoy(e)) return -1;
+  const debe = Math.max(Number(e.totalHoy) || 0, Number(e.pendienteMonto) || 0);
+  const recargos = Number(e.recargosAcumulados) || 0;
+  // Comprobante en validación: un poco menos urgente que deuda abierta del mismo monto.
+  return debe + recargos * 0.001 + (e.pendiente ? -0.5 : 0);
+}
+
+/**
  * Panel de Estado de cuenta: TODOS los contratos del alcance.
  * Cierre 00:00: quien ya pagó mañana = «Pago adelantado»; quien solo cubrió hoy = «Al día».
+ * Orden: lo más delicado primero (quien más debe).
  */
 export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
   const todos = await armarEstadosAlcance();
-  return [...todos].sort((a, b) => {
-    const rank = (e: EstadoCuenta) => {
-      if (esAdelantado(e)) return 0;
-      if (esAlDiaHoy(e)) return 1;
-      return 2;
-    };
-    const ra = rank(a);
-    const rb = rank(b);
-    if (ra !== rb) return ra - rb;
-    if (esAdelantado(a) || esAdelantado(b)) {
-      return (b.diasAdelantados || 0) - (a.diasAdelantados || 0);
-    }
-    return b.totalHoy - a.totalHoy;
-  });
+  return [...todos].sort((a, b) => gravedadSituacion(b) - gravedadSituacion(a));
 }
 
 /** Cola de cobro / envío: solo quien aún debe hoy (sin comprobante pendiente). */
