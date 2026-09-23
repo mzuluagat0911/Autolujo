@@ -12,6 +12,7 @@ import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
 import { aplicarPagoEnObligaciones, textoComoSeAplico } from "./aplicar-pago";
 import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
+import { carroCompatibleConChat } from "@/lib/cartera/cruce";
 import { detectarDiasViaje, textoTarifasInterior, type DestinoInterior } from "./salidas-interior";
 import {
   inferirSalidaDelChat,
@@ -882,14 +883,22 @@ export async function procesarPagoComprobante(opts: {
   const path = opts.path ?? (await subirComprobante(bytes, mime));
   const porCarro = await resolverContratoPorCarro(comprobante.numero_carro);
 
+  // Número del chat (ej. "Carro G15" → "G15"). El OCR a menudo se come la G.
+  const carroChat = (conversacion.etiqueta ?? "")
+    .replace(/^carro\s+/i, "")
+    .trim() || null;
+  const ocrCompatibleConChat = carroCompatibleConChat(comprobante.numero_carro, carroChat);
+
   // El # de carro sale de un OCR sobre el comentario de la transferencia: un
   // dígito mal leído o mal escrito apuntaría a OTRO contrato. Si la conversación
   // ya está vinculada (por el teléfono del cliente, que sí es verificable), ese
   // vínculo manda; el carro del comprobante solo puede confirmarlo, no cambiarlo.
+  // Excepción: "15" vs "G15" (mismo dígito, OCR sin prefijo) → NO contradice.
   const contradice =
     porCarro.estado === "ok" &&
     conversacion.contrato_id != null &&
-    porCarro.contratoId !== conversacion.contrato_id;
+    porCarro.contratoId !== conversacion.contrato_id &&
+    !ocrCompatibleConChat;
 
   let resolucion: ResolucionCarro;
   if (contradice) {
@@ -901,8 +910,11 @@ export async function procesarPagoComprobante(opts: {
       etiqueta: conversacion.etiqueta,
       estado: "ambiguo",
     };
-  } else if (porCarro.estado !== "ok" && conversacion.contrato_id) {
-    // Sin carro legible, el vínculo del teléfono es la mejor referencia.
+  } else if (
+    conversacion.contrato_id &&
+    (ocrCompatibleConChat || porCarro.estado !== "ok" || porCarro.contratoId === conversacion.contrato_id)
+  ) {
+    // Chat vinculado manda: OCR sin prefijo (15→G15) o sin carro legible.
     resolucion = {
       vehiculoId: conversacion.vehiculo_id,
       contratoId: conversacion.contrato_id,
@@ -915,7 +927,11 @@ export async function procesarPagoComprobante(opts: {
   }
 
   const empresaId = await empresaDelVehiculo(resolucion.vehiculoId);
-  const veredicto = await validarComprobante({ comprobante, empresaId });
+  const veredicto = await validarComprobante({
+    comprobante,
+    empresaId,
+    contratoId: resolucion.contratoId ?? conversacion.contrato_id,
+  });
 
   // Solo se RELLENA lo que falte. Nunca se sobreescribe un vínculo existente:
   // eso le entregaría a este cliente el saldo del contrato equivocado.
@@ -934,12 +950,18 @@ export async function procesarPagoComprobante(opts: {
     );
   }
 
-  // Cualquier alerta antifraude va al panel: nadie da el pago por bueno solo.
-  if (veredicto.revisionHumana) {
+  // Reenvío / duplicado: no escalar — el cliente ya tenía el día cubierto.
+  const soloReenvioODup =
+    !veredicto.crearPago &&
+    veredicto.alertas.length > 0 &&
+    veredicto.alertas.every((a) => a.codigo === "duplicado" || a.codigo === "reenvio_dia");
+
+  // Otras alertas antifraude sí van al panel.
+  if (veredicto.revisionHumana && !soloReenvioODup) {
     await marcarAmbiguo(conversacion.id, `Comprobante con alertas: ${resumirAlertas(veredicto.alertas)}`);
   }
 
-  // Referencia ya registrada → NO se crea otro pago.
+  // Referencia ya registrada o reenvío del día → NO se crea otro pago.
   if (!veredicto.crearPago) {
     return { pagoId: null, comprobantePath: path, resolucion, estadoConciliacion: "duplicado", veredicto };
   }

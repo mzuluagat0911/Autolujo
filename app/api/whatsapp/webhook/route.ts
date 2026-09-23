@@ -417,8 +417,11 @@ function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: s
   const fuera = fueraHorarioOperativo();
 
   if (res.estadoConciliacion === "duplicado") {
+    const reenvio = res.veredicto.alertas.some((a) => a.codigo === "reenvio_dia");
     return {
-      respuesta: "Ese comprobante ya me aparece. Si fue otro pago, mándeme esa captura.",
+      respuesta: reenvio
+        ? "El pago de ese día ya lo tenía registrado. Si es otro abono (mora u otro monto), mándeme esa captura."
+        : "Ese comprobante ya me aparece. Si fue otro pago, mándeme esa captura.",
       escalarMotivo: null,
     };
   }

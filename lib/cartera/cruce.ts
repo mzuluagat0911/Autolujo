@@ -21,6 +21,29 @@ export function canonCarro(s: string): string {
   return m ? m[1] + String(parseInt(m[2], 10)) : t;
 }
 
+/**
+ * ¿El # del comprobante (OCR) es el mismo carro que el del chat?
+ * El OCR a menudo se come la G: lee "15" cuando en la foto dice "G15".
+ * Si los dígitos calzan y el chat ya trae prefijo (G15), no es contradicción.
+ */
+export function carroCompatibleConChat(
+  leido: string | null | undefined,
+  delChat: string | null | undefined,
+): boolean {
+  if (!leido || !delChat) return false;
+  const a = canonCarro(leido.replace(/^carro\s+/i, ""));
+  const b = canonCarro(delChat.replace(/^carro\s+/i, ""));
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const digA = a.replace(/\D/g, "");
+  const digB = b.replace(/\D/g, "");
+  if (!digA || digA !== digB) return false;
+  const prefA = a.replace(/\d/g, "");
+  const prefB = b.replace(/\d/g, "");
+  // Uno sin letra (OCR) y el otro con (G15), o misma letra.
+  return !prefA || !prefB || prefA === prefB;
+}
+
 export function extraerCarro(desc: string, empresa: string | null): string | null {
   if (empresa === "GOLD") {
     const m = /\bG\s*-?\s*0*(\d{1,3})\b/i.exec(desc);

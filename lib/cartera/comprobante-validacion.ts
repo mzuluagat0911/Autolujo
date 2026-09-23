@@ -18,6 +18,7 @@ const DIAS_TOLERANCIA = 7;
 export type Alerta = {
   codigo:
     | "duplicado"
+    | "reenvio_dia"
     | "cuenta_ajena"
     | "cuenta_otra_empresa"
     | "fecha_vieja"
@@ -54,9 +55,15 @@ export async function validarComprobante(opts: {
   comprobante: Comprobante;
   /** Empresa del carro al que se va a aplicar, si ya se resolvió. */
   empresaId?: string | null;
+  /**
+   * Contrato del chat (si ya está vinculado). Sirve para detectar reenvíos del
+   * día en el lanzamiento: el cliente manda de nuevo el comprobante que ya
+   * quedó cargado por Excel / otro canal, sin referencia bancaria en el primero.
+   */
+  contratoId?: string | null;
 }): Promise<Veredicto> {
   const sb = createServerSupabase();
-  const { comprobante: c, empresaId } = opts;
+  const { comprobante: c, empresaId, contratoId } = opts;
   const alertas: Alerta[] = [];
   let crearPago = true;
   let pagoDuplicadoId: string | null = null;
@@ -78,6 +85,34 @@ export async function validarComprobante(opts: {
       alertas.push({
         codigo: "duplicado",
         detalle: `La referencia ${ref} ya está registrada (pago del ${p.fecha} por $${p.monto}).`,
+      });
+    }
+  }
+
+  // --- 1b. ¿Ya hay pago del mismo día/monto en ESTE contrato? (reenvío) ------
+  // Típico del go-live: el del Excel ya bajó el saldo; el cliente reenvía la foto
+  // al número nuevo. Sin referencia en el primero, el chequeo 1 no alcanza.
+  const fechaComp = (c.fecha && /^\d{4}-\d{2}-\d{2}$/.test(c.fecha) ? c.fecha : null) ?? hoyPanama();
+  const montoComp = c.monto != null && c.monto > 0 ? Number(c.monto) : null;
+  if (crearPago && contratoId && montoComp != null) {
+    const { data: delDia } = await sb
+      .from("pagos")
+      .select("id, monto, origen, fecha")
+      .eq("contrato_id", contratoId)
+      .eq("fecha", fechaComp)
+      .neq("estado_conciliacion", "rechazado")
+      .limit(10);
+    const mismo = ((delDia ?? []) as { id: string; monto: number; origen: string | null; fecha: string }[]).find(
+      (p) => Math.abs(Number(p.monto) - montoComp) < 0.02,
+    );
+    if (mismo) {
+      crearPago = false;
+      pagoDuplicadoId = mismo.id;
+      alertas.push({
+        codigo: "reenvio_dia",
+        detalle:
+          `Este contrato ya tiene un pago del ${fechaComp} por $${Number(mismo.monto).toFixed(2)}` +
+          `${mismo.origen ? ` (origen ${mismo.origen})` : ""}. Parece reenvío del comprobante del día, no mora nueva.`,
       });
     }
   }
