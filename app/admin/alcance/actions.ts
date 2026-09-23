@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { sesionEquipo } from "@/lib/equipo/sesion";
 import { guardarAlcance } from "@/lib/cartera/alcance";
 

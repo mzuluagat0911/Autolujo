@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
-import { esAlDiaHoy, estadosCuentaPanel } from "@/lib/cartera/estado-cuenta";
+import { esAlDiaHoy } from "@/lib/cartera/estado-cuenta";
+import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta-cache";
 import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
 import {
   acuerdosSaldoPorContrato,

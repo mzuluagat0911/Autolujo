@@ -7,7 +7,6 @@
 // masivo y el panel leen de aquí. Si cada uno calcula lo suyo, el mismo chat
 // termina dando dos números distintos para lo mismo.
 
-import { revalidateTag, unstable_cache } from "next/cache";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, pasoCorte, fechaLarga, sumarDias } from "./fecha";
 import type { TerminosCuota } from "./cuota";
@@ -957,31 +956,15 @@ export function gravedadSituacion(e: {
   return debe + recargos * 0.001 + (e.pendiente ? -0.5 : 0);
 }
 
-const PANEL_TAG = "estados-cuenta-panel";
-
-/** Lectura del panel, 20s. El cron de cobro no pasa por aquí. */
-const panelDesdeCache = unstable_cache(
-  async (hoy: string) => {
-    if (!hoy) return [];
-    const todos = await armarEstadosAlcance();
-    return [...todos].sort((a, b) => gravedadSituacion(b) - gravedadSituacion(a));
-  },
-  ["estados-cuenta-panel-v2"],
-  { revalidate: 20, tags: [PANEL_TAG] },
-);
-
-/** Limpia la lectura del panel cuando cambia un pago, un cargo o el alcance. */
-export function invalidarLecturaEstados() {
-  revalidateTag(PANEL_TAG);
-}
-
 /**
  * Panel de Estado de cuenta: TODOS los contratos del alcance.
  * Cierre 00:00: quien ya pagó mañana = «Pago adelantado»; quien solo cubrió hoy = «Al día».
  * Orden: lo más delicado primero (quien más debe).
+ * Sin caché: la tabla del navegador importa este módulo.
  */
 export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
-  return panelDesdeCache(hoyPanama());
+  const todos = await armarEstadosAlcance();
+  return [...todos].sort((a, b) => gravedadSituacion(b) - gravedadSituacion(a));
 }
 
 /** Cola de cobro / envío: solo quien aún debe hoy (sin comprobante pendiente). */

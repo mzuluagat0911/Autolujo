@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import { enviarEstadoCuentaPrueba } from "@/lib/cartera/envios";
