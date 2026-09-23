@@ -311,8 +311,33 @@ function armar(
         sumarDias(extra.hoy, diasAdelantados)
       : null;
 
+  // Adelantado (crédito o pago con fecha futura): NO aplica multa de “no pago” hoy.
+  // calcularCifras no ve el adelanto (solo cubrieron/pagoPuntual) y inventaba $5.
+  const adelantado = diasAdelantados >= 1;
+  let cifrasOut = cifras;
+  let desgloseOut = desglose;
+  let recargosAcc = Math.max(Number(extra.recargosAcumulados) || 0, 0);
+  if (adelantado) {
+    if (cifras.recargo > 0.009) {
+      // Quitá el fantasma de hoy si se había sumado al acumulado (aún no en ledger).
+      recargosAcc = Math.max(recargosAcc - cifras.recargo, 0);
+    }
+    cifrasOut = {
+      ...cifras,
+      recargo: 0,
+      recargoSiTarda: 0,
+      totalHoyTarde: cifras.totalHoy,
+      lineas: cifras.lineas.filter((l) => l.concepto !== "por no pagar a tiempo"),
+    };
+    desgloseOut = textoDesglose(cifrasOut.lineas, money);
+    if (cifrasOut.domingo) {
+      desgloseOut = `${desgloseOut} · ${money(cifrasOut.domingo)} domingo ${Number(manana.slice(8, 10))}`;
+    }
+    if (!desgloseOut) desgloseOut = `${money(cifrasOut.cuenta)} cuenta`;
+  }
+
   return {
-    ...cifras,
+    ...cifrasOut,
     contratoId: c.id,
     vehiculoNumero: carro,
     empresa: emp?.codigo ?? null,
@@ -323,7 +348,8 @@ function armar(
     clienteTratamiento: tratamientoCliente(c.cliente?.nombre, c.cliente?.genero ?? null),
     waNumero: c.cliente?.whatsapp ?? null,
     pagoHoy: extra.pagoHoy,
-    pagoPuntual: extra.pagoPuntual,
+    // Semántica: si ya va por delante, hoy está cubierto.
+    pagoPuntual: adelantado ? true : extra.pagoPuntual,
     pendiente: extra.pendiente,
     pendienteMonto: extra.pendienteMonto,
     pendienteHora: extra.pendienteHora,
@@ -341,13 +367,10 @@ function armar(
     numCuotasTotal: extra.numCuotasTotal,
     cuotasPagadas: extra.cuotasPagadas,
     cuotasDebe: extra.cuotasDebe,
-    recargosAcumulados: Math.max(
-      Number(extra.recargosAcumulados) || 0,
-      0,
-    ),
-    desglose,
+    recargosAcumulados: recargosAcc,
+    desglose: desgloseOut,
     fecha,
-    templateVars: [nombre, carro, fecha, desglose, money(cifras.totalHoy)],
+    templateVars: [nombre, carro, fecha, desgloseOut, money(cifrasOut.totalHoy)],
   };
 }
 

@@ -33,10 +33,18 @@ function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
 }
 
 function recargoMostrado(e: EstadoCuenta): number {
+  // Adelantado / al día: no mostrar amenaza ni multa de “no pago” de hoy.
+  if (esAdelantado(e) || esAlDiaHoy(e)) {
+    return e.recargosAcumulados > 0.009 ? e.recargosAcumulados : 0;
+  }
   if (e.recargosAcumulados > 0.009) return e.recargosAcumulados;
   if (e.recargo > 0.009) return e.recargo;
   if (e.recargoSiTarda > 0.009) return e.recargoSiTarda;
   return 0;
+}
+
+function tieneRecargoVisible(e: EstadoCuenta): boolean {
+  return recargoMostrado(e) > 0.009;
 }
 
 function cmpStr(a: string, b: string): number {
@@ -75,9 +83,7 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
       if (esAdelantado(e)) adelantado++;
       else if (esAlDiaHoy(e)) aldia++;
       else pendiente++;
-      if (e.recargosAcumulados > 0.009 || e.recargo > 0.009 || e.recargoSiTarda > 0.009) {
-        recargo++;
-      }
+      if (tieneRecargoVisible(e)) recargo++;
     }
     return { pendiente, recargo, aldia, adelantado };
   }, [estados]);
@@ -88,12 +94,7 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
       if (filtro === "pendiente" && (esAdelantado(e) || esAlDiaHoy(e))) return false;
       if (filtro === "aldia" && !esAlDiaHoy(e)) return false;
       if (filtro === "adelantado" && !esAdelantado(e)) return false;
-      if (
-        filtro === "recargo" &&
-        !(e.recargosAcumulados > 0.009 || e.recargo > 0.009 || e.recargoSiTarda > 0.009)
-      ) {
-        return false;
-      }
+      if (filtro === "recargo" && !tieneRecargoVisible(e)) return false;
       if (!needle) return true;
       const blob = [
         e.vehiculoNumero,
@@ -247,7 +248,13 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                     {e.letra > 0.009 ? <Money amount={e.letra} /> : "—"}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-ambar">
-                    {e.recargosAcumulados > 0.009 ? (
+                    {esAdelantado(e) || esAlDiaHoy(e) ? (
+                      e.recargosAcumulados > 0.009 ? (
+                        <Money amount={e.recargosAcumulados} />
+                      ) : (
+                        "—"
+                      )
+                    ) : e.recargosAcumulados > 0.009 ? (
                       <Money amount={e.recargosAcumulados} />
                     ) : e.recargo > 0.009 ? (
                       <Money amount={e.recargo} />

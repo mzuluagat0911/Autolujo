@@ -271,7 +271,7 @@ export function DetalleEstadoModal({
                 <span className="text-base font-semibold">{money(estado.totalHoy)}</span>
               </Fila>
             )}
-            {estado.recargoSiTarda > 0.009 && (
+            {!adelantado && !alDia && estado.recargoSiTarda > 0.009 && (
               <Fila label="Si no completa antes de las 7 p.m." tone="warn">
                 +{money(estado.recargoSiTarda)} → {money(estado.totalHoyTarde)}
               </Fila>
