@@ -62,9 +62,9 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
         <div className="mt-6 border-t border-line pt-5">
           <label className="block text-sm font-medium">Excel · Banco General</label>
           <p className="mt-1 text-xs text-muted">
-            Sube el archivo de movimientos de la cuenta de{" "}
-            {elegida ? siglaEmpresa(elegida.codigo) : "la empresa"} (ahorros). También acepta el PDF
-            de “Últimos movimientos”. Un archivo por empresa.
+            Sube el Excel de “Movimientos cuenta de ahorros” o el de “Últimos movimientos”
+            ({elegida ? siglaEmpresa(elegida.codigo) : "empresa"}). También acepta el PDF. Un archivo
+            por empresa.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-3">
             <label className="inline-flex cursor-pointer items-center gap-3 rounded-lg bg-paper px-3 py-2 ring-1 ring-line hover:ring-line-strong">

@@ -74,18 +74,70 @@ const MESES: Record<string, string> = {
 };
 
 export function parseFechaExtracto(s: string): string | null {
-  const m = /(\d{1,2})-([a-zA-Záéíóú]{3})[a-z]*-(\d{4})/i.exec(s.trim());
-  if (!m) return null;
-  const mes = MESES[m[2].toLowerCase().slice(0, 3)];
-  if (!mes) return null;
-  return `${m[3]}-${mes}-${m[1].padStart(2, "0")}`;
+  const raw = String(s ?? "").trim();
+  if (!raw) return null;
+
+  // 06-Aug-2026 / 6-sep-2026 / 29-ago-2026
+  const m1 = /(\d{1,2})-([a-zA-Záéíóú]{3})[a-z]*-(\d{4})/i.exec(raw);
+  if (m1) {
+    const mes = MESES[m1[2].toLowerCase().slice(0, 3)];
+    if (mes) return `${m1[3]}-${mes}-${m1[1].padStart(2, "0")}`;
+  }
+
+  // 23/09/2026 · 23-09-2026 · 2026-09-23
+  const m2 = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/.exec(raw);
+  if (m2) {
+    return `${m2[1]}-${m2[2].padStart(2, "0")}-${m2[3].padStart(2, "0")}`;
+  }
+  const m3 = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(raw);
+  if (m3) {
+    return `${m3[3]}-${m3[2].padStart(2, "0")}-${m3[1].padStart(2, "0")}`;
+  }
+
+  // Serial de Excel (días desde 1899-12-30).
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 30000 && n < 60000) {
+      const epoch = Date.UTC(1899, 11, 30) + Math.floor(n) * 86400000;
+      const d = new Date(epoch);
+      const y = d.getUTCFullYear();
+      const mo = String(d.getUTCMonth() + 1).padStart(2, "0");
+      const da = String(d.getUTCDate()).padStart(2, "0");
+      return `${y}-${mo}-${da}`;
+    }
+  }
+  return null;
 }
 
 function parseMoneyCell(s: string): number | null {
-  const t = String(s ?? "").replace(/[$\s]/g, "").replace(/,/g, "").trim();
-  if (!t) return null;
+  const t = String(s ?? "")
+    .replace(/[$\s]/g, "")
+    .replace(/\u00a0/g, "")
+    .replace(/,/g, "")
+    .trim();
+  if (!t || t === "-" || t === "—") return null;
   const n = Number(t);
   return Number.isFinite(n) ? Math.round(n * 100) / 100 : null;
+}
+
+function decodeXml(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+function normHeader(s: string): string {
+  return decodeXml(s)
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export { canonCarro, extraerCarro };
@@ -100,27 +152,86 @@ type MovParse = {
   referencia: string | null;
 };
 
-function cellInlineText(cellXml: string): string {
-  return [...cellXml.matchAll(/<t[^>]*>([^<]*)<\/t>/g)]
-    .map((m) => m[1])
+type ColMap = {
+  fecha?: string;
+  descripcion?: string;
+  credito?: string;
+  debito?: string;
+  monto?: string;
+  saldo?: string;
+  referencia?: string;
+  ref1?: string;
+  ref2?: string;
+};
+
+function sharedStringsDe(files: Record<string, Uint8Array>): string[] {
+  const raw = files["xl/sharedStrings.xml"];
+  if (!raw) return [];
+  const xml = new TextDecoder("utf-8").decode(raw);
+  return [...xml.matchAll(/<si>([\s\S]*?)<\/si>/g)].map((m) =>
+    [...m[1].matchAll(/<t[^>]*>([^<]*)<\/t>/g)]
+      .map((t) => decodeXml(t[1]))
+      .join("")
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+}
+
+function valorCelda(
+  attrs: string,
+  body: string,
+  shared: string[],
+): string {
+  const inline = [...body.matchAll(/<t[^>]*>([^<]*)<\/t>/g)]
+    .map((m) => decodeXml(m[1]))
     .join("")
     .replace(/\s+/g, " ")
     .trim();
+  if (inline) return inline;
+  const v = /<v>([^<]*)<\/v>/.exec(body)?.[1];
+  if (v == null) return "";
+  if (/\bt="s"/.test(attrs)) {
+    const i = Number(v);
+    return Number.isFinite(i) ? (shared[i] ?? "") : "";
+  }
+  return decodeXml(v);
 }
 
-function celdasDeFila(rowXml: string): Record<string, string> {
+function celdasDeFila(rowXml: string, shared: string[]): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const m of rowXml.matchAll(/<c r="([A-Z]+)\d+"[^>]*>([\s\S]*?)<\/c>/g)) {
-    out[m[1]] = cellInlineText(m[2]);
+  for (const m of rowXml.matchAll(/<c r="([A-Z]+)\d+"([^>]*)>([\s\S]*?)<\/c>/g)) {
+    out[m[1]] = valorCelda(m[2], m[3], shared);
   }
   return out;
 }
 
+function mapearEncabezados(c: Record<string, string>): ColMap | null {
+  const map: ColMap = {};
+  for (const [col, raw] of Object.entries(c)) {
+    const h = normHeader(raw);
+    if (!h) continue;
+    if (h === "fecha" || h.startsWith("fecha ")) map.fecha = col;
+    else if (h === "descripcion" || h === "concepto" || h === "detalle") map.descripcion = col;
+    else if (h === "credito" || h === "creditos" || h === "abono" || h === "abonos") map.credito = col;
+    else if (h === "debito" || h === "debitos" || h === "cargo" || h === "cargos") map.debito = col;
+    else if (h === "monto" || h === "valor" || h === "importe") map.monto = col;
+    else if (h.startsWith("saldo")) map.saldo = col;
+    else if (h === "referencia 1" || h === "referencia1") map.ref1 = col;
+    else if (h === "referencia 2" || h === "referencia2") map.ref2 = col;
+    else if (h === "referencia" || h === "ref") map.referencia ??= col;
+  }
+  if (!map.fecha) return null;
+  if (!map.credito && !map.monto) return null;
+  return map;
+}
+
 /**
- * Excel JasperReports de Banco General:
- * “MOVIMIENTOS-CUENTA-DE-AHORROS-….xlsx”
- * Columnas: Fecha | Referencia | Ref1–4 | Transacción | Descripción | Débito | Crédito | Saldo.
- * Solo entran créditos (ingresos). Los débitos son traspasos internos.
+ * Excel de Banco General. Acepta los dos exports operativos:
+ * 1) “MOVIMIENTOS-CUENTA-DE-AHORROS-….xlsx”
+ *    Fecha | Ref… | Descripción | Débito | Crédito | Saldo
+ * 2) “ULTIMOS-MOVIMIENTOS-….xlsx” (mismo layout que el PDF)
+ *    Fecha | Descripción | Monto | Saldo
+ * Solo entran ingresos (crédito > 0, o monto > 0 en el layout corto).
  */
 export function parseExtractoXlsx(
   buffer: Buffer,
@@ -133,47 +244,63 @@ export function parseExtractoXlsx(
   if (!sheetEntry) {
     throw new Error("El Excel no trae hoja de cálculo legible.");
   }
+  const shared = sharedStringsDe(files);
   const xml = new TextDecoder("utf-8").decode(sheetEntry);
   const rows = [...xml.matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)].map((m) => m[1]);
 
   let titular = "";
-  let headerSeen = false;
+  let cols: ColMap | null = null;
   const movimientos: MovParse[] = [];
 
   for (const row of rows) {
-    const c = celdasDeFila(row);
-    const b = c.B ?? "";
+    const c = celdasDeFila(row, shared);
     if (!titular) {
-      const emp = /Empresa:\s*(.+)/i.exec(b);
-      if (emp) titular = emp[1].trim();
-    }
-    if (!headerSeen) {
-      if (b === "Fecha" && (c.D === "Referencia 1" || c.I === "Descripción" || c.K === "Crédito")) {
-        headerSeen = true;
+      for (const v of Object.values(c)) {
+        const emp = /(?:Empresa|Titular):\s*(.+)/i.exec(v);
+        if (emp) {
+          titular = emp[1].trim();
+          break;
+        }
       }
+    }
+    if (!cols) {
+      cols = mapearEncabezados(c);
       continue;
     }
-    const fecha = parseFechaExtracto(b);
-    if (!fecha) continue;
-    const credito = parseMoneyCell(c.K ?? "");
-    if (!(credito != null && credito > 0.009)) continue; // solo ingresos
 
-    const desc = (c.I ?? "").trim();
-    const ref1 = (c.D ?? "").trim();
-    const ref2 = (c.E ?? "").trim();
-    const saldo = parseMoneyCell(c.L ?? "");
+    const fecha = parseFechaExtracto(c[cols.fecha!] ?? "");
+    if (!fecha) continue;
+
+    let ingreso: number | null = null;
+    if (cols.credito) {
+      const credito = parseMoneyCell(c[cols.credito] ?? "");
+      if (credito != null && credito > 0.009) ingreso = credito;
+    } else if (cols.monto) {
+      // Layout “Últimos movimientos”: una sola columna Monto (ingresos positivos).
+      const monto = parseMoneyCell(c[cols.monto] ?? "");
+      const debito = cols.debito ? parseMoneyCell(c[cols.debito] ?? "") : null;
+      if (debito != null && debito > 0.009) continue;
+      if (monto != null && monto > 0.009) ingreso = monto;
+    }
+    if (ingreso == null) continue;
+
+    const desc = (cols.descripcion ? c[cols.descripcion] ?? "" : "").trim();
+    const ref1 = (cols.ref1 ? c[cols.ref1] ?? "" : cols.referencia ? c[cols.referencia] ?? "" : "").trim();
+    const ref2 = (cols.ref2 ? c[cols.ref2] ?? "" : "").trim();
+    const saldo = cols.saldo ? parseMoneyCell(c[cols.saldo] ?? "") : null;
     const memoUtil =
       ref2 && ref2.toUpperCase() !== "A TERCEROS" && !desc.toLowerCase().includes(ref2.toLowerCase())
         ? ref2
         : "";
-    const descripcion = [desc, memoUtil].filter(Boolean).join(" · ").replace(/\s+/g, " ").trim()
-      || ref1
-      || "Movimiento";
+    const descripcion =
+      [desc, memoUtil].filter(Boolean).join(" · ").replace(/\s+/g, " ").trim() ||
+      ref1 ||
+      "Movimiento";
 
     movimientos.push({
       fecha,
       descripcion,
-      monto: credito,
+      monto: ingreso,
       saldo,
       numeroCarro: extraerCarroCeldas(desc, ref2, empresaCodigo),
       nombre: extraerNombre(desc),
@@ -304,7 +431,7 @@ export async function procesarExtracto(
       empresa: empresa.codigo,
       error:
         formato === "xlsx"
-          ? "No encontré créditos en el Excel. ¿Es el de “Movimientos cuenta de ahorros” de Banco General?"
+          ? "No encontré créditos en el Excel. Sirve el de “Movimientos cuenta de ahorros” o el Excel/PDF de “Últimos movimientos” de Banco General."
           : "No encontré movimientos en el PDF. ¿Es el de “Últimos movimientos” de Banco General?",
     };
   }
