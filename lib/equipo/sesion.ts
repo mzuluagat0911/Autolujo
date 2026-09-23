@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createAuthSupabase } from "@/lib/supabase/auth";
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { RolEquipo, SesionEquipo } from "./tipos";
@@ -8,7 +9,7 @@ function fila(r: { id: string; email: string; nombre: string; rol: string; activ
   return { id: r.id, email: r.email, nombre: r.nombre, rol };
 }
 
-export async function sesionEquipo(): Promise<SesionEquipo | null> {
+export const sesionEquipo = cache(async function sesionEquipo(): Promise<SesionEquipo | null> {
   try {
     const auth = await createAuthSupabase();
     const { data } = await auth.auth.getUser();
@@ -24,7 +25,7 @@ export async function sesionEquipo(): Promise<SesionEquipo | null> {
   } catch {
     return null;
   }
-}
+});
 
 export async function hayEquipo(): Promise<boolean> {
   try {

@@ -226,14 +226,15 @@ export async function cargarDetalle(
       .order("created_at", { ascending: true });
 
     const mensajes = (msgs as Mensaje[]) ?? [];
-    for (const m of mensajes) {
-      if (m.media_url) {
+    await Promise.all(
+      mensajes.map(async (m) => {
+        if (!m.media_url) return;
         const { data: signed } = await sb.storage
           .from("comprobantes")
           .createSignedUrl(m.media_url, 3600);
         m.signedUrl = signed?.signedUrl ?? null;
-      }
-    }
+      }),
+    );
 
     let saldo: number | null = null;
     const contratoId = (conv as { contrato_id: string | null }).contrato_id;

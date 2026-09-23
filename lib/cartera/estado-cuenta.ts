@@ -887,14 +887,26 @@ export function gravedadSituacion(e: {
   return debe + recargos * 0.001 + (e.pendiente ? -0.5 : 0);
 }
 
+/** Lectura del panel. No la usa el cron de cobro (ese va en vivo). */
+const PANEL_CACHE_MS = 25_000;
+let panelCache: { at: number; hoy: string; data: EstadoCuenta[] } | null = null;
+
 /**
  * Panel de Estado de cuenta: TODOS los contratos del alcance.
  * Cierre 00:00: quien ya pagó mañana = «Pago adelantado»; quien solo cubrió hoy = «Al día».
  * Orden: lo más delicado primero (quien más debe).
+ * Cache corta solo de lectura: al navegar entre pantallas no rearma todo el ledger.
  */
 export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
+  const hoy = hoyPanama();
+  const ahora = Date.now();
+  if (panelCache && panelCache.hoy === hoy && ahora - panelCache.at < PANEL_CACHE_MS) {
+    return panelCache.data;
+  }
   const todos = await armarEstadosAlcance();
-  return [...todos].sort((a, b) => gravedadSituacion(b) - gravedadSituacion(a));
+  const data = [...todos].sort((a, b) => gravedadSituacion(b) - gravedadSituacion(a));
+  panelCache = { at: ahora, hoy, data };
+  return data;
 }
 
 /** Cola de cobro / envío: solo quien aún debe hoy (sin comprobante pendiente). */

@@ -28,7 +28,7 @@ import {
   soportaNotificaciones,
 } from "@/lib/aviso-asesor";
 
-const POLL_MS = 4_000;
+const POLL_MS = 12_000;
 const TITULO_BASE = "AutoLujo — Plataforma";
 
 type Ctx = {
