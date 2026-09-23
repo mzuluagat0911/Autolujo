@@ -9,11 +9,11 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
-import { esDomingo, hoyPanama } from "./fecha";
 import {
   candidatosDesdeExtracto,
   elegirExtraDelDia,
   esCargoBase,
+  esEtiquetaDomingo,
   totalConUnExtra,
   type ItemExtraElegido,
 } from "./prioridad-extras";
@@ -125,7 +125,6 @@ export function armarExtractoDiario(
     acuerdoHoy: e.acuerdoHoy,
     acuerdoSaldo: opts?.acuerdoSaldo,
     extras: extrasCompetidores,
-    hoyEsDomingo: esDomingo(hoyPanama()),
   });
   const extraElegido = elegirExtraDelDia(candidatos);
   const totalCobrarHoy = Math.round(totalConUnExtra(baseMonto, extraElegido) * 100) / 100;
@@ -149,6 +148,7 @@ export function armarExtractoDiario(
   }
 
   // Aviso de domingo MAÑANA (cuota del día domingo, no saldo arrastrado).
+  // Nunca suma al total — solo informativo.
   if (e.domingo && e.domingo > 0.009) {
     out.push({
       etiqueta: `domingo ${e.domingoDia ?? ""}`.trim(),
@@ -157,13 +157,17 @@ export function armarExtractoDiario(
   }
 
   for (const x of extrasCompetidores) {
+    const esDom = esEtiquetaDomingo(x.etiqueta);
     const esElegido =
+      !esDom &&
       extraElegido != null &&
       extraElegido.categoria !== "acuerdo" &&
       extraElegido.etiqueta === x.etiqueta &&
       Math.abs(extraElegido.montoHoy - x.monto) < 0.05;
+    const baseEtiqueta = x.etiqueta.replace(/\s*\(pendiente\)\s*$/i, "");
     out.push({
-      etiqueta: esElegido ? x.etiqueta : `${x.etiqueta} (pendiente)`,
+      // Domingo: siempre “(pendiente)” — nunca cuenta como cobrado hoy.
+      etiqueta: esDom || !esElegido ? `${baseEtiqueta} (pendiente)` : baseEtiqueta,
       monto: x.monto,
     });
   }

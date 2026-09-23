@@ -7,8 +7,8 @@
 //     2. Mantenimiento
 //     3. Resto (extensiones, km, etc.) — el de MENOR saldo primero
 //
-//   DOMINGO (saldo arrastrado / cuota domingo): SOLO se cobra si HOY es domingo.
-//   Entre semana se lista como “(pendiente)” y NO entra al TOTAL A PAGAR HOY.
+//   DOMINGO (saldo arrastrado / cuota domingo): NUNCA entra al TOTAL A PAGAR HOY.
+//   Solo se lista en el mensaje (como pendiente / aviso). No se cobra en el total.
 //
 // Cuando ese ítem llega a cero, al día siguiente entra el siguiente de la cola.
 // El mensaje puede listar TODO lo debido; el TOTAL A PAGAR HOY solo incluye el
@@ -45,7 +45,7 @@ export function esCargoBase(etiqueta: string): boolean {
   );
 }
 
-/** Saldo/cuota de domingo: no compite entre semana. */
+/** Saldo/cuota de domingo: se lista en el mensaje, nunca en el total. */
 export function esEtiquetaDomingo(etiqueta: string): boolean {
   return /\bdomingo\b/i.test(etiqueta);
 }
@@ -59,7 +59,7 @@ export function categoriaDeEtiqueta(etiqueta: string): CategoriaExtra {
 
 /**
  * Elige el único ítem adicional a cobrar hoy.
- * `candidatos` ya deben excluir cargos base (cierre, etc.) y, entre semana, domingos.
+ * `candidatos` ya deben excluir cargos base (cierre, etc.) y domingos.
  */
 export function elegirExtraDelDia(candidatos: ItemExtra[]): ItemExtraElegido | null {
   const vivos = candidatos.filter((c) => c.montoHoy > 0.009);
@@ -91,19 +91,18 @@ export function elegirExtraDelDia(candidatos: ItemExtra[]): ItemExtraElegido | n
 }
 
 /**
- * Arma candidatos desde acuerdo del día + líneas extra (mantenimiento, domingo, …).
+ * Arma candidatos desde acuerdo del día + líneas extra (mantenimiento, …).
  * `cierre` y similares NO entran aquí.
- * Entre semana (`hoyEsDomingo=false`) el domingo NO es candidato a cobrar hoy.
+ * El domingo NUNCA es candidato al TOTAL (solo se lista en el mensaje).
  */
 export function candidatosDesdeExtracto(opts: {
   acuerdoHoy: number;
   acuerdoSaldo?: number;
   extras: { etiqueta: string; monto: number }[];
-  /** Default: false — entre semana no se cobra domingo. */
+  /** @deprecated Ignorado: el domingo nunca entra al total. */
   hoyEsDomingo?: boolean;
 }): ItemExtra[] {
   const out: ItemExtra[] = [];
-  const hoyEsDomingo = Boolean(opts.hoyEsDomingo);
   if (opts.acuerdoHoy > 0.009) {
     out.push({
       categoria: "acuerdo",
@@ -115,7 +114,8 @@ export function candidatosDesdeExtracto(opts: {
   for (const x of opts.extras) {
     if (x.monto <= 0.009) continue;
     if (esCargoBase(x.etiqueta)) continue;
-    if (!hoyEsDomingo && esEtiquetaDomingo(x.etiqueta)) continue;
+    // Nunca al total — se muestra aparte como pendiente/aviso.
+    if (esEtiquetaDomingo(x.etiqueta)) continue;
     const cat = categoriaDeEtiqueta(x.etiqueta);
     out.push({
       categoria: cat,
