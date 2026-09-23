@@ -24,6 +24,7 @@ import {
   textoDesgloseExtracto,
   type LineaExtracto,
 } from "./extracto-desglose";
+import { obtenerConversacion, registrarMensaje } from "./pipeline";
 
 const TEMPLATE_DETALLE = "extracto_detalle";
 const TEMPLATE_AL_DIA = "extracto_al_dia";
@@ -183,12 +184,45 @@ export async function enviarYRegistrar(
 
   try {
     const ctx = opts.ctx ?? (await enrichExtracto(e));
+    const preview = previewEstadoCuenta(e, ctx);
     await enviarConFallbacks(to, e, ctx);
     await registrar(sb, e, fecha, "enviado");
+    // Histórico del chat: el template de Meta no deja rastro solo; lo espejamos acá.
+    await registrarExtractoEnChat(to, preview, e);
     return { ok: true };
   } catch (err) {
     await registrar(sb, e, fecha, "fallido");
     return { ok: false, error: err instanceof Error ? err.message : "Error al enviar." };
+  }
+}
+
+/** Deja el extracto visible en /cartera/conversaciones. */
+async function registrarExtractoEnChat(waNumero: string, preview: string, e: EstadoCuenta) {
+  try {
+    const conv = await obtenerConversacion(waNumero);
+    // Asegura vínculo al contrato del extracto si el chat aún no lo tenía.
+    if ((!conv.contrato_id || !conv.vehiculo_id) && e.contratoId) {
+      const sb = createServerSupabase();
+      const patch: Record<string, unknown> = {};
+      if (!conv.contrato_id) patch.contrato_id = e.contratoId;
+      if (!conv.etiqueta && e.vehiculoNumero) patch.etiqueta = `Carro ${e.vehiculoNumero}`;
+      if (Object.keys(patch).length) {
+        await sb.from("conversaciones").update(patch).eq("id", conv.id);
+      }
+    }
+    await registrarMensaje({
+      conversacionId: conv.id,
+      direccion: "out",
+      tipo: "text",
+      texto: preview,
+      enviadoPor: "sistema",
+    });
+  } catch (err) {
+    console.error(
+      "[envios] no pude guardar extracto en chat:",
+      e.vehiculoNumero,
+      err instanceof Error ? err.message : err,
+    );
   }
 }
 
