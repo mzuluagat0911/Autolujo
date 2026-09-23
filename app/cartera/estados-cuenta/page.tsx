@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
-import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta";
+import { esAlDiaHoy, estadosCuentaPanel } from "@/lib/cartera/estado-cuenta";
 import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
 import {
   acuerdosSaldoPorContrato,
@@ -61,7 +61,7 @@ async function EstadosCuerpo() {
   const deudaCerradaTotal = cerradas.reduce((a, d) => a + d.saldo, 0);
 
   const totalACobrar = estados
-    .filter((e) => !(e.pagoPuntual || e.totalHoy <= 0.009))
+    .filter((e) => e.totalHoy > 0.009 && !esAlDiaHoy(e))
     .reduce((a, e) => a + e.totalHoy, 0);
   const conRecargo = estados.filter((e) => e.recargosAcumulados > 0.009).length;
   const primero = estados[0] ?? null;

@@ -204,11 +204,15 @@ export function cuotasAtraso(e: {
   faltaHoy: number;
   pagoPuntual: boolean;
   totalHoy: number;
+  pagadoHoy?: number;
 }): number {
   const letra = Number(e.letra) || 0;
   if (!(letra > 0)) return 0;
-  const atrasadas = Math.max(0, Math.round(Number(e.pendienteAnterior) / letra));
-  const debeLetraHoy = !e.pagoPuntual && Number(e.faltaHoy) > 0.009;
+  const pagado = Math.max(Number(e.pagadoHoy) || 0, 0);
+  const anteriorNeto = Math.max(0, (Number(e.pendienteAnterior) || 0) - pagado);
+  const atrasadas = Math.max(0, Math.round(anteriorNeto / letra));
+  const quedaHoy = Math.max(0, (Number(e.totalHoy) || 0) - anteriorNeto);
+  const debeLetraHoy = quedaHoy > 0.009 && (!e.pagoPuntual || anteriorNeto > 0.009);
   // Si solo debe hoy y no hay saldo anterior → 0 ("Le toca la de hoy").
   if (atrasadas === 0) return 0;
   return atrasadas + (debeLetraHoy ? 1 : 0);
@@ -219,17 +223,23 @@ export function esAdelantado(e: { diasAdelantados: number }): boolean {
   return (Number(e.diasAdelantados) || 0) >= 1;
 }
 
-/** Cubrió la LETRA de HOY (el acuerdo no bloquea “al día”). No adelantado. */
+/**
+ * Al día: no queda atraso después del pago de hoy, y la letra del día está cubierta.
+ * Un abono que solo tapa la letra no borra el saldo anterior.
+ * El acuerdo solo no bloquea “al día”.
+ */
 export function esAlDiaHoy(e: {
   diasAdelantados?: number;
   pagoPuntual: boolean;
   totalHoy: number;
   acuerdoHoy?: number;
   pendienteAnterior?: number;
+  pagadoHoy?: number;
 }): boolean {
   if (esAdelantado({ diasAdelantados: Number(e.diasAdelantados) || 0 })) return false;
-  if (e.pagoPuntual) return true;
-  if (Number(e.pendienteAnterior) > 0.009) return false;
+  const pagado = Math.max(Number(e.pagadoHoy) || 0, 0);
+  const anteriorNeto = Math.max(0, (Number(e.pendienteAnterior) || 0) - pagado);
+  if (anteriorNeto > 0.009) return false;
   // Si solo queda arreglo/extra, la letra del día ya está cubierta.
   const acuerdo = Math.max(Number(e.acuerdoHoy) || 0, 0);
   const letraPendiente = Math.max(Number(e.totalHoy) - acuerdo, 0);
@@ -249,6 +259,7 @@ export function textoSituacionCuotas(e: {
   pendiente: boolean;
   diasAdelantados?: number;
   acuerdoHoy?: number;
+  pagadoHoy?: number;
 }): string {
   if (e.pendiente) return "Comprobante en validación";
   const adel = Math.max(0, Math.floor(Number(e.diasAdelantados) || 0));
