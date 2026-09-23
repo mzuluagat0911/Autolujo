@@ -53,6 +53,11 @@ export type EntradaCifras = {
   corte: boolean;
   multaHoyRegistrada: boolean;
   hoyYaDevengado: boolean;
+  /**
+   * Nunca hubo cargo `renta` (piloto Gold / saldo_inicial).
+   * La deuda vive en el saldo: no sumar otra letra “en el aire”.
+   */
+  sinDevengoRenta?: boolean;
   /** Hoy no corre cuota (ej. cumpleaños libre): la cuota del día es 0. */
   diaLibre?: boolean;
 };
@@ -82,8 +87,20 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const acuerdoHoy = Math.max(Number(e.acuerdoHoy) || 0, 0);
   const faltaAcuerdo = Math.max(Number(e.faltaAcuerdo) || 0, 0);
   const pagadoHoy = Math.max(Number(e.pagadoHoy) || 0, 0);
-  const faltaHoy = e.hoyYaDevengado ? 0 : cuotaHoy;
   const saldoVista = Number(e.saldo) || 0;
+  // Letra de hoy aún no posteada como renta:
+  // - Con devengo normal: se suma (el pago deja saldo negativo y la cancela).
+  // - Sin renta nunca (saldo_inicial): la deuda ya está en el saldo; solo se
+  //   pide letra “en el aire” si arranca el día en cero / crédito sin abono.
+  let faltaHoy = 0;
+  if (!e.hoyYaDevengado && cuotaHoy > 0.009) {
+    if (e.sinDevengoRenta) {
+      const yaCubiertoEnSaldo = saldoVista > 0.009 || pagadoHoy > 0.009 || saldoVista < -0.009;
+      faltaHoy = yaCubiertoEnSaldo ? 0 : cuotaHoy;
+    } else {
+      faltaHoy = cuotaHoy;
+    }
+  }
   const bruto = saldoVista + faltaHoy + faltaAcuerdo;
   const pendiente = Boolean(e.pendiente);
 
@@ -106,7 +123,11 @@ export function calcularCifras(e: EntradaCifras): Cifras {
       ? Number(e.terminos.cuota_domingo ?? 0) || null
       : null;
 
-  const rentaEnSaldo = e.hoyYaDevengado ? cuotaHoy : 0;
+  // Sin renta: la letra del día abierto ya va dentro del saldo (o del abono de hoy).
+  const letraHoyEnSaldo =
+    e.hoyYaDevengado ||
+    (Boolean(e.sinDevengoRenta) && cuotaHoy > 0.009 && (saldoVista > 0.009 || pagadoHoy > 0.009));
+  const rentaEnSaldo = letraHoyEnSaldo ? cuotaHoy : 0;
   const recargoEnSaldo = e.multaHoyRegistrada ? penalidad : 0;
   const acuerdoEnSaldo = Math.max(acuerdoHoy - faltaAcuerdo, 0);
   const saldoAntesPagos = saldoVista + pagadoHoy;

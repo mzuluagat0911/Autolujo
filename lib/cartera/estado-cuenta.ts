@@ -194,7 +194,8 @@ export function textoValorCuotas(e: {
 
 /**
  * Atraso operativo (cuotas diarias pendientes), no el plan completo del deal.
- * 0 = al día (solo le toca la de hoy o ya cubrió).
+ * Incluye la letra de HOY si todavía no está cubierta (así "Debe N" calza con
+ * "A pagar hoy").
  */
 export function cuotasAtraso(e: {
   letra: number;
@@ -206,10 +207,10 @@ export function cuotasAtraso(e: {
   const letra = Number(e.letra) || 0;
   if (!(letra > 0)) return 0;
   const atrasadas = Math.max(0, Math.round(Number(e.pendienteAnterior) / letra));
-  const debeHoy = !e.pagoPuntual && (Number(e.faltaHoy) > 0.009 || Number(e.totalHoy) > 0.009);
-  // Si solo debe hoy y no hay saldo anterior → 0 (al día / le toca la de hoy).
-  if (atrasadas === 0) return debeHoy ? 0 : 0;
-  return atrasadas;
+  const debeLetraHoy = !e.pagoPuntual && Number(e.faltaHoy) > 0.009;
+  // Si solo debe hoy y no hay saldo anterior → 0 ("Le toca la de hoy").
+  if (atrasadas === 0) return 0;
+  return atrasadas + (debeLetraHoy ? 1 : 0);
 }
 
 /** ¿Ya tiene al menos 1 cuota pagada por delante del día operativo? */
@@ -603,6 +604,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     corte: pasoCorte(),
     multaHoyRegistrada: (multa.data?.length ?? 0) > 0,
     hoyYaDevengado,
+    sinDevengoRenta: devengadoHasta == null,
     diaLibre: contratoCerrado,
   };
   const cifrasBase = calcularCifras(entrada);
@@ -818,6 +820,7 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       corte,
       multaHoyRegistrada: multaHoy.has(c.id),
       hoyYaDevengado,
+      sinDevengoRenta: devengadoHasta == null,
     };
     const cifrasBase = calcularCifras(entrada);
     const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;
