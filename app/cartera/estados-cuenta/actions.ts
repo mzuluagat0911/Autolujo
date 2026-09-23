@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import { enviarEstadoCuentaPrueba } from "@/lib/cartera/envios";
@@ -362,5 +363,6 @@ export async function guardarLedgerEditable(
 
   revalidatePath("/cartera/estados-cuenta");
   revalidatePath("/cartera");
+  invalidarLecturaEstados();
   return { ok: true };
 }

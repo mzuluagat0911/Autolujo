@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta";
 import { procesarExtracto, type ResultadoConciliacion } from "@/lib/cartera/extracto";
 import {
   aplicarMovimientoExtracto,
@@ -15,6 +16,7 @@ function refrescarCartera() {
   revalidatePath("/cartera");
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera/extractos");
+  invalidarLecturaEstados();
 }
 
 const VACIO: ResultadoConciliacion = {

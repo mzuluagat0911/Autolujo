@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
 import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta";
 import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
@@ -11,13 +12,33 @@ import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
 import { PruebaEnvio } from "./prueba";
 import { DeudoresCerrados } from "./deudores-cerrados";
 import { EstadosTabla } from "./tabla";
+import { EsqueletoEstados } from "./esqueleto";
 import type { EstadoCuentaFila } from "./types";
 
 export const dynamic = "force-dynamic";
 
-export default async function EstadosCuentaPage() {
+export default function EstadosCuentaPage() {
+  return (
+    <div className="mx-auto max-w-6xl py-10">
+      <PageHeader
+        eyebrow="Cartera"
+        title="Estado de cuenta del día"
+        subtitle="Lo que debe pagar hoy cada carro. Clic en una fila para ver el detalle completo."
+      />
+      <Suspense fallback={<EsqueletoEstados />}>
+        <EstadosCuerpo />
+      </Suspense>
+    </div>
+  );
+}
+
+async function EstadosCuerpo() {
   let estados: EstadoCuentaFila[] = [];
   let error: string | null = null;
+
+  const alcanceP = leerAlcance();
+  const cerradasP = deudasCerradas().catch(() => [] as DeudaCerrada[]);
+
   try {
     const base = await estadosCuentaPanel();
     const ids = base.map((e) => e.contratoId);
@@ -35,39 +56,18 @@ export default async function EstadosCuentaPage() {
     error = e instanceof Error ? e.message : "Error";
   }
 
-  const alcance = await leerAlcance();
+  const [alcance, cerradas] = await Promise.all([alcanceP, cerradasP]);
   const etiqueta = etiquetaAlcance(alcance.codigos);
-
-  let cerradas: DeudaCerrada[] = [];
-  try {
-    cerradas = await deudasCerradas();
-  } catch {
-    cerradas = [];
-  }
   const deudaCerradaTotal = cerradas.reduce((a, d) => a + d.saldo, 0);
 
   const totalACobrar = estados
     .filter((e) => !(e.pagoPuntual || e.totalHoy <= 0.009))
     .reduce((a, e) => a + e.totalHoy, 0);
   const conRecargo = estados.filter((e) => e.recargosAcumulados > 0.009).length;
-
-  let preview: string | null = null;
-  let previewLabel = "";
-  if (estados[0]) {
-    const e = estados[0];
-    const ctx = await enrichExtracto(e);
-    preview = previewEstadoCuenta(e, ctx);
-    previewLabel = `Vista previa del mensaje (carro ${e.vehiculoNumero}${estaAlDia(e) ? " · al día" : " · con atraso"})`;
-  }
+  const primero = estados[0] ?? null;
 
   return (
-    <div className="mx-auto max-w-6xl py-10">
-      <PageHeader
-        eyebrow="Cartera"
-        title="Estado de cuenta del día"
-        subtitle="Lo que debe pagar hoy cada carro. Clic en una fila para ver el detalle completo."
-      />
-
+    <>
       {etiqueta && (
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <StatusChip tone="warn">Alcance · {etiqueta}</StatusChip>
@@ -107,18 +107,29 @@ export default async function EstadosCuentaPage() {
             </div>
           </div>
 
-          {preview && (
-            <div className="mt-8">
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-                {previewLabel}
-              </h2>
-              <div className="mt-3 max-w-md whitespace-pre-wrap rounded-xl bg-ink p-5 text-sm text-paper">
-                {preview}
-              </div>
-            </div>
+          {primero && (
+            <Suspense fallback={null}>
+              <PreviewMensaje estado={primero} />
+            </Suspense>
           )}
         </>
       )}
+    </>
+  );
+}
+
+async function PreviewMensaje({ estado }: { estado: EstadoCuentaFila }) {
+  const ctx = await enrichExtracto(estado);
+  const preview = previewEstadoCuenta(estado, ctx);
+  const previewLabel = `Vista previa del mensaje (carro ${estado.vehiculoNumero}${estaAlDia(estado) ? " · al día" : " · con atraso"})`;
+  return (
+    <div className="mt-8">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
+        {previewLabel}
+      </h2>
+      <div className="mt-3 max-w-md whitespace-pre-wrap rounded-xl bg-ink p-5 text-sm text-paper">
+        {preview}
+      </div>
     </div>
   );
 }

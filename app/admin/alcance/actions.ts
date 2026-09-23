@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta";
 import { sesionEquipo } from "@/lib/equipo/sesion";
 import { guardarAlcance } from "@/lib/cartera/alcance";
 
@@ -40,6 +41,7 @@ export async function guardarAlcanceCartera(
     revalidatePath("/cartera");
     revalidatePath("/cartera/estados-cuenta");
     revalidatePath("/cartera/por-llamar");
+    invalidarLecturaEstados();
   }
   return r;
 }

@@ -7,6 +7,7 @@
 // masivo y el panel leen de aquí. Si cada uno calcula lo suyo, el mismo chat
 // termina dando dos números distintos para lo mismo.
 
+import { revalidateTag, unstable_cache } from "next/cache";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, pasoCorte, fechaLarga, sumarDias } from "./fecha";
 import type { TerminosCuota } from "./cuota";
@@ -655,18 +656,91 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   });
 }
 
-/** Última renta de cada contrato en la ventana de catch-up (7 días). */
-async function ultimoDevengoPorContrato(hoy: string): Promise<Map<string, string>> {
+/**
+ * Última renta de cada contrato en la ventana de catch-up (7 días).
+ * Solo los ids del alcance: si se pide toda la flota, PostgREST corta en 1000
+ * filas y a algunos carros les falta el devengo de hoy.
+ */
+async function ultimoDevengoPorContrato(hoy: string, ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const desde = sumarDias(hoy, -7);
+  const rows: { contrato_id: string; fecha: string }[] = [];
+  for (let from = 0; from < 5000; from += 1000) {
+    const { data } = await sb
+      .from("cargos")
+      .select("contrato_id, fecha")
+      .eq("tipo", "renta")
+      .gte("fecha", desde)
+      .in("contrato_id", ids)
+      .range(from, from + 999);
+    const chunk = (data ?? []) as { contrato_id: string; fecha: string }[];
+    rows.push(...chunk);
+    if (chunk.length < 1000) break;
+  }
+  for (const r of rows) {
+    const prev = out.get(r.contrato_id);
+    if (!prev || r.fecha > prev) out.set(r.contrato_id, r.fecha);
+  }
+  return out;
+}
+
+/** `cuotas_pagadas` no está en todas las bases. Tras el primer fallo, no se vuelve a pedir. */
+let cuotasPagadasDisponible: boolean | null = null;
+
+async function cuotasPagadasOpcional(ids: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0 || cuotasPagadasDisponible === false) return out;
+  const sb = createServerSupabase();
+  const { data, error } = await sb.from("contratos").select("id, cuotas_pagadas").in("id", ids);
+  if (error) {
+    if (/cuotas_pagadas/i.test(error.message)) cuotasPagadasDisponible = false;
+    return out;
+  }
+  cuotasPagadasDisponible = true;
+  for (const r of (data ?? []) as { id: string; cuotas_pagadas: number | null }[]) {
+    if (r.cuotas_pagadas != null && Number.isFinite(Number(r.cuotas_pagadas))) {
+      out.set(r.id, Number(r.cuotas_pagadas));
+    }
+  }
+  return out;
+}
+
+async function filasContratosActivos(): Promise<ContratoRow[]> {
+  const sb = createServerSupabase();
+  const res = await sb.from("contratos").select(SEL_SIN_CUOTAS_PAGADAS).eq("estado", "activo");
+  if (res.error && /num_cuotas_total/i.test(res.error.message)) {
+    const retry = await sb
+      .from("contratos")
+      .select(
+        "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)",
+      )
+      .eq("estado", "activo");
+    return ((retry.data ?? []) as unknown as ContratoRow[]).map((c) => ({
+      ...c,
+      num_cuotas_total: null,
+      cuotas_pagadas: null,
+    }));
+  }
+  return ((res.data ?? []) as unknown as ContratoRow[]).map((c) => ({
+    ...c,
+    cuotas_pagadas: null,
+  }));
+}
+
+async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
   const sb = createServerSupabase();
   const { data } = await sb
     .from("cargos")
-    .select("contrato_id, fecha")
-    .eq("tipo", "renta")
-    .gte("fecha", sumarDias(hoy, -7));
-  const out = new Map<string, string>();
-  for (const r of (data ?? []) as { contrato_id: string; fecha: string }[]) {
-    const prev = out.get(r.contrato_id);
-    if (!prev || r.fecha > prev) out.set(r.contrato_id, r.fecha);
+    .select("contrato_id, monto")
+    .eq("tipo", "multa")
+    .eq("concepto_codigo", "PAGO_TARDE")
+    .in("contrato_id", ids);
+  for (const g of (data ?? []) as { contrato_id: string; monto: number }[]) {
+    out.set(g.contrato_id, (out.get(g.contrato_id) ?? 0) + Number(g.monto || 0));
   }
   return out;
 }
@@ -721,20 +795,59 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
   const hoy = hoyPanama();
   const corte = pasoCorte();
 
-  const [contratos, saldos, multasHoy, pagaronHoy, cubrieron, pendientes, lastRenta, pagadoMap, acuerdosMap, arregloMap] =
-    await Promise.all([
-      sb.from("contratos").select(SEL).eq("estado", "activo"),
-      sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual"),
-      sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa")
-        .eq("concepto_codigo", "PAGO_TARDE"),
-      contratosConPagoEnDia(hoy),
-      contratosQueCubrieronElDia(hoy),
-      contratosConComprobantePendienteEnDia(hoy),
-      ultimoDevengoPorContrato(hoy),
-      montosDelDiaPorContrato(hoy),
-      acuerdosActivos(),
-      aplicadoArregloHoyPorContrato(hoy),
-    ]);
+  const [filasTodas, allow] = await Promise.all([
+    filasContratosActivos(),
+    empresasAlcanceCodigos(),
+  ]);
+  let filasContrato = filasTodas;
+  if (allow) {
+    filasContrato = filasContrato.filter((c) =>
+      enAlcanceCodigo(c.vehiculo?.empresa?.codigo ?? null, allow),
+    );
+  }
+  const idsAlcance = filasContrato.map((c) => c.id);
+  if (idsAlcance.length === 0) return [];
+
+  const letraDe = (id: string) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0;
+  const clienteIds = filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean);
+
+  const [
+    saldos,
+    multasHoy,
+    pagaronHoy,
+    cubrieron,
+    pendientes,
+    lastRenta,
+    pagadoMap,
+    acuerdosMap,
+    arregloMap,
+    recargosMap,
+    cuotasMap,
+    adelantoMap,
+    nacMap,
+    genMap,
+    cuotasDb,
+  ] = await Promise.all([
+    sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual").in("contrato_id", idsAlcance),
+    sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE"),
+    contratosConPagoEnDia(hoy),
+    contratosQueCubrieronElDia(hoy),
+    contratosConComprobantePendienteEnDia(hoy),
+    ultimoDevengoPorContrato(hoy, idsAlcance),
+    montosDelDiaPorContrato(hoy),
+    acuerdosActivos(),
+    aplicadoArregloHoyPorContrato(hoy),
+    recargosPorContrato(idsAlcance),
+    cuotasPorContrato(
+      idsAlcance,
+      letraDe,
+      (id) => filasContrato.find((c) => c.id === id)?.num_cuotas_total ?? null,
+    ),
+    adelantoFuturoPorContrato(idsAlcance, hoy, letraDe),
+    nacimientosDe(clienteIds),
+    generosDe(clienteIds),
+    cuotasPagadasOpcional(idsAlcance),
+  ]);
 
   const saldoMap = new Map<string, number>();
   for (const s of (saldos.data ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {
@@ -742,62 +855,8 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
   }
   const multaHoy = new Set((multasHoy.data ?? []).map((g: { contrato_id: string }) => g.contrato_id));
 
-  let filasContrato = (contratos.data ?? []) as unknown as ContratoRow[];
-  if (contratos.error && /cuotas_pagadas/i.test(contratos.error.message)) {
-    const retry = await sb.from("contratos").select(SEL_SIN_CUOTAS_PAGADAS).eq("estado", "activo");
-    filasContrato = ((retry.data ?? []) as unknown as ContratoRow[]).map((c) => ({
-      ...c,
-      cuotas_pagadas: null,
-    }));
-  } else if (contratos.error && /num_cuotas_total/i.test(contratos.error.message)) {
-    const retry = await sb
-      .from("contratos")
-      .select(
-        "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)",
-      )
-      .eq("estado", "activo");
-    filasContrato = ((retry.data ?? []) as unknown as ContratoRow[]).map((c) => ({
-      ...c,
-      num_cuotas_total: null,
-      cuotas_pagadas: null,
-    }));
-  }
-
-  const allow = await empresasAlcanceCodigos();
-  if (allow) {
-    filasContrato = filasContrato.filter((c) =>
-      enAlcanceCodigo(c.vehiculo?.empresa?.codigo ?? null, allow),
-    );
-  }
-
-  const idsAlcance = filasContrato.map((c) => c.id);
-  const recargosMap = new Map<string, number>();
-  if (idsAlcance.length > 0) {
-    const { data: multasAlcance } = await sb
-      .from("cargos")
-      .select("contrato_id, monto")
-      .eq("tipo", "multa")
-      .eq("concepto_codigo", "PAGO_TARDE")
-      .in("contrato_id", idsAlcance);
-    for (const g of (multasAlcance ?? []) as { contrato_id: string; monto: number }[]) {
-      recargosMap.set(g.contrato_id, (recargosMap.get(g.contrato_id) ?? 0) + Number(g.monto || 0));
-    }
-  }
-
-  const cuotasMap = await cuotasPorContrato(
-    idsAlcance,
-    (id) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0,
-    (id) => filasContrato.find((c) => c.id === id)?.num_cuotas_total ?? null,
-  );
-  const adelantoMap = await adelantoFuturoPorContrato(
-    idsAlcance,
-    hoy,
-    (id) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0,
-  );
-  const nacMap = await nacimientosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
-  const genMap = await generosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
-
   return filasContrato.map((c) => {
+    if (cuotasDb.has(c.id)) c = { ...c, cuotas_pagadas: cuotasDb.get(c.id) ?? null };
     if (c.cliente && c.cliente_id) {
       c = { ...c, cliente: { ...c.cliente, genero: genMap.get(c.cliente_id) ?? null } };
     }
@@ -887,26 +946,31 @@ export function gravedadSituacion(e: {
   return debe + recargos * 0.001 + (e.pendiente ? -0.5 : 0);
 }
 
-/** Lectura del panel. No la usa el cron de cobro (ese va en vivo). */
-const PANEL_CACHE_MS = 25_000;
-let panelCache: { at: number; hoy: string; data: EstadoCuenta[] } | null = null;
+const PANEL_TAG = "estados-cuenta-panel";
+
+/** Lectura del panel, 20s. El cron de cobro no pasa por aquí. */
+const panelDesdeCache = unstable_cache(
+  async (hoy: string) => {
+    if (!hoy) return [];
+    const todos = await armarEstadosAlcance();
+    return [...todos].sort((a, b) => gravedadSituacion(b) - gravedadSituacion(a));
+  },
+  ["estados-cuenta-panel-v2"],
+  { revalidate: 20, tags: [PANEL_TAG] },
+);
+
+/** Limpia la lectura del panel cuando cambia un pago, un cargo o el alcance. */
+export function invalidarLecturaEstados() {
+  revalidateTag(PANEL_TAG);
+}
 
 /**
  * Panel de Estado de cuenta: TODOS los contratos del alcance.
  * Cierre 00:00: quien ya pagó mañana = «Pago adelantado»; quien solo cubrió hoy = «Al día».
  * Orden: lo más delicado primero (quien más debe).
- * Cache corta solo de lectura: al navegar entre pantallas no rearma todo el ledger.
  */
 export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
-  const hoy = hoyPanama();
-  const ahora = Date.now();
-  if (panelCache && panelCache.hoy === hoy && ahora - panelCache.at < PANEL_CACHE_MS) {
-    return panelCache.data;
-  }
-  const todos = await armarEstadosAlcance();
-  const data = [...todos].sort((a, b) => gravedadSituacion(b) - gravedadSituacion(a));
-  panelCache = { at: ahora, hoy, data };
-  return data;
+  return panelDesdeCache(hoyPanama());
 }
 
 /** Cola de cobro / envío: solo quien aún debe hoy (sin comprobante pendiente). */
