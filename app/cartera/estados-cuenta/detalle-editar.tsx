@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import {
+  FRECUENCIAS_ACUERDO,
+  type FrecuenciaAcuerdo,
+} from "@/lib/cartera/acuerdo";
+import {
   cargarLedgerEditable,
   guardarLedgerEditable,
   type AcuerdoDraft,
@@ -12,6 +16,39 @@ import {
 
 const INPUT =
   "w-full rounded-lg bg-surface px-2.5 py-2 text-sm ring-1 ring-line outline-none transition placeholder:text-faint focus:ring-2 focus:ring-ink/20";
+
+const SELECT =
+  "w-full rounded-lg bg-surface px-2.5 py-2 text-sm ring-1 ring-line outline-none transition focus:ring-2 focus:ring-ink/20";
+
+function labelCuota(f: FrecuenciaAcuerdo): string {
+  switch (f) {
+    case "semana":
+      return "Cuota / semana";
+    case "quincena":
+      return "Cuota / quincena";
+    case "mes":
+      return "Cuota / mes";
+    case "fecha":
+      return "Monto (fecha)";
+    default:
+      return "Cuota / día";
+  }
+}
+
+function hintFrecuencia(f: FrecuenciaAcuerdo): string | null {
+  switch (f) {
+    case "semana":
+      return "Se cobra el mismo día de la semana que la fecha ancla.";
+    case "quincena":
+      return "Se cobra ese día del mes y 15 días después (o 1 y 15 si no hay ancla).";
+    case "mes":
+      return "Se cobra el mismo día del mes que la fecha ancla.";
+    case "fecha":
+      return "Solo se cobra ese día (una vez). Si la cuota es 0, pide todo el saldo.";
+    default:
+      return null;
+  }
+}
 
 const TIPOS_CARGO = [
   { value: "otras", label: "Otro / mantenimiento" },
@@ -96,6 +133,8 @@ export function EditorLedger({
         cuota_domingo: a.cuota_domingo,
         monto_total: a.monto_total,
         activo: a.activo,
+        frecuencia: a.frecuencia ?? "dia",
+        fecha_especifica: a.fecha_especifica ?? null,
         borrar: false,
       })),
     );
@@ -134,6 +173,8 @@ export function EditorLedger({
         cuota_domingo: 30,
         monto_total: 0,
         activo: true,
+        frecuencia: "dia",
+        fecha_especifica: null,
         borrar: false,
       },
       ...prev,
@@ -402,7 +443,9 @@ export function EditorLedger({
                       />
                     </label>
                     <label className="flex flex-col gap-1">
-                      <span className="text-[11px] text-muted">Cuota / día</span>
+                      <span className="text-[11px] text-muted">
+                        {labelCuota(a.frecuencia ?? "dia")}
+                      </span>
                       <input
                         type="number"
                         step="0.01"
@@ -419,6 +462,67 @@ export function EditorLedger({
                         }
                       />
                     </label>
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] text-muted">Cada</span>
+                      <select
+                        className={SELECT}
+                        value={a.frecuencia ?? "dia"}
+                        onChange={(e) => {
+                          const frecuencia = e.target.value as FrecuenciaAcuerdo;
+                          setAcuerdos((prev) =>
+                            prev.map((x) =>
+                              x.key === a.key
+                                ? {
+                                    ...x,
+                                    frecuencia,
+                                    fecha_especifica:
+                                      frecuencia === "dia"
+                                        ? null
+                                        : x.fecha_especifica ?? hoyPanama(),
+                                  }
+                                : x,
+                            ),
+                          );
+                        }}
+                      >
+                        {FRECUENCIAS_ACUERDO.map((f) => (
+                          <option key={f.value} value={f.value}>
+                            {f.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {(a.frecuencia ?? "dia") !== "dia" && (
+                      <label className="flex flex-col gap-1 sm:col-span-2">
+                        <span className="text-[11px] text-muted">
+                          {(a.frecuencia ?? "dia") === "fecha"
+                            ? "Fecha de cobro"
+                            : "Fecha ancla"}
+                        </span>
+                        <input
+                          type="date"
+                          className={INPUT}
+                          value={a.fecha_especifica ?? ""}
+                          onChange={(e) =>
+                            setAcuerdos((prev) =>
+                              prev.map((x) =>
+                                x.key === a.key
+                                  ? {
+                                      ...x,
+                                      fecha_especifica: e.target.value || null,
+                                    }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                    )}
+                    {hintFrecuencia(a.frecuencia ?? "dia") && (
+                      <p className="col-span-2 text-[11px] text-muted sm:col-span-4">
+                        {hintFrecuencia(a.frecuencia ?? "dia")}
+                      </p>
+                    )}
                     <label className="flex items-center gap-2 pt-5 text-sm">
                       <input
                         type="checkbox"

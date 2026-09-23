@@ -221,15 +221,30 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const contratoId = pago.contrato_id;
   const monto = Number(pago.monto) || 0;
 
-  const [contratoRes, acuerdosRes, saldoRes, multaRes, rentaRes, otras, pagado] = await Promise.all([
+  let acuerdosData: unknown[] | null = null;
+  {
+    const full = await sb
+      .from("acuerdos")
+      .select("id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica")
+      .eq("contrato_id", contratoId)
+      .eq("activo", true);
+    if (full.error && /frecuencia|fecha_especifica/i.test(full.error.message)) {
+      const retry = await sb
+        .from("acuerdos")
+        .select("id, saldo, cuota_diaria, cuota_domingo, descripcion")
+        .eq("contrato_id", contratoId)
+        .eq("activo", true);
+      acuerdosData = retry.data as unknown[] | null;
+    } else {
+      acuerdosData = full.data as unknown[] | null;
+    }
+  }
+
+  const [contratoRes, saldoRes, multaRes, rentaRes, otras, pagado] = await Promise.all([
     sb.from("contratos")
       .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
       .eq("id", contratoId)
       .maybeSingle(),
-    sb.from("acuerdos")
-      .select("id, saldo, cuota_diaria, cuota_domingo, descripcion")
-      .eq("contrato_id", contratoId)
-      .eq("activo", true),
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
     sb.from("cargos").select("id").eq("contrato_id", contratoId).eq("fecha", fecha)
       .eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE").limit(1),
@@ -241,7 +256,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
 
   const terminos = contratoRes.data as TerminosCuota | null;
   if (!terminos) return null;
-  const acuerdos = (acuerdosRes.data ?? []) as AcuerdoActivo[];
+  const acuerdos = (acuerdosData ?? []) as AcuerdoActivo[];
   const cuotaHoy = cuotaDeFecha(terminos, fecha);
   const multaHoy = (multaRes.data?.length ?? 0) > 0;
   const hoyYaDevengado = (rentaRes.data?.length ?? 0) > 0;

@@ -4,6 +4,25 @@ import { revalidatePath } from "next/cache";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import { enviarEstadoCuentaPrueba } from "@/lib/cartera/envios";
+import type { FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
+
+const FRECUENCIAS_OK = new Set<FrecuenciaAcuerdo>([
+  "dia",
+  "semana",
+  "quincena",
+  "mes",
+  "fecha",
+]);
+
+function normalizarFrecuencia(v: unknown): FrecuenciaAcuerdo {
+  const s = String(v ?? "dia").trim().toLowerCase();
+  return FRECUENCIAS_OK.has(s as FrecuenciaAcuerdo) ? (s as FrecuenciaAcuerdo) : "dia";
+}
+
+function fechaONull(v: unknown): string | null {
+  const s = String(v ?? "").trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
 
 export type ResultadoPrueba = { ok: boolean; error?: string; preview?: string } | null;
 
@@ -35,6 +54,8 @@ export type AcuerdoEditable = {
   cuota_domingo: number;
   monto_total: number;
   activo: boolean;
+  frecuencia: FrecuenciaAcuerdo;
+  fecha_especifica: string | null;
 };
 
 export type LedgerEditable = {
@@ -66,6 +87,8 @@ export type AcuerdoDraft = {
   cuota_domingo: number;
   monto_total: number;
   activo: boolean;
+  frecuencia: FrecuenciaAcuerdo;
+  fecha_especifica: string | null;
   borrar?: boolean;
 };
 
@@ -139,11 +162,29 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
 
   if (carErr) return { ok: false, error: carErr.message };
 
-  const { data: acuData, error: acuErr } = await sb
-    .from("acuerdos")
-    .select("id, tipo, descripcion, saldo, cuota_diaria, cuota_domingo, monto_total, activo")
-    .eq("contrato_id", contratoId)
-    .order("created_at", { ascending: false });
+  const acuSel =
+    "id, tipo, descripcion, saldo, cuota_diaria, cuota_domingo, monto_total, activo, frecuencia, fecha_especifica";
+  let acuData: unknown[] | null = null;
+  let acuErr: { message: string } | null = null;
+  {
+    const res = await sb
+      .from("acuerdos")
+      .select(acuSel)
+      .eq("contrato_id", contratoId)
+      .order("created_at", { ascending: false });
+    acuData = res.data as unknown[] | null;
+    acuErr = res.error;
+  }
+
+  if (acuErr && /frecuencia|fecha_especifica/i.test(acuErr.message)) {
+    const retry = await sb
+      .from("acuerdos")
+      .select("id, tipo, descripcion, saldo, cuota_diaria, cuota_domingo, monto_total, activo")
+      .eq("contrato_id", contratoId)
+      .order("created_at", { ascending: false });
+    acuData = retry.data as unknown[] | null;
+    acuErr = retry.error;
+  }
 
   if (acuErr) return { ok: false, error: acuErr.message };
 
@@ -171,6 +212,12 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
         cuota_domingo: Number(a.cuota_domingo) || 0,
         monto_total: Number(a.monto_total) || 0,
         activo: Boolean(a.activo),
+        frecuencia: normalizarFrecuencia(
+          (a as { frecuencia?: string }).frecuencia,
+        ),
+        fecha_especifica: fechaONull(
+          (a as { fecha_especifica?: string | null }).fecha_especifica,
+        ),
       })),
     },
   };
@@ -271,7 +318,9 @@ export async function guardarLedgerEditable(
     if (a.borrar) continue;
 
     const tipo = ["dano", "financiamiento", "otro"].includes(a.tipo) ? a.tipo : "otro";
-    const body = {
+    const frecuencia = normalizarFrecuencia(a.frecuencia);
+    const fecha_especifica = fechaONull(a.fecha_especifica);
+    const body: Record<string, unknown> = {
       tipo,
       descripcion: String(a.descripcion || "").trim() || null,
       saldo: Math.max(n(a.saldo), 0),
@@ -279,19 +328,35 @@ export async function guardarLedgerEditable(
       cuota_domingo: Math.max(n(a.cuota_domingo), 0),
       monto_total: Math.max(n(a.monto_total) || n(a.saldo), 0),
       activo: a.activo !== false,
+      frecuencia,
+      fecha_especifica,
     };
 
     if (a.id) {
       const { error } = await sb.from("acuerdos").update(body).eq("id", a.id).eq("contrato_id", contratoId);
-      if (error) return { ok: false, error: `Actualizar acuerdo: ${error.message}` };
+      if (error && /frecuencia|fecha_especifica/i.test(error.message)) {
+        const { frecuencia: _f, fecha_especifica: _fe, ...sin } = body;
+        const retry = await sb.from("acuerdos").update(sin).eq("id", a.id).eq("contrato_id", contratoId);
+        if (retry.error) return { ok: false, error: `Actualizar acuerdo: ${retry.error.message}` };
+      } else if (error) {
+        return { ok: false, error: `Actualizar acuerdo: ${error.message}` };
+      }
     } else {
-      if (body.saldo <= 0.009 && body.cuota_diaria <= 0.009) continue;
-      const { error } = await sb.from("acuerdos").insert({
+      if (Number(body.saldo) <= 0.009 && Number(body.cuota_diaria) <= 0.009) continue;
+      const insertBody: Record<string, unknown> = {
         contrato_id: contratoId,
         ...body,
-        monto_total: body.monto_total > 0.009 ? body.monto_total : body.saldo,
-      });
-      if (error) return { ok: false, error: `Crear acuerdo: ${error.message}` };
+        monto_total:
+          Number(body.monto_total) > 0.009 ? body.monto_total : body.saldo,
+      };
+      const { error } = await sb.from("acuerdos").insert(insertBody);
+      if (error && /frecuencia|fecha_especifica/i.test(error.message)) {
+        const { frecuencia: _f, fecha_especifica: _fe, ...sin } = insertBody;
+        const retry = await sb.from("acuerdos").insert(sin);
+        if (retry.error) return { ok: false, error: `Crear acuerdo: ${retry.error.message}` };
+      } else if (error) {
+        return { ok: false, error: `Crear acuerdo: ${error.message}` };
+      }
     }
   }
 

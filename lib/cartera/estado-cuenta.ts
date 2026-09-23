@@ -508,14 +508,36 @@ async function generosDe(clienteIds: string[]): Promise<Map<string, string | nul
 
 async function acuerdosActivos(): Promise<Map<string, AcuerdoActivo[]>> {
   const sb = createServerSupabase();
-  const { data } = await sb
-    .from("acuerdos")
-    .select("id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion")
-    .eq("activo", true);
+  const sel =
+    "id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica";
+  let data: unknown[] | null = null;
+  let error: { message: string } | null = null;
+  {
+    const res = await sb.from("acuerdos").select(sel).eq("activo", true);
+    data = res.data as unknown[] | null;
+    error = res.error;
+  }
+  if (error && /frecuencia|fecha_especifica/i.test(error.message)) {
+    const retry = await sb
+      .from("acuerdos")
+      .select("id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion")
+      .eq("activo", true);
+    data = retry.data as unknown[] | null;
+    error = retry.error;
+  }
+  if (error) return new Map();
   const out = new Map<string, AcuerdoActivo[]>();
   for (const a of (data ?? []) as (AcuerdoActivo & { contrato_id: string })[]) {
     const list = out.get(a.contrato_id) ?? [];
-    list.push(a);
+    list.push({
+      id: a.id,
+      saldo: Number(a.saldo) || 0,
+      cuota_diaria: Number(a.cuota_diaria) || 0,
+      cuota_domingo: a.cuota_domingo != null ? Number(a.cuota_domingo) : null,
+      descripcion: a.descripcion ?? null,
+      frecuencia: a.frecuencia ?? "dia",
+      fecha_especifica: a.fecha_especifica ?? null,
+    });
     out.set(a.contrato_id, list);
   }
   return out;
