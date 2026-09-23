@@ -198,19 +198,23 @@ async function registrar(
   fecha: string,
   estado: "enviado" | "fallido",
 ) {
-  await sb.from("estados_cuenta").upsert(
+  const { error } = await sb.from("estados_cuenta").upsert(
     {
       contrato_id: e.contratoId,
       fecha,
       saldo_cuentas: e.cuenta,
-      cuotas_pagadas: e.cuotasPagadas,
-      cuotas_restantes: e.cuotasDebe,
+      // columnas integer en DB — redondear (a veces vienen fracciones del plan).
+      cuotas_pagadas: Math.max(0, Math.round(Number(e.cuotasPagadas) || 0)),
+      cuotas_restantes: Math.max(0, Math.round(Number(e.cuotasDebe) || 0)),
       canal: "whatsapp",
       estado,
       enviado_at: estado === "enviado" ? new Date().toISOString() : null,
     },
     { onConflict: "contrato_id,fecha" },
   );
+  if (error) {
+    console.error("[envios] no pude registrar estados_cuenta:", error.message, e.vehiculoNumero);
+  }
 }
 
 /** Envío manual del estado de cuenta de un contrato (para el piloto). */
