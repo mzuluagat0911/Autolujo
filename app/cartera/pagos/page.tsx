@@ -11,9 +11,9 @@ function esPorRevisar(p: {
   estado_conciliacion: string;
   origen?: string | null;
 }): boolean {
-  if (p.estado_conciliacion === "pendiente") return true;
-  if (p.estado_conciliacion === "manual" && p.origen !== "manual") return true;
-  return false;
+  // Solo comprobantes de WhatsApp aún sin desenlace.
+  // Los pagos de oficina / Excel (estado manual) ya cuentan en el saldo: no van acá.
+  return p.estado_conciliacion === "pendiente";
 }
 
 async function getData() {
