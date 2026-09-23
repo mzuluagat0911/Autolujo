@@ -219,13 +219,13 @@ export function esAdelantado(e: { diasAdelantados: number }): boolean {
 
 /** Cubrió la LETRA de HOY (el acuerdo no bloquea “al día”). No adelantado. */
 export function esAlDiaHoy(e: {
-  diasAdelantados: number;
+  diasAdelantados?: number;
   pagoPuntual: boolean;
   totalHoy: number;
   acuerdoHoy?: number;
   pendienteAnterior?: number;
 }): boolean {
-  if (esAdelantado(e)) return false;
+  if (esAdelantado({ diasAdelantados: Number(e.diasAdelantados) || 0 })) return false;
   if (e.pagoPuntual) return true;
   if (Number(e.pendienteAnterior) > 0.009) return false;
   // Si solo queda arreglo/extra, la letra del día ya está cubierta.
