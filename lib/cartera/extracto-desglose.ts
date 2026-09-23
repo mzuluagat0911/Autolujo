@@ -9,6 +9,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
+import { esDomingo, hoyPanama } from "./fecha";
 import {
   candidatosDesdeExtracto,
   elegirExtraDelDia,
@@ -124,6 +125,7 @@ export function armarExtractoDiario(
     acuerdoHoy: e.acuerdoHoy,
     acuerdoSaldo: opts?.acuerdoSaldo,
     extras: extrasCompetidores,
+    hoyEsDomingo: esDomingo(hoyPanama()),
   });
   const extraElegido = elegirExtraDelDia(candidatos);
   const totalCobrarHoy = Math.round(totalConUnExtra(baseMonto, extraElegido) * 100) / 100;
