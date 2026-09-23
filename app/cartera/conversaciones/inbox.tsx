@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   useTransition,
@@ -66,6 +67,10 @@ export function InboxConversaciones({
   const [toast, setToast] = useState<{ tone: "good" | "crit"; text: string } | null>(null);
   const listaRef = useRef<HTMLDivElement>(null);
   const listaScrollRef = useRef(0);
+  const selectedIdRef = useRef(selectedId);
+  const detalleRef = useRef(detalle);
+  selectedIdRef.current = selectedId;
+  detalleRef.current = detalle;
 
   // Sync URL (preserva ?demo=1).
   useEffect(() => {
@@ -89,41 +94,51 @@ export function InboxConversaciones({
     });
   }, [selectedId, demo]);
 
-  // Polling suave (solo datos reales). Conserva el scroll de la lista.
+  // Polling: la lista solo se reemplaza si cambió algo. El hilo abierto
+  // solo se recarga si llegó un mensaje nuevo (no en cada tick).
   useEffect(() => {
     if (demo) return;
     let cancelled = false;
     const tick = async () => {
       const { convs: next, error: err } = await cargarBandeja();
-      if (cancelled) return;
-      if (err) return;
+      if (cancelled || err) return;
       const el = listaRef.current;
       if (el) listaScrollRef.current = el.scrollTop;
-      setConvs(next);
-      if (selectedId) {
-        const { detalle: d } = await cargarDetalle(selectedId);
-        if (cancelled || !d) return;
-        setDetalle(d);
-        setConvs((prev) =>
-          prev.map((c) => (c.id === selectedId ? { ...c, no_leidos: 0 } : c)),
-        );
-      }
+      setConvs((prev) => (mismaBandeja(prev, next) ? prev : next));
+
+      const sid = selectedIdRef.current;
+      if (!sid) return;
+      const row = next.find((c) => c.id === sid);
+      const cur = detalleRef.current;
+      const sinCambio =
+        cur?.id === sid &&
+        row &&
+        cur.ultimo_mensaje_at === row.ultimo_mensaje_at &&
+        cur.necesita_humano === row.necesita_humano &&
+        cur.modo === row.modo &&
+        (cur.ultimo_texto ?? "") === (row.ultimo_texto ?? "");
+      if (sinCambio) return;
+
+      const { detalle: d } = await cargarDetalle(sid);
+      if (cancelled || !d || selectedIdRef.current !== sid) return;
+      setDetalle(d);
+      setConvs((prev) => prev.map((c) => (c.id === sid ? { ...c, no_leidos: 0 } : c)));
     };
     const id = window.setInterval(tick, POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [selectedId, demo]);
+  }, [demo]);
 
-  // Tras re-render de la bandeja, restaura scroll (evita el “salto” al abrir/poll).
-  useEffect(() => {
+  // Restaura el scroll de la lista antes del paint, sin animación.
+  useLayoutEffect(() => {
     const el = listaRef.current;
     if (!el) return;
-    if (Math.abs(el.scrollTop - listaScrollRef.current) > 2) {
+    if (Math.abs(el.scrollTop - listaScrollRef.current) > 1) {
       el.scrollTop = listaScrollRef.current;
     }
-  }, [convs, selectedId]);
+  }, [convs]);
 
   function showToast(tone: "good" | "crit", text: string) {
     setToast({ tone, text });
@@ -218,7 +233,7 @@ export function InboxConversaciones({
             onScroll={() => {
               if (listaRef.current) listaScrollRef.current = listaRef.current.scrollTop;
             }}
-            className="min-h-0 flex-1 overflow-y-auto"
+            className="min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]"
           >
             {configError && (
               <div className="m-3 rounded-md bg-crit/10 px-3 py-2.5 text-xs text-crit ring-1 ring-crit/20">
@@ -335,6 +350,26 @@ export function InboxConversaciones({
       )}
     </div>
   );
+}
+
+function mismaBandeja(a: ConversacionLista[], b: ConversacionLista[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (!x || !y) return false;
+    if (
+      x.id !== y.id ||
+      x.ultimo_mensaje_at !== y.ultimo_mensaje_at ||
+      x.ultimo_texto !== y.ultimo_texto ||
+      x.no_leidos !== y.no_leidos ||
+      x.necesita_humano !== y.necesita_humano ||
+      x.modo !== y.modo
+    ) {
+      return false;
+    }
+  }
+  return true;
 }
 
 function filtrar(convs: ConversacionLista[], filtro: FiltroBandeja, q: string) {
@@ -666,7 +701,6 @@ function Thread({
   const prevLastIdRef = useRef<string | null>(null);
   const prevConvRef = useRef<string | null>(null);
   const lastId = mensajes.at(-1)?.id ?? null;
-  const lastDir = mensajes.at(-1)?.direccion;
 
   function onScroll() {
     const el = scrollerRef.current;
@@ -693,29 +727,23 @@ function Thread({
     const newTail = lastId != null && lastId !== prev;
     prevLastIdRef.current = lastId;
 
-    const shouldStick =
-      openedOrFirst ||
-      (newTail && nearBottomRef.current) ||
-      (newTail && lastDir === "out") ||
-      agenteEscribiendo;
+    // Solo baja si acabas de abrir el chat o ya estabas al final.
+    // Si subiste a leer historia, un mensaje nuevo no te arrastra.
+    const shouldStick = openedOrFirst || (newTail && nearBottomRef.current) || agenteEscribiendo;
 
     if (!shouldStick) return;
 
-    const instant = openedOrFirst;
     requestAnimationFrame(() => {
-      el.scrollTo({
-        top: el.scrollHeight,
-        behavior: instant ? "auto" : "smooth",
-      });
-      nearBottomRef.current = true;
+      el.scrollTop = el.scrollHeight;
+      if (openedOrFirst) nearBottomRef.current = true;
     });
-  }, [conversacionId, mensajes.length, lastId, lastDir, agenteEscribiendo]);
+  }, [conversacionId, mensajes.length, lastId, agenteEscribiendo]);
 
   return (
     <div
       ref={scrollerRef}
       onScroll={onScroll}
-      className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-5"
+      className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 [overflow-anchor:none] sm:px-5"
     >
       {mensajes.map((m) => {
         const out = m.direccion === "out";
