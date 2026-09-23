@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { StatusChip, Money, FiltersBar, EmptyState } from "@/components/kit";
-import { accionDarAval, asignarPagoASalida, resolverPago } from "./actions";
-import { TARIFAS_SALIDA_INTERIOR } from "@/lib/cartera/salidas-interior";
+import { accionDarAval, resolverPago } from "./actions";
 import type { SalidaFila } from "@/lib/cartera/salidas-aplicar";
 
 export type PagoFila = {
@@ -31,7 +30,7 @@ export type PagoFila = {
 
 export type ContratoOpt = { id: string; label: string };
 
-type Filtro = "todos" | "banco" | "alerta" | "contrato" | "interior";
+type Filtro = "todos" | "banco" | "alerta" | "contrato";
 
 function IconOjo({ open }: { open?: boolean }) {
   if (open) {
@@ -65,31 +64,25 @@ export function ListaComprobantes({
 }) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [imgAbierta, setImgAbierta] = useState<string | null>(null);
-  const [interiorAbierto, setInteriorAbierto] = useState<string | null>(null);
-  const [forzarAbierto, setForzarAbierto] = useState<string | null>(null);
+  const [comprobadoAbierto, setComprobadoAbierto] = useState<string | null>(null);
 
   const counts = useMemo(() => {
     let banco = 0;
     let alerta = 0;
     let contrato = 0;
-    let interior = 0;
     for (const p of pendientes) {
       if (p.alertaCuenta) alerta++;
       else if (!p.contrato_id) contrato++;
-      else if (p.rubro === "salida_interior" || p.salida) interior++;
       else banco++;
     }
-    return { banco, alerta, contrato, interior };
+    return { banco, alerta, contrato };
   }, [pendientes]);
 
   const filas = useMemo(() => {
     return pendientes.filter((p) => {
       if (filtro === "alerta") return p.alertaCuenta;
       if (filtro === "contrato") return !p.contrato_id;
-      if (filtro === "interior") return p.rubro === "salida_interior" || Boolean(p.salida);
-      if (filtro === "banco") {
-        return p.contrato_id && !p.alertaCuenta && !(p.rubro === "salida_interior" || p.salida);
-      }
+      if (filtro === "banco") return Boolean(p.contrato_id) && !p.alertaCuenta;
       return true;
     });
   }, [pendientes, filtro]);
@@ -102,7 +95,6 @@ export function ListaComprobantes({
           { id: "banco", label: "Esperando banco", count: counts.banco },
           { id: "alerta", label: "Alerta cuenta", count: counts.alerta },
           { id: "contrato", label: "Sin contrato", count: counts.contrato },
-          { id: "interior", label: "Interior", count: counts.interior },
         ]}
         activeChip={filtro}
         onChip={(id) => setFiltro(id as Filtro)}
@@ -129,10 +121,10 @@ export function ListaComprobantes({
               contratos={contratos}
               verImg={imgAbierta === p.id}
               onToggleImg={() => setImgAbierta((id) => (id === p.id ? null : p.id))}
-              verInterior={interiorAbierto === p.id}
-              onToggleInterior={() => setInteriorAbierto((id) => (id === p.id ? null : p.id))}
-              verForzar={forzarAbierto === p.id}
-              onToggleForzar={() => setForzarAbierto((id) => (id === p.id ? null : p.id))}
+              verComprobado={comprobadoAbierto === p.id}
+              onToggleComprobado={() =>
+                setComprobadoAbierto((id) => (id === p.id ? null : p.id))
+              }
             />
           ))}
         </div>
@@ -146,19 +138,15 @@ function Fila({
   contratos,
   verImg,
   onToggleImg,
-  verInterior,
-  onToggleInterior,
-  verForzar,
-  onToggleForzar,
+  verComprobado,
+  onToggleComprobado,
 }: {
   p: PagoFila;
   contratos: ContratoOpt[];
   verImg: boolean;
   onToggleImg: () => void;
-  verInterior: boolean;
-  onToggleInterior: () => void;
-  verForzar: boolean;
-  onToggleForzar: () => void;
+  verComprobado: boolean;
+  onToggleComprobado: () => void;
 }) {
   const carro = p.carroResuelto ?? p.numero_carro;
   const alertaTxt = resumenNotas(p.notas);
@@ -225,17 +213,10 @@ function Fila({
           </form>
           <button
             type="button"
-            onClick={onToggleInterior}
+            onClick={onToggleComprobado}
             className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted ring-1 ring-line hover:bg-surface-2"
           >
-            Interior
-          </button>
-          <button
-            type="button"
-            onClick={onToggleForzar}
-            className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted ring-1 ring-line hover:bg-surface-2"
-          >
-            Forzar
+            Pago comprobado
           </button>
         </div>
       </div>
@@ -257,41 +238,7 @@ function Fila({
         </a>
       )}
 
-      {verInterior && !p.salida && p.rubro !== "salida_interior" && (
-        <form action={asignarPagoASalida} className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3">
-          <input type="hidden" name="pago_id" value={p.id} />
-          <input type="hidden" name="monto" value={p.monto} />
-          <select name="destino_interior" required defaultValue="" className="rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line">
-            <option value="" disabled>
-              Destino…
-            </option>
-            {TARIFAS_SALIDA_INTERIOR.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.nombre} (${d.monto})
-              </option>
-            ))}
-            <option value="otro">Otro…</option>
-          </select>
-          <input
-            name="destino_otro"
-            placeholder="Si es otro"
-            className="w-32 rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line"
-          />
-          <input
-            name="dias_viaje"
-            type="number"
-            min={1}
-            max={14}
-            defaultValue={1}
-            className="w-14 rounded-lg bg-paper px-2 py-2 text-sm tabular-nums ring-1 ring-line"
-          />
-          <button className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:bg-black">
-            Asignar
-          </button>
-        </form>
-      )}
-
-      {verForzar && (
+      {verComprobado && (
         <form
           action={resolverPago}
           className="mt-3 flex flex-wrap items-center gap-2 border-t border-line pt-3"
@@ -316,10 +263,10 @@ function Fila({
             </select>
           )}
           <p className="w-full text-xs text-ambar sm:w-auto">
-            Salta el extracto bancario. Úsalo solo si ya verificaste el pago a mano.
+            Ya verificaste el dinero en el banco o en Yappy. Se aplica al saldo sin esperar el extracto.
           </p>
           <button className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:bg-black">
-            Marcar conciliado
+            Confirmar pago comprobado
           </button>
         </form>
       )}

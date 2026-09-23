@@ -7,6 +7,10 @@ import {
   type FrecuenciaAcuerdo,
 } from "@/lib/cartera/acuerdo";
 import {
+  TARIFAS_SALIDA_INTERIOR,
+  type DestinoInterior,
+} from "@/lib/cartera/salidas-interior";
+import {
   cargarLedgerEditable,
   guardarLedgerEditable,
   type AcuerdoDraft,
@@ -19,6 +23,38 @@ const INPUT =
 
 const SELECT =
   "w-full rounded-lg bg-surface px-2.5 py-2 text-sm ring-1 ring-line outline-none transition focus:ring-2 focus:ring-ink/20";
+
+const CODIGO_SALIDA = "SALIDA_INT";
+
+function uid() {
+  return `tmp-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function cargoDesdeDestino(dest: DestinoInterior, fecha: string): CargoDraft & { key: string } {
+  return {
+    key: uid(),
+    id: null,
+    fecha,
+    tipo: "otras",
+    concepto: `Salida al interior — ${dest.nombre}`,
+    concepto_codigo: CODIGO_SALIDA,
+    monto: dest.monto,
+    borrar: false,
+  };
+}
+
+function destinoIdDesdeConcepto(concepto: string): string {
+  const fold = concepto
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase();
+  for (const d of TARIFAS_SALIDA_INTERIOR) {
+    if (fold.includes(d.nombre.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase())) {
+      return d.id;
+    }
+  }
+  return TARIFAS_SALIDA_INTERIOR[0]?.id ?? "penonome";
+}
 
 function labelCuota(f: FrecuenciaAcuerdo): string {
   switch (f) {
@@ -70,10 +106,6 @@ const PRESETS: { label: string; tipo: string; concepto: string; codigo: string |
   { label: "Cierre de semana", tipo: "multa", concepto: "No cerrar semana al día", codigo: "CIERRE_SEMANA" },
   { label: "Negociación / ajuste", tipo: "ajuste", concepto: "Ajuste / negociación", codigo: null },
 ];
-
-function uid() {
-  return `tmp-${Math.random().toString(36).slice(2, 9)}`;
-}
 
 export function EditorLedger({
   contratoId,
@@ -161,6 +193,29 @@ export function EditorLedger({
     ]);
   }
 
+  function addSalidaInterior() {
+    const dest = TARIFAS_SALIDA_INTERIOR[0]!;
+    setCargos((prev) => [cargoDesdeDestino(dest, hoyPanama()), ...prev]);
+  }
+
+  function setDestinoSalida(key: string, destinoId: string) {
+    const dest =
+      TARIFAS_SALIDA_INTERIOR.find((d) => d.id === destinoId) ?? TARIFAS_SALIDA_INTERIOR[0]!;
+    setCargos((prev) =>
+      prev.map((x) =>
+        x.key === key
+          ? {
+              ...x,
+              concepto_codigo: CODIGO_SALIDA,
+              tipo: "otras",
+              concepto: `Salida al interior — ${dest.nombre}`,
+              monto: dest.monto,
+            }
+          : x,
+      ),
+    );
+  }
+
   function addAcuerdo() {
     setAcuerdos((prev) => [
       {
@@ -211,8 +266,8 @@ export function EditorLedger({
   return (
     <div className="space-y-5 px-5 py-5">
       <p className="text-sm text-muted">
-        Cambiá montos, agregá mantenimiento u otros conceptos, o ajustá acuerdos. Al guardar se
-        actualiza la base de datos al instante.
+        Cambiá montos, agregá mantenimiento, salida al interior u otros conceptos, o ajustá acuerdos.
+        Al guardar se actualiza la base de datos al instante.
       </p>
 
       {error && (
@@ -268,7 +323,7 @@ export function EditorLedger({
             Cargos en cuenta
           </h3>
           <div className="flex flex-wrap gap-1.5">
-            {PRESETS.slice(0, 4).map((p) => (
+            {PRESETS.slice(0, 3).map((p) => (
               <button
                 key={p.label}
                 type="button"
@@ -280,6 +335,13 @@ export function EditorLedger({
             ))}
             <button
               type="button"
+              onClick={addSalidaInterior}
+              className="rounded-lg px-2 py-1 text-[11px] font-medium text-muted ring-1 ring-line hover:bg-surface-2 hover:text-ink"
+            >
+              + Salida interior
+            </button>
+            <button
+              type="button"
               onClick={() => addCargo()}
               className="rounded-lg px-2 py-1 text-[11px] font-medium text-ink ring-1 ring-line hover:bg-surface-2"
             >
@@ -289,7 +351,9 @@ export function EditorLedger({
         </div>
 
         {cargosVivos.length === 0 ? (
-          <p className="py-3 text-sm text-muted">Sin cargos extras. Agregá mantenimiento, multa, etc.</p>
+          <p className="py-3 text-sm text-muted">
+            Sin cargos extras. Agregá mantenimiento, salida al interior, multa, etc.
+          </p>
         ) : (
           <ul className="space-y-2">
             {cargos.map((c) =>
@@ -299,20 +363,37 @@ export function EditorLedger({
                   className="rounded-xl bg-surface-2/60 p-3 ring-1 ring-line"
                 >
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <label className="flex flex-col gap-1 sm:col-span-2">
-                      <span className="text-[11px] text-muted">Concepto</span>
-                      <input
-                        className={INPUT}
-                        value={c.concepto}
-                        onChange={(e) =>
-                          setCargos((prev) =>
-                            prev.map((x) =>
-                              x.key === c.key ? { ...x, concepto: e.target.value } : x,
-                            ),
-                          )
-                        }
-                      />
-                    </label>
+                    {c.concepto_codigo === CODIGO_SALIDA ? (
+                      <label className="flex flex-col gap-1 sm:col-span-2">
+                        <span className="text-[11px] text-muted">Destino (salida interior)</span>
+                        <select
+                          className={SELECT}
+                          value={destinoIdDesdeConcepto(c.concepto)}
+                          onChange={(e) => setDestinoSalida(c.key, e.target.value)}
+                        >
+                          {TARIFAS_SALIDA_INTERIOR.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.nombre} (${d.monto})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    ) : (
+                      <label className="flex flex-col gap-1 sm:col-span-2">
+                        <span className="text-[11px] text-muted">Concepto</span>
+                        <input
+                          className={INPUT}
+                          value={c.concepto}
+                          onChange={(e) =>
+                            setCargos((prev) =>
+                              prev.map((x) =>
+                                x.key === c.key ? { ...x, concepto: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                    )}
                     <label className="flex flex-col gap-1">
                       <span className="text-[11px] text-muted">Monto</span>
                       <input
@@ -346,26 +427,33 @@ export function EditorLedger({
                         }
                       />
                     </label>
-                    <label className="flex flex-col gap-1 sm:col-span-2">
-                      <span className="text-[11px] text-muted">Tipo</span>
-                      <select
-                        className={INPUT}
-                        value={c.tipo}
-                        onChange={(e) =>
-                          setCargos((prev) =>
-                            prev.map((x) =>
-                              x.key === c.key ? { ...x, tipo: e.target.value } : x,
-                            ),
-                          )
-                        }
-                      >
-                        {TIPOS_CARGO.map((t) => (
-                          <option key={t.value} value={t.value}>
-                            {t.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
+                    {c.concepto_codigo !== CODIGO_SALIDA && (
+                      <label className="flex flex-col gap-1 sm:col-span-2">
+                        <span className="text-[11px] text-muted">Tipo</span>
+                        <select
+                          className={INPUT}
+                          value={c.tipo}
+                          onChange={(e) =>
+                            setCargos((prev) =>
+                              prev.map((x) =>
+                                x.key === c.key ? { ...x, tipo: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        >
+                          {TIPOS_CARGO.map((t) => (
+                            <option key={t.value} value={t.value}>
+                              {t.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                    {c.concepto_codigo === CODIGO_SALIDA && (
+                      <p className="col-span-2 text-[11px] text-muted sm:col-span-4">
+                        Tarifa de permiso para salir al interior. Se suma a lo debido del día.
+                      </p>
+                    )}
                     <div className="flex items-end sm:col-span-2">
                       <button
                         type="button"
