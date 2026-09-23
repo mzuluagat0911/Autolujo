@@ -184,6 +184,11 @@ export async function enviarYRegistrar(
 
   try {
     const ctx = opts.ctx ?? (await enrichExtracto(e));
+    const armado = armarExtractoDiario(e, ctx);
+    // No hay cobro hoy (adelantado, ya pagó, o solo domingo listado): no se escribe.
+    if (armado.totalCobrarHoy <= 0.009) {
+      return { ok: true };
+    }
     const preview = previewEstadoCuenta(e, ctx);
     await enviarConFallbacks(to, e, ctx);
     await registrar(sb, e, fecha, "enviado");
