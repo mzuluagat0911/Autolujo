@@ -17,8 +17,20 @@
       "schedule": "0 18 * * 1-6"
     },
     {
+      "path": "/api/cron/recordatorio-mediodia",
+      "schedule": "25 18 * * 1-6"
+    },
+    {
+      "path": "/api/cron/recordatorio-mediodia",
+      "schedule": "50 18 * * 1-6"
+    },
+    {
       "path": "/api/cron/recordatorio-cierre",
       "schedule": "30 22 * * 1-6"
+    },
+    {
+      "path": "/api/cron/recordatorio-cierre",
+      "schedule": "50 22 * * 1-6"
     },
     {
       "path": "/api/cron/gps-snapshot",

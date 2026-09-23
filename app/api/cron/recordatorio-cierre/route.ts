@@ -1,6 +1,7 @@
 import { enviarRecordatoriosHoy } from "@/lib/cartera/recordatorios";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 // Reenganche de cierre (antes de las 7pm): último recordatorio del día a quien

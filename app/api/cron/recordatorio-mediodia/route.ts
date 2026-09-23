@@ -1,6 +1,7 @@
 import { enviarRecordatoriosHoy } from "@/lib/cartera/recordatorios";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
 // Reenganche de mediodía: recordatorio a quien aún debe hoy y no ha pagado.
