@@ -1,20 +1,35 @@
 import Link from "next/link";
 import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
-import { estadosCuentaPanel, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
+import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta";
 import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
+import {
+  acuerdosSaldoPorContrato,
+  cargosExtraPorContrato,
+} from "@/lib/cartera/extracto-desglose";
 import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas";
 import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
 import { PruebaEnvio } from "./prueba";
 import { DeudoresCerrados } from "./deudores-cerrados";
 import { EstadosTabla } from "./tabla";
+import type { EstadoCuentaFila } from "./types";
 
 export const dynamic = "force-dynamic";
 
 export default async function EstadosCuentaPage() {
-  let estados: EstadoCuenta[];
+  let estados: EstadoCuentaFila[] = [];
   let error: string | null = null;
   try {
-    estados = await estadosCuentaPanel();
+    const base = await estadosCuentaPanel();
+    const ids = base.map((e) => e.contratoId);
+    const [acuerdoMap, extrasMap] = await Promise.all([
+      acuerdosSaldoPorContrato(ids),
+      cargosExtraPorContrato(ids),
+    ]);
+    estados = base.map((e) => ({
+      ...e,
+      acuerdoSaldo: acuerdoMap.get(e.contratoId) ?? 0,
+      extras: extrasMap.get(e.contratoId) ?? [],
+    }));
   } catch (e) {
     estados = [];
     error = e instanceof Error ? e.message : "Error";

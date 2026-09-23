@@ -13,6 +13,7 @@ import {
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { DetalleEstadoModal } from "./detalle";
+import type { EstadoCuentaFila } from "./types";
 
 type Filtro = "todas" | "pendiente" | "recargo" | "aldia" | "adelantado";
 type OrdenCol =
@@ -48,12 +49,12 @@ function fechaCorta(iso: string | null | undefined): string | null {
   return `${Number(d)}/${Number(m)}`;
 }
 
-export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
+export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [orden, setOrden] = useState<OrdenCol>("totalHoy");
   const [asc, setAsc] = useState(false);
-  const [detalle, setDetalle] = useState<EstadoCuenta | null>(null);
+  const [detalle, setDetalle] = useState<EstadoCuentaFila | null>(null);
 
   function clickCabecera(col: OrdenCol) {
     if (orden === col) {

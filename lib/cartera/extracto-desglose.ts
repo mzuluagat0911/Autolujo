@@ -281,3 +281,35 @@ export async function cargosExtraPorContrato(
   }
   return out;
 }
+
+/**
+ * Parte el “saldo anterior” en cuotas atrasadas + cargos vivos del ledger
+ * (mantenimiento, panapass, cierre, etc.).
+ * La suma de las partes ≈ pendienteAnterior (tope por lo que cabe en el saldo).
+ */
+export function partesSaldoAnterior(opts: {
+  pendienteAnterior: number;
+  extras: LineaExtracto[];
+}): LineaExtracto[] {
+  let resto = Math.round((Number(opts.pendienteAnterior) || 0) * 100) / 100;
+  if (resto <= 0.009) return [];
+
+  const partes: LineaExtracto[] = [];
+  const extras = [...(opts.extras ?? [])]
+    .filter((x) => x.monto > 0.009)
+    .sort((a, b) => b.monto - a.monto);
+
+  for (const x of extras) {
+    if (resto <= 0.009) break;
+    const take = Math.min(x.monto, resto);
+    if (take <= 0.009) continue;
+    partes.push({ etiqueta: x.etiqueta, monto: Math.round(take * 100) / 100 });
+    resto = Math.round((resto - take) * 100) / 100;
+  }
+
+  if (resto > 0.009) {
+    partes.unshift({ etiqueta: "cuotas atrasadas", monto: resto });
+  }
+
+  return partes;
+}

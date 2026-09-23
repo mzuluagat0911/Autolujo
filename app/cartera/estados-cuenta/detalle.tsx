@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
 import { Money, StatusChip } from "@/components/kit";
 import {
   money,
@@ -10,7 +10,9 @@ import {
   esAlDiaHoy,
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
+import { partesSaldoAnterior } from "@/lib/cartera/extracto-desglose";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
+import type { EstadoCuentaFila } from "./types";
 
 function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
@@ -46,14 +48,21 @@ function pctCuotas(e: EstadoCuenta): number | null {
   return Math.min(100, Math.max(0, Math.round((pagadas / total) * 100)));
 }
 
+function capEtiqueta(s: string): string {
+  if (!s) return s;
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function Fila({
   label,
   children,
   tone,
+  indent,
 }: {
   label: string;
   children: ReactNode;
   tone?: "default" | "warn" | "crit" | "good" | "muted";
+  indent?: boolean;
 }) {
   const valueClass =
     tone === "warn"
@@ -66,7 +75,9 @@ function Fila({
             ? "text-muted"
             : "text-ink";
   return (
-    <div className="flex items-baseline justify-between gap-4 py-2.5">
+    <div
+      className={`flex items-baseline justify-between gap-4 py-2.5 ${indent ? "pl-3" : ""}`}
+    >
       <span className="text-sm text-muted">{label}</span>
       <span className={`text-sm font-medium tabular-nums text-right ${valueClass}`}>{children}</span>
     </div>
@@ -88,7 +99,7 @@ export function DetalleEstadoModal({
   estado,
   onClose,
 }: {
-  estado: EstadoCuenta;
+  estado: EstadoCuentaFila;
   onClose: () => void;
 }) {
   const titleId = useId();
@@ -97,6 +108,15 @@ export function DetalleEstadoModal({
   const progreso = pctCuotas(estado);
   const adelantado = esAdelantado(estado);
   const alDia = esAlDiaHoy(estado);
+
+  const partesSaldo = useMemo(
+    () =>
+      partesSaldoAnterior({
+        pendienteAnterior: estado.pendienteAnterior,
+        extras: estado.extras,
+      }),
+    [estado],
+  );
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -126,7 +146,6 @@ export function DetalleEstadoModal({
         aria-labelledby={titleId}
         className="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-surface shadow-xl ring-1 ring-line sm:rounded-xl"
       >
-        {/* Cabecera */}
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
@@ -161,9 +180,7 @@ export function DetalleEstadoModal({
           </button>
         </div>
 
-        {/* Cuerpo scrolleable */}
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
-          {/* Total hero */}
           <div className="rounded-xl bg-surface-2 px-4 py-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
               {adelantado
@@ -208,20 +225,46 @@ export function DetalleEstadoModal({
             )}
           </div>
 
-          {/* Desglose del día */}
           <Seccion title="Desglose de hoy">
             {estado.lineas.length === 0 ? (
               <p className="py-2.5 text-sm text-muted">Sin cargos pendientes para hoy.</p>
             ) : (
-              estado.lineas.map((l, i) => (
-                <Fila
-                  key={`${l.concepto}-${i}`}
-                  label={l.concepto.charAt(0).toUpperCase() + l.concepto.slice(1)}
-                  tone={l.monto < 0 ? "good" : l.concepto.includes("no pagar") ? "warn" : "default"}
-                >
-                  {l.monto < 0 ? `−${money(-l.monto)}` : money(l.monto)}
-                </Fila>
-              ))
+              estado.lineas.map((l, i) => {
+                const esSaldoAnt = l.concepto === "saldo anterior" && l.monto > 0.009;
+                const partes = esSaldoAnt ? partesSaldo : [];
+                return (
+                  <div key={`${l.concepto}-${i}`}>
+                    <Fila
+                      label={capEtiqueta(l.concepto)}
+                      tone={
+                        l.monto < 0
+                          ? "good"
+                          : l.concepto.includes("no pagar")
+                            ? "warn"
+                            : esSaldoAnt
+                              ? "crit"
+                              : "default"
+                      }
+                    >
+                      {l.monto < 0 ? `−${money(-l.monto)}` : money(l.monto)}
+                    </Fila>
+                    {partes.length > 0 && (
+                      <div className="mb-1 ml-1 border-l-2 border-line pl-2">
+                        {partes.map((p) => (
+                          <Fila
+                            key={p.etiqueta}
+                            label={capEtiqueta(p.etiqueta)}
+                            tone="muted"
+                            indent
+                          >
+                            {money(p.monto)}
+                          </Fila>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
             )}
             {!alDia && !adelantado && (
               <Fila label="Total">
@@ -235,7 +278,17 @@ export function DetalleEstadoModal({
             )}
           </Seccion>
 
-          {/* Plan de cuotas */}
+          {estado.acuerdoSaldo > 0.009 && (
+            <Seccion title="Acuerdos de pago">
+              <Fila label="Saldo del plan" tone="warn">
+                {money(estado.acuerdoSaldo)}
+              </Fila>
+              {estado.acuerdoHoy > 0.009 && (
+                <Fila label="Cuota de hoy del acuerdo">{money(estado.acuerdoHoy)}</Fila>
+              )}
+            </Seccion>
+          )}
+
           <Seccion title="Plan de cuotas">
             <Fila label="Resumen">{textoEstadoCuotas(estado)}</Fila>
             {estado.numCuotasTotal != null && (
@@ -269,7 +322,6 @@ export function DetalleEstadoModal({
             )}
           </Seccion>
 
-          {/* Recargos y saldo */}
           <Seccion title="Recargos y saldo">
             <Fila
               label="Recargos acumulados"
@@ -298,7 +350,6 @@ export function DetalleEstadoModal({
             )}
           </Seccion>
 
-          {/* Contrato */}
           <Seccion title="Contrato">
             <Fila label="Valor / letra diaria">
               {estado.letra > 0.009 ? money(estado.letra) : "—"}
@@ -330,7 +381,6 @@ export function DetalleEstadoModal({
           </Seccion>
         </div>
 
-        {/* Pie */}
         <div className="border-t border-line px-5 py-3">
           <button
             type="button"
