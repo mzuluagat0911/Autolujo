@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { FiltersBar, StatusChip, Money, EmptyState } from "@/components/kit";
+import { useRouter } from "next/navigation";
+import { FiltersBar, StatusChip, Money, EmptyState, Toast } from "@/components/kit";
 import {
   money,
   textoEstadoCuotas,
@@ -12,6 +13,7 @@ import {
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
+import { fechaConDia } from "@/lib/cartera/fecha";
 import { DetalleEstadoModal } from "./detalle";
 import type { EstadoCuentaFila } from "./types";
 
@@ -53,16 +55,17 @@ function cmpStr(a: string, b: string): number {
 
 function fechaCorta(iso: string | null | undefined): string | null {
   if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
-  const [, m, d] = iso.slice(0, 10).split("-");
-  return `${Number(d)}/${Number(m)}`;
+  return fechaConDia(iso.slice(0, 10));
 }
 
 export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [orden, setOrden] = useState<OrdenCol>("totalHoy");
   const [asc, setAsc] = useState(false);
   const [detalle, setDetalle] = useState<EstadoCuentaFila | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   function clickCabecera(col: OrdenCol) {
     if (orden === col) {
@@ -308,8 +311,18 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
       )}
 
       {detalle && (
-        <DetalleEstadoModal estado={detalle} onClose={() => setDetalle(null)} />
+        <DetalleEstadoModal
+          estado={detalle}
+          onClose={() => setDetalle(null)}
+          onSaved={() => {
+            setDetalle(null);
+            setToast("Cuenta actualizada.");
+            router.refresh();
+            window.setTimeout(() => setToast(null), 3200);
+          }}
+        />
       )}
+      {toast && <Toast tone="good" message={toast} />}
     </div>
   );
 }

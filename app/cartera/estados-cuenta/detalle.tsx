@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, type ReactNode } from "react";
-import { Money, StatusChip } from "@/components/kit";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Money, StatusChip, Toast } from "@/components/kit";
 import {
   money,
   textoEstadoCuotas,
@@ -12,7 +12,9 @@ import {
 } from "@/lib/cartera/estado-cuenta";
 import { partesSaldoAnterior } from "@/lib/cartera/extracto-desglose";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
+import { fechaConDia, fechaLarga } from "@/lib/cartera/fecha";
 import type { EstadoCuentaFila } from "./types";
+import { EditorLedger } from "./detalle-editar";
 
 function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
@@ -24,18 +26,13 @@ function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
 
 function fechaCorta(iso: string | null | undefined): string | null {
   if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
-  const [, m, d] = iso.slice(0, 10).split("-");
-  return `${Number(d)}/${Number(m)}`;
+  return fechaConDia(iso.slice(0, 10));
 }
 
 function fechaLargaUi(iso: string | null | undefined): string | null {
   if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
   try {
-    return new Intl.DateTimeFormat("es-PA", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    }).format(new Date(`${iso.slice(0, 10)}T12:00:00`));
+    return fechaLarga(iso.slice(0, 10));
   } catch {
     return fechaCorta(iso);
   }
@@ -98,12 +95,16 @@ function Seccion({ title, children }: { title: string; children: ReactNode }) {
 export function DetalleEstadoModal({
   estado,
   onClose,
+  onSaved,
 }: {
   estado: EstadoCuentaFila;
   onClose: () => void;
+  onSaved?: () => void;
 }) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [editando, setEditando] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
   const carro = etiquetaCarroUi(estado.empresa, estado.vehiculoNumero);
   const progreso = pctCuotas(estado);
   const adelantado = esAdelantado(estado);
@@ -123,14 +124,23 @@ export function DetalleEstadoModal({
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     function onKey(ev: KeyboardEvent) {
-      if (ev.key === "Escape") onClose();
+      if (ev.key === "Escape") {
+        if (editando) setEditando(false);
+        else onClose();
+      }
     }
     window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose, editando]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const t = window.setTimeout(() => setToast(null), 3200);
+    return () => window.clearTimeout(t);
+  }, [toast]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
@@ -144,23 +154,27 @@ export function DetalleEstadoModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-surface shadow-xl ring-1 ring-line sm:rounded-xl"
+        className={`relative z-10 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-surface shadow-xl ring-1 ring-line sm:rounded-xl ${
+          editando ? "max-w-2xl" : "max-w-lg"
+        }`}
       >
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-              Estado de cuenta
+              {editando ? "Editar cuenta" : "Estado de cuenta"}
               {fechaLargaUi(estado.fecha) ? ` · ${fechaLargaUi(estado.fecha)}` : ""}
             </p>
             <h2 id={titleId} className="mt-1 truncate text-xl font-bold tracking-tight">
               {carro}
             </h2>
             <p className="mt-0.5 truncate text-sm text-muted">{estado.clienteNombre}</p>
-            <div className="mt-2.5">
-              <StatusChip tone={tonoSituacion(estado)}>
-                {textoSituacionCuotas(estado)}
-              </StatusChip>
-            </div>
+            {!editando && (
+              <div className="mt-2.5">
+                <StatusChip tone={tonoSituacion(estado)}>
+                  {textoSituacionCuotas(estado)}
+                </StatusChip>
+              </div>
+            )}
           </div>
           <button
             ref={closeRef}
@@ -180,6 +194,20 @@ export function DetalleEstadoModal({
           </button>
         </div>
 
+        {editando ? (
+          <div className="flex-1 overflow-y-auto">
+            <EditorLedger
+              contratoId={estado.contratoId}
+              onCancel={() => setEditando(false)}
+              onSaved={() => {
+                setEditando(false);
+                setToast("Cambios guardados en la base de datos.");
+                onSaved?.();
+              }}
+            />
+          </div>
+        ) : (
+          <>
         <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
           <div className="rounded-xl bg-surface-2 px-4 py-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
@@ -381,16 +409,26 @@ export function DetalleEstadoModal({
           </Seccion>
         </div>
 
-        <div className="border-t border-line px-5 py-3">
+        <div className="flex gap-2 border-t border-line px-5 py-3">
+          <button
+            type="button"
+            onClick={() => setEditando(true)}
+            className="flex-1 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+          >
+            Editar cuenta
+          </button>
           <button
             type="button"
             onClick={onClose}
-            className="w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
+            className="flex-1 rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
           >
             Cerrar
           </button>
         </div>
+          </>
+        )}
       </div>
+      {toast && <Toast tone="good" message={toast} />}
     </div>
   );
 }

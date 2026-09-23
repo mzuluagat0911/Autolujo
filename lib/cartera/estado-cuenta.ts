@@ -313,10 +313,14 @@ function armar(
   const diasAdelantados = Math.max(diasPorCredito, diasPorPagoFuturo);
   const hastaCredito = diasPorCredito > 0 ? sumarDias(extra.hoy, diasPorCredito) : null;
   const hastaPago = extra.cubiertoHastaPago ?? null;
+  // La fecha “cubierto hasta” debe coincidir con las cuotas por delante:
+  // max(crédito, última fecha de pago futuro) o hoy+N.
   const cubiertoHasta =
     diasAdelantados > 0
-      ? [hastaCredito, hastaPago].filter(Boolean).sort().at(-1) ??
-        sumarDias(extra.hoy, diasAdelantados)
+      ? [hastaCredito, hastaPago, sumarDias(extra.hoy, diasAdelantados)]
+          .filter((x): x is string => Boolean(x))
+          .sort()
+          .at(-1) ?? null
       : null;
 
   // Adelantado (crédito o pago con fecha futura): NO aplica multa de “no pago” hoy.
@@ -643,7 +647,9 @@ async function ultimoDevengoPorContrato(hoy: string): Promise<Map<string, string
   return out;
 }
 
-/** Pagos con fecha > hoy → cuotas adelantadas (cierre del día = 00:00). */
+/** Pagos con fecha > hoy → cuotas adelantadas (cierre del día = 00:00).
+ *  Mandan las fechas etiquetadas del pago (col. del día / Excel). El monto
+ *  puede incluir multa/acuerdo y NO debe inflar días (ej. G23 $90 = 1 día). */
 async function adelantoFuturoPorContrato(
   contratoIds: string[],
   hoy: string,
@@ -669,11 +675,18 @@ async function adelantoFuturoPorContrato(
     acc.set(p.contrato_id, cur);
   }
   for (const [id, a] of acc) {
+    const fechas = [...a.fechas].sort();
+    if (fechas.length > 0) {
+      out.set(id, { dias: fechas.length, hasta: fechas[fechas.length - 1] ?? null });
+      continue;
+    }
+    // Sin fecha etiquetada: fallback monto ÷ letra.
     const letra = letraDe(id);
     const porMonto = letra > 0.009 ? Math.floor(a.monto / letra) : 0;
-    const dias = Math.max(a.fechas.size, porMonto);
-    const hasta = [...a.fechas].sort().at(-1) ?? null;
-    out.set(id, { dias, hasta });
+    out.set(id, {
+      dias: porMonto,
+      hasta: porMonto > 0 ? sumarDias(hoy, porMonto) : null,
+    });
   }
   return out;
 }
