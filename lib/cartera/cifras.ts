@@ -87,14 +87,14 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const bruto = saldoVista + faltaHoy + faltaAcuerdo;
   const pendiente = Boolean(e.pendiente);
 
-  const hayCuotaHoy = cuotaHoy > 0 || acuerdoHoy > 0;
+  const hayLetraHoy = cuotaHoy > 0;
   const recargo =
-    hayCuotaHoy && !e.pagoPuntual && e.corte && !e.multaHoyRegistrada && !pendiente
+    hayLetraHoy && !e.pagoPuntual && e.corte && !e.multaHoyRegistrada && !pendiente
       ? penalidad
       : 0;
-  // Un abono parcial también pierde el descuento si no completa antes de las 7.
+  // Un abono parcial de la LETRA también pierde el descuento si no completa antes de las 7.
   const recargoSiTarda =
-    hayCuotaHoy && !e.pagoPuntual && !e.corte && !pendiente ? penalidad : 0;
+    hayLetraHoy && !e.pagoPuntual && !e.corte && !pendiente ? penalidad : 0;
 
   const totalHoy = Math.max(bruto + recargo, 0);
   const totalHoyTarde =

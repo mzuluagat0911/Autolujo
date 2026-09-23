@@ -286,6 +286,14 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                           ? ` · cubierto hasta ${fechaCorta(e.cubiertoHasta)}`
                           : ""}
                       </p>
+                    ) : esAlDiaHoy(e) ? (
+                      e.acuerdoHoy > 0.009 ? (
+                        <p className="mt-1 text-[11px] text-muted tabular-nums">
+                          Acuerdo pendiente {money(e.acuerdoHoy)}
+                        </p>
+                      ) : (
+                        <p className="mt-1 text-[11px] text-muted">Letra del día cubierta</p>
+                      )
                     ) : (
                       <p className="mt-1 text-[11px] font-medium tabular-nums text-ink">
                         A pagar hoy {money(e.totalHoy)}

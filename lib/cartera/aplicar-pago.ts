@@ -251,7 +251,8 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const estePuntual = esPagoPuntual(pago.pagado_at, fecha);
   const pagadoPuntualAntes = Math.max((pagado.pagadoPuntual ?? 0) - (estePuntual ? monto : 0), 0);
   const acuerdoHoy = acuerdoHoyDe(acuerdos, fecha);
-  const meta = cuotaHoy + acuerdoHoy;
+  // Multa de “no pago” = solo letra; el acuerdo no entra a la meta puntual.
+  const meta = cuotaHoy;
   const pagoPuntualAntes = cubrioCuotaDelDia(pagadoPuntualAntes, meta);
   const corte = fecha < hoyPanama() || pasoCorte();
 

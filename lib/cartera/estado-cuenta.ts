@@ -217,14 +217,21 @@ export function esAdelantado(e: { diasAdelantados: number }): boolean {
   return (Number(e.diasAdelantados) || 0) >= 1;
 }
 
-/** Cubrió la cuota de HOY y no está adelantado. */
+/** Cubrió la LETRA de HOY (el acuerdo no bloquea “al día”). No adelantado. */
 export function esAlDiaHoy(e: {
   diasAdelantados: number;
   pagoPuntual: boolean;
   totalHoy: number;
+  acuerdoHoy?: number;
+  pendienteAnterior?: number;
 }): boolean {
   if (esAdelantado(e)) return false;
-  return e.pagoPuntual || e.totalHoy <= 0.009;
+  if (e.pagoPuntual) return true;
+  if (Number(e.pendienteAnterior) > 0.009) return false;
+  // Si solo queda arreglo/extra, la letra del día ya está cubierta.
+  const acuerdo = Math.max(Number(e.acuerdoHoy) || 0, 0);
+  const letraPendiente = Math.max(Number(e.totalHoy) - acuerdo, 0);
+  return letraPendiente <= 0.009;
 }
 
 /**
@@ -239,6 +246,7 @@ export function textoSituacionCuotas(e: {
   totalHoy: number;
   pendiente: boolean;
   diasAdelantados?: number;
+  acuerdoHoy?: number;
 }): string {
   if (e.pendiente) return "Comprobante en validación";
   const adel = Math.max(0, Math.floor(Number(e.diasAdelantados) || 0));
@@ -247,7 +255,7 @@ export function textoSituacionCuotas(e: {
       ? "Pago adelantado · 1 cuota"
       : `Pago adelantado · ${adel.toLocaleString("es-PA")} cuotas`;
   }
-  if (e.pagoPuntual || e.totalHoy <= 0.009) return "Al día";
+  if (esAlDiaHoy(e)) return "Al día";
   const atrasadas = cuotasAtraso(e);
   if (atrasadas <= 0) return "Le toca la de hoy";
   if (atrasadas === 1) return "Debe 1 cuota";
@@ -550,7 +558,8 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
 
   const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
   const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy), arregloAplicado);
-  const meta = cuotaDeFecha(terminosDe(row), hoy) + acuerdoHoy;
+  // Puntualidad / multa de “no pago” = solo la letra del día (no el acuerdo).
+  const meta = cuotaDeFecha(terminosDe(row), hoy);
   const pagoPuntual = cubrioCuotaDelDia(pago.pagadoPuntualCuota, meta);
   // Contrato cerrado (devuelto/finalizado/abandonado…): ya NO corre cuota diaria;
   // solo queda la deuda pendiente. Se trata como "día libre" permanente.

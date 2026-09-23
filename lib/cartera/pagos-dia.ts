@@ -9,7 +9,6 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { rangoDiaPanama, esPagoPuntual } from "./fecha";
 import { cuotaDeFecha, type TerminosCuota } from "./cuota";
-import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
 import { cubrioCuotaDelDia } from "./cifras";
 import type { AsignacionPago, ResultadoPago } from "./types";
 import { montoQueCubreCuota } from "./salidas-aplicar";
@@ -95,30 +94,18 @@ export async function montosPuntualesPorContrato(
   return out;
 }
 
-/** Cuota del día + arreglo(s) = lo que hay que cubrir antes de las 7 para no perder los $5. */
+/** Cuota/letra del día = lo que hay que cubrir antes de las 7 para no perder los $5.
+ *  El acuerdo/arreglo es ítem extra (prioridad-extras): no define la multa de “no pago”. */
 export async function metasPuntualPorContrato(fecha: string): Promise<Map<string, number>> {
   const sb = createServerSupabase();
-  const [{ data: contratos }, { data: acuerdos }] = await Promise.all([
-    sb
-      .from("contratos")
-      .select("id, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
-      .eq("estado", "activo"),
-    sb
-      .from("acuerdos")
-      .select("id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion")
-      .eq("activo", true),
-  ]);
-
-  const porContrato = new Map<string, AcuerdoActivo[]>();
-  for (const a of (acuerdos ?? []) as (AcuerdoActivo & { contrato_id: string })[]) {
-    const list = porContrato.get(a.contrato_id) ?? [];
-    list.push(a);
-    porContrato.set(a.contrato_id, list);
-  }
+  const { data: contratos } = await sb
+    .from("contratos")
+    .select("id, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+    .eq("estado", "activo");
 
   const out = new Map<string, number>();
   for (const c of (contratos ?? []) as (TerminosCuota & { id: string })[]) {
-    out.set(c.id, cuotaDeFecha(c, fecha) + acuerdoHoyDe(porContrato.get(c.id) ?? [], fecha));
+    out.set(c.id, cuotaDeFecha(c, fecha));
   }
   return out;
 }

@@ -29,7 +29,6 @@ import {
   pagoHoyContrato,
 } from "./pagos-dia";
 import { cubrioCuotaDelDia } from "./cifras";
-import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
 
 /** Días hacia atrás que el job intenta rellenar si el cron no corrió. */
 const MAX_DIAS_ATRAS = 7;
@@ -295,18 +294,16 @@ export async function recalcularRecargo(
 
   if ((rentaRes.data ?? []).length === 0) return borrar();
 
-  const [{ pagadoPuntualCuota }, { pendiente }, acuerdosRes] = await Promise.all([
+  const [{ pagadoPuntualCuota }, { pendiente }] = await Promise.all([
     pagoHoyContrato(contratoId, fecha),
     comprobantePendienteContrato(contratoId, fecha),
-    sb.from("acuerdos").select("id, saldo, cuota_diaria, cuota_domingo, descripcion")
-      .eq("contrato_id", contratoId).eq("activo", true),
   ]);
   const diaAbierto = fecha === hoyPanama() && !pasoCorte();
   const enGracia = pendiente && graciaVigente(fecha);
 
   const c = contratoRes.data as TerminosCuota | null;
-  const acuerdoHoy = acuerdoHoyDe((acuerdosRes.data ?? []) as AcuerdoActivo[], fecha);
-  const meta = (c ? cuotaDeFecha(c, fecha) : 0) + acuerdoHoy;
+  // Multa de “no pago” solo por la letra; el acuerdo es ítem extra aparte.
+  const meta = c ? cuotaDeFecha(c, fecha) : 0;
   const cubrio = cubrioCuotaDelDia(pagadoPuntualCuota, meta);
 
   if (cubrio || enGracia || diaAbierto) return borrar();
