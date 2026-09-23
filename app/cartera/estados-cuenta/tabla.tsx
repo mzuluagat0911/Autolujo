@@ -4,13 +4,20 @@ import { useMemo, useState } from "react";
 import { FiltersBar, StatusChip, Money, EmptyState } from "@/components/kit";
 import {
   money,
+  textoEstadoCuotas,
   textoSituacionCuotas,
-  textoValorCuotas,
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 
 type Filtro = "todas" | "pendiente" | "recargo" | "aldia";
+type OrdenCol =
+  | "carro"
+  | "cliente"
+  | "valor"
+  | "recargo"
+  | "cuotas"
+  | "totalHoy";
 
 function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
@@ -19,9 +26,32 @@ function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   return "warn";
 }
 
+function recargoMostrado(e: EstadoCuenta): number {
+  if (e.recargosAcumulados > 0.009) return e.recargosAcumulados;
+  if (e.recargo > 0.009) return e.recargo;
+  if (e.recargoSiTarda > 0.009) return e.recargoSiTarda;
+  return 0;
+}
+
+function cmpStr(a: string, b: string): number {
+  return a.localeCompare(b, "es", { sensitivity: "base", numeric: true });
+}
+
 export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todas");
+  const [orden, setOrden] = useState<OrdenCol>("totalHoy");
+  const [asc, setAsc] = useState(false); // por defecto: mayor → menor
+
+  function clickCabecera(col: OrdenCol) {
+    if (orden === col) {
+      setAsc((v) => !v);
+      return;
+    }
+    setOrden(col);
+    // Numéricos: mayor→menor al primer clic; texto: A→Z
+    setAsc(col === "carro" || col === "cliente");
+  }
 
   const contadores = useMemo(() => {
     let pendiente = 0;
@@ -30,17 +60,21 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
     for (const e of estados) {
       if (e.pagoPuntual || e.totalHoy <= 0.009) aldia++;
       else pendiente++;
-      if (e.recargo > 0.009 || e.recargoSiTarda > 0.009) recargo++;
+      if (e.recargosAcumulados > 0.009 || e.recargo > 0.009 || e.recargoSiTarda > 0.009) recargo++;
     }
     return { pendiente, recargo, aldia };
   }, [estados]);
 
   const visibles = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return estados.filter((e) => {
+    const filas = estados.filter((e) => {
       if (filtro === "pendiente" && (e.pagoPuntual || e.totalHoy <= 0.009)) return false;
       if (filtro === "aldia" && !(e.pagoPuntual || e.totalHoy <= 0.009)) return false;
-      if (filtro === "recargo" && !(e.recargo > 0.009 || e.recargoSiTarda > 0.009)) return false;
+      if (
+        filtro === "recargo" &&
+        !(e.recargosAcumulados > 0.009 || e.recargo > 0.009 || e.recargoSiTarda > 0.009)
+      )
+        return false;
       if (!needle) return true;
       const blob = [
         e.vehiculoNumero,
@@ -53,7 +87,68 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
         .toLowerCase();
       return blob.includes(needle);
     });
-  }, [estados, q, filtro]);
+
+    const dir = asc ? 1 : -1;
+    filas.sort((a, b) => {
+      let r = 0;
+      switch (orden) {
+        case "carro":
+          r = cmpStr(
+            etiquetaCarroUi(a.empresa, a.vehiculoNumero),
+            etiquetaCarroUi(b.empresa, b.vehiculoNumero),
+          );
+          break;
+        case "cliente":
+          r = cmpStr(a.clienteNombre, b.clienteNombre);
+          break;
+        case "valor":
+          r = a.letra - b.letra;
+          break;
+        case "recargo":
+          r = recargoMostrado(a) - recargoMostrado(b);
+          break;
+        case "cuotas":
+          r = (a.cuotasDebe ?? 0) - (b.cuotasDebe ?? 0);
+          break;
+        case "totalHoy":
+        default:
+          r = a.totalHoy - b.totalHoy;
+          break;
+      }
+      return r * dir;
+    });
+    return filas;
+  }, [estados, q, filtro, orden, asc]);
+
+  function Cabecera({
+    col,
+    label,
+    align = "left",
+  }: {
+    col: OrdenCol;
+    label: string;
+    align?: "left" | "right";
+  }) {
+    const activo = orden === col;
+    const flecha = activo ? (asc ? " ↑" : " ↓") : "";
+    return (
+      <th
+        className={`px-4 py-3 font-medium whitespace-nowrap ${align === "right" ? "text-right" : "text-left"}`}
+      >
+        <button
+          type="button"
+          onClick={() => clickCabecera(col)}
+          className={`inline-flex items-center gap-0.5 uppercase tracking-[0.1em] transition-colors hover:text-ink ${
+            activo ? "text-ink" : "text-muted"
+          }`}
+          title={activo ? (asc ? "Menor → mayor (clic para invertir)" : "Mayor → menor (clic para invertir)") : "Ordenar"}
+        >
+          {label}
+          <span className="tabular-nums text-[10px]">{flecha || " ↕"}</span>
+        </button>
+      </th>
+    );
+  }
 
   return (
     <div className="mt-6 space-y-4">
@@ -82,18 +177,21 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
         <div className="overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
           <table className="w-full min-w-[52rem] text-sm">
             <thead>
-              <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Carro</th>
-                <th className="px-4 py-3 font-medium">Cliente</th>
-                <th className="px-4 py-3 font-medium text-right whitespace-nowrap">Valor</th>
-                <th className="px-4 py-3 font-medium text-right whitespace-nowrap">Recargo</th>
-                <th className="px-4 py-3 font-medium whitespace-nowrap">Total hoy</th>
-                <th className="px-4 py-3 font-medium">Situación</th>
+              <tr className="border-b border-line text-[11px]">
+                <Cabecera col="carro" label="Carro" />
+                <Cabecera col="cliente" label="Cliente" />
+                <Cabecera col="valor" label="Valor" align="right" />
+                <Cabecera col="recargo" label="Recargo" align="right" />
+                <Cabecera col="cuotas" label="Estado cuotas" />
+                <Cabecera col="totalHoy" label="Situación" />
               </tr>
             </thead>
             <tbody>
               {visibles.slice(0, 250).map((e) => (
-                <tr key={e.contratoId} className="border-b border-line last:border-0 hover:bg-surface-2">
+                <tr
+                  key={e.contratoId}
+                  className="border-b border-line last:border-0 hover:bg-surface-2"
+                >
                   <td className="px-4 py-2.5 font-semibold whitespace-nowrap tabular-nums">
                     {etiquetaCarroUi(e.empresa, e.vehiculoNumero)}
                   </td>
@@ -102,22 +200,32 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
                     {e.letra > 0.009 ? <Money amount={e.letra} /> : "—"}
                   </td>
                   <td className="px-4 py-2.5 text-right tabular-nums text-ambar">
-                    {e.recargo > 0.009 ? (
+                    {e.recargosAcumulados > 0.009 ? (
+                      <Money amount={e.recargosAcumulados} />
+                    ) : e.recargo > 0.009 ? (
                       <Money amount={e.recargo} />
                     ) : e.recargoSiTarda > 0.009 ? (
-                      <span className="text-xs text-muted" title="Si no completa antes de las 7 p.m.">
+                      <span
+                        className="text-xs text-muted"
+                        title="Si no completa antes de las 7 p.m."
+                      >
                         +<Money amount={e.recargoSiTarda} />
                       </span>
                     ) : (
                       "—"
                     )}
                   </td>
-                  <td className="px-4 py-2.5 font-medium tabular-nums whitespace-nowrap">
-                    {textoValorCuotas(e)}
+                  <td className="px-4 py-2.5 tabular-nums whitespace-nowrap">
+                    <span className="font-medium text-ink">{textoEstadoCuotas(e)}</span>
+                    {e.numCuotasTotal != null && (
+                      <p className="mt-0.5 text-[11px] text-muted">
+                        de {e.numCuotasTotal.toLocaleString("es-PA")} totales
+                      </p>
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     <StatusChip tone={tonoSituacion(e)}>{textoSituacionCuotas(e)}</StatusChip>
-                    <p className="mt-1 text-[11px] text-muted tabular-nums">
+                    <p className="mt-1 text-[11px] font-medium tabular-nums text-ink">
                       A pagar hoy {money(e.totalHoy)}
                     </p>
                   </td>

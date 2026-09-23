@@ -1,0 +1,247 @@
+{
+  "G01": {
+    "total": 1275.0,
+    "pagadas": 1.5,
+    "faltantes": 1273.5
+  },
+  "G02": {
+    "total": 1275.0,
+    "pagadas": 40.46,
+    "faltantes": 1234.54
+  },
+  "G03": {
+    "total": 1275.0,
+    "pagadas": 221.0,
+    "faltantes": 1054.0
+  },
+  "G04": {
+    "total": 1275.0,
+    "pagadas": 128.87,
+    "faltantes": 1146.13
+  },
+  "G05": {
+    "total": 1275.0,
+    "pagadas": 21.0,
+    "faltantes": 1254.0
+  },
+  "G06": {
+    "total": 1275.0,
+    "pagadas": 30.0,
+    "faltantes": 1245.0
+  },
+  "G07": {
+    "total": 1275.0,
+    "pagadas": 7.0,
+    "faltantes": 1268.0
+  },
+  "G08": {
+    "total": 1275.0,
+    "pagadas": 9.0,
+    "faltantes": 1266.0
+  },
+  "G09": {
+    "total": 1275.0,
+    "pagadas": 28.01,
+    "faltantes": 1246.99
+  },
+  "G10": {
+    "total": 1275.0,
+    "pagadas": 35.0,
+    "faltantes": 1240.0
+  },
+  "G11": {
+    "total": 1275.0,
+    "pagadas": 98.22,
+    "faltantes": 1176.78
+  },
+  "G12": {
+    "total": 1275.0,
+    "pagadas": 152.0,
+    "faltantes": 1123.0
+  },
+  "G13": {
+    "total": 1275.0,
+    "pagadas": 6.0,
+    "faltantes": 1269.0
+  },
+  "G14": {
+    "total": 1275.0,
+    "pagadas": 11.36,
+    "faltantes": 1263.64
+  },
+  "G15": {
+    "total": 1275.0,
+    "pagadas": 4.0,
+    "faltantes": 1271.0
+  },
+  "G16": {
+    "total": 1275.0,
+    "pagadas": 164.0,
+    "faltantes": 1111.0
+  },
+  "G17": {
+    "total": 1275.0,
+    "pagadas": 53.0,
+    "faltantes": 1222.0
+  },
+  "G18": {
+    "total": 1275.0,
+    "pagadas": 6.0,
+    "faltantes": 1269.0
+  },
+  "G19": {
+    "total": 1275.0,
+    "pagadas": 19.0,
+    "faltantes": 1256.0
+  },
+  "G20": {
+    "total": 1275.0,
+    "pagadas": 128.58,
+    "faltantes": 1146.42
+  },
+  "G22": {
+    "total": 1275.0,
+    "pagadas": 97.0,
+    "faltantes": 1178.0
+  },
+  "G23": {
+    "total": 1275.0,
+    "pagadas": 94.0,
+    "faltantes": 1181.0
+  },
+  "G24": {
+    "total": 1275.0,
+    "pagadas": 96.29,
+    "faltantes": 1178.71
+  },
+  "G25": {
+    "total": 1275.0,
+    "pagadas": 61.64,
+    "faltantes": 1213.36
+  },
+  "G26": {
+    "total": 1275.0,
+    "pagadas": 104.0,
+    "faltantes": 1171.0
+  },
+  "G27": {
+    "total": 1275.0,
+    "pagadas": 10.0,
+    "faltantes": 1265.0
+  },
+  "G28": {
+    "total": 1275.0,
+    "pagadas": 18.0,
+    "faltantes": 1257.0
+  },
+  "G29": {
+    "total": 1275.0,
+    "pagadas": 31.0,
+    "faltantes": 1244.0
+  },
+  "G30": {
+    "total": 1275.0,
+    "pagadas": 85.0,
+    "faltantes": 1190.0
+  },
+  "G31": {
+    "total": 1275.0,
+    "pagadas": 70.07,
+    "faltantes": 1204.93
+  },
+  "G32": {
+    "total": 1275.0,
+    "pagadas": 83.49,
+    "faltantes": 1191.51
+  },
+  "G33": {
+    "total": 1275.01,
+    "pagadas": 85.0,
+    "faltantes": 1190.01
+  },
+  "G34": {
+    "total": 1275.0,
+    "pagadas": 47.99,
+    "faltantes": 1227.01
+  },
+  "G35": {
+    "total": 1275.0,
+    "pagadas": 42.0,
+    "faltantes": 1233.0
+  },
+  "G36": {
+    "total": 1275.0,
+    "pagadas": 66.0,
+    "faltantes": 1209.0
+  },
+  "G37": {
+    "total": 1275.0,
+    "pagadas": 27.98,
+    "faltantes": 1247.02
+  },
+  "G38": {
+    "total": 1275.0,
+    "pagadas": 34.0,
+    "faltantes": 1241.0
+  },
+  "G39": {
+    "total": 1275.0,
+    "pagadas": 63.01,
+    "faltantes": 1211.99
+  },
+  "G40": {
+    "total": 1275.0,
+    "pagadas": 27.28,
+    "faltantes": 1247.72
+  },
+  "G41": {
+    "total": 1275.0,
+    "pagadas": 22.86,
+    "faltantes": 1252.14
+  },
+  "G42": {
+    "total": 1275.0,
+    "pagadas": 27.51,
+    "faltantes": 1247.49
+  },
+  "G43": {
+    "total": 1275.0,
+    "pagadas": 7.0,
+    "faltantes": 1268.0
+  },
+  "G44": {
+    "total": 1275.0,
+    "pagadas": 27.0,
+    "faltantes": 1248.0
+  },
+  "G45": {
+    "total": 1275.0,
+    "pagadas": 23.72,
+    "faltantes": 1251.28
+  },
+  "G46": {
+    "total": 1275.0,
+    "pagadas": 8.0,
+    "faltantes": 1267.0
+  },
+  "G47": {
+    "total": 1275.0,
+    "pagadas": 8.0,
+    "faltantes": 1267.0
+  },
+  "G48": {
+    "total": 1275.0,
+    "pagadas": 3.0,
+    "faltantes": 1272.0
+  },
+  "G49": {
+    "total": 1275.0,
+    "pagadas": 7.0,
+    "faltantes": 1268.0
+  },
+  "G50": {
+    "total": 1275.0,
+    "pagadas": 3.0,
+    "faltantes": 1272.0
+  }
+}

@@ -26,6 +26,48 @@ import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
 import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
 import { tratamientoCliente } from "./tratamiento";
 import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
+import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
+
+/** Preferir plan del Excel/DB sobre el cálculo desde ledger (piloto Gold). */
+function aplicarPlanCuotas(
+  computed: { numCuotasTotal: number | null; cuotasPagadas: number | null; cuotasDebe: number | null },
+  opts: {
+    numero: string | null | undefined;
+    empresa: string | null | undefined;
+    cuotasPagadasDb: number | null | undefined;
+    numTotalDb: number | null | undefined;
+  },
+): { numCuotasTotal: number | null; cuotasPagadas: number | null; cuotasDebe: number | null } {
+  const plan =
+    (opts.empresa ?? "").toUpperCase() === "GOLD" && opts.numero
+      ? GOLD_CUOTAS_PLAN[opts.numero]
+      : undefined;
+
+  const pagadasDb =
+    opts.cuotasPagadasDb != null && Number.isFinite(Number(opts.cuotasPagadasDb))
+      ? Number(opts.cuotasPagadasDb)
+      : null;
+  const totalDb =
+    opts.numTotalDb != null && Number.isFinite(Number(opts.numTotalDb)) && Number(opts.numTotalDb) > 0
+      ? Number(opts.numTotalDb)
+      : null;
+
+  const pagadas = pagadasDb ?? plan?.pagadas ?? computed.cuotasPagadas;
+  const total = totalDb ?? plan?.total ?? computed.numCuotasTotal;
+  let debe: number | null = null;
+  if (plan?.faltantes != null && pagadasDb == null) {
+    debe = plan.faltantes;
+  } else if (total != null && pagadas != null) {
+    debe = Math.max(total - pagadas, 0);
+  } else {
+    debe = computed.cuotasDebe;
+  }
+  return {
+    numCuotasTotal: total != null ? Math.round(total) : null,
+    cuotasPagadas: pagadas,
+    cuotasDebe: debe,
+  };
+}
 
 export function money(n: number): string {
   const v = Math.round(n * 100) / 100;
@@ -64,6 +106,11 @@ export type EstadoCuenta = Cifras & {
   cuotasPagadas: number | null;
   /** Cuotas que aún faltan del total del contrato. */
   cuotasDebe: number | null;
+  /**
+   * Suma de recargos por no pagar (PAGO_TARDE en ledger)
+   * + el de hoy si ya corrió el corte y aún no está como cargo.
+   */
+  recargosAcumulados: number;
   desglose: string;
   fecha: string;
   templateVars: [string, string, string, string, string];
@@ -75,6 +122,8 @@ type ContratoRow = TerminosCuota & {
   estado: string;
   fecha_inicio: string | null;
   num_cuotas_total: number | null;
+  /** Migrado del Excel (CUOTAS PAGAS). Null si aún no hay columna / dato. */
+  cuotas_pagadas?: number | null;
   vehiculo: {
     numero: string;
     empresa: { id: string; codigo: string; nombre: string } | null;
@@ -106,18 +155,41 @@ export function resumenCuotas(opts: {
   return { numCuotasTotal: numTotal, cuotasPagadas, cuotasDebe };
 }
 
-/** Texto de pantalla: "de 1.200 cuotas debe 890". */
+function fmtCuotaNum(n: number): string {
+  return n.toLocaleString("es-PA", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+/** Plan del deal: "X pagadas · Y debe" (de Z). */
+export function textoEstadoCuotas(e: {
+  numCuotasTotal: number | null;
+  cuotasPagadas: number | null;
+  cuotasDebe: number | null;
+}): string {
+  const pagadas = e.cuotasPagadas;
+  const debe = e.cuotasDebe;
+  if (pagadas == null && debe == null) {
+    if (e.numCuotasTotal == null) return "—";
+    return `de ${fmtCuotaNum(e.numCuotasTotal)} cuotas`;
+  }
+  const p = pagadas != null ? fmtCuotaNum(pagadas) : "—";
+  const d = debe != null ? fmtCuotaNum(debe) : "—";
+  return `${p} pagadas · ${d} debe`;
+}
+
+/** @deprecated usar textoEstadoCuotas */
 export function textoValorCuotas(e: {
   numCuotasTotal: number | null;
   cuotasDebe: number | null;
+  cuotasPagadas?: number | null;
 }): string {
-  if (e.numCuotasTotal == null) {
-    if (e.cuotasDebe == null) return "—";
-    return `debe ${e.cuotasDebe.toLocaleString("es-PA")} cuotas`;
-  }
-  const total = e.numCuotasTotal.toLocaleString("es-PA");
-  if (e.cuotasDebe == null) return `de ${total} cuotas`;
-  return `de ${total} cuotas debe ${e.cuotasDebe.toLocaleString("es-PA")}`;
+  return textoEstadoCuotas({
+    numCuotasTotal: e.numCuotasTotal,
+    cuotasPagadas: e.cuotasPagadas ?? null,
+    cuotasDebe: e.cuotasDebe,
+  });
 }
 
 /**
@@ -177,6 +249,7 @@ function armar(
     numCuotasTotal: number | null;
     cuotasPagadas: number | null;
     cuotasDebe: number | null;
+    recargosAcumulados?: number;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -231,6 +304,10 @@ function armar(
     numCuotasTotal: extra.numCuotasTotal,
     cuotasPagadas: extra.cuotasPagadas,
     cuotasDebe: extra.cuotasDebe,
+    recargosAcumulados: Math.max(
+      Number(extra.recargosAcumulados) || 0,
+      0,
+    ),
     desglose,
     fecha,
     templateVars: [nombre, carro, fecha, desglose, money(cifras.totalHoy)],
@@ -276,6 +353,8 @@ function terminosDe(c: ContratoRow): TerminosCuota {
 }
 
 const SEL =
+  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, cuotas_pagadas, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+const SEL_SIN_CUOTAS_PAGADAS =
   "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
 
 /** Pagos a renta vs cargos extras, por contrato → resumen de cuotas. */
@@ -375,11 +454,18 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   const sb = createServerSupabase();
   const hoy = hoyPanama();
 
-  const { data: c } = await sb.from("contratos").select(SEL).eq("id", contratoId).maybeSingle();
-  if (!c) return null;
-  const row = c as unknown as ContratoRow;
+  const { data: c, error: errSel } = await sb.from("contratos").select(SEL).eq("id", contratoId).maybeSingle();
+  let row: ContratoRow | null = c as unknown as ContratoRow | null;
+  if (errSel && /cuotas_pagadas/i.test(errSel.message)) {
+    const retry = await sb.from("contratos").select(SEL_SIN_CUOTAS_PAGADAS).eq("id", contratoId).maybeSingle();
+    row = retry.data
+      ? ({ ...(retry.data as unknown as ContratoRow), cuotas_pagadas: null } as ContratoRow)
+      : null;
+  }
+  if (!row) return null;
 
-  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos] = await Promise.all([
+  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos, multasTodas] =
+    await Promise.all([
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
     pagoHoyContrato(contratoId, hoy),
     sb.from("cargos").select("id").eq("contrato_id", contratoId).eq("fecha", hoy)
@@ -394,6 +480,8 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
       () => row.num_cuotas_total ?? null,
     ),
     generosDe(row.cliente_id ? [row.cliente_id] : []),
+    sb.from("cargos").select("monto").eq("contrato_id", contratoId).eq("tipo", "multa")
+      .eq("concepto_codigo", "PAGO_TARDE"),
   ]);
 
   if (row.cliente) {
@@ -425,14 +513,31 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   const cifrasBase = calcularCifras(entrada);
   const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
   const cumple = evaluarCumple(row, nac, hoy, cifrasBase, entrada);
-  const cuotas = cuotasMap.get(contratoId) ?? resumenCuotas({
-    numTotal: row.num_cuotas_total,
-    letra: Number(row.letra_diaria) || 0,
-    pagadoTotal: 0,
-    extrasTotal: 0,
-  });
+  const cuotas = aplicarPlanCuotas(
+    cuotasMap.get(contratoId) ??
+      resumenCuotas({
+        numTotal: row.num_cuotas_total,
+        letra: Number(row.letra_diaria) || 0,
+        pagadoTotal: 0,
+        extrasTotal: 0,
+      }),
+    {
+      numero: row.vehiculo?.numero,
+      empresa: row.vehiculo?.empresa?.codigo,
+      cuotasPagadasDb: row.cuotas_pagadas,
+      numTotalDb: row.num_cuotas_total,
+    },
+  );
+  const cifras = cumple.cifras;
+  const recargosLedger = ((multasTodas.data ?? []) as { monto: number }[]).reduce(
+    (s, g) => s + Number(g.monto || 0),
+    0,
+  );
+  const recargosAcumulados =
+    recargosLedger +
+    (cifras.recargo > 0.009 && !(multa.data?.length ?? 0) ? cifras.recargo : 0);
 
-  return armar(row, cumple.cifras, {
+  return armar(row, cifras, {
     hoy,
     pagoHoy: pago.pagoHoy,
     pagoPuntual,
@@ -449,6 +554,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     numCuotasTotal: cuotas.numCuotasTotal,
     cuotasPagadas: cuotas.cuotasPagadas,
     cuotasDebe: cuotas.cuotasDebe,
+    recargosAcumulados,
   });
 }
 
@@ -468,8 +574,8 @@ async function ultimoDevengoPorContrato(hoy: string): Promise<Map<string, string
   return out;
 }
 
-/** Estado de cuenta de TODOS los contratos activos (para el envío del día). */
-export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
+/** Arma estados de todos los contratos activos del alcance. */
+async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
   const sb = createServerSupabase();
   const hoy = hoyPanama();
   const corte = pasoCorte();
@@ -496,7 +602,13 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
   const multaHoy = new Set((multasHoy.data ?? []).map((g: { contrato_id: string }) => g.contrato_id));
 
   let filasContrato = (contratos.data ?? []) as unknown as ContratoRow[];
-  if (contratos.error && /num_cuotas_total/i.test(contratos.error.message)) {
+  if (contratos.error && /cuotas_pagadas/i.test(contratos.error.message)) {
+    const retry = await sb.from("contratos").select(SEL_SIN_CUOTAS_PAGADAS).eq("estado", "activo");
+    filasContrato = ((retry.data ?? []) as unknown as ContratoRow[]).map((c) => ({
+      ...c,
+      cuotas_pagadas: null,
+    }));
+  } else if (contratos.error && /num_cuotas_total/i.test(contratos.error.message)) {
     const retry = await sb
       .from("contratos")
       .select(
@@ -506,10 +618,10 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
     filasContrato = ((retry.data ?? []) as unknown as ContratoRow[]).map((c) => ({
       ...c,
       num_cuotas_total: null,
+      cuotas_pagadas: null,
     }));
   }
 
-  // Alcance piloto (admin): solo esas empresas en panel + envíos. GPS no usa esto.
   const allow = await empresasAlcanceCodigos();
   if (allow) {
     filasContrato = filasContrato.filter((c) =>
@@ -517,68 +629,112 @@ export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
     );
   }
 
+  const idsAlcance = filasContrato.map((c) => c.id);
+  const recargosMap = new Map<string, number>();
+  if (idsAlcance.length > 0) {
+    const { data: multasAlcance } = await sb
+      .from("cargos")
+      .select("contrato_id, monto")
+      .eq("tipo", "multa")
+      .eq("concepto_codigo", "PAGO_TARDE")
+      .in("contrato_id", idsAlcance);
+    for (const g of (multasAlcance ?? []) as { contrato_id: string; monto: number }[]) {
+      recargosMap.set(g.contrato_id, (recargosMap.get(g.contrato_id) ?? 0) + Number(g.monto || 0));
+    }
+  }
+
   const cuotasMap = await cuotasPorContrato(
-    filasContrato.map((c) => c.id),
+    idsAlcance,
     (id) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0,
     (id) => filasContrato.find((c) => c.id === id)?.num_cuotas_total ?? null,
   );
   const nacMap = await nacimientosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
   const genMap = await generosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
 
-  return filasContrato
-    .map((c) => {
-      if (c.cliente && c.cliente_id) {
-        c = { ...c, cliente: { ...c.cliente, genero: genMap.get(c.cliente_id) ?? null } };
-      }
-      const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(c.id) ?? [], hoy), arregloMap.get(c.id) ?? 0);
-      const pagoHoy = pagaronHoy.has(c.id);
-      const pagoPuntual = cubrieron.has(c.id);
-      const pendiente = pendientes.has(c.id);
-      const devengadoHasta = lastRenta.get(c.id) ?? null;
-      const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
-      const entrada = {
-        terminos: terminosDe(c),
-        saldo: saldoMap.get(c.id) ?? 0,
-        pagoHoy,
-        pagoPuntual,
-        pagadoHoy: pagadoMap.get(c.id) ?? 0,
-        acuerdoHoy,
-        faltaAcuerdo: acuerdoHoy,
-        pendiente,
-        hoy,
-        corte,
-        multaHoyRegistrada: multaHoy.has(c.id),
-        hoyYaDevengado,
-      };
-      const cifrasBase = calcularCifras(entrada);
-      const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;
-      const cumple = evaluarCumple(c, nac, hoy, cifrasBase, entrada);
-      const cuotas = cuotasMap.get(c.id) ?? {
+  return filasContrato.map((c) => {
+    if (c.cliente && c.cliente_id) {
+      c = { ...c, cliente: { ...c.cliente, genero: genMap.get(c.cliente_id) ?? null } };
+    }
+    const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(c.id) ?? [], hoy), arregloMap.get(c.id) ?? 0);
+    const pagoHoy = pagaronHoy.has(c.id);
+    const pagoPuntual = cubrieron.has(c.id);
+    const pendiente = pendientes.has(c.id);
+    const devengadoHasta = lastRenta.get(c.id) ?? null;
+    const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
+    const entrada = {
+      terminos: terminosDe(c),
+      saldo: saldoMap.get(c.id) ?? 0,
+      pagoHoy,
+      pagoPuntual,
+      pagadoHoy: pagadoMap.get(c.id) ?? 0,
+      acuerdoHoy,
+      faltaAcuerdo: acuerdoHoy,
+      pendiente,
+      hoy,
+      corte,
+      multaHoyRegistrada: multaHoy.has(c.id),
+      hoyYaDevengado,
+    };
+    const cifrasBase = calcularCifras(entrada);
+    const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;
+    const cumple = evaluarCumple(c, nac, hoy, cifrasBase, entrada);
+    const cuotas = aplicarPlanCuotas(
+      cuotasMap.get(c.id) ?? {
         numCuotasTotal: c.num_cuotas_total ?? null,
         cuotasPagadas: null,
         cuotasDebe: null,
-      };
-      return armar(c, cumple.cifras, {
-        hoy,
-        pagoHoy,
-        pagoPuntual,
-        pendiente,
-        pendienteMonto: 0,
-        pendienteHora: null,
-        hoyYaDevengado,
-        devengadoHasta,
-        esCumpleanos: cumple.esCumpleanos,
-        cumpleLibreAplica: cumple.aplica,
-        cumpleMotivo: cumple.motivo,
-        fechaNacimiento: nac,
-        estadoContrato: c.estado,
-        numCuotasTotal: cuotas.numCuotasTotal,
-        cuotasPagadas: cuotas.cuotasPagadas,
-        cuotasDebe: cuotas.cuotasDebe,
-      });
-    })
-    // Quien cubrió el día (o tiene comprobante en validación) no recibe cobro.
-    // Un abono parcial SÍ: todavía debe el resto + los $5 si no completa.
+      },
+      {
+        numero: c.vehiculo?.numero,
+        empresa: c.vehiculo?.empresa?.codigo,
+        cuotasPagadasDb: c.cuotas_pagadas,
+        numTotalDb: c.num_cuotas_total,
+      },
+    );
+    const cifras = cumple.cifras;
+    const recargosAcumulados =
+      (recargosMap.get(c.id) ?? 0) +
+      (cifras.recargo > 0.009 && !multaHoy.has(c.id) ? cifras.recargo : 0);
+    return armar(c, cifras, {
+      hoy,
+      pagoHoy,
+      pagoPuntual,
+      pendiente,
+      pendienteMonto: 0,
+      pendienteHora: null,
+      hoyYaDevengado,
+      devengadoHasta,
+      esCumpleanos: cumple.esCumpleanos,
+      cumpleLibreAplica: cumple.aplica,
+      cumpleMotivo: cumple.motivo,
+      fechaNacimiento: nac,
+      estadoContrato: c.estado,
+      numCuotasTotal: cuotas.numCuotasTotal,
+      cuotasPagadas: cuotas.cuotasPagadas,
+      cuotasDebe: cuotas.cuotasDebe,
+      recargosAcumulados,
+    });
+  });
+}
+
+/**
+ * Panel de Estado de cuenta: TODOS los contratos del alcance (incluye Al día).
+ * Quién ya pagó hoy aparece como «Al día»; mañana vuelve a «Le toca la de hoy».
+ */
+export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
+  const todos = await armarEstadosAlcance();
+  return [...todos].sort((a, b) => {
+    const aPend = a.pagoPuntual || a.totalHoy <= 0.009 ? 0 : 1;
+    const bPend = b.pagoPuntual || b.totalHoy <= 0.009 ? 0 : 1;
+    if (aPend !== bPend) return bPend - aPend;
+    return b.totalHoy - a.totalHoy;
+  });
+}
+
+/** Cola de cobro / envío: solo quien aún debe hoy (sin comprobante pendiente). */
+export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
+  const todos = await armarEstadosAlcance();
+  return todos
     .filter((e) => e.totalHoy > 0.009 && !e.pendiente)
     .sort((a, b) => b.totalHoy - a.totalHoy);
 }

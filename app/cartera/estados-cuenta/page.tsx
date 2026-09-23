@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
-import { estadosCuentaHoy, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
+import { estadosCuentaPanel, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
 import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
 import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas";
 import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
@@ -14,7 +14,7 @@ export default async function EstadosCuentaPage() {
   let estados: EstadoCuenta[];
   let error: string | null = null;
   try {
-    estados = await estadosCuentaHoy();
+    estados = await estadosCuentaPanel();
   } catch (e) {
     estados = [];
     error = e instanceof Error ? e.message : "Error";
@@ -31,8 +31,10 @@ export default async function EstadosCuentaPage() {
   }
   const deudaCerradaTotal = cerradas.reduce((a, d) => a + d.saldo, 0);
 
-  const totalACobrar = estados.reduce((a, e) => a + e.totalHoy, 0);
-  const conRecargo = estados.filter((e) => e.recargo > 0 || e.recargoSiTarda > 0).length;
+  const totalACobrar = estados
+    .filter((e) => !(e.pagoPuntual || e.totalHoy <= 0.009))
+    .reduce((a, e) => a + e.totalHoy, 0);
+  const conRecargo = estados.filter((e) => e.recargosAcumulados > 0.009).length;
 
   let preview: string | null = null;
   let previewLabel = "";
