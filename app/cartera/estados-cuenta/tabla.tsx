@@ -6,11 +6,13 @@ import {
   money,
   textoEstadoCuotas,
   textoSituacionCuotas,
+  esAdelantado,
+  esAlDiaHoy,
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 
-type Filtro = "todas" | "pendiente" | "recargo" | "aldia";
+type Filtro = "todas" | "pendiente" | "recargo" | "aldia" | "adelantado";
 type OrdenCol =
   | "carro"
   | "cliente"
@@ -21,7 +23,8 @@ type OrdenCol =
 
 function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
-  if (e.pagoPuntual || e.totalHoy <= 0.009) return "good";
+  if (esAdelantado(e)) return "azul";
+  if (esAlDiaHoy(e)) return "good";
   if (e.pendienteAnterior > 0.009) return "crit";
   return "warn";
 }
@@ -37,11 +40,17 @@ function cmpStr(a: string, b: string): number {
   return a.localeCompare(b, "es", { sensitivity: "base", numeric: true });
 }
 
+function fechaCorta(iso: string | null | undefined): string | null {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
+  const [, m, d] = iso.slice(0, 10).split("-");
+  return `${Number(d)}/${Number(m)}`;
+}
+
 export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todas");
   const [orden, setOrden] = useState<OrdenCol>("totalHoy");
-  const [asc, setAsc] = useState(false); // por defecto: mayor → menor
+  const [asc, setAsc] = useState(false);
 
   function clickCabecera(col: OrdenCol) {
     if (orden === col) {
@@ -49,7 +58,6 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
       return;
     }
     setOrden(col);
-    // Numéricos: mayor→menor al primer clic; texto: A→Z
     setAsc(col === "carro" || col === "cliente");
   }
 
@@ -57,24 +65,30 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
     let pendiente = 0;
     let recargo = 0;
     let aldia = 0;
+    let adelantado = 0;
     for (const e of estados) {
-      if (e.pagoPuntual || e.totalHoy <= 0.009) aldia++;
+      if (esAdelantado(e)) adelantado++;
+      else if (esAlDiaHoy(e)) aldia++;
       else pendiente++;
-      if (e.recargosAcumulados > 0.009 || e.recargo > 0.009 || e.recargoSiTarda > 0.009) recargo++;
+      if (e.recargosAcumulados > 0.009 || e.recargo > 0.009 || e.recargoSiTarda > 0.009) {
+        recargo++;
+      }
     }
-    return { pendiente, recargo, aldia };
+    return { pendiente, recargo, aldia, adelantado };
   }, [estados]);
 
   const visibles = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const filas = estados.filter((e) => {
-      if (filtro === "pendiente" && (e.pagoPuntual || e.totalHoy <= 0.009)) return false;
-      if (filtro === "aldia" && !(e.pagoPuntual || e.totalHoy <= 0.009)) return false;
+      if (filtro === "pendiente" && (esAdelantado(e) || esAlDiaHoy(e))) return false;
+      if (filtro === "aldia" && !esAlDiaHoy(e)) return false;
+      if (filtro === "adelantado" && !esAdelantado(e)) return false;
       if (
         filtro === "recargo" &&
         !(e.recargosAcumulados > 0.009 || e.recargo > 0.009 || e.recargoSiTarda > 0.009)
-      )
+      ) {
         return false;
+      }
       if (!needle) return true;
       const blob = [
         e.vehiculoNumero,
@@ -112,7 +126,11 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
           break;
         case "totalHoy":
         default:
-          r = a.totalHoy - b.totalHoy;
+          if (esAdelantado(a) || esAdelantado(b)) {
+            r = (a.diasAdelantados || 0) - (b.diasAdelantados || 0);
+          } else {
+            r = a.totalHoy - b.totalHoy;
+          }
           break;
       }
       return r * dir;
@@ -141,7 +159,13 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
           className={`inline-flex items-center gap-0.5 uppercase tracking-[0.1em] transition-colors hover:text-ink ${
             activo ? "text-ink" : "text-muted"
           }`}
-          title={activo ? (asc ? "Menor → mayor (clic para invertir)" : "Mayor → menor (clic para invertir)") : "Ordenar"}
+          title={
+            activo
+              ? asc
+                ? "Menor → mayor (clic para invertir)"
+                : "Mayor → menor (clic para invertir)"
+              : "Ordenar"
+          }
         >
           {label}
           <span className="tabular-nums text-[10px]">{flecha || " ↕"}</span>
@@ -158,8 +182,9 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
         chips={[
           { id: "todas", label: "Todas", count: estados.length },
           { id: "pendiente", label: "Pendiente", count: contadores.pendiente },
-          { id: "recargo", label: "Con recargo", count: contadores.recargo },
+          { id: "adelantado", label: "Adelantado", count: contadores.adelantado },
           { id: "aldia", label: "Al día", count: contadores.aldia },
+          { id: "recargo", label: "Con recargo", count: contadores.recargo },
         ]}
         activeChip={filtro}
         onChip={(id) => setFiltro(id as Filtro)}
@@ -225,9 +250,18 @@ export function EstadosTabla({ estados }: { estados: EstadoCuenta[] }) {
                   </td>
                   <td className="px-4 py-2.5">
                     <StatusChip tone={tonoSituacion(e)}>{textoSituacionCuotas(e)}</StatusChip>
-                    <p className="mt-1 text-[11px] font-medium tabular-nums text-ink">
-                      A pagar hoy {money(e.totalHoy)}
-                    </p>
+                    {esAdelantado(e) ? (
+                      <p className="mt-1 text-[11px] text-muted tabular-nums">
+                        {e.diasAdelantados} cuota{e.diasAdelantados === 1 ? "" : "s"} por delante
+                        {fechaCorta(e.cubiertoHasta)
+                          ? ` · cubierto hasta ${fechaCorta(e.cubiertoHasta)}`
+                          : ""}
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] font-medium tabular-nums text-ink">
+                        A pagar hoy {money(e.totalHoy)}
+                      </p>
+                    )}
                   </td>
                 </tr>
               ))}

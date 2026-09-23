@@ -212,7 +212,25 @@ export function cuotasAtraso(e: {
   return atrasadas;
 }
 
-/** "Al día" · "Le toca la de hoy" · "Debe 1 cuota" · "Debe 12 cuotas". */
+/** ¿Ya tiene al menos 1 cuota pagada por delante del día operativo? */
+export function esAdelantado(e: { diasAdelantados: number }): boolean {
+  return (Number(e.diasAdelantados) || 0) >= 1;
+}
+
+/** Cubrió la cuota de HOY y no está adelantado. */
+export function esAlDiaHoy(e: {
+  diasAdelantados: number;
+  pagoPuntual: boolean;
+  totalHoy: number;
+}): boolean {
+  if (esAdelantado(e)) return false;
+  return e.pagoPuntual || e.totalHoy <= 0.009;
+}
+
+/**
+ * "Pago adelantado · N cuotas" · "Al día" · "Le toca la de hoy" · "Debe N cuotas".
+ * Cierre del día = 00:00: si ya pagó mañana, es adelantado (no solo “al día”).
+ */
 export function textoSituacionCuotas(e: {
   letra: number;
   pendienteAnterior: number;
@@ -220,8 +238,15 @@ export function textoSituacionCuotas(e: {
   pagoPuntual: boolean;
   totalHoy: number;
   pendiente: boolean;
+  diasAdelantados?: number;
 }): string {
   if (e.pendiente) return "Comprobante en validación";
+  const adel = Math.max(0, Math.floor(Number(e.diasAdelantados) || 0));
+  if (adel >= 1) {
+    return adel === 1
+      ? "Pago adelantado · 1 cuota"
+      : `Pago adelantado · ${adel.toLocaleString("es-PA")} cuotas`;
+  }
   if (e.pagoPuntual || e.totalHoy <= 0.009) return "Al día";
   const atrasadas = cuotasAtraso(e);
   if (atrasadas <= 0) return "Le toca la de hoy";
@@ -250,6 +275,10 @@ function armar(
     cuotasPagadas: number | null;
     cuotasDebe: number | null;
     recargosAcumulados?: number;
+    /** Días/cuotas ya pagados con fecha > hoy (Excel / pagos futuros). */
+    diasPagoFuturo?: number;
+    /** Última fecha futura cubierta por esos pagos. */
+    cubiertoHastaPago?: string | null;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -268,11 +297,19 @@ function armar(
   const carro = c.vehiculo?.numero ?? "—";
   const emp = c.vehiculo?.empresa ?? null;
 
-  // Pagos adelantados: si el neto (con la cuota de hoy) es negativo, hay crédito.
+  // Crédito en saldo (neto con la cuota de hoy) → cuotas por delante.
   const netoConHoy = cifras.saldoVista + cifras.faltaHoy;
   const credito = Math.max(-netoConHoy, 0);
-  const diasAdelantados = cifras.letra > 0 ? Math.floor(credito / cifras.letra) : 0;
-  const cubiertoHasta = diasAdelantados > 0 ? sumarDias(extra.hoy, diasAdelantados) : null;
+  const diasPorCredito = cifras.letra > 0 ? Math.floor(credito / cifras.letra) : 0;
+  const diasPorPagoFuturo = Math.max(0, Math.floor(Number(extra.diasPagoFuturo) || 0));
+  const diasAdelantados = Math.max(diasPorCredito, diasPorPagoFuturo);
+  const hastaCredito = diasPorCredito > 0 ? sumarDias(extra.hoy, diasPorCredito) : null;
+  const hastaPago = extra.cubiertoHastaPago ?? null;
+  const cubiertoHasta =
+    diasAdelantados > 0
+      ? [hastaCredito, hastaPago].filter(Boolean).sort().at(-1) ??
+        sumarDias(extra.hoy, diasAdelantados)
+      : null;
 
   return {
     ...cifras,
@@ -574,6 +611,41 @@ async function ultimoDevengoPorContrato(hoy: string): Promise<Map<string, string
   return out;
 }
 
+/** Pagos con fecha > hoy → cuotas adelantadas (cierre del día = 00:00). */
+async function adelantoFuturoPorContrato(
+  contratoIds: string[],
+  hoy: string,
+  letraDe: (id: string) => number,
+): Promise<Map<string, { dias: number; hasta: string | null }>> {
+  const out = new Map<string, { dias: number; hasta: string | null }>();
+  const ids = contratoIds.filter(Boolean);
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("pagos")
+    .select("contrato_id, fecha, monto")
+    .in("contrato_id", ids)
+    .gt("fecha", hoy)
+    .in("estado_conciliacion", ["conciliado", "manual"]);
+  type Acc = { fechas: Set<string>; monto: number };
+  const acc = new Map<string, Acc>();
+  for (const p of (data ?? []) as { contrato_id: string | null; fecha: string; monto: number }[]) {
+    if (!p.contrato_id || !p.fecha) continue;
+    const cur = acc.get(p.contrato_id) ?? { fechas: new Set<string>(), monto: 0 };
+    cur.fechas.add(p.fecha);
+    cur.monto += Number(p.monto) || 0;
+    acc.set(p.contrato_id, cur);
+  }
+  for (const [id, a] of acc) {
+    const letra = letraDe(id);
+    const porMonto = letra > 0.009 ? Math.floor(a.monto / letra) : 0;
+    const dias = Math.max(a.fechas.size, porMonto);
+    const hasta = [...a.fechas].sort().at(-1) ?? null;
+    out.set(id, { dias, hasta });
+  }
+  return out;
+}
+
 /** Arma estados de todos los contratos activos del alcance. */
 async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
   const sb = createServerSupabase();
@@ -648,6 +720,11 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     (id) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0,
     (id) => filasContrato.find((c) => c.id === id)?.num_cuotas_total ?? null,
   );
+  const adelantoMap = await adelantoFuturoPorContrato(
+    idsAlcance,
+    hoy,
+    (id) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0,
+  );
   const nacMap = await nacimientosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
   const genMap = await generosDe(filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean));
 
@@ -695,6 +772,7 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     const recargosAcumulados =
       (recargosMap.get(c.id) ?? 0) +
       (cifras.recargo > 0.009 && !multaHoy.has(c.id) ? cifras.recargo : 0);
+    const adel = adelantoMap.get(c.id);
     return armar(c, cifras, {
       hoy,
       pagoHoy,
@@ -713,20 +791,30 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       cuotasPagadas: cuotas.cuotasPagadas,
       cuotasDebe: cuotas.cuotasDebe,
       recargosAcumulados,
+      diasPagoFuturo: adel?.dias ?? 0,
+      cubiertoHastaPago: adel?.hasta ?? null,
     });
   });
 }
 
 /**
- * Panel de Estado de cuenta: TODOS los contratos del alcance (incluye Al día).
- * Quién ya pagó hoy aparece como «Al día»; mañana vuelve a «Le toca la de hoy».
+ * Panel de Estado de cuenta: TODOS los contratos del alcance.
+ * Cierre 00:00: quien ya pagó mañana = «Pago adelantado»; quien solo cubrió hoy = «Al día».
  */
 export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
   const todos = await armarEstadosAlcance();
   return [...todos].sort((a, b) => {
-    const aPend = a.pagoPuntual || a.totalHoy <= 0.009 ? 0 : 1;
-    const bPend = b.pagoPuntual || b.totalHoy <= 0.009 ? 0 : 1;
-    if (aPend !== bPend) return bPend - aPend;
+    const rank = (e: EstadoCuenta) => {
+      if (esAdelantado(e)) return 0;
+      if (esAlDiaHoy(e)) return 1;
+      return 2;
+    };
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    if (esAdelantado(a) || esAdelantado(b)) {
+      return (b.diasAdelantados || 0) - (a.diasAdelantados || 0);
+    }
     return b.totalHoy - a.totalHoy;
   });
 }
