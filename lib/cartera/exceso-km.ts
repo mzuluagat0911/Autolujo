@@ -8,6 +8,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { sendTemplate } from "@/lib/whatsapp/client";
+import { espejarEnChat } from "./pipeline";
 import { calcularExcesoKm } from "./rules";
 import type { ConfigReglas } from "./types";
 import { finMes, hoyPanama, inicioMes, mesLargo, sumarDias } from "./fecha";
@@ -232,6 +233,10 @@ export async function liquidarExcesoKmMes(
       const to = normalizarTelefono(item.waNumero);
       if (to) {
         try {
+          const kmTxt = String(Math.round(kmMes));
+          const limiteTxt = String(cfg.km_incluido_mes);
+          const excesoTxt = String(Math.round(kmExceso));
+          const montoTxt = money(monto);
           await sendTemplate(
             to,
             TEMPLATE,
@@ -239,12 +244,16 @@ export async function liquidarExcesoKmMes(
             componentesTemplate([
               nombre,
               carro,
-              String(Math.round(kmMes)),
+              kmTxt,
               etiquetaMes,
-              String(cfg.km_incluido_mes),
-              String(Math.round(kmExceso)),
-              money(monto),
+              limiteTxt,
+              excesoTxt,
+              montoTxt,
             ]),
+          );
+          await espejarEnChat(
+            to,
+            `Hola ${nombre}, su carro ${carro} recorrió ${kmTxt} km en ${etiquetaMes} (límite ${limiteTxt} km). El exceso es de ${excesoTxt} km y se cargó ${montoTxt} a su cuenta. Quedamos atentos.`,
           );
           item.notificado = true;
           res.notificados++;

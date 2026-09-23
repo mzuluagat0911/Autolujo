@@ -38,6 +38,65 @@ export async function createVehiculo(formData: FormData): Promise<void> {
   revalidatePath("/cartera/vehiculos");
 }
 
+export type ResultadoFicha = { ok: boolean; msg: string };
+
+/**
+ * Cambia el número del carro y, si tiene contrato activo, el nombre del
+ * arrendatario (cesión: el contrato y el WhatsApp siguen en la misma ficha).
+ */
+export async function guardarIdentidadCarro(input: {
+  vehiculoId: string;
+  numero: string;
+  clienteId: string | null;
+  nombre: string | null;
+}): Promise<ResultadoFicha> {
+  const id = String(input.vehiculoId ?? "").trim();
+  const numero = String(input.numero ?? "").trim();
+  const nombre = input.nombre == null ? null : String(input.nombre).trim();
+  if (!id) return { ok: false, msg: "Falta el carro." };
+  if (!numero || numero.length > 20) return { ok: false, msg: "El número del carro es obligatorio." };
+
+  const sb = createServerSupabase();
+  const { data: contrato, error: cErr } = await sb
+    .from("contratos")
+    .select("id, cliente_id")
+    .eq("vehiculo_id", id)
+    .eq("estado", "activo")
+    .maybeSingle();
+  if (cErr) return { ok: false, msg: cErr.message };
+
+  const clienteContrato = (contrato as { cliente_id: string } | null)?.cliente_id ?? null;
+  if (input.clienteId && clienteContrato !== input.clienteId) {
+    return { ok: false, msg: "Ese nombre no corresponde al contrato activo de este carro." };
+  }
+  if (clienteContrato && (!nombre || nombre.length < 2)) {
+    return { ok: false, msg: "El nombre del arrendatario es obligatorio." };
+  }
+
+  const { error: vErr } = await sb.from("vehiculos").update({ numero }).eq("id", id);
+  if (vErr) {
+    if (/unique|duplicate|23505/i.test(vErr.message)) {
+      return { ok: false, msg: "Ese número ya existe en esta empresa." };
+    }
+    return { ok: false, msg: vErr.message };
+  }
+
+  if (clienteContrato && nombre) {
+    const { error: nErr } = await sb.from("clientes").update({ nombre }).eq("id", clienteContrato);
+    if (nErr) return { ok: false, msg: nErr.message };
+  }
+
+  await sb.from("conversaciones").update({ etiqueta: `Carro ${numero}` }).eq("vehiculo_id", id);
+
+  revalidatePath("/cartera/vehiculos");
+  revalidatePath("/cartera/clientes");
+  revalidatePath("/cartera/conversaciones");
+  revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/operaciones/hoja-vida");
+  revalidatePath(`/operaciones/hoja-vida/${id}`);
+  return { ok: true, msg: "Carro actualizado." };
+}
+
 export type ResultadoMasivo = { ok: boolean; msg: string; actualizados: number };
 
 export type CambioVehiculo = {

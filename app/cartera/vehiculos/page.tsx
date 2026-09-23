@@ -46,7 +46,7 @@ async function getData() {
         .order("numero"),
       sb
         .from("contratos")
-        .select("id, vehiculo_id, letra_diaria, cliente:clientes(nombre)")
+        .select("id, vehiculo_id, letra_diaria, cliente_id, cliente:clientes(nombre)")
         .eq("estado", "activo"),
       sb.from("gps_dias").select("vehiculo_id, km").gte("fecha", mesIni).lte("fecha", hoy).not("vehiculo_id", "is", null),
       sb
@@ -104,18 +104,20 @@ async function getData() {
 
     const porContrato = new Map<
       string,
-      { contratoId: string; cliente: string | null; letra: number | null }
+      { contratoId: string; clienteId: string | null; cliente: string | null; letra: number | null }
     >();
     if (!contratos.error) {
       for (const c of (contratos.data ?? []) as unknown as {
         id: string;
         vehiculo_id: string;
+        cliente_id: string | null;
         letra_diaria: number | null;
         cliente: { nombre: string } | null;
       }[]) {
         if (porContrato.has(c.vehiculo_id)) continue;
         porContrato.set(c.vehiculo_id, {
           contratoId: c.id,
+          clienteId: c.cliente_id,
           cliente: c.cliente?.nombre ?? null,
           letra: c.letra_diaria == null ? null : Number(c.letra_diaria),
         });
@@ -203,6 +205,7 @@ async function getData() {
         estado: v.estado,
         empresa: v.empresa?.codigo ?? null,
         cliente: c?.cliente ?? null,
+        clienteId: c?.clienteId ?? null,
         letra: c?.letra ?? null,
         contratoId: c?.contratoId ?? null,
         kmMes: kmMes.has(v.id) ? Math.round((kmMes.get(v.id) ?? 0) * 10) / 10 : null,

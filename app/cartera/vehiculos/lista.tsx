@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StatusChip, FiltersBar, EmptyState } from "@/components/kit";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import {
   guardarEdicionMasiva,
+  guardarIdentidadCarro,
   completarPlacasDesdeDiacor,
   actualizarKmHoy,
   rellenarKmDelMes,
@@ -25,6 +26,7 @@ export type FilaVehiculo = {
   estado: string;
   empresa: string | null;
   cliente: string | null;
+  clienteId: string | null;
   letra: number | null;
   contratoId: string | null;
   kmMes: number | null;
@@ -97,6 +99,7 @@ export function ListaVehiculos({
   const [editando, setEditando] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [msg, setMsg] = useState<string | null>(null);
+  const [elegido, setElegido] = useState<FilaVehiculo | null>(null);
   const [pending, start] = useTransition();
 
   const sinKmMes = useMemo(
@@ -341,6 +344,18 @@ export function ListaVehiculos({
 
       {msg && <p className="text-sm text-muted">{msg}</p>}
 
+      {elegido && (
+        <PanelEditarCarro
+          carro={elegido}
+          onClose={() => setElegido(null)}
+          onSaved={(texto) => {
+            setElegido(null);
+            setMsg(texto);
+            router.refresh();
+          }}
+        />
+      )}
+
       {visibles.length === 0 ? (
         <EmptyState title="Nada calza con ese filtro" hint="Probá otro chip o búsqueda." />
       ) : (
@@ -375,14 +390,15 @@ export function ListaVehiculos({
               return (
                 <tr key={v.id} className="border-b border-line last:border-0 hover:bg-surface-2/60">
                   <td className="px-5 py-3 font-medium tabular-nums">
-                    <Link
-                      href={`/operaciones/hoja-vida/${v.id}`}
-                      className="hover:underline"
-                      title="Hoja de vida"
+                    <button
+                      type="button"
+                      onClick={() => setElegido(v)}
+                      className="text-left hover:underline"
+                      title="Editar número y nombre"
                     >
                       {v.empresa ? `${siglaEmpresa(v.empresa)} · ` : ""}
                       {v.numero}
-                    </Link>
+                    </button>
                   </td>
                   <td className="px-5 py-3">
                     {editando ? (
@@ -537,12 +553,115 @@ export function ListaVehiculos({
         <Link href="/cartera/rastreo" className="underline-offset-2 hover:underline">
           Rastreo
         </Link>
-        . Marca/modelo/año se cargan desde la Hoja de vida o con «Editar ficha». El número del carro abre su{" "}
-        <Link href="/operaciones/hoja-vida" className="underline-offset-2 hover:underline">
-          hoja de vida
-        </Link>
-        .
+        . El número abre la ficha para cambiar número o nombre del arrendatario. La hoja de vida sigue en Operaciones.
       </p>
+    </div>
+  );
+}
+
+function PanelEditarCarro({
+  carro,
+  onClose,
+  onSaved,
+}: {
+  carro: FilaVehiculo;
+  onClose: () => void;
+  onSaved: (msg: string) => void;
+}) {
+  const [numero, setNumero] = useState(carro.numero);
+  const [nombre, setNombre] = useState(carro.cliente ?? "");
+  const [err, setErr] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const titulo = `${carro.empresa ? `${siglaEmpresa(carro.empresa)} · ` : ""}${carro.numero}`;
+
+  function guardar(e: FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    start(async () => {
+      const r = await guardarIdentidadCarro({
+        vehiculoId: carro.id,
+        numero,
+        clienteId: carro.clienteId,
+        nombre: carro.clienteId ? nombre : null,
+      });
+      if (!r.ok) {
+        setErr(r.msg);
+        return;
+      }
+      onSaved(r.msg);
+    });
+  }
+
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center sm:items-center">
+      <button
+        type="button"
+        aria-label="Cerrar"
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+      />
+      <form
+        onSubmit={guardar}
+        className="relative z-10 m-4 w-full max-w-md rounded-xl bg-surface p-5 ring-1 ring-line"
+      >
+        <h2 className="text-lg font-semibold tracking-tight">Editar {titulo}</h2>
+        <p className="mt-1 text-sm text-muted">
+          El número y el nombre. Si lo cede, cambia el nombre: el contrato y el WhatsApp siguen en esta ficha.
+        </p>
+        <div className="mt-5 space-y-4">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              Número *
+            </span>
+            <input
+              required
+              value={numero}
+              onChange={(e) => setNumero(e.target.value)}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+            />
+          </label>
+          {carro.clienteId ? (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Nombre del arrendatario *
+              </span>
+              <input
+                required
+                minLength={2}
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+            </label>
+          ) : (
+            <p className="text-sm text-muted">Sin contrato activo. Solo se puede cambiar el número.</p>
+          )}
+        </div>
+        {err && <p className="mt-3 text-sm text-rojo">{err}</p>}
+        <div className="mt-5 flex flex-wrap items-center gap-2">
+          <button
+            type="submit"
+            disabled={pending}
+            className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
+          >
+            {pending ? "Guardando…" : "Guardar"}
+          </button>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={onClose}
+            className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+          >
+            Cancelar
+          </button>
+          <Link
+            href={`/operaciones/hoja-vida/${carro.id}`}
+            className="ml-auto text-sm text-muted underline-offset-2 hover:text-ink hover:underline"
+          >
+            Hoja de vida
+          </Link>
+        </div>
+      </form>
     </div>
   );
 }

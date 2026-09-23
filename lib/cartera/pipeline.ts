@@ -306,14 +306,14 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     // Datos COMPLETOS: entregamos el total con confianza.
     lineas.push(
       ``,
-      `RESUMEN DE LA CUENTA (para "cuánto debo hoy" responde PRIMERO lo del EXTRACTO DE HOY, no el saldo completo de todos los cargos):`,
-      `- CUOTA DE HOY (letra del día): ${m(est.cuotaHoy + est.recargo)}${est.recargo > 0.009 ? ` (ya pasó el corte de las 7 p.m.: incluye ${m(est.recargo)} de recargo)` : ""}.`,
-      `- ATRASO de LETRA de días anteriores (sin domingo): ${m(est.pendienteAnterior)}.`,
-      `- TOTAL A PAGAR HOY: ${m(est.totalHoy)}. Este número es la letra de hoy + el atraso de letra + recargo. NO incluye el domingo.`,
+      `RESUMEN DE LA CUENTA (para "cuánto debo hoy" cobra EXACTAMENTE el total de abajo; no lo recalcules):`,
+      `- TOTAL A PAGAR HOY: ${m(est.totalHoy)}. Este es el único monto a cobrar. Ya incluye la letra de hoy, el atraso de letra y el recargo. NO incluye el domingo. NO le sumes la tarifa diaria ni el atraso otra vez.`,
+      `- Tarifa de la letra diaria (precio del día, no es el saldo): ${m(est.cuotaHoy)}.`,
+      `- Atraso de letra que ya está dentro del total (sin domingo): ${m(est.pendienteAnterior)}.`,
       est.domingoSaldo > 0.009
         ? `- DOMINGO PENDIENTE: ${m(est.domingoSaldo)}. Menciónalo como pendiente. NUNCA lo sumes al total a pagar hoy.`
         : `- DOMINGO PENDIENTE: $0.`,
-      `- Desglose ledger: ${est.desglose}.`,
+      `- Desglose, ya neto en el total: ${est.desglose}.`,
       `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
       `  no cubrió lo del extracto de hoy (letra + el un ítem adicional del día), pierde el descuento de ese día y el resto se va a mañana.`,
       yaCorte || est.pagoPuntual || est.pendiente
@@ -740,6 +740,25 @@ export async function registrarMensaje(opts: {
     .eq("id", opts.conversacionId);
 
   return { nuevo: true };
+}
+
+/**
+ * Copia al hilo de /cartera/conversaciones un WhatsApp que ya salió.
+ * El fallo de esta copia no debe tumbar el envío: el mensaje ya está en Meta.
+ */
+export async function espejarEnChat(waNumero: string, texto: string, enviadoPor = "sistema"): Promise<void> {
+  try {
+    const conv = await obtenerConversacion(waNumero);
+    await registrarMensaje({
+      conversacionId: conv.id,
+      direccion: "out",
+      tipo: "text",
+      texto,
+      enviadoPor,
+    });
+  } catch (err) {
+    console.error("[chat] no pude guardar el mensaje enviado:", err instanceof Error ? err.message : err);
+  }
 }
 
 /** Últimos mensajes de la conversación (para darle memoria al agente). */

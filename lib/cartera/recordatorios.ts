@@ -15,6 +15,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "./fecha";
 import { normalizarTelefono } from "./telefono";
 import { estadosCuentaHoy, type EstadoCuenta } from "./estado-cuenta";
+import { espejarEnChat } from "./pipeline";
 
 const TEMPLATE_POR_NIVEL = {
   mediodia: "recordatorio_pago",
@@ -30,6 +31,14 @@ function componentesRecordatorio(e: EstadoCuenta) {
       parameters: [nombre, carro].map((v) => ({ type: "text", text: v })),
     },
   ];
+}
+
+/** Mismo texto que la plantilla aprobada en Meta, para dejarlo en el chat. */
+function textoRecordatorio(nivel: NivelRecordatorio, nombre: string, carro: string): string {
+  if (nivel === "cierre") {
+    return `Hola ${nombre}, hoy cierra a las 7:00 p.m. y no queremos que se te acumule la cuenta del carro ${carro}. Si ya pagaste, mándanos el comprobante; si tienes algún inconveniente, escríbenos y lo vemos juntos.`;
+  }
+  return `Hola ${nombre} 👋 Aún no vemos el pago pendiente de tu carro ${carro}. Puedes hacerlo hasta las 7:00 p.m. y mandarnos el comprobante por aquí. ¡Cualquier cosa nos dices!`;
 }
 
 /** ¿Ya se mandó este nivel hoy? Defensivo: si la tabla no existe, no bloquea. */
@@ -76,8 +85,10 @@ async function enviarUno(
   if (!to) return "sin_numero";
   if (await yaEnviado(sb, e.contratoId, fecha, nivel)) return "ya";
   try {
+    const [nombre, carro] = e.templateVars;
     await sendTemplate(to, TEMPLATE_POR_NIVEL[nivel], "es", componentesRecordatorio(e));
     await registrar(sb, e.contratoId, fecha, nivel, "enviado");
+    await espejarEnChat(to, textoRecordatorio(nivel, nombre, carro));
     return "enviado";
   } catch {
     await registrar(sb, e.contratoId, fecha, nivel, "fallido");
