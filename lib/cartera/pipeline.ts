@@ -308,8 +308,11 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       ``,
       `RESUMEN DE LA CUENTA (para "cuánto debo hoy" responde PRIMERO lo del EXTRACTO DE HOY, no el saldo completo de todos los cargos):`,
       `- CUOTA DE HOY (letra del día): ${m(est.cuotaHoy + est.recargo)}${est.recargo > 0.009 ? ` (ya pasó el corte de las 7 p.m.: incluye ${m(est.recargo)} de recargo)` : ""}.`,
-      `- ATRASO acumulado de días anteriores (letra): ${m(est.pendienteAnterior)}.`,
-      `- Total ledger (cuota + atraso + cargos en saldo): ${m(est.totalHoy)}. OJO: puede incluir VARIOS cargos extras; NO lo presentes como "lo que debe pagar hoy" si hay más de un ítem adicional. Solo dalo si piden el saldo completo.`,
+      `- ATRASO de LETRA de días anteriores (sin domingo): ${m(est.pendienteAnterior)}.`,
+      `- TOTAL A PAGAR HOY: ${m(est.totalHoy)}. Este número es la letra de hoy + el atraso de letra + recargo. NO incluye el domingo.`,
+      est.domingoSaldo > 0.009
+        ? `- DOMINGO PENDIENTE: ${m(est.domingoSaldo)}. Menciónalo como pendiente. NUNCA lo sumes al total a pagar hoy.`
+        : `- DOMINGO PENDIENTE: $0.`,
       `- Desglose ledger: ${est.desglose}.`,
       `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
       `  no cubrió lo del extracto de hoy (letra + el un ítem adicional del día), pierde el descuento de ese día y el resto se va a mañana.`,
@@ -420,8 +423,8 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         ``,
         `CARGOS EN LA CUENTA aparte de las cuotas diarias (para cuando pregunte "¿por qué debo tanto?" o discuta un cobro):`,
         ...extras.map((x) => `- ${m(x.monto)} · ${x.concepto} · ${fechaConDia(x.fecha)}`),
-        `El resto del saldo son cuotas diarias acumuladas. Si el cliente pregunta qué compone su saldo o`,
-        `discute un cobro, explícaselo con este detalle (concepto, monto y fecha). No lo enumeres si no lo pide.`,
+        `Esos cargos NO son la letra del día. El domingo se lista y NO se suma a lo que debe pagar hoy.`,
+        `Si el cliente pregunta qué compone su saldo, explícaselo con este detalle. No lo enumeres si no lo pide.`,
       );
     }
 
@@ -430,9 +433,10 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `REGLA DE COBRO DIARIO (OBLIGATORIA — “cuánto debo HOY” / extracto):`,
       `- SIEMPRE se cobra: letra del día + saldo anterior de letra + recargo/cierre de semana si aplica.`,
       `- Además, SOLO UN ítem adicional por día (aunque deba varios). Orden de prioridad:`,
-      `  1) Acuerdos de pago (incluye abono inicial restante a cuota diaria)  2) Mantenimiento  3) Cualquier otro (domingo, extensión, km, etc.) eligiendo el de MENOR saldo.`,
+      `  1) Acuerdos de pago (incluye abono inicial restante a cuota diaria)  2) Mantenimiento  3) Cualquier otro que no sea domingo (extensión, km, etc.) eligiendo el de MENOR saldo.`,
+      `- ESE ÍTEM NUNCA ES EL DOMINGO. El domingo se lista como pendiente y no entra al total, ni hoy ni ningún otro día.`,
       `- Ese ítem se sigue cobrando día a día hasta quedar en cero; después entra el siguiente.`,
-      `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL A PAGAR HOY solo incluye letra/recargo/cierre + ese un ítem.`,
+      `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL A PAGAR HOY solo incluye letra/recargo/cierre + ese un ítem. El domingo queda fuera.`,
       `- NO sumes mantenimiento + acuerdos + domingo el mismo día en el total de hoy.`,
       `- Clientes nuevos: pueden deber panapass/domingos de entrada y abono parcial; la letra puede empezar en fecha distinta a la del contrato. Respeta las cifras del sistema.`,
     );

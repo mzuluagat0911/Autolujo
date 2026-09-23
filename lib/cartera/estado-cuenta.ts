@@ -570,7 +570,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   }
   if (!row) return null;
 
-  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos, multasTodas] =
+  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos, multasTodas, domingoMap] =
     await Promise.all([
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
     pagoHoyContrato(contratoId, hoy),
@@ -588,6 +588,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     generosDe(row.cliente_id ? [row.cliente_id] : []),
     sb.from("cargos").select("monto").eq("contrato_id", contratoId).eq("tipo", "multa")
       .eq("concepto_codigo", "PAGO_TARDE"),
+    domingoPorContrato([contratoId]),
   ]);
 
   if (row.cliente) {
@@ -617,6 +618,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     hoyYaDevengado,
     sinDevengoRenta: devengadoHasta == null,
     diaLibre: contratoCerrado,
+    domingoEnSaldo: domingoMap.get(contratoId) ?? 0,
   };
   const cifrasBase = calcularCifras(entrada);
   const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
@@ -755,6 +757,29 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
   return out;
 }
 
+/** Suma de cargos DOMINGOS por contrato. No es letra. */
+async function domingoPorContrato(ids: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("cargos")
+    .select("contrato_id, monto, concepto_codigo, concepto")
+    .in("contrato_id", ids);
+  for (const g of (data ?? []) as {
+    contrato_id: string;
+    monto: number;
+    concepto_codigo: string | null;
+    concepto: string | null;
+  }[]) {
+    const codigo = (g.concepto_codigo ?? "").toUpperCase();
+    const texto = (g.concepto ?? "").toLowerCase();
+    if (codigo !== "DOMINGOS" && !/\bdomingo\b/.test(texto)) continue;
+    out.set(g.contrato_id, (out.get(g.contrato_id) ?? 0) + Number(g.monto || 0));
+  }
+  return out;
+}
+
 /** Pagos con fecha > hoy → cuotas adelantadas (cierre del día = 00:00).
  *  Mandan las fechas etiquetadas del pago (col. del día / Excel). El monto
  *  puede incluir multa/acuerdo y NO debe inflar días (ej. G23 $90 = 1 día). */
@@ -837,6 +862,7 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     nacMap,
     genMap,
     cuotasDb,
+    domingoMap,
   ] = await Promise.all([
     sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual").in("contrato_id", idsAlcance),
     sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE"),
@@ -857,6 +883,7 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     nacimientosDe(clienteIds),
     generosDe(clienteIds),
     cuotasPagadasOpcional(idsAlcance),
+    domingoPorContrato(idsAlcance),
   ]);
 
   const saldoMap = new Map<string, number>();
@@ -890,6 +917,7 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       multaHoyRegistrada: multaHoy.has(c.id),
       hoyYaDevengado,
       sinDevengoRenta: devengadoHasta == null,
+      domingoEnSaldo: domingoMap.get(c.id) ?? 0,
     };
     const cifrasBase = calcularCifras(entrada);
     const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;

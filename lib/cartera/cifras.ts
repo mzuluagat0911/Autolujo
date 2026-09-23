@@ -35,6 +35,8 @@ export type Cifras = {
   totalManana: number;
   domingo: number | null;
   domingoDia: number | null;
+  /** Domingo ya cargado que sigue en el saldo. Se lista; no entra a totalHoy. */
+  domingoSaldo: number;
   lineas: LineaDesglose[];
 };
 
@@ -53,6 +55,11 @@ export type EntradaCifras = {
   corte: boolean;
   multaHoyRegistrada: boolean;
   hoyYaDevengado: boolean;
+  /**
+   * Cargo de domingo que vive en el saldo (código DOMINGOS).
+   * No es letra: se aparta del total y solo se lista como pendiente.
+   */
+  domingoEnSaldo?: number;
   /**
    * Nunca hubo cargo `renta` (piloto Gold / saldo_inicial).
    * La deuda vive en el saldo: no sumar otra letra “en el aire”.
@@ -88,6 +95,12 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const faltaAcuerdo = Math.max(Number(e.faltaAcuerdo) || 0, 0);
   const pagadoHoy = Math.max(Number(e.pagadoHoy) || 0, 0);
   const saldoVista = Number(e.saldo) || 0;
+  // El domingo no es letra. Se reserva del saldo y el resto sí es cuota.
+  const domingoSaldo = Math.min(
+    Math.max(Number(e.domingoEnSaldo) || 0, 0),
+    Math.max(saldoVista, 0),
+  );
+  const saldoLetra = saldoVista - domingoSaldo;
   // Letra de hoy aún no posteada como renta:
   // - Con devengo normal: se suma (el pago deja saldo negativo y la cancela).
   // - Sin renta nunca (saldo_inicial): la deuda ya está en el saldo; solo se
@@ -101,17 +114,18 @@ export function calcularCifras(e: EntradaCifras): Cifras {
       faltaHoy = cuotaHoy;
     }
   }
-  const bruto = saldoVista + faltaHoy + faltaAcuerdo;
+  const bruto = saldoLetra + faltaHoy + faltaAcuerdo;
   const pendiente = Boolean(e.pendiente);
+  const letraAbierta = Math.max(saldoLetra + faltaHoy, 0);
 
-  const hayLetraHoy = cuotaHoy > 0;
+  const hayLetraAbierta = cuotaHoy > 0.009 && letraAbierta > 0.009;
   const recargo =
-    hayLetraHoy && !e.pagoPuntual && e.corte && !e.multaHoyRegistrada && !pendiente
+    hayLetraAbierta && !e.pagoPuntual && e.corte && !e.multaHoyRegistrada && !pendiente
       ? penalidad
       : 0;
   // Un abono parcial de la LETRA también pierde el descuento si no completa antes de las 7.
   const recargoSiTarda =
-    hayLetraHoy && !e.pagoPuntual && !e.corte && !pendiente ? penalidad : 0;
+    hayLetraAbierta && !e.pagoPuntual && !e.corte && !pendiente ? penalidad : 0;
 
   const totalHoy = Math.max(bruto + recargo, 0);
   const totalHoyTarde =
@@ -127,21 +141,25 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const letraHoyEnSaldo =
     e.hoyYaDevengado ||
     (Boolean(e.sinDevengoRenta) && cuotaHoy > 0.009 && (saldoVista > 0.009 || pagadoHoy > 0.009));
-  const rentaEnSaldo = letraHoyEnSaldo ? cuotaHoy : 0;
+  const rentaEnSaldo = letraHoyEnSaldo
+    ? Math.min(cuotaHoy, Math.max(saldoLetra, 0) + pagadoHoy)
+    : 0;
   const recargoEnSaldo = e.multaHoyRegistrada ? penalidad : 0;
   const acuerdoEnSaldo = Math.max(acuerdoHoy - faltaAcuerdo, 0);
-  const saldoAntesPagos = saldoVista + pagadoHoy;
+  const saldoAntesPagos = saldoLetra + pagadoHoy;
   const pendienteAnterior = Math.max(
     saldoAntesPagos - rentaEnSaldo - recargoEnSaldo - acuerdoEnSaldo,
     0,
   );
 
+  const cuotaLinea = Math.max(rentaEnSaldo, faltaHoy);
   const lineas = armarLineas({
     acuerdoHoy,
-    cuotaHoy,
+    cuotaHoy: cuotaLinea,
     pendienteAnterior,
     recargo,
     pagadoHoy,
+    domingoSaldo,
   });
 
   return {
@@ -162,6 +180,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     totalManana,
     domingo,
     domingoDia: domingo ? Number(manana.slice(8, 10)) : null,
+    domingoSaldo,
     lineas,
   };
 }
@@ -172,12 +191,16 @@ function armarLineas(p: {
   pendienteAnterior: number;
   recargo: number;
   pagadoHoy: number;
+  domingoSaldo: number;
 }): LineaDesglose[] {
   const lineas: LineaDesglose[] = [];
   if (p.acuerdoHoy > 0.009) lineas.push({ concepto: "arreglo", monto: p.acuerdoHoy });
   if (p.cuotaHoy > 0.009) lineas.push({ concepto: "cuota de hoy", monto: p.cuotaHoy });
   if (p.pendienteAnterior > 0.009) {
     lineas.push({ concepto: "saldo anterior", monto: p.pendienteAnterior });
+  }
+  if (p.domingoSaldo > 0.009) {
+    lineas.push({ concepto: "domingo (pendiente)", monto: p.domingoSaldo });
   }
   if (p.recargo > 0.009) {
     lineas.push({ concepto: "por no pagar a tiempo", monto: p.recargo });

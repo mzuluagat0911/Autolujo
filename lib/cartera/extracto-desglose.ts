@@ -101,7 +101,12 @@ export function armarExtractoDiario(
   const extrasAll = (opts?.extras ?? []).filter((x) => x.monto > 0.009);
   const extrasBase = extrasAll.filter((x) => esCargoBase(x.etiqueta)); // ej. cierre
   const extrasCompetidores = extrasAll.filter((x) => !esCargoBase(x.etiqueta));
-  const extrasSum = extrasAll.reduce((s, x) => s + x.monto, 0);
+  // Si el motor ya sacó el domingo de totalHoy, no volver a restarlo.
+  const domingoYaAparte = (e.domingoSaldo ?? 0) > 0.009;
+  const extrasSum = extrasAll.reduce((s, x) => {
+    if (domingoYaAparte && esEtiquetaDomingo(x.etiqueta)) return s;
+    return s + x.monto;
+  }, 0);
 
   let { cuenta, recargo } = cuentaYRecargo(e);
   // Extras ya van en saldo/totalHoy: sacarlos de “cuenta” para no duplicar.
