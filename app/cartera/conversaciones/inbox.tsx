@@ -64,6 +64,8 @@ export function InboxConversaciones({
   const [cargandoDetalle, setCargandoDetalle] = useState(false);
   const [configError] = useState<string | null>(errorInicial ?? null);
   const [toast, setToast] = useState<{ tone: "good" | "crit"; text: string } | null>(null);
+  const listaRef = useRef<HTMLDivElement>(null);
+  const listaScrollRef = useRef(0);
 
   // Sync URL (preserva ?demo=1).
   useEffect(() => {
@@ -87,7 +89,7 @@ export function InboxConversaciones({
     });
   }, [selectedId, demo]);
 
-  // Polling suave (solo datos reales).
+  // Polling suave (solo datos reales). Conserva el scroll de la lista.
   useEffect(() => {
     if (demo) return;
     let cancelled = false;
@@ -95,6 +97,8 @@ export function InboxConversaciones({
       const { convs: next, error: err } = await cargarBandeja();
       if (cancelled) return;
       if (err) return;
+      const el = listaRef.current;
+      if (el) listaScrollRef.current = el.scrollTop;
       setConvs(next);
       if (selectedId) {
         const { detalle: d } = await cargarDetalle(selectedId);
@@ -112,6 +116,15 @@ export function InboxConversaciones({
     };
   }, [selectedId, demo]);
 
+  // Tras re-render de la bandeja, restaura scroll (evita el “salto” al abrir/poll).
+  useEffect(() => {
+    const el = listaRef.current;
+    if (!el) return;
+    if (Math.abs(el.scrollTop - listaScrollRef.current) > 2) {
+      el.scrollTop = listaScrollRef.current;
+    }
+  }, [convs, selectedId]);
+
   function showToast(tone: "good" | "crit", text: string) {
     setToast({ tone, text });
     window.setTimeout(() => setToast(null), 3200);
@@ -119,6 +132,7 @@ export function InboxConversaciones({
 
   async function abrir(id: string) {
     if (id === selectedId && detalle) return;
+    if (listaRef.current) listaScrollRef.current = listaRef.current.scrollTop;
     setSelectedId(id);
     if (demo) {
       const d = demoDetalle(id);
@@ -199,7 +213,13 @@ export function InboxConversaciones({
             />
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto">
+          <div
+            ref={listaRef}
+            onScroll={() => {
+              if (listaRef.current) listaScrollRef.current = listaRef.current.scrollTop;
+            }}
+            className="min-h-0 flex-1 overflow-y-auto"
+          >
             {configError && (
               <div className="m-3 rounded-md bg-crit/10 px-3 py-2.5 text-xs text-crit ring-1 ring-crit/20">
                 {configError}
@@ -347,32 +367,44 @@ function ConvRow({
   active: boolean;
   onSelect: () => void;
 }) {
-  const unread = c.no_leidos > 0 || c.necesita_humano;
+  const unread = c.no_leidos > 0;
+  const rowBg = active
+    ? "bg-gris-wash"
+    : unread
+      ? "bg-azul-wash/70 hover:bg-azul-wash"
+      : "hover:bg-surface-2";
   return (
     <button
       type="button"
       onClick={onSelect}
-      className={`flex w-full items-start gap-3 border-b border-line px-4 py-3.5 text-left transition ${
-        active ? "bg-gris-wash" : "hover:bg-surface-2"
+      className={`flex w-full items-start gap-3 border-b border-line px-4 py-3.5 text-left transition ${rowBg} ${
+        unread && !active ? "border-l-2 border-l-azul pl-[14px]" : ""
       }`}
     >
       <div
-        className={`grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[13px] font-bold ${
-          c.necesita_humano ? "bg-ambar text-white" : "bg-ink text-white"
+        className={`relative grid h-10 w-10 shrink-0 place-items-center rounded-lg text-[13px] font-bold ${
+          c.necesita_humano ? "bg-ambar text-white" : unread ? "bg-azul text-white" : "bg-ink text-white"
         }`}
       >
         {placaConv(c)}
+        {unread && (
+          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full bg-azul ring-2 ring-surface" />
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-2">
-          <span className={`truncate text-sm ${unread ? "font-semibold" : "font-medium"}`}>
+          <span className={`truncate text-sm ${unread || c.necesita_humano ? "font-semibold text-ink" : "font-medium"}`}>
             {tituloConv(c)}
           </span>
-          <span className="shrink-0 text-[10px] tabular-nums text-faint">
+          <span
+            className={`shrink-0 text-[10px] tabular-nums ${
+              unread ? "font-semibold text-azul" : "text-faint"
+            }`}
+          >
             {tiempoRelativo(c.ultimo_mensaje_at)}
           </span>
         </div>
-        <p className="truncate text-[13px] text-muted">
+        <p className={`truncate text-[13px] ${unread ? "font-medium text-ink" : "text-muted"}`}>
           {c.cliente?.nombre ? `${c.cliente.nombre} · ` : ""}
           {c.ultimo_texto ?? "Sin mensajes"}
         </p>
@@ -385,8 +417,8 @@ function ConvRow({
           )}
           {c.modo === "humano" && !c.necesita_humano && <MiniChip tone="neutral">Humano</MiniChip>}
           {c.modo === "agente" && !c.necesita_humano && <MiniChip tone="good">Agente</MiniChip>}
-          {c.no_leidos > 0 && (
-            <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-ink px-1.5 text-[10px] font-semibold text-white">
+          {unread && (
+            <span className="inline-flex min-w-[1.35rem] items-center justify-center rounded-full bg-azul px-1.5 py-0.5 text-[10px] font-bold text-white">
               {c.no_leidos}
             </span>
           )}
@@ -558,7 +590,11 @@ function ChatPanel({
         <div className="shrink-0 bg-crit/10 px-4 py-2 text-sm text-crit sm:px-5">{accionError}</div>
       )}
 
-      <Thread mensajes={detalle.mensajes} agenteEscribiendo={agenteEscribiendo} />
+      <Thread
+        conversacionId={detalle.id}
+        mensajes={detalle.mensajes}
+        agenteEscribiendo={agenteEscribiendo}
+      />
 
       {demo && !esHumano && (
         <div className="shrink-0 border-t border-line bg-paper px-4 py-2 sm:px-5">
@@ -617,19 +653,70 @@ function ChatPanel({
 }
 
 function Thread({
+  conversacionId,
   mensajes,
   agenteEscribiendo = false,
 }: {
+  conversacionId: string;
   mensajes: Mensaje[];
   agenteEscribiendo?: boolean;
 }) {
-  const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const nearBottomRef = useRef(true);
+  const prevLastIdRef = useRef<string | null>(null);
+  const prevConvRef = useRef<string | null>(null);
+  const lastId = mensajes.at(-1)?.id ?? null;
+  const lastDir = mensajes.at(-1)?.direccion;
+
+  function onScroll() {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
+    nearBottomRef.current = dist < 120;
+  }
+
+  // Solo scrollea DENTRO del hilo (nunca scrollIntoView: eso arrastra la lista).
+  // Como WhatsApp: al abrir baja; si el usuario subió a leer historia, no lo fuerza.
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [mensajes.length, mensajes.at(-1)?.id]);
+    const el = scrollerRef.current;
+    if (!el) return;
+
+    const switched = prevConvRef.current !== conversacionId;
+    if (switched) {
+      prevConvRef.current = conversacionId;
+      prevLastIdRef.current = null;
+      nearBottomRef.current = true;
+    }
+
+    const prev = prevLastIdRef.current;
+    const openedOrFirst = switched || prev === null;
+    const newTail = lastId != null && lastId !== prev;
+    prevLastIdRef.current = lastId;
+
+    const shouldStick =
+      openedOrFirst ||
+      (newTail && nearBottomRef.current) ||
+      (newTail && lastDir === "out") ||
+      agenteEscribiendo;
+
+    if (!shouldStick) return;
+
+    const instant = openedOrFirst;
+    requestAnimationFrame(() => {
+      el.scrollTo({
+        top: el.scrollHeight,
+        behavior: instant ? "auto" : "smooth",
+      });
+      nearBottomRef.current = true;
+    });
+  }, [conversacionId, mensajes.length, lastId, lastDir, agenteEscribiendo]);
 
   return (
-    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-5">
+    <div
+      ref={scrollerRef}
+      onScroll={onScroll}
+      className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 sm:px-5"
+    >
       {mensajes.map((m) => {
         const out = m.direccion === "out";
         const system = m.tipo === "system";
@@ -687,7 +774,6 @@ function Thread({
       {mensajes.length === 0 && (
         <p className="py-16 text-center text-sm text-muted">Sin mensajes todavía.</p>
       )}
-      <div ref={bottomRef} />
     </div>
   );
 }
