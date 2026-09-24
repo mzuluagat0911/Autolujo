@@ -137,6 +137,72 @@ function parseAsignaciones(raw: unknown): ResultadoPago | null {
   return null;
 }
 
+/**
+ * El acuerdo vive FUERA de la letra: el pago baja el ledger entero, así que
+ * hay que poner un cargo `tipo=acuerdo` por la misma plata para que la letra
+ * no se coma lo del arreglo.
+ */
+export async function asegurarCargosAcuerdoDelPago(opts: {
+  contratoId: string;
+  pagoId: string;
+  fecha: string;
+  asignaciones: AsignacionPago[];
+}): Promise<void> {
+  const sb = createServerSupabase();
+  const lineas = opts.asignaciones.filter(
+    (a) => a.tipo === "acuerdo" && (Number(a.aplicado) || 0) > 0.009,
+  );
+  if (lineas.length === 0) {
+    await borrarCargosAcuerdoDelPago(opts.pagoId);
+    return;
+  }
+
+  const { data: ya } = await sb
+    .from("cargos")
+    .select("id, acuerdo_id, monto")
+    .eq("pago_id", opts.pagoId)
+    .eq("tipo", "acuerdo");
+  const existentes = (ya ?? []) as { id: string; acuerdo_id: string | null; monto: number }[];
+
+  // Si ya hay cargos por el mismo total, no duplicar.
+  const sumaYa = r2(existentes.reduce((s, c) => s + (Number(c.monto) || 0), 0));
+  const sumaNueva = r2(lineas.reduce((s, a) => s + (Number(a.aplicado) || 0), 0));
+  if (existentes.length > 0 && Math.abs(sumaYa - sumaNueva) < 0.05) return;
+
+  if (existentes.length > 0) {
+    await borrarCargosAcuerdoDelPago(opts.pagoId);
+  }
+
+  for (const a of lineas) {
+    const fila: Record<string, unknown> = {
+      contrato_id: opts.contratoId,
+      fecha: opts.fecha,
+      tipo: "acuerdo",
+      concepto: a.etiqueta?.trim() || "Abono a arreglo",
+      monto: r2(Number(a.aplicado) || 0),
+      pago_id: opts.pagoId,
+      acuerdo_id: a.ref ?? null,
+    };
+    const { error } = await sb.from("cargos").insert(fila);
+    if (error && /pago_id|acuerdo_id|concepto_codigo/i.test(error.message)) {
+      delete fila.pago_id;
+      delete fila.acuerdo_id;
+      const retry = await sb.from("cargos").insert(fila);
+      if (retry.error) {
+        console.error("[aplicar-pago] cargo acuerdo:", retry.error.message);
+      }
+    } else if (error) {
+      console.error("[aplicar-pago] cargo acuerdo:", error.message);
+    }
+  }
+}
+
+export async function borrarCargosAcuerdoDelPago(pagoId: string): Promise<void> {
+  if (!pagoId) return;
+  const sb = createServerSupabase();
+  await sb.from("cargos").delete().eq("pago_id", pagoId).eq("tipo", "acuerdo");
+}
+
 async function asignacionesDeHoy(
   contratoId: string,
   fecha: string,
@@ -188,6 +254,12 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const dest = destinoDesdePago(pago);
   const ya = parseAsignaciones(pago.asignaciones);
   if (ya) {
+    await asegurarCargosAcuerdoDelPago({
+      contratoId: pago.contrato_id,
+      pagoId,
+      fecha: fechaContable(pago.pagado_at),
+      asignaciones: ya.asignaciones,
+    });
     if (dest) {
       const interior = ya.asignaciones
         .filter((a) => a.tipo === "salida_interior")
@@ -357,6 +429,13 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     await sb.from("acuerdos").update({ saldo: nuevo, activo: nuevo > 0.009 }).eq("id", a.ref);
   }
 
+  await asegurarCargosAcuerdoDelPago({
+    contratoId,
+    pagoId,
+    fecha,
+    asignaciones: resultado.asignaciones,
+  });
+
   if (dest) {
     const interior = resultado.asignaciones
       .filter((a) => a.tipo === "salida_interior")
@@ -406,5 +485,6 @@ export async function revertirPagoEnObligaciones(pagoId: string): Promise<void> 
   await Promise.all([
     sb.from("pagos").update({ asignaciones: null, rubro: null, destino_interior: null }).eq("id", pagoId),
     borrarCargoSalidaDelPago(pagoId),
+    borrarCargosAcuerdoDelPago(pagoId),
   ]);
 }

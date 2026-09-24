@@ -66,8 +66,12 @@ export function etiquetaCargo(concepto: string | null, codigo: string | null, ti
 function cuentaYRecargo(e: EstadoCuenta): { cuenta: number; recargo: number } {
   const pen = e.penalidad;
   const letra = e.letra;
-  const acuerdoHoy = Math.max(e.acuerdoHoy, 0);
-  const base = Math.max(e.totalHoy - acuerdoHoy, 0);
+  // Solo restar lo del arreglo que SÍ entró al totalHoy (lo que aún falta).
+  const acuerdoEnTotal = Math.max(
+    Number((e as EstadoCuenta & { faltaAcuerdo?: number }).faltaAcuerdo) || 0,
+    0,
+  );
+  const base = Math.max(e.totalHoy - acuerdoEnTotal, 0);
 
   if (letra > 0.009 && pen > 0.009) {
     let best: { cuenta: number; recargo: number } | null = null;
@@ -126,8 +130,8 @@ export function armarExtractoDiario(
   const lineasBase: LineaExtracto[] = [];
   if (cuenta > 0.009) lineasBase.push({ etiqueta: "cuenta", monto: cuenta });
 
-  const abono = e.lineas.find((l) => l.concepto === "pagado hoy" && l.monto < -0.009);
-  if (abono) lineasBase.push({ etiqueta: "abono", monto: Math.abs(abono.monto) });
+  // El abono de hoy ya está neto en el saldo / totalHoy: no se re-suma como
+  // “abono” (eso duplicaba y, con acuerdo, hacía creer que la letra bajaba).
 
   if (recargo > 0.009) lineasBase.push({ etiqueta: "por no pagar", monto: recargo });
 
@@ -138,7 +142,7 @@ export function armarExtractoDiario(
   const baseMonto = lineasBase.reduce((s, l) => s + l.monto, 0);
 
   const candidatos = candidatosDesdeExtracto({
-    acuerdoHoy: e.acuerdoHoy,
+    acuerdoHoy: Math.max(Number(e.faltaAcuerdo) || 0, 0),
     acuerdoSaldo: opts?.acuerdoSaldo,
     extras: extrasCompetidores,
   });
@@ -147,19 +151,20 @@ export function armarExtractoDiario(
 
   const out: LineaExtracto[] = [...lineasBase];
 
-  // Acuerdos: siempre visible si hay; “(pendiente)” si hoy no es el ítem elegido.
-  if (e.acuerdoHoy > 0.009) {
+  // Acuerdos: solo lo que aún falta hoy (aparte de la letra).
+  const faltaAcuerdo = Math.max(Number(e.faltaAcuerdo) || 0, 0);
+  if (faltaAcuerdo > 0.009) {
     const saldoAcuerdo = Math.max(Number(opts?.acuerdoSaldo) || 0, 0);
     const cobrando =
       extraElegido?.categoria === "acuerdo" &&
-      Math.abs(extraElegido.montoHoy - e.acuerdoHoy) < 0.05;
+      Math.abs(extraElegido.montoHoy - faltaAcuerdo) < 0.05;
     const etiquetaBase =
-      saldoAcuerdo > e.acuerdoHoy + 0.009
+      saldoAcuerdo > faltaAcuerdo + 0.009
         ? `acuerdos (saldo ${money(saldoAcuerdo)})`
         : "acuerdos";
     out.push({
       etiqueta: cobrando ? etiquetaBase : `${etiquetaBase} (pendiente)`,
-      monto: e.acuerdoHoy,
+      monto: faltaAcuerdo,
     });
   }
 

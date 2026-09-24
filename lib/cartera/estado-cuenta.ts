@@ -240,8 +240,11 @@ export function esAlDiaHoy(e: {
   const anteriorNeto = Math.max(0, (Number(e.pendienteAnterior) || 0) - pagado);
   if (anteriorNeto > 0.009) return false;
   // Si solo queda arreglo/extra, la letra del día ya está cubierta.
-  const acuerdo = Math.max(Number(e.acuerdoHoy) || 0, 0);
-  const letraPendiente = Math.max(Number(e.totalHoy) - acuerdo, 0);
+  const faltaAcuerdo = Math.max(
+    Number((e as { faltaAcuerdo?: number }).faltaAcuerdo) || Number(e.acuerdoHoy) || 0,
+    0,
+  );
+  const letraPendiente = Math.max(Number(e.totalHoy) - faltaAcuerdo, 0);
   return letraPendiente <= 0.009;
 }
 
@@ -596,7 +599,10 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   }
 
   const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
-  const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy), arregloAplicado);
+  const programadoAcuerdo = acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy);
+  const acuerdoHoy = Math.max(programadoAcuerdo, arregloAplicado);
+  // Lo que aún falta del arreglo hoy (no lo ya abonado). El arreglo NO vive en la letra.
+  const faltaAcuerdo = Math.max(programadoAcuerdo - arregloAplicado, 0);
   // Puntualidad / multa de “no pago” = solo la letra del día (no el acuerdo).
   const meta = cuotaDeFecha(terminosDe(row), hoy);
   const pagoPuntual = cubrioCuotaDelDia(pago.pagadoPuntualCuota, meta);
@@ -610,7 +616,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     pagoPuntual,
     pagadoHoy: pago.pagadoCuota,
     acuerdoHoy,
-    faltaAcuerdo: acuerdoHoy,
+    faltaAcuerdo,
     pendiente: pend.pendiente,
     hoy,
     corte: pasoCorte(),
@@ -897,7 +903,10 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     if (c.cliente && c.cliente_id) {
       c = { ...c, cliente: { ...c.cliente, genero: genMap.get(c.cliente_id) ?? null } };
     }
-    const acuerdoHoy = Math.max(acuerdoHoyDe(acuerdosMap.get(c.id) ?? [], hoy), arregloMap.get(c.id) ?? 0);
+    const programadoAcuerdo = acuerdoHoyDe(acuerdosMap.get(c.id) ?? [], hoy);
+    const arregloAplicado = arregloMap.get(c.id) ?? 0;
+    const acuerdoHoy = Math.max(programadoAcuerdo, arregloAplicado);
+    const faltaAcuerdo = Math.max(programadoAcuerdo - arregloAplicado, 0);
     const pagoHoy = pagaronHoy.has(c.id);
     const pagoPuntual = cubrieron.has(c.id);
     const pendiente = pendientes.has(c.id);
@@ -910,7 +919,7 @@ async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       pagoPuntual,
       pagadoHoy: pagadoMap.get(c.id) ?? 0,
       acuerdoHoy,
-      faltaAcuerdo: acuerdoHoy,
+      faltaAcuerdo,
       pendiente,
       hoy,
       corte,

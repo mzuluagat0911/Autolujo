@@ -20,6 +20,8 @@ export type Cifras = {
   cuotaManana: number;
   acuerdoHoy: number;
   pagadoHoy: number;
+  /** Parte del arreglo de hoy que aún NO está cubierta por abonos. */
+  faltaAcuerdo: number;
   /** Lo que venía de antes (cuotas incompletas + recargos viejos), sin la cuota de hoy. */
   pendienteAnterior: number;
   /** Saldo de la vista (puede ser negativo si pagó y la cuota de hoy aún no está). */
@@ -176,6 +178,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     cuotaManana,
     acuerdoHoy,
     pagadoHoy,
+    faltaAcuerdo,
     pendienteAnterior,
     saldoVista,
     faltaHoy,

@@ -677,6 +677,19 @@ export async function guardarAsignacionesHistorial(opts: {
     }
   }
 
+  const { asegurarCargosAcuerdoDelPago } = await import("@/lib/cartera/aplicar-pago");
+  await asegurarCargosAcuerdoDelPago({
+    contratoId,
+    pagoId,
+    fecha: fechaContable((p as { pagado_at: string }).pagado_at),
+    asignaciones: asignaciones.map((a) => ({
+      tipo: a.tipo as "acuerdo" | "saldo_anterior" | "recargo" | "cuenta_diaria" | "salida_interior",
+      aplicado: a.aplicado,
+      etiqueta: a.etiqueta,
+      ref: undefined,
+    })),
+  });
+
   try {
     await recalcularRecargo(contratoId, fechaContable((p as { pagado_at: string }).pagado_at));
   } catch (e) {
