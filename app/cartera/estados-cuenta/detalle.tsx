@@ -15,6 +15,7 @@ import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { fechaConDia, fechaLarga } from "@/lib/cartera/fecha";
 import type { EstadoCuentaFila } from "./types";
 import { EditorLedger } from "./detalle-editar";
+import { HistorialPagosSeccion } from "./historial-pagos";
 
 function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
@@ -155,7 +156,7 @@ export function DetalleEstadoModal({
         aria-modal="true"
         aria-labelledby={titleId}
         className={`relative z-10 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl bg-surface shadow-xl ring-1 ring-line sm:rounded-xl ${
-          editando ? "max-w-2xl" : "max-w-lg"
+          editando ? "max-w-2xl" : "max-w-xl"
         }`}
       >
         <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
@@ -407,6 +408,14 @@ export function DetalleEstadoModal({
               </Fila>
             )}
           </Seccion>
+
+          <HistorialPagosSeccion
+            contratoId={estado.contratoId}
+            onChanged={() => {
+              setToast("Pago actualizado.");
+              onSaved?.();
+            }}
+          />
         </div>
 
         <div className="flex gap-2 border-t border-line px-5 py-3">

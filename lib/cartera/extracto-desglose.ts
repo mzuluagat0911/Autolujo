@@ -5,6 +5,11 @@
 // (prioridad: acuerdos → mantenimiento → saldo menor). El mensaje lista todo
 // lo debido; los ítems no cobrados hoy llevan “(pendiente)”.
 //
+// Anti-duplicado: un cargo extra (mant/otros/cierre) solo se resta de “cuenta”
+// hasta donde quepa en pendienteAnterior. La letra/cuota de hoy no se toca.
+// Cargos históricos ya absorbidos por pagos (saldo arrastrado = 0) no vacían
+// el extracto ni se listan como pendientes fantasmas.
+//
 // Acuerdos: UNA sola línea con la cuota del día + saldo al lado.
 
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -99,18 +104,24 @@ export function armarExtractoDiario(
   opts?: { acuerdoSaldo?: number; extras?: LineaExtracto[] },
 ): ExtractoArmado {
   const extrasAll = (opts?.extras ?? []).filter((x) => x.monto > 0.009);
-  const extrasBase = extrasAll.filter((x) => esCargoBase(x.etiqueta)); // ej. cierre
-  const extrasCompetidores = extrasAll.filter((x) => !esCargoBase(x.etiqueta));
-  // Si el motor ya sacó el domingo de totalHoy, no volver a restarlo.
-  const domingoYaAparte = (e.domingoSaldo ?? 0) > 0.009;
-  const extrasSum = extrasAll.reduce((s, x) => {
-    if (domingoYaAparte && esEtiquetaDomingo(x.etiqueta)) return s;
-    return s + x.monto;
-  }, 0);
+  // Domingo vive en domingoSaldo (aparte): se lista, nunca se resta de la letra.
+  const extrasDomingo = extrasAll.filter((x) => esEtiquetaDomingo(x.etiqueta));
+  const extrasParaSaldo = extrasAll.filter((x) => !esEtiquetaDomingo(x.etiqueta));
+
+  // Un cargo “otros/mant” del ledger solo está dentro de totalHoy si cabe en el
+  // saldo arrastrado (pendienteAnterior). Si ya se pagó vía el saldo agregado,
+  // el monto histórico del cargo NO debe vaciar la letra de hoy (caso G23 $50).
+  const pa = Math.max(Number(e.pendienteAnterior) || 0, 0);
+  const partes = partesSaldoAnterior({ pendienteAnterior: pa, extras: extrasParaSaldo });
+  const extrasEmbebidos = partes.filter((p) => p.etiqueta !== "cuotas atrasadas");
+  const embebidosSum = extrasEmbebidos.reduce((s, x) => s + x.monto, 0);
+
+  const extrasBase = extrasEmbebidos.filter((x) => esCargoBase(x.etiqueta)); // ej. cierre
+  const extrasCompetidores = extrasEmbebidos.filter((x) => !esCargoBase(x.etiqueta));
 
   let { cuenta, recargo } = cuentaYRecargo(e);
-  // Extras ya van en saldo/totalHoy: sacarlos de “cuenta” para no duplicar.
-  cuenta = Math.max(cuenta - extrasSum, 0);
+  // Solo descontar lo embebido en pendienteAnterior (anti-duplicado real).
+  cuenta = Math.max(cuenta - embebidosSum, 0);
 
   const lineasBase: LineaExtracto[] = [];
   if (cuenta > 0.009) lineasBase.push({ etiqueta: "cuenta", monto: cuenta });
@@ -162,19 +173,22 @@ export function armarExtractoDiario(
   }
 
   for (const x of extrasCompetidores) {
-    const esDom = esEtiquetaDomingo(x.etiqueta);
     const esElegido =
-      !esDom &&
       extraElegido != null &&
       extraElegido.categoria !== "acuerdo" &&
       extraElegido.etiqueta === x.etiqueta &&
       Math.abs(extraElegido.montoHoy - x.monto) < 0.05;
     const baseEtiqueta = x.etiqueta.replace(/\s*\(pendiente\)\s*$/i, "");
     out.push({
-      // Domingo: siempre “(pendiente)” — nunca cuenta como cobrado hoy.
-      etiqueta: esDom || !esElegido ? `${baseEtiqueta} (pendiente)` : baseEtiqueta,
+      etiqueta: esElegido ? baseEtiqueta : `${baseEtiqueta} (pendiente)`,
       monto: x.monto,
     });
+  }
+
+  // Domingo arrastrado: siempre pendiente, monto del cargo/aviso (no del pool pa).
+  for (const x of extrasDomingo) {
+    const baseEtiqueta = x.etiqueta.replace(/\s*\(pendiente\)\s*$/i, "");
+    out.push({ etiqueta: `${baseEtiqueta} (pendiente)`, monto: x.monto });
   }
 
   if (out.length === 0 && totalCobrarHoy > 0.009) {
@@ -297,6 +311,10 @@ export async function cargosExtraPorContrato(
  * Parte el “saldo anterior” en cuotas atrasadas + cargos vivos del ledger
  * (mantenimiento, panapass, cierre, etc.).
  * La suma de las partes ≈ pendienteAnterior (tope por lo que cabe en el saldo).
+ *
+ * Orden de asignación (= prioridad de cobro): cargos base (cierre) primero,
+ * luego mantenimiento, luego el resto de menor a mayor. Así un “otros” viejo
+ * no se come el pool antes que el mantenimiento.
  */
 export function partesSaldoAnterior(opts: {
   pendienteAnterior: number;
@@ -308,7 +326,17 @@ export function partesSaldoAnterior(opts: {
   const partes: LineaExtracto[] = [];
   const extras = [...(opts.extras ?? [])]
     .filter((x) => x.monto > 0.009)
-    .sort((a, b) => b.monto - a.monto);
+    .sort((a, b) => {
+      const rank = (et: string) => {
+        if (esCargoBase(et)) return 0;
+        if (/manten/i.test(et)) return 1;
+        return 2;
+      };
+      const ra = rank(a.etiqueta);
+      const rb = rank(b.etiqueta);
+      if (ra !== rb) return ra - rb;
+      return a.monto - b.monto;
+    });
 
   for (const x of extras) {
     if (resto <= 0.009) break;

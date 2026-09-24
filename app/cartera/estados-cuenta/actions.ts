@@ -3,10 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama } from "@/lib/cartera/fecha";
+import { hoyPanama, pagadoAtDesdeForm, fechaContable } from "@/lib/cartera/fecha";
 import { enviarEstadoCuentaPrueba } from "@/lib/cartera/envios";
 import type { FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
 import { fechaConDiaSemana } from "@/lib/cartera/acuerdo";
+import {
+  historialPagosContrato,
+  type PagoHistorial,
+} from "@/lib/cartera/historial-pagos";
+import {
+  aplicarPagoEnObligaciones,
+  revertirPagoEnObligaciones,
+} from "@/lib/cartera/aplicar-pago";
+import { recalcularRecargo } from "@/lib/cartera/devengo";
 
 const FRECUENCIAS_OK = new Set<FrecuenciaAcuerdo>([
   "dia",
@@ -383,4 +392,167 @@ export async function guardarLedgerEditable(
   revalidatePath("/cartera");
   invalidarLecturaEstados();
   return { ok: true };
+}
+
+export type { PagoHistorial };
+
+/** Histórico de pagos del contrato (discriminado por asignaciones). */
+export async function cargarHistorialPagos(
+  contratoId: string,
+): Promise<{ ok: boolean; pagos: PagoHistorial[]; error?: string }> {
+  const id = String(contratoId ?? "").trim();
+  if (!id) return { ok: false, pagos: [], error: "Falta el contrato." };
+  try {
+    const pagos = await historialPagosContrato(id);
+    return { ok: true, pagos };
+  } catch (e) {
+    return {
+      ok: false,
+      pagos: [],
+      error: e instanceof Error ? e.message : "No pude cargar el historial.",
+    };
+  }
+}
+
+export type ResultadoEditarPago = { ok: boolean; msg: string };
+
+const ESTADOS_PAGO = new Set(["conciliado", "manual", "pendiente", "rechazado"]);
+const METODOS_PAGO = new Set(["transferencia", "efectivo", "tarjeta"]);
+
+/**
+ * Edita un pago desde el historial del estado de cuenta.
+ * Si el pago ya estaba aplicado, revierte el waterfall, guarda y vuelve a aplicar
+ * cuando el nuevo estado cuenta (conciliado/manual).
+ */
+export async function editarPagoHistorial(
+  _prev: ResultadoEditarPago | null,
+  formData: FormData,
+): Promise<ResultadoEditarPago> {
+  const pagoId = String(formData.get("pago_id") ?? "").trim();
+  const contratoId = String(formData.get("contrato_id") ?? "").trim();
+  const montoRaw = String(formData.get("monto") ?? "").replace(",", ".").trim();
+  const fecha = String(formData.get("fecha") ?? "").trim();
+  const hora = String(formData.get("hora") ?? "").trim() || "12:00";
+  const metodo = String(formData.get("metodo") ?? "").trim().toLowerCase();
+  const referencia = String(formData.get("referencia") ?? "").trim() || null;
+  const estado = String(formData.get("estado") ?? "").trim().toLowerCase();
+  const notasExtra = String(formData.get("notas") ?? "").trim();
+
+  if (!pagoId) return { ok: false, msg: "Falta el pago." };
+  if (!contratoId) return { ok: false, msg: "Falta el contrato." };
+  const monto = Number(montoRaw);
+  if (!Number.isFinite(monto) || monto <= 0) return { ok: false, msg: "Monto inválido." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, msg: "Fecha inválida." };
+  if (!/^\d{2}:\d{2}$/.test(hora)) return { ok: false, msg: "Hora inválida (HH:MM)." };
+  if (!METODOS_PAGO.has(metodo)) return { ok: false, msg: "Método inválido." };
+  if (!ESTADOS_PAGO.has(estado)) return { ok: false, msg: "Estado inválido." };
+
+  const sb = createServerSupabase();
+  const { data: actual, error: errGet } = await sb
+    .from("pagos")
+    .select("id, contrato_id, estado_conciliacion, notas, asignaciones, pagado_at")
+    .eq("id", pagoId)
+    .maybeSingle();
+  if (errGet) return { ok: false, msg: errGet.message };
+  if (!actual) return { ok: false, msg: "No encontré ese pago." };
+  if ((actual as { contrato_id: string | null }).contrato_id !== contratoId) {
+    return { ok: false, msg: "El pago no pertenece a este contrato." };
+  }
+
+  const prevEstado = String((actual as { estado_conciliacion: string }).estado_conciliacion);
+  const contabaAntes = prevEstado === "conciliado" || prevEstado === "manual";
+  const contaraDespues = estado === "conciliado" || estado === "manual";
+
+  // Siempre deshacer waterfall previo antes de mutar montos/fecha/estado.
+  if (contabaAntes || (actual as { asignaciones: unknown }).asignaciones) {
+    try {
+      await revertirPagoEnObligaciones(pagoId);
+    } catch (e) {
+      console.error("[editarPagoHistorial] revertir", e);
+    }
+  }
+
+  const pagadoAt = pagadoAtDesdeForm(fecha, hora);
+  const notasPrev = String((actual as { notas: string | null }).notas ?? "").trim();
+  const notaEdit = `Editado en estado de cuenta (${hoyPanama()}).`;
+  const notas = [notasPrev.replace(/\s*·\s*Editado en estado de cuenta[^·]*/g, "").trim(), notaEdit, notasExtra]
+    .filter(Boolean)
+    .join(" · ");
+
+  const { error: errUp } = await sb
+    .from("pagos")
+    .update({
+      monto,
+      fecha,
+      pagado_at: pagadoAt,
+      metodo,
+      referencia,
+      estado_conciliacion: estado,
+      notas,
+      asignaciones: null,
+    })
+    .eq("id", pagoId);
+  if (errUp) return { ok: false, msg: errUp.message };
+
+  if (contaraDespues) {
+    try {
+      await aplicarPagoEnObligaciones(pagoId);
+    } catch (e) {
+      console.error("[editarPagoHistorial] aplicar", e);
+      return {
+        ok: false,
+        msg: e instanceof Error ? e.message : "Guardé el pago pero no pude reaplicar el desglose.",
+      };
+    }
+  }
+
+  try {
+    await recalcularRecargo(contratoId, fecha);
+    const prevFecha = fechaContable((actual as { pagado_at: string }).pagado_at);
+    if (prevFecha !== fecha) await recalcularRecargo(contratoId, prevFecha);
+  } catch (e) {
+    console.error("[editarPagoHistorial] recargo", e);
+  }
+
+  revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/cartera/pagos");
+  revalidatePath("/cartera");
+  invalidarLecturaEstados();
+  return { ok: true, msg: contaraDespues ? "Pago guardado y desglose reaplicado." : "Pago guardado." };
+}
+
+/** Solo vuelve a correr el waterfall (útil si quedó sin discriminado). */
+export async function reaplicarPagoHistorial(pagoId: string, contratoId: string): Promise<ResultadoEditarPago> {
+  const id = String(pagoId ?? "").trim();
+  const cid = String(contratoId ?? "").trim();
+  if (!id || !cid) return { ok: false, msg: "Faltan datos." };
+
+  const sb = createServerSupabase();
+  const { data: p, error } = await sb
+    .from("pagos")
+    .select("id, contrato_id, estado_conciliacion, pagado_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) return { ok: false, msg: error.message };
+  if (!p || (p as { contrato_id: string | null }).contrato_id !== cid) {
+    return { ok: false, msg: "El pago no pertenece a este contrato." };
+  }
+  const est = String((p as { estado_conciliacion: string }).estado_conciliacion);
+  if (est !== "conciliado" && est !== "manual") {
+    return { ok: false, msg: "Solo se reaplica si el pago está conciliado o manual." };
+  }
+
+  try {
+    await revertirPagoEnObligaciones(id);
+    await aplicarPagoEnObligaciones(id);
+    await recalcularRecargo(cid, fechaContable((p as { pagado_at: string }).pagado_at));
+  } catch (e) {
+    return { ok: false, msg: e instanceof Error ? e.message : "No pude reaplicar." };
+  }
+
+  revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/cartera/pagos");
+  revalidatePath("/cartera");
+  invalidarLecturaEstados();
+  return { ok: true, msg: "Desglose reaplicado." };
 }
