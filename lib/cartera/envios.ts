@@ -21,42 +21,28 @@ import {
   cargosExtraAgrupados,
   cargosExtraPorContrato,
   lineasExtractoBase,
-  textoDesgloseExtracto,
   type LineaExtracto,
 } from "./extracto-desglose";
+import {
+  estaAlDia,
+  previewEstadoCuenta,
+  varsExtractoDetalle,
+  type ExtractoCtx,
+} from "./extracto-preview";
 import { obtenerConversacion, registrarMensaje } from "./pipeline";
+
+export { estaAlDia, previewEstadoCuenta, varsExtractoDetalle };
+export type { ExtractoCtx };
 
 const TEMPLATE_DETALLE = "extracto_detalle";
 const TEMPLATE_AL_DIA = "extracto_al_dia";
 const TEMPLATE_CON_ATRASO = "extracto_con_atraso";
 const TEMPLATE_FALLBACK = "estado_cuenta_diario";
 
-/** Sin saldo de días anteriores: solo le toca la cuota de hoy. */
-export function estaAlDia(e: EstadoCuenta): boolean {
-  return e.pendienteAnterior <= 0.009 && e.recargo <= 0.009;
-}
-
-type ExtraCtx = { acuerdoSaldo: number; extras: LineaExtracto[] };
+type ExtraCtx = ExtractoCtx;
 
 function avisoRecargoDe(e: EstadoCuenta): string {
   return money(e.recargoSiTarda > 0.009 ? e.recargoSiTarda : e.penalidad);
-}
-
-/** Vars de `extracto_detalle`: nombre, fecha, carro, desglose, total, avisoRecargo. */
-export function varsExtractoDetalle(e: EstadoCuenta, ctx?: ExtraCtx): string[] {
-  const [nombre, carro, fecha] = e.templateVars;
-  const armado = armarExtractoDiario(e, {
-    acuerdoSaldo: ctx?.acuerdoSaldo ?? 0,
-    extras: ctx?.extras ?? [],
-  });
-  return [
-    nombre,
-    fecha,
-    carro,
-    textoDesgloseExtracto(armado.lineas),
-    money(armado.totalCobrarHoy),
-    avisoRecargoDe(e),
-  ];
 }
 
 function varsFallbackAlDia(e: EstadoCuenta): string[] {
@@ -89,28 +75,6 @@ function varsFallbackAtraso(e: EstadoCuenta): string[] {
 
 function componentes(vars: string[]) {
   return [{ type: "body", parameters: vars.map((v) => ({ type: "text", text: v })) }];
-}
-
-export function previewEstadoCuenta(e: EstadoCuenta, ctx?: ExtraCtx): string {
-  const [nombre, fecha, carro, desglose, total, avisoRecargo] = varsExtractoDetalle(e, ctx);
-  return [
-    `Buen día ${nombre} 🌞`,
-    ``,
-    `❌ EXTRACTO DIARIO`,
-    ``,
-    fecha,
-    ``,
-    `🔹 Carro ${carro}`,
-    ``,
-    ...desglose.split(" · ").filter(Boolean),
-    ``,
-    `*DEBE TOTAL PAGAR HOY: ${total}*`,
-    ``,
-    `*RECUERDE:* El sistema cierra a las 7:00 p.m.`,
-    `*Se genera ${avisoRecargo} de recargo por no pagar.*`,
-    ``,
-    `Envíanos tu comprobante por aquí. ¡Gracias!`,
-  ].join("\n");
 }
 
 export async function enrichExtracto(e: EstadoCuenta): Promise<ExtraCtx> {

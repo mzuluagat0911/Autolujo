@@ -15,6 +15,7 @@ import {
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { fechaConDia } from "@/lib/cartera/fecha";
 import { DetalleEstadoModal } from "./detalle";
+import { BotonPreviewMensaje, PreviewMensajeModal } from "./preview-mensaje";
 import type { EstadoCuentaFila } from "./types";
 
 type Filtro = "todas" | "pendiente" | "recargo" | "aldia" | "adelantado";
@@ -65,6 +66,8 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
   const [orden, setOrden] = useState<OrdenCol>("totalHoy");
   const [asc, setAsc] = useState(false);
   const [detalle, setDetalle] = useState<EstadoCuentaFila | null>(null);
+  const [preview, setPreview] = useState<EstadoCuentaFila | null>(null);
+  const [previewTick, setPreviewTick] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
 
   function clickCabecera(col: OrdenCol) {
@@ -143,6 +146,12 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
     });
     return filas;
   }, [estados, q, filtro, orden, asc]);
+
+  // Mantener preview alineado con la fila fresca tras router.refresh.
+  const previewVivo = useMemo(() => {
+    if (!preview) return null;
+    return estados.find((e) => e.contratoId === preview.contratoId) ?? preview;
+  }, [estados, preview]);
 
   function Cabecera({
     col,
@@ -302,6 +311,7 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                         A pagar hoy {money(e.totalHoy)}
                       </p>
                     )}
+                    <BotonPreviewMensaje onClick={() => setPreview(e)} />
                   </td>
                 </tr>
               ))}
@@ -317,9 +327,18 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
           onSaved={() => {
             setDetalle(null);
             setToast("Cuenta actualizada.");
+            setPreviewTick((n) => n + 1);
             router.refresh();
             window.setTimeout(() => setToast(null), 3200);
           }}
+        />
+      )}
+
+      {previewVivo && (
+        <PreviewMensajeModal
+          estado={previewVivo}
+          refreshKey={previewTick}
+          onClose={() => setPreview(null)}
         />
       )}
       {toast && <Toast tone="good" message={toast} />}

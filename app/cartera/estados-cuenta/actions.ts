@@ -821,3 +821,56 @@ export async function eliminarPagoHistorial(
   invalidarLecturaEstados();
   return { ok: true, msg: "Pago eliminado." };
 }
+
+export type PreviewMensajeResultado = {
+  ok: boolean;
+  texto?: string;
+  totalCobrarHoy?: number;
+  seEnvia?: boolean;
+  carro?: string;
+  cliente?: string;
+  alDia?: boolean;
+  error?: string;
+};
+
+/**
+ * Vista previa en vivo de la letra diaria (misma lógica del cron).
+ * Recalcula el estado del contrato desde DB — refleja pagos y ajustes recién hechos.
+ */
+export async function previewMensajeLetraDiaria(
+  contratoId: string,
+): Promise<PreviewMensajeResultado> {
+  const id = String(contratoId ?? "").trim();
+  if (!id) return { ok: false, error: "Falta el contrato." };
+
+  try {
+    const { estadoCuentaContrato } = await import("@/lib/cartera/estado-cuenta");
+    const { enrichExtracto } = await import("@/lib/cartera/envios");
+    const {
+      previewEstadoCuenta,
+      estaAlDia,
+      totalCobrarHoyExtracto,
+    } = await import("@/lib/cartera/extracto-preview");
+    const { etiquetaCarroUi } = await import("@/lib/cartera/empresa");
+
+    const e = await estadoCuentaContrato(id);
+    if (!e) return { ok: false, error: "No encontré el contrato." };
+
+    const ctx = await enrichExtracto(e);
+    const total = totalCobrarHoyExtracto(e, ctx);
+    return {
+      ok: true,
+      texto: previewEstadoCuenta(e, ctx),
+      totalCobrarHoy: total,
+      seEnvia: total > 0.009,
+      carro: etiquetaCarroUi(e.empresa, e.vehiculoNumero),
+      cliente: e.clienteNombre,
+      alDia: estaAlDia(e),
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "No pude armar el mensaje.",
+    };
+  }
+}
