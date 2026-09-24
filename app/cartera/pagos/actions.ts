@@ -18,6 +18,7 @@ import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { sendText } from "@/lib/whatsapp/client";
 import { destinoLibre, destinoPorId, type DestinoInterior } from "@/lib/cartera/salidas-interior";
 import { darAvalSalida, etiquetarPagoSalida, idsVehiculoYCliente } from "@/lib/cartera/salidas-aplicar";
+import { esRubroConcepto, etiquetaRubro } from "@/lib/cartera/rubros-pago";
 
 function destDesdeForm(formData: FormData, monto: number): DestinoInterior | null {
   const destinoId = String(formData.get("destino_interior") ?? "").trim();
@@ -100,7 +101,7 @@ export async function resolverPago(formData: FormData): Promise<void> {
 export type ResultadoPagoManual = { ok: boolean; msg: string };
 
 /**
- * Registra un pago PRESENCIAL hecho en la oficina (efectivo o datáfono).
+ * Registra un pago hecho en oficina (efectivo, datáfono o transferencia a mano).
  * El pago se ancla al CARRO (que resuelve el contrato activo), queda como
  * `manual` (ya cuenta en el saldo), el agente se entera internamente y, si la
  * ventana de WhatsApp está abierta, se le avisa al cliente que ya se recibió.
@@ -111,7 +112,9 @@ export async function registrarPagoManual(
 ): Promise<ResultadoPagoManual> {
   const carro = String(formData.get("carro") ?? "").trim();
   const montoRaw = String(formData.get("monto") ?? "").replace(",", ".").trim();
-  const metodo = String(formData.get("metodo") ?? "").trim(); // "efectivo" | "tarjeta"
+  const metodo = String(formData.get("metodo") ?? "").trim(); // efectivo | tarjeta | transferencia
+  const rubroForm = String(formData.get("rubro") ?? "").trim();
+  const referencia = String(formData.get("referencia") ?? "").trim() || null;
   const fecha = String(formData.get("fecha") ?? "").trim() || hoyPanama();
   const hora = String(formData.get("hora") ?? "").trim() || horaPanama();
   const pagadoAt = pagadoAtDesdeForm(fecha, hora);
@@ -119,13 +122,15 @@ export async function registrarPagoManual(
   const monto = Number(montoRaw);
   const dest = destDesdeForm(formData, Number.isFinite(monto) ? monto : 0);
   const fechaHasta = dest ? hastaDesdeForm(formData, fecha) : null;
+  const rubroConcepto =
+    !dest && esRubroConcepto(rubroForm) && rubroForm !== "cuenta" ? rubroForm : null;
   if (String(formData.get("destino_interior") ?? "") === "otro" && !dest) {
     return { ok: false, msg: "Escribe el destino que no está en la tabla." };
   }
   if (!carro) return { ok: false, msg: "Escribe el número de carro." };
   if (!Number.isFinite(monto) || monto <= 0) return { ok: false, msg: "El monto no es válido." };
-  if (metodo !== "efectivo" && metodo !== "tarjeta")
-    return { ok: false, msg: "Elige el método (efectivo o tarjeta)." };
+  if (metodo !== "efectivo" && metodo !== "tarjeta" && metodo !== "transferencia")
+    return { ok: false, msg: "Elige el método (efectivo, tarjeta o transferencia)." };
 
   const sb = createServerSupabase();
 
@@ -147,10 +152,20 @@ export async function registrarPagoManual(
   const waNumero = normalizarTelefono(cliente?.whatsapp ?? cliente?.telefono);
 
   // 3) Registrar el pago (manual → ya cuenta en el saldo, sin conciliar).
-  const metodoLabel = metodo === "efectivo" ? "efectivo" : "tarjeta (datáfono)";
-  const notasOficina = dest
-    ? `Pago presencial en oficina — ${metodoLabel}. Salida al interior: ${dest.nombre}.`
-    : `Pago presencial en oficina — ${metodoLabel}. Registrado por el equipo.`;
+  const metodoLabel =
+    metodo === "efectivo"
+      ? "efectivo"
+      : metodo === "tarjeta"
+        ? "tarjeta (datáfono)"
+        : "transferencia";
+  const conceptoNota = dest
+    ? `Salida al interior: ${dest.nombre}.`
+    : rubroConcepto
+      ? `Concepto: ${etiquetaRubro(rubroConcepto)}.`
+      : "Cuota / cuenta.";
+  const refNota = referencia ? ` Ref: ${referencia}.` : "";
+  const notasOficina = `Pago en oficina — ${metodoLabel}. ${conceptoNota}${refNota} Registrado por el equipo.`;
+  const rubroDb = dest ? "salida_interior" : rubroConcepto;
   const basePago = {
     contrato_id: r.contratoId,
     cliente_id: r.clienteId,
@@ -162,20 +177,26 @@ export async function registrarPagoManual(
     origen: "manual",
     estado_conciliacion: "manual",
     notas: notasOficina,
+    ...(referencia ? { referencia } : {}),
   };
   let pagoInsert = (
     await sb
       .from("pagos")
       .insert({
         ...basePago,
-        rubro: dest ? "salida_interior" : null,
+        rubro: rubroDb,
         destino_interior: dest ? dest.id : null,
       })
       .select("id")
       .single()
   );
-  if (pagoInsert.error && /rubro|destino_interior/i.test(pagoInsert.error.message)) {
-    pagoInsert = await sb.from("pagos").insert(basePago).select("id").single();
+  if (pagoInsert.error && /rubro|destino_interior|referencia/i.test(pagoInsert.error.message)) {
+    const { referencia: _r, ...sinRef } = basePago as typeof basePago & { referencia?: string };
+    pagoInsert = await sb
+      .from("pagos")
+      .insert(sinRef)
+      .select("id")
+      .single();
   }
   const error = pagoInsert.error;
   if (error) return { ok: false, msg: error.message };
@@ -224,7 +245,9 @@ export async function registrarPagoManual(
         tipo: "system",
         texto: dest
           ? `Pago en oficina de salida a ${dest.nombre}: ${money(monto)} (${metodoLabel}, carro ${carro}). Aval dado.`
-          : `Pago en oficina registrado: ${money(monto)} en ${metodoLabel} (Carro ${carro}).${como ? ` ${como}` : ""}`,
+          : rubroConcepto
+            ? `Pago en oficina (${etiquetaRubro(rubroConcepto)}): ${money(monto)} en ${metodoLabel} (Carro ${carro}).${como ? ` ${como}` : ""}`
+            : `Pago en oficina registrado: ${money(monto)} en ${metodoLabel} (Carro ${carro}).${como ? ` ${como}` : ""}`,
       });
 
       const cierre = dest
@@ -262,7 +285,9 @@ export async function registrarPagoManual(
 
   const base = dest
     ? `Pago de ${money(monto)} a salida ${dest.nombre} en el carro ${carro}. Aval dado.`
-    : `Pago de ${money(monto)} registrado en el Carro ${carro} (${metodoLabel}).`;
+    : rubroConcepto
+      ? `Pago de ${money(monto)} (${etiquetaRubro(rubroConcepto)}) registrado en el Carro ${carro} (${metodoLabel}).`
+      : `Pago de ${money(monto)} registrado en el Carro ${carro} (${metodoLabel}).`;
   return {
     ok: true,
     msg: avisado

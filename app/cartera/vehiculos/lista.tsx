@@ -27,6 +27,7 @@ export type FilaVehiculo = {
   empresa: string | null;
   cliente: string | null;
   clienteId: string | null;
+  celular: string | null;
   letra: number | null;
   contratoId: string | null;
   kmMes: number | null;
@@ -394,7 +395,7 @@ export function ListaVehiculos({
                       type="button"
                       onClick={() => setElegido(v)}
                       className="text-left hover:underline"
-                      title="Editar número y nombre"
+                      title="Editar ficha: número, nombre y celular"
                     >
                       {v.empresa ? `${siglaEmpresa(v.empresa)} · ` : ""}
                       {v.numero}
@@ -456,6 +457,11 @@ export function ListaVehiculos({
                     {v.cliente ? (
                       <div>
                         <p className="font-medium">{v.cliente}</p>
+                        {v.celular ? (
+                          <p className="font-mono text-xs text-muted">{v.celular}</p>
+                        ) : (
+                          <p className="text-xs text-ambar">Sin celular</p>
+                        )}
                         {v.letra != null && (
                           <p className="text-xs text-muted">Letra {money(v.letra)}/día</p>
                         )}
@@ -553,7 +559,7 @@ export function ListaVehiculos({
         <Link href="/cartera/rastreo" className="underline-offset-2 hover:underline">
           Rastreo
         </Link>
-        . El número abre la ficha para cambiar número o nombre del arrendatario. La hoja de vida sigue en Operaciones.
+        . El número abre la ficha para corregir número del carro, nombre o celular del arrendatario. La hoja de vida sigue en Operaciones.
       </p>
     </div>
   );
@@ -570,6 +576,7 @@ function PanelEditarCarro({
 }) {
   const [numero, setNumero] = useState(carro.numero);
   const [nombre, setNombre] = useState(carro.cliente ?? "");
+  const [celular, setCelular] = useState(carro.celular ?? "");
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const titulo = `${carro.empresa ? `${siglaEmpresa(carro.empresa)} · ` : ""}${carro.numero}`;
@@ -583,6 +590,7 @@ function PanelEditarCarro({
         numero,
         clienteId: carro.clienteId,
         nombre: carro.clienteId ? nombre : null,
+        celular: carro.clienteId ? celular : null,
       });
       if (!r.ok) {
         setErr(r.msg);
@@ -606,12 +614,12 @@ function PanelEditarCarro({
       >
         <h2 className="text-lg font-semibold tracking-tight">Editar {titulo}</h2>
         <p className="mt-1 text-sm text-muted">
-          El número y el nombre. Si lo cede, cambia el nombre: el contrato y el WhatsApp siguen en esta ficha.
+          Corregí nombre o celular si hay error. El próximo extracto y recordatorio salen con esos datos.
         </p>
         <div className="mt-5 space-y-4">
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-              Número *
+              Número del carro *
             </span>
             <input
               required
@@ -621,20 +629,35 @@ function PanelEditarCarro({
             />
           </label>
           {carro.clienteId ? (
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                Nombre del arrendatario *
-              </span>
-              <input
-                required
-                minLength={2}
-                value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
-                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
-              />
-            </label>
+            <>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Nombre del arrendatario *
+                </span>
+                <input
+                  required
+                  minLength={2}
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Celular / WhatsApp *
+                </span>
+                <input
+                  required
+                  inputMode="tel"
+                  placeholder="+50761234567"
+                  value={celular}
+                  onChange={(e) => setCelular(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 font-mono text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+            </>
           ) : (
-            <p className="text-sm text-muted">Sin contrato activo. Solo se puede cambiar el número.</p>
+            <p className="text-sm text-muted">Sin contrato activo. Solo se puede cambiar el número del carro.</p>
           )}
         </div>
         {err && <p className="mt-3 text-sm text-rojo">{err}</p>}

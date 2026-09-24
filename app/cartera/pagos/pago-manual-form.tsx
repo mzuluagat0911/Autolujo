@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef, useState } from "react";
 import { registrarPagoManual, type ResultadoPagoManual } from "./actions";
 import { hoyPanama, horaPanama } from "@/lib/cartera/fecha";
 import { TARIFAS_SALIDA_INTERIOR } from "@/lib/cartera/salidas-interior";
+import { RUBROS_PAGO } from "@/lib/cartera/rubros-pago";
 
 const HOY = hoyPanama();
 const HORA_AHORA = horaPanama();
@@ -15,12 +16,17 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
     null,
   );
   const formRef = useRef<HTMLFormElement>(null);
-  const [destino, setDestino] = useState("");
-  const tarifa = TARIFAS_SALIDA_INTERIOR.find((d) => d.id === destino);
+  const [rubro, setRubro] = useState("cuenta");
+  const esSalida = rubro.startsWith("salida:") || rubro === "otro";
+  const destinoId = rubro.startsWith("salida:") ? rubro.slice("salida:".length) : rubro === "otro" ? "otro" : "";
+  const tarifa = TARIFAS_SALIDA_INTERIOR.find((d) => d.id === destinoId);
 
   // Limpiar el formulario tras un registro exitoso.
   useEffect(() => {
-    if (estado?.ok) formRef.current?.reset();
+    if (estado?.ok) {
+      formRef.current?.reset();
+      setRubro("cuenta");
+    }
   }, [estado?.ok]);
 
   return (
@@ -32,13 +38,14 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
       >
         <span>
           <span className="text-sm font-semibold">Registrar pago en oficina</span>
-          <span className="ml-2 text-xs text-muted">efectivo o datáfono</span>
+          <span className="ml-2 text-xs text-muted">efectivo, tarjeta o transferencia</span>
         </span>
         <span className={`text-muted transition ${abierto ? "rotate-180" : ""}`}>⌄</span>
       </button>
 
       {abierto && (
         <form ref={formRef} action={accion} className="border-t border-line p-5">
+          <input type="hidden" name="destino_interior" value={destinoId} />
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
             <Campo label="Número de carro">
               <input
@@ -49,20 +56,28 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
                 className="w-full rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-ink/20"
               />
             </Campo>
-            <Campo label="Rubro">
+            <Campo label="Concepto / rubro">
               <select
-                name="destino_interior"
-                value={destino}
-                onChange={(e) => setDestino(e.target.value)}
+                name="rubro"
+                value={rubro}
+                onChange={(e) => setRubro(e.target.value)}
                 className="w-full rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-ink/20"
               >
-                <option value="">Cuota / cuenta</option>
-                {TARIFAS_SALIDA_INTERIOR.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    Salida · {d.nombre} (${d.monto})
-                  </option>
-                ))}
-                <option value="otro">Salida · otro destino (fuera de tabla)</option>
+                <optgroup label="Cuenta">
+                  {RUBROS_PAGO.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Salida al interior">
+                  {TARIFAS_SALIDA_INTERIOR.map((d) => (
+                    <option key={d.id} value={`salida:${d.id}`}>
+                      Salida · {d.nombre} (${d.monto})
+                    </option>
+                  ))}
+                  <option value="otro">Salida · otro destino (fuera de tabla)</option>
+                </optgroup>
               </select>
             </Campo>
             <Campo label="Monto (USD)">
@@ -71,7 +86,7 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
                 inputMode="decimal"
                 placeholder={tarifa ? String(tarifa.monto) : "60"}
                 defaultValue={tarifa ? String(tarifa.monto) : undefined}
-                key={destino || "cuota"}
+                key={rubro || "cuenta"}
                 required
                 className="w-full rounded-lg bg-paper px-3 py-2.5 text-sm tabular-nums ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-ink/20"
               />
@@ -83,10 +98,20 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
                 defaultValue=""
                 className="w-full rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-ink/20"
               >
-                <option value="" disabled>Elige…</option>
+                <option value="" disabled>
+                  Elige…
+                </option>
                 <option value="efectivo">Efectivo</option>
                 <option value="tarjeta">Tarjeta (datáfono)</option>
+                <option value="transferencia">Transferencia</option>
               </select>
+            </Campo>
+            <Campo label="Referencia">
+              <input
+                name="referencia"
+                placeholder="Opcional"
+                className="w-full rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-ink/20"
+              />
             </Campo>
             <Campo label="Fecha">
               <input
@@ -96,7 +121,7 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
                 className="w-full rounded-lg bg-paper px-3 py-2.5 text-sm ring-1 ring-line focus:outline-none focus:ring-2 focus:ring-ink/20"
               />
             </Campo>
-            {destino === "otro" && (
+            {destinoId === "otro" && (
               <Campo label="Destino (escribir)">
                 <input
                   name="destino_otro"
@@ -106,7 +131,7 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
                 />
               </Campo>
             )}
-            {destino && (
+            {esSalida && (
               <Campo label="Días del viaje">
                 <input
                   name="dias_viaje"
@@ -129,11 +154,13 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
             </Campo>
           </div>
           <p className="mt-2 text-xs text-muted">
-            {destino === "otro"
+            {destinoId === "otro"
               ? "Destino fuera de tabla: el equipo cotiza el monto. Se levanta alerta. El aval queda al registrar."
               : tarifa
                 ? `Ese pago va al rubro de salida a ${tarifa.nombre}, no a la cuota. Si es más de un día, póngalo arriba.`
-                : "El descuento puntual aplica solo si pagó antes de las 7:00 p.m. de ese día."}
+                : rubro === "cuenta"
+                  ? "El descuento puntual aplica solo si pagó antes de las 7:00 p.m. de ese día. El sistema reparte el abono (arreglo → atraso → recargo → cuota)."
+                  : "Queda marcado con ese concepto. El dinero baja el saldo; el sistema lo reparte según las reglas del día."}
           </p>
 
           <div className="mt-4 flex flex-wrap items-center gap-3">
