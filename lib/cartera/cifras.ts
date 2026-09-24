@@ -95,11 +95,13 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const faltaAcuerdo = Math.max(Number(e.faltaAcuerdo) || 0, 0);
   const pagadoHoy = Math.max(Number(e.pagadoHoy) || 0, 0);
   const saldoVista = Number(e.saldo) || 0;
-  // El domingo no es letra. Se reserva del saldo y el resto sí es cuota.
-  const domingoSaldo = Math.min(
-    Math.max(Number(e.domingoEnSaldo) || 0, 0),
-    Math.max(saldoVista, 0),
-  );
+  const hoyEsDomingo = esDomingo(e.hoy);
+  // Lun–sáb: el domingo se reserva del saldo y no entra a totalHoy.
+  // Domingo: ese compromiso sí se cobra hoy → no se aparta.
+  const domingoEnSaldo = Math.max(Number(e.domingoEnSaldo) || 0, 0);
+  const domingoSaldo = hoyEsDomingo
+    ? 0
+    : Math.min(domingoEnSaldo, Math.max(saldoVista, 0));
   const saldoLetra = saldoVista - domingoSaldo;
   // Letra de hoy aún no posteada como renta:
   // - Con devengo normal: se suma (el pago deja saldo negativo y la cancela).
@@ -159,8 +161,13 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     pendienteAnterior,
     recargo,
     pagadoHoy,
-    domingoSaldo,
+    // Lun–sáb: línea informativa. Domingo: ya va dentro del total (saldo/cuota).
+    domingoSaldo: hoyEsDomingo ? 0 : domingoSaldo,
   });
+  // Domingo con cargo DOMINGOS y sin cuotaHoy aparte → mostrarlo en el desglose.
+  if (hoyEsDomingo && domingoEnSaldo > 0.009 && cuotaLinea < 0.009) {
+    lineas.unshift({ concepto: "domingo", monto: domingoEnSaldo });
+  }
 
   return {
     letra,
@@ -180,7 +187,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     totalManana,
     domingo,
     domingoDia: domingo ? Number(manana.slice(8, 10)) : null,
-    domingoSaldo,
+    domingoSaldo: hoyEsDomingo ? domingoEnSaldo : domingoSaldo,
     lineas,
   };
 }

@@ -3,7 +3,8 @@ import { enviarEstadosCuentaHoy } from "@/lib/cartera/envios";
 export const runtime = "nodejs";
 export const maxDuration = 300; // hasta 5 min (envío a toda la flota)
 
-// Cron diario (Vercel) — envía el estado de cuenta a las 9am Panamá.
+// Cron diario (Vercel) — envía el estado de cuenta a las 9am Panamá (lun–dom;
+// el domingo solo a quien arrastra deuda o tiene compromiso dominical).
 export async function GET(req: Request) {
   // Seguridad: Vercel manda Authorization: Bearer ${CRON_SECRET} si está configurado.
   const secret = process.env.CRON_SECRET;

@@ -10,27 +10,27 @@
     },
     {
       "path": "/api/cron/estado-cuenta",
-      "schedule": "0 14 * * 1-6"
+      "schedule": "0 14 * * 0-6"
     },
     {
       "path": "/api/cron/recordatorio-mediodia",
-      "schedule": "0 18 * * 1-6"
+      "schedule": "0 18 * * 0-6"
     },
     {
       "path": "/api/cron/recordatorio-mediodia",
-      "schedule": "25 18 * * 1-6"
+      "schedule": "25 18 * * 0-6"
     },
     {
       "path": "/api/cron/recordatorio-mediodia",
-      "schedule": "50 18 * * 1-6"
+      "schedule": "50 18 * * 0-6"
     },
     {
       "path": "/api/cron/recordatorio-cierre",
-      "schedule": "30 22 * * 1-6"
+      "schedule": "30 22 * * 0-6"
     },
     {
       "path": "/api/cron/recordatorio-cierre",
-      "schedule": "50 22 * * 1-6"
+      "schedule": "50 22 * * 0-6"
     },
     {
       "path": "/api/cron/gps-snapshot",

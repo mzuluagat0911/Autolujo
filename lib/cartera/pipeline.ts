@@ -5,7 +5,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
-import { hoyPanama, horaPanama, pasoCorte, fueraHorarioOperativo, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm } from "@/lib/cartera/fecha";
+import { hoyPanama, horaPanama, pasoCorte, fueraHorarioOperativo, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm, esDomingo } from "@/lib/cartera/fecha";
 import { estadoCuentaContrato, money, cuotasAtraso } from "@/lib/cartera/estado-cuenta";
 import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
@@ -307,11 +307,13 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     lineas.push(
       ``,
       `RESUMEN DE LA CUENTA (para "cuánto debo hoy" cobra EXACTAMENTE el total de abajo; no lo recalcules):`,
-      `- TOTAL A PAGAR HOY: ${m(est.totalHoy)}. Este es el único monto a cobrar. Ya incluye la letra de hoy, el atraso de letra y el recargo. NO incluye el domingo. NO le sumes la tarifa diaria ni el atraso otra vez.`,
+      `- TOTAL A PAGAR HOY: ${m(est.totalHoy)}. Este es el único monto a cobrar. Ya incluye la letra de hoy, el atraso de letra y el recargo.${esDomingo(hoyPanama()) ? " HOY ES DOMINGO: el compromiso de domingo SÍ va en este total." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
       `- Tarifa de la letra diaria (precio del día, no es el saldo): ${m(est.cuotaHoy)}.`,
       `- Atraso de letra que ya está dentro del total (sin domingo): ${m(est.pendienteAnterior)}.`,
       est.domingoSaldo > 0.009
-        ? `- DOMINGO PENDIENTE: ${m(est.domingoSaldo)}. Menciónalo como pendiente. NUNCA lo sumes al total a pagar hoy.`
+        ? esDomingo(hoyPanama())
+          ? `- DOMINGO HOY: ${m(est.domingoSaldo)} entra en el total a pagar hoy.`
+          : `- DOMINGO PENDIENTE: ${m(est.domingoSaldo)}. Menciónalo como pendiente. NUNCA lo sumes al total a pagar hoy (lun–sáb).`
         : `- DOMINGO PENDIENTE: $0.`,
       `- Desglose, ya neto en el total: ${est.desglose}.`,
       `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,

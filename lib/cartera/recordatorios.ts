@@ -6,6 +6,8 @@
 //
 // - 1:00 p.m.: solo quien debe MÁS DE UNA cuota (no solo la de hoy).
 // - 5:30 p.m.: todos los que aún deben hoy y no han pagado.
+// - Domingo: la cola base (`estadosCuentaHoy`) ya limita a deuda arrastrada
+//   o compromiso de domingo; encima aplica el filtro de cada nivel.
 // Quien ya pagó o mandó comprobante NO recibe recordatorio: eso lo garantiza
 // `estadosCuentaHoy()`, que ya los excluye.
 //

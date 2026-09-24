@@ -8,7 +8,7 @@
 // termina dando dos números distintos para lo mismo.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama, pasoCorte, fechaLarga, sumarDias } from "./fecha";
+import { hoyPanama, pasoCorte, fechaLarga, sumarDias, esDomingo } from "./fecha";
 import type { TerminosCuota } from "./cuota";
 import { calcularCifras, textoDesglose, cubrioCuotaDelDia, type Cifras } from "./cifras";
 import {
@@ -995,10 +995,28 @@ export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
   return [...todos].sort((a, b) => gravedadSituacion(b) - gravedadSituacion(a));
 }
 
+/**
+ * Domingos solo se escribe a quien:
+ * - arrastra deuda del sábado hacia atrás, o
+ * - tiene compromiso de domingo (cuota dominical, cargo domingo, o arreglo del día).
+ * Quien está al día y sin domingo pactado no recibe mensaje.
+ */
+export function audienciaDomingo(e: EstadoCuenta): boolean {
+  if ((e.pendienteAnterior ?? 0) > 0.009) return true;
+  if ((e.acuerdoHoy ?? 0) > 0.009) return true;
+  if (e.cobraDomingo && (e.cuotaHoy > 0.009 || (e.cuotaDomingo ?? 0) > 0.009)) return true;
+  if ((e.domingoSaldo ?? 0) > 0.009) return true;
+  if (e.lineas.some((l) => l.monto > 0.009 && /domingo/i.test(l.concepto))) return true;
+  return false;
+}
+
 /** Cola de cobro / envío: solo quien aún debe hoy (sin comprobante pendiente). */
 export async function estadosCuentaHoy(): Promise<EstadoCuenta[]> {
+  const hoy = hoyPanama();
+  const domingo = esDomingo(hoy);
   const todos = await armarEstadosAlcance();
   return todos
     .filter((e) => e.totalHoy > 0.009 && !e.pendiente)
+    .filter((e) => !domingo || audienciaDomingo(e))
     .sort((a, b) => b.totalHoy - a.totalHoy);
 }
