@@ -106,7 +106,7 @@ export async function historialPagosContrato(
   const limite = Math.min(Math.max(opts?.limite ?? 80, 1), 200);
   const sb = createServerSupabase();
 
-  let q = await sb
+  const full = await sb
     .from("pagos")
     .select(
       "id, fecha, pagado_at, monto, metodo, banco, referencia, estado_conciliacion, origen, rubro, asignaciones",
@@ -115,20 +115,7 @@ export async function historialPagosContrato(
     .order("pagado_at", { ascending: false })
     .limit(limite);
 
-  if (q.error && /asignaciones|rubro|origen/i.test(q.error.message)) {
-    q = await sb
-      .from("pagos")
-      .select("id, fecha, pagado_at, monto, metodo, banco, referencia, estado_conciliacion")
-      .eq("contrato_id", contratoId)
-      .order("pagado_at", { ascending: false })
-      .limit(limite);
-  }
-  if (q.error) {
-    console.error("[historial-pagos]", q.error.message);
-    return [];
-  }
-
-  const rows = (q.data ?? []) as {
+  let rows: {
     id: string;
     fecha: string;
     pagado_at: string;
@@ -140,7 +127,26 @@ export async function historialPagosContrato(
     origen?: string | null;
     rubro?: string | null;
     asignaciones?: unknown;
-  }[];
+  }[] = [];
+
+  if (full.error && /asignaciones|rubro|origen/i.test(full.error.message)) {
+    const basic = await sb
+      .from("pagos")
+      .select("id, fecha, pagado_at, monto, metodo, banco, referencia, estado_conciliacion")
+      .eq("contrato_id", contratoId)
+      .order("pagado_at", { ascending: false })
+      .limit(limite);
+    if (basic.error) {
+      console.error("[historial-pagos]", basic.error.message);
+      return [];
+    }
+    rows = (basic.data ?? []) as typeof rows;
+  } else if (full.error) {
+    console.error("[historial-pagos]", full.error.message);
+    return [];
+  } else {
+    rows = (full.data ?? []) as typeof rows;
+  }
 
   return rows.map((p) => {
     const parsed = parseResultado(p.asignaciones);
