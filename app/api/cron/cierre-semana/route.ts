@@ -4,7 +4,7 @@ import { hoyPanama } from "@/lib/cartera/fecha";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Cron de los MARTES a primera hora (antes del estado de cuenta de las 8am):
+// Cron de los MARTES a primera hora (antes del estado de cuenta de las 9am):
 // cobra $10 a quien no cerró la semana al día (arrastra deuda del lunes o
 // antes). Así el recargo sale en el cobro de la mañana. Idempotente por día.
 export async function GET(req: Request) {

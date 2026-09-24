@@ -4,7 +4,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-// Reenganche de mediodía: recordatorio a quien aún debe hoy y no ha pagado.
+// Reenganche 1:00 p.m.: solo quien debe MÁS DE UNA cuota y aún no ha pagado.
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (secret) {

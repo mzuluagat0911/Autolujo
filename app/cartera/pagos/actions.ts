@@ -147,6 +147,10 @@ export async function registrarPagoManual(
     .eq("id", r.contratoId as string)
     .maybeSingle();
   const cliente = (contrato as { cliente?: { nombre?: string; whatsapp?: string | null; telefono?: string | null } } | null)?.cliente;
+  const numeroCanon =
+    (contrato as { vehiculo?: { numero?: string } | null } | null)?.vehiculo?.numero ??
+    r.etiqueta?.replace(/^carro\s+/i, "") ??
+    carro;
   const nombre = cliente?.nombre?.split(" ")[0] ?? "";
   // Canónico 507XXXXXXXX: si no, se abriría una conversación paralela a la real.
   const waNumero = normalizarTelefono(cliente?.whatsapp ?? cliente?.telefono);
@@ -173,7 +177,7 @@ export async function registrarPagoManual(
     pagado_at: pagadoAt,
     monto,
     metodo,
-    numero_carro: carro,
+    numero_carro: numeroCanon,
     origen: "manual",
     estado_conciliacion: "manual",
     notas: notasOficina,
@@ -244,17 +248,17 @@ export async function registrarPagoManual(
         direccion: "out",
         tipo: "system",
         texto: dest
-          ? `Pago en oficina de salida a ${dest.nombre}: ${money(monto)} (${metodoLabel}, carro ${carro}). Aval dado.`
+          ? `Pago en oficina de salida a ${dest.nombre}: ${money(monto)} (${metodoLabel}, carro ${numeroCanon}). Aval dado.`
           : rubroConcepto
-            ? `Pago en oficina (${etiquetaRubro(rubroConcepto)}): ${money(monto)} en ${metodoLabel} (Carro ${carro}).${como ? ` ${como}` : ""}`
-            : `Pago en oficina registrado: ${money(monto)} en ${metodoLabel} (Carro ${carro}).${como ? ` ${como}` : ""}`,
+            ? `Pago en oficina (${etiquetaRubro(rubroConcepto)}): ${money(monto)} en ${metodoLabel} (Carro ${numeroCanon}).${como ? ` ${como}` : ""}`
+            : `Pago en oficina registrado: ${money(monto)} en ${metodoLabel} (Carro ${numeroCanon}).${como ? ` ${como}` : ""}`,
       });
 
       const cierre = dest
         ? `Quedó como salida a ${dest.nombre}, no a la cuota. Ya tiene el aval.`
         : como
-          ? `${como} Quedó en el carro ${carro}.`
-          : `Quedó en el carro ${carro}.`;
+          ? `${como} Quedó en el carro ${numeroCanon}.`
+          : `Quedó en el carro ${numeroCanon}.`;
       const texto = nombre
         ? `Listo ${nombre}, recibimos ${money(monto)} en oficina (${metodoLabel}). ${cierre}`
         : `Recibimos ${money(monto)} en oficina (${metodoLabel}). ${cierre}`;
@@ -284,10 +288,10 @@ export async function registrarPagoManual(
   revalidatePath("/");
 
   const base = dest
-    ? `Pago de ${money(monto)} a salida ${dest.nombre} en el carro ${carro}. Aval dado.`
+    ? `Pago de ${money(monto)} a salida ${dest.nombre} en el carro ${numeroCanon}. Aval dado.`
     : rubroConcepto
-      ? `Pago de ${money(monto)} (${etiquetaRubro(rubroConcepto)}) registrado en el Carro ${carro} (${metodoLabel}).`
-      : `Pago de ${money(monto)} registrado en el Carro ${carro} (${metodoLabel}).`;
+      ? `Pago de ${money(monto)} (${etiquetaRubro(rubroConcepto)}) registrado en el Carro ${numeroCanon} (${metodoLabel}).`
+      : `Pago de ${money(monto)} registrado en el Carro ${numeroCanon} (${metodoLabel}).`;
   return {
     ok: true,
     msg: avisado

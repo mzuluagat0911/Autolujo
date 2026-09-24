@@ -1,5 +1,5 @@
 // Envío del estado de cuenta por WhatsApp.
-// Usado por: el botón manual (piloto) y el cron diario de las 8am.
+// Usado por: el botón manual (piloto) y el cron diario de las 9am.
 //
 // Plantilla principal: `extracto_detalle` (desglose rico variable).
 // Fallback: al día / con atraso / estado_cuenta_diario si Meta aún no aprueba.
@@ -303,7 +303,7 @@ export async function enviarEstadoCuentaPrueba(
   }
 }
 
-/** Envío MASIVO del día (cron 8am). Respeta alcance de cartera (DB) + ENVIOS_MASIVOS. */
+/** Envío MASIVO del día (cron 9am). Respeta alcance de cartera (DB) + ENVIOS_MASIVOS. */
 export async function enviarEstadosCuentaHoy(): Promise<{
   total: number;
   enviados: number;

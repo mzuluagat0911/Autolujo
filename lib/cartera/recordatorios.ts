@@ -1,10 +1,13 @@
 // Escalera de recordatorios de pago.
 //
-// Tras el estado de cuenta de las 8am, si el cliente aún no paga, se le
-// reengancha durante el día (mediodía y cierre) con plantillas dedicadas
-// ya aprobadas en Meta: `recordatorio_pago` y `ultimo_aviso_pago`
-// (vars: nombre, carro). Quien ya pagó o mandó comprobante NO recibe
-// recordatorio: eso lo garantiza `estadosCuentaHoy()`, que ya los excluye.
+// Tras el estado de cuenta de las 9am, si el cliente aún no paga, se le
+// reengancha durante el día con plantillas dedicadas ya aprobadas en Meta:
+// `recordatorio_pago` (1pm) y `ultimo_aviso_pago` (5:30pm).
+//
+// - 1:00 p.m.: solo quien debe MÁS DE UNA cuota (no solo la de hoy).
+// - 5:30 p.m.: todos los que aún deben hoy y no han pagado.
+// Quien ya pagó o mandó comprobante NO recibe recordatorio: eso lo garantiza
+// `estadosCuentaHoy()`, que ya los excluye.
 //
 // La "lista por llamar" (quién debe hoy y no ha pagado al cierre) se calcula
 // en vivo con `paraLlamarHoy()`; la bitácora `recordatorios` solo evita repetir
@@ -14,7 +17,7 @@ import { sendTemplate } from "@/lib/whatsapp/client";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "./fecha";
 import { normalizarTelefono } from "./telefono";
-import { estadosCuentaHoy, type EstadoCuenta } from "./estado-cuenta";
+import { estadosCuentaHoy, cuotasAtraso, type EstadoCuenta } from "./estado-cuenta";
 import { espejarEnChat } from "./pipeline";
 
 const TEMPLATE_POR_NIVEL = {
@@ -97,15 +100,18 @@ async function enviarUno(
 }
 
 /**
- * Manda el recordatorio del nivel indicado a TODOS los que aún deben hoy y no
- * han pagado. En tandas para no saturar la API de Meta.
+ * Manda el recordatorio del nivel indicado.
+ * - mediodía (1pm): solo quien debe más de una cuota.
+ * - cierre (5:30): todos los que aún deben hoy y no han pagado.
  */
 export async function enviarRecordatoriosHoy(nivel: NivelRecordatorio): Promise<{
   total: number; enviados: number; fallidos: number; sinNumero: number; yaEstaban: number;
 }> {
   const sb = createServerSupabase();
   const fecha = hoyPanama();
-  const estados = await estadosCuentaHoy(); // alcance + excluye a quien pagó
+  const base = await estadosCuentaHoy(); // alcance + excluye a quien pagó
+  const estados =
+    nivel === "mediodia" ? base.filter((e) => cuotasAtraso(e) > 1) : base;
 
   let enviados = 0, fallidos = 0, sinNumero = 0, yaEstaban = 0;
   const TANDA = 10;

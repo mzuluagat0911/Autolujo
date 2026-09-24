@@ -9,7 +9,7 @@
 //   - mantenimiento u otros recargos
 // Solo por demora o saldo de la CUOTA DIARIA (letra).
 //
-// Corre el martes a primera hora, junto con el cobro de las 8am, para que el
+// Corre el martes a primera hora, junto con el cobro de las 9am, para que el
 // recargo salga en el estado de cuenta de la mañana.
 //
 // "No cerró la semana" = atraso de letra de días anteriores (pendienteAnterior

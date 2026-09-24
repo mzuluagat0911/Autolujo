@@ -889,7 +889,9 @@ export async function anexarCarroAComprobantePendiente(
   return numero;
 }
 
-/** # de carro (del comentario o del chat) → vehículo → contrato ACTIVO. */
+/** # de carro (del comentario, chat u oficina) → vehículo → contrato ACTIVO.
+ *  `g26` y `G26` son el mismo carro Gold; no se confunden con el Autolujo `26`.
+ */
 export async function resolverContratoPorCarro(numeroCarro: string | null): Promise<ResolucionCarro> {
   const vacio: ResolucionCarro = {
     vehiculoId: null, contratoId: null, clienteId: null, etiqueta: null, estado: "sin_carro",
@@ -898,17 +900,17 @@ export async function resolverContratoPorCarro(numeroCarro: string | null): Prom
   const sb = createServerSupabase();
 
   const raw = String(numeroCarro).trim().replace(/^carro\s+/i, "");
+  if (!raw) return vacio;
   const digits = raw.replace(/\D/g, "");
-  const candidatos = new Set<string>();
-  if (raw) {
-    candidatos.add(raw);
-    candidatos.add(raw.toUpperCase());
-  }
+  const traeLetra = /[a-z]/i.test(raw);
+  const rawUp = raw.toUpperCase();
+
+  const candidatos = new Set<string>([raw, rawUp]);
   if (digits) {
     candidatos.add(digits);
     candidatos.add(`G${digits}`);
+    candidatos.add(`g${digits}`);
   }
-  if (candidatos.size === 0) return vacio;
 
   const { data: vehs } = await sb
     .from("vehiculos")
@@ -916,22 +918,44 @@ export async function resolverContratoPorCarro(numeroCarro: string | null): Prom
     .in("numero", [...candidatos]);
   if (!vehs?.length) return { ...vacio, estado: "sin_carro" };
 
-  // Preferencia: match exacto del texto (G45) sobre solo dígitos (45).
-  const exacto = vehs.find((v) => v.numero.toUpperCase() === raw.toUpperCase());
-  const lista = exacto ? [exacto] : vehs;
+  type Veh = (typeof vehs)[number];
+  const porNumero = (pred: (n: string) => boolean) => vehs.filter((v) => pred(v.numero));
 
-  const vehIds = lista.map((v) => v.id);
+  // 1) Match exacto sin importar mayúsculas: g26 → G26.
+  let elegidos: Veh[] = porNumero((n) => n.toUpperCase() === rawUp);
+
+  // 2) Escribió con letra (g26 / G26 / gd26): solo carros con prefijo, nunca el "26" puro.
+  if (!elegidos.length && traeLetra && digits) {
+    elegidos = porNumero(
+      (n) => /[a-z]/i.test(n) && n.replace(/\D/g, "") === digits,
+    );
+    // Preferir G{digits} si hay varios (G26 vs algo raro).
+    const gExact = elegidos.filter((v) => v.numero.toUpperCase() === `G${digits}`);
+    if (gExact.length) elegidos = gExact;
+  }
+
+  // 3) Solo dígitos (26): primero el numérico exacto; si no existe, el Gold G26.
+  if (!elegidos.length && digits) {
+    elegidos = porNumero((n) => n === digits);
+    if (!elegidos.length) {
+      elegidos = porNumero((n) => n.toUpperCase() === `G${digits}`);
+    }
+  }
+
+  if (!elegidos.length) elegidos = vehs;
+
+  const vehIds = elegidos.map((v) => v.id);
   const { data: contratos } = await sb
     .from("contratos")
     .select("id, cliente_id, vehiculo_id")
     .in("vehiculo_id", vehIds)
     .eq("estado", "activo");
 
-  const numeroEtiqueta = exacto?.numero ?? lista[0].numero;
+  const numeroEtiqueta = elegidos[0].numero;
   const etiqueta = `Carro ${numeroEtiqueta}`;
   if (!contratos?.length) {
     return {
-      vehiculoId: lista[0].id,
+      vehiculoId: elegidos[0].id,
       contratoId: null,
       clienteId: null,
       etiqueta,
@@ -942,7 +966,7 @@ export async function resolverContratoPorCarro(numeroCarro: string | null): Prom
     return { vehiculoId: null, contratoId: null, clienteId: null, etiqueta, estado: "ambiguo" };
   }
   const c = contratos[0];
-  const veh = lista.find((v) => v.id === c.vehiculo_id) ?? lista[0];
+  const veh = elegidos.find((v) => v.id === c.vehiculo_id) ?? elegidos[0];
   return {
     vehiculoId: c.vehiculo_id,
     contratoId: c.id,
