@@ -61,36 +61,21 @@ export function etiquetaCargo(concepto: string | null, codigo: string | null, ti
 
 /**
  * Parte cuenta vs recargo del total de hoy (sin el arreglo del día).
- * El arreglo se lista aparte como en los extractos de caja.
+ *
+ * “Por no pagar” SOLO si hay recargo real: línea “por no pagar a tiempo”
+ * o `e.recargo` (corte ya pasado / multa PAGO_TARDE). Nunca encajar el saldo
+ * en N letras + K×$5: eso etiqueta atraso de letra como recargo.
+ * Ejemplo G20 (24 sep 2026): saldo $165 con letra $35 y penalidad $5 cuadraba
+ * en $140 + $25. No había ni una multa PAGO_TARDE; los $25 eran deuda.
  */
 function cuentaYRecargo(e: EstadoCuenta): { cuenta: number; recargo: number } {
-  const pen = e.penalidad;
-  const letra = e.letra;
-  // Solo restar lo del arreglo que SÍ entró al totalHoy (lo que aún falta).
   const acuerdoEnTotal = Math.max(
     Number((e as EstadoCuenta & { faltaAcuerdo?: number }).faltaAcuerdo) || 0,
     0,
   );
   const base = Math.max(e.totalHoy - acuerdoEnTotal, 0);
-
-  if (letra > 0.009 && pen > 0.009) {
-    let best: { cuenta: number; recargo: number } | null = null;
-    for (let n = 1; n <= 60; n++) {
-      for (let k = 0; k <= n + 1; k++) {
-        const cuenta = n * letra;
-        const recargo = k * pen;
-        if (Math.abs(cuenta + recargo - base) < 0.05) {
-          if (!best || cuenta > best.cuenta) best = { cuenta, recargo };
-        }
-      }
-    }
-    if (best) return best;
-  }
-
-  // Solo el recargo REAL (ya pasado el corte o multa registrada). Nunca inventar
-  // $5 “por no pagar” solo porque hay saldo anterior — eso ensucia el extracto.
   const deLinea = e.lineas.find((l) => l.concepto === "por no pagar a tiempo");
-  const recargo = deLinea && deLinea.monto > 0.009 ? deLinea.monto : e.recargo;
+  const recargo = deLinea && deLinea.monto > 0.009 ? deLinea.monto : Math.max(e.recargo, 0);
   return { cuenta: Math.max(base - recargo, 0), recargo };
 }
 
