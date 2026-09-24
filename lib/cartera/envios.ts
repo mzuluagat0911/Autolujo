@@ -15,14 +15,13 @@ import {
   type EstadoCuenta,
 } from "./estado-cuenta";
 import {
-  acuerdoSaldoContrato,
   acuerdosSaldoPorContrato,
   armarExtractoDiario,
-  cargosExtraAgrupados,
   cargosExtraPorContrato,
   lineasExtractoBase,
   type LineaExtracto,
 } from "./extracto-desglose";
+import { ctxCobroHoy } from "./cobro-hoy";
 import {
   estaAlDia,
   previewEstadoCuenta,
@@ -78,11 +77,7 @@ function componentes(vars: string[]) {
 }
 
 export async function enrichExtracto(e: EstadoCuenta): Promise<ExtraCtx> {
-  const [acuerdoSaldo, extras] = await Promise.all([
-    acuerdoSaldoContrato(e.contratoId),
-    cargosExtraAgrupados(e.contratoId),
-  ]);
-  return { acuerdoSaldo, extras };
+  return ctxCobroHoy(e.contratoId);
 }
 
 async function enviarConFallbacks(to: string, e: EstadoCuenta, ctx: ExtraCtx): Promise<void> {

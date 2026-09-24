@@ -158,7 +158,8 @@ export function calcularCifras(e: EntradaCifras): Cifras {
 
   const cuotaLinea = Math.max(rentaEnSaldo, faltaHoy);
   const lineas = armarLineas({
-    acuerdoHoy,
+    // Solo lo que aún falta del arreglo hoy (no la cuota ya cubierta).
+    acuerdoHoy: faltaAcuerdo,
     cuotaHoy: cuotaLinea,
     pendienteAnterior,
     recargo,

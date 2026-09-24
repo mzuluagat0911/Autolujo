@@ -23,7 +23,7 @@ import {
   type ItemExtraElegido,
 } from "./prioridad-extras";
 
-export type LineaExtracto = { etiqueta: string; monto: number };
+export type LineaExtracto = { etiqueta: string; monto: number; /** Solo aviso: no lleva $ delante ni suma al total. */ aviso?: boolean };
 
 const SKIP_CODIGOS = new Set(["PAGO_TARDE"]);
 
@@ -151,13 +151,13 @@ export function armarExtractoDiario(
 
   const out: LineaExtracto[] = [...lineasBase];
 
-  // Acuerdos: SOLO si aún falta la cuota de hoy. Si se lista, SUMA al total
-  // (vía extraElegido / candidatos con faltaAcuerdo). Nunca mostrar $5 “de
-  // adorno” fuera del total — confunde. Plan con saldo pero cuota cubierta:
-  // no va en el extracto de cobro de hoy.
+  // Acuerdos: si el carro tiene plan, SIEMPRE se lista.
+  // - faltaAcuerdo > 0 → línea con $ y SUMA al total (extraElegido).
+  // - cuota ya cubierta → aviso con saldo, sin $ de cobro (no se cobra 2 veces).
+  const acuerdoHoy = Math.max(Number(e.acuerdoHoy) || 0, 0);
   const faltaAcuerdo = Math.max(Number(e.faltaAcuerdo) || 0, 0);
+  const saldoAcuerdo = Math.max(Number(opts?.acuerdoSaldo) || 0, 0);
   if (faltaAcuerdo > 0.009) {
-    const saldoAcuerdo = Math.max(Number(opts?.acuerdoSaldo) || 0, 0);
     const cobrando =
       extraElegido?.categoria === "acuerdo" &&
       Math.abs(extraElegido.montoHoy - faltaAcuerdo) < 0.05;
@@ -168,6 +168,15 @@ export function armarExtractoDiario(
     out.push({
       etiqueta: cobrando ? etiquetaBase : `${etiquetaBase} (pendiente)`,
       monto: faltaAcuerdo,
+    });
+  } else if (acuerdoHoy > 0.009 || saldoAcuerdo > 0.009) {
+    out.push({
+      etiqueta:
+        saldoAcuerdo > 0.009
+          ? `acuerdos (saldo ${money(saldoAcuerdo)})`
+          : "acuerdos",
+      monto: 0,
+      aviso: true,
     });
   }
 
@@ -216,7 +225,7 @@ export function lineasExtractoBase(
 /** Une líneas para la variable Meta (sin saltos: Meta no los acepta en params). */
 export function textoDesgloseExtracto(lineas: LineaExtracto[]): string {
   return lineas
-    .map((l) => `${money(l.monto)} ${l.etiqueta}`)
+    .map((l) => (l.aviso || l.monto <= 0.009 ? l.etiqueta : `${money(l.monto)} ${l.etiqueta}`))
     .join(" · ");
 }
 

@@ -11,6 +11,7 @@ import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
 import { textoComoSeAplico } from "./aplicar-pago";
+import { cobroHoyContrato } from "./cobro-hoy";
 import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
 import { carroCompatibleConChat } from "@/lib/cartera/cruce";
 import { detectarDiasViaje, textoTarifasInterior, type DestinoInterior } from "./salidas-interior";
@@ -258,6 +259,9 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     ? `SÍ cobra los domingos (cuota domingo ${m(est.cuotaDomingo || est.letra)})`
     : "NO cobra los domingos (domingos libres)";
 
+  // Misma cifra que el WhatsApp / extracto (NO usar est.totalHoy a pelo).
+  const cobro = await cobroHoyContrato(est);
+
   const lineas = [
     `FECHA Y HORA REALES (Panamá). Úsalas; NUNCA supongas otro día ni otra hora:`,
     `- Hoy es ${fechaConDia(hoy)}. Son las ${horaPanama()}.`,
@@ -285,7 +289,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     est.pagoHoy
       ? est.pagoPuntual
         ? `- Este cliente YA cubrió lo de hoy PUNTUAL (antes de las 7:00 p.m.), posiblemente en varios abonos. Eso YA está descontado del saldo.`
-        : `- Este cliente abonó hoy ${m(est.pagadoHoy)} pero NO cubrió lo del día (cuota ${m(est.cuotaHoy)}${est.acuerdoHoy ? ` + arreglo ${m(est.acuerdoHoy)}` : ""}). Pierde el descuento de $${est.penalidad} de ESE día. El resto se arrastra.`
+        : `- Este cliente abonó hoy ${m(est.pagadoHoy)} pero NO cubrió lo del día (cuota ${m(est.cuotaHoy)}${cobro.faltaAcuerdo > 0.009 ? ` + arreglo ${m(cobro.faltaAcuerdo)}` : ""}). Pierde el descuento de $${est.penalidad} de ESE día. El resto se arrastra.`
       : est.pendiente
         ? `- Este cliente mandó comprobante hoy por ${m(est.pendienteMonto)} y está EN VALIDACIÓN. AÚN NO está descontado del saldo. NO le digas que ya pagó ni que queda al día.`
         : `- Hoy NO tiene ningún pago validado todavía.`,
@@ -303,29 +307,35 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `- Si pregunta cuánto debe: dile que su saldo pendiente es ${m(est.cuenta)} (deuda del carro que entregó).`,
     );
   } else if (est.devengadoHasta != null) {
-    // Datos COMPLETOS: entregamos el total con confianza.
+    // Datos COMPLETOS: misma fuente que el extracto de WhatsApp (cobroHoy).
+    const extraTxt = cobro.extraElegido
+      ? `${cobro.extraElegido.etiqueta} ${m(cobro.extraElegido.montoHoy)} (${cobro.extraElegido.motivo})`
+      : "ninguno hoy";
     lineas.push(
       ``,
       `RESUMEN DE LA CUENTA (para "cuánto debo hoy" cobra EXACTAMENTE el total de abajo; no lo recalcules):`,
-      `- TOTAL A PAGAR HOY: ${m(est.totalHoy)}. Este es el único monto a cobrar. Ya incluye la letra de hoy, el atraso de letra y el recargo.${esDomingo(hoyPanama()) ? " HOY ES DOMINGO: el compromiso de domingo SÍ va en este total." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
+      `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${esDomingo(hoyPanama()) ? " HOY ES DOMINGO: el compromiso de domingo SÍ puede ir en este total si está en el desglose." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
+      `- Desglose del extracto: ${cobro.desglose || "(sin líneas)"}.`,
+      `- Ítem adicional cobrado hoy: ${extraTxt}.`,
       `- Tarifa de la letra diaria (precio del día, no es el saldo): ${m(est.cuotaHoy)}.`,
-      `- Atraso de letra que ya está dentro del total (sin domingo): ${m(est.pendienteAnterior)}.`,
+      `- Atraso de letra (sin domingo): ${m(est.pendienteAnterior)}.`,
+      cobro.acuerdoSaldo > 0.009 || cobro.acuerdoHoy > 0.009
+        ? `- ACUERDO DE PAGO: plan activo, saldo ${m(cobro.acuerdoSaldo)}. Cuota de hoy del acuerdo: ${m(cobro.acuerdoHoy)}. Aún falta hoy: ${m(cobro.faltaAcuerdo)}.${cobro.faltaAcuerdo > 0.009 ? " Eso YA está en el TOTAL si es el ítem del día." : " La cuota de hoy del acuerdo YA está cubierta; el plan sigue (saldo). Mencionalo si pregunta; NO lo vuelvas a sumar al total."}`
+        : `- ACUERDO DE PAGO: no tiene plan activo.`,
       est.domingoSaldo > 0.009
         ? esDomingo(hoyPanama())
-          ? `- DOMINGO HOY: ${m(est.domingoSaldo)} entra en el total a pagar hoy.`
+          ? `- DOMINGO HOY: ${m(est.domingoSaldo)} — solo súmalo si aparece en el desglose del extracto.`
           : `- DOMINGO PENDIENTE: ${m(est.domingoSaldo)}. Menciónalo como pendiente. NUNCA lo sumes al total a pagar hoy (lun–sáb).`
         : `- DOMINGO PENDIENTE: $0.`,
-      `- Desglose, ya neto en el total: ${est.desglose}.`,
       `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
       `  no cubrió lo del extracto de hoy (letra + el un ítem adicional del día), pierde el descuento de ese día y el resto se va a mañana.`,
       yaCorte || est.pagoPuntual || est.pendiente
         ? `- Ese monto ya considera la situación de hoy.`
-        : `- Si a las 7 p.m. no ha cubierto lo de hoy: ${m(est.totalHoyTarde)}.`,
+        : `- Si a las 7 p.m. no ha cubierto lo de hoy (aprox. ledger): ${m(est.totalHoyTarde)}. El cobro oficial sigue siendo ${m(cobro.totalCobrarHoy)} hasta nuevo extracto.`,
       est.cuotaManana > 0
-        ? `- Si NO paga hoy y paga mañana: ${m(est.totalManana)}.`
-        : `- Mañana no corre cuota nueva; si no paga hoy, mañana seguiría en ${m(est.totalHoyTarde)}.`,
-      `- Ese total sale de sumar las cuotas diarias que aún no se han cubierto; cada pago`,
-      `  VALIDADO ya está descontado. Un comprobante en validación NO baja el saldo.`,
+        ? `- Si NO paga hoy y paga mañana (aprox.): ${m(est.totalManana)}.`
+        : `- Mañana no corre cuota nueva; si no paga hoy, mañana seguiría cerca de ${m(est.totalHoyTarde)}.`,
+      `- Cada pago VALIDADO ya está descontado. Un comprobante en validación NO baja el saldo.`,
       `- Si te piden un plazo que no está aquí, NO lo calcules: dales estas cifras y pregunta`,
       `  si con eso les sirve. No pases a una persona en el primer intento.`,
     );
@@ -337,7 +347,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       ``,
       `PAGO ADELANTADO POR SEMANA (si pide "pagar la semana adelantada"):`,
       `- Una semana son ${diasSemana} días (${est.cobraDomingo ? "incluye domingo" : "domingo libre"}) a ${m(est.letra)} = ${m(valorSemana)}. Eso es SOLO las cuotas de la semana; no incluye lo que ya deba.`,
-      `- Si quiere ponerse al día HOY y además dejar la semana adelantada: ${m(est.totalHoy)} + ${m(valorSemana)} = ${m(est.totalHoy + valorSemana)}.`,
+      `- Si quiere ponerse al día HOY y además dejar la semana adelantada: ${m(cobro.totalCobrarHoy)} + ${m(valorSemana)} = ${m(cobro.totalCobrarHoy + valorSemana)}.`,
       `- Para OTROS plazos (2 semanas, un mes, X días), NO lo calcules: dales la semana y el día;`,
       `  no pases a una persona salvo que insistan en esa cuenta exacta.`,
     );
@@ -433,14 +443,16 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     lineas.push(
       ``,
       `REGLA DE COBRO DIARIO (OBLIGATORIA — “cuánto debo HOY” / extracto):`,
+      `- La cifra oficial es TOTAL A PAGAR HOY de arriba (${m(cobro.totalCobrarHoy)}) y su desglose. No inventes otra.`,
       `- SIEMPRE se cobra: letra del día + saldo anterior de letra + recargo/cierre de semana si aplica.`,
       `- Además, SOLO UN ítem adicional por día (aunque deba varios). Orden de prioridad:`,
-      `  1) Acuerdos de pago (incluye abono inicial restante a cuota diaria)  2) Mantenimiento  3) Cualquier otro que no sea domingo (extensión, km, etc.) eligiendo el de MENOR saldo.`,
+      `  1) Acuerdos de pago (solo lo que FALTA hoy del arreglo)  2) Mantenimiento  3) Cualquier otro que no sea domingo (extensión, km, etc.) eligiendo el de MENOR saldo.`,
+      `- Si tiene plan de acuerdo con saldo pero la cuota de hoy YA está pagada: dilo (saldo del plan), NO lo sumes otra vez.`,
       `- ESE ÍTEM NUNCA ES EL DOMINGO. El domingo se lista como pendiente y no entra al total, ni hoy ni ningún otro día.`,
-      `- Ese ítem se sigue cobrando día a día hasta quedar en cero; después entra el siguiente.`,
-      `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL A PAGAR HOY solo incluye letra/recargo/cierre + ese un ítem. El domingo queda fuera.`,
+      `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL solo incluye letra/recargo/cierre + ese un ítem.`,
       `- NO sumes mantenimiento + acuerdos + domingo el mismo día en el total de hoy.`,
-      `- Clientes nuevos: pueden deber panapass/domingos de entrada y abono parcial; la letra puede empezar en fecha distinta a la del contrato. Respeta las cifras del sistema.`,
+      `- NUNCA inventes una línea “abono” con lo pagado hoy: eso ya está descontado.`,
+      `- Clientes nuevos: pueden deber panapass/domingos de entrada y abono inicial; respeta las cifras del sistema.`,
     );
   }
 
