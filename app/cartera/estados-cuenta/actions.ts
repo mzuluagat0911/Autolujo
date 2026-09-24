@@ -6,9 +6,11 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import { enviarEstadoCuentaPrueba } from "@/lib/cartera/envios";
 import type { FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
+import { fechaConDiaSemana } from "@/lib/cartera/acuerdo";
 
 const FRECUENCIAS_OK = new Set<FrecuenciaAcuerdo>([
   "dia",
+  "domingo",
   "semana",
   "quincena",
   "mes",
@@ -335,10 +337,18 @@ export async function guardarLedgerEditable(
 
     if (a.id) {
       const { error } = await sb.from("acuerdos").update(body).eq("id", a.id).eq("contrato_id", contratoId);
-      if (error && /frecuencia|fecha_especifica/i.test(error.message)) {
-        const { frecuencia: _f, fecha_especifica: _fe, ...sin } = body;
-        const retry = await sb.from("acuerdos").update(sin).eq("id", a.id).eq("contrato_id", contratoId);
-        if (retry.error) return { ok: false, error: `Actualizar acuerdo: ${retry.error.message}` };
+      if (error && /frecuencia|fecha_especifica|check/i.test(error.message)) {
+        const fallback = { ...body };
+        if (frecuencia === "domingo") {
+          fallback.frecuencia = "semana";
+          fallback.fecha_especifica = fecha_especifica ?? fechaConDiaSemana(hoyPanama(), 0);
+        }
+        const { frecuencia: _f, fecha_especifica: _fe, ...sin } = fallback;
+        const retryFull = await sb.from("acuerdos").update(fallback).eq("id", a.id).eq("contrato_id", contratoId);
+        if (retryFull.error) {
+          const retry = await sb.from("acuerdos").update(sin).eq("id", a.id).eq("contrato_id", contratoId);
+          if (retry.error) return { ok: false, error: `Actualizar acuerdo: ${retry.error.message}` };
+        }
       } else if (error) {
         return { ok: false, error: `Actualizar acuerdo: ${error.message}` };
       }
@@ -351,10 +361,18 @@ export async function guardarLedgerEditable(
           Number(body.monto_total) > 0.009 ? body.monto_total : body.saldo,
       };
       const { error } = await sb.from("acuerdos").insert(insertBody);
-      if (error && /frecuencia|fecha_especifica/i.test(error.message)) {
-        const { frecuencia: _f, fecha_especifica: _fe, ...sin } = insertBody;
-        const retry = await sb.from("acuerdos").insert(sin);
-        if (retry.error) return { ok: false, error: `Crear acuerdo: ${retry.error.message}` };
+      if (error && /frecuencia|fecha_especifica|check/i.test(error.message)) {
+        const fallback = { ...insertBody };
+        if (frecuencia === "domingo") {
+          fallback.frecuencia = "semana";
+          fallback.fecha_especifica = fecha_especifica ?? fechaConDiaSemana(hoyPanama(), 0);
+        }
+        const { frecuencia: _f, fecha_especifica: _fe, ...sin } = fallback;
+        const retryFull = await sb.from("acuerdos").insert(fallback);
+        if (retryFull.error) {
+          const retry = await sb.from("acuerdos").insert(sin);
+          if (retry.error) return { ok: false, error: `Crear acuerdo: ${retry.error.message}` };
+        }
       } else if (error) {
         return { ok: false, error: `Crear acuerdo: ${error.message}` };
       }
