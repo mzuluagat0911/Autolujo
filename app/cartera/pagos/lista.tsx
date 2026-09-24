@@ -162,7 +162,11 @@ function Fila({
         {p.alertaCuenta ? (
           <StatusChip tone="crit">alerta cuenta</StatusChip>
         ) : !p.contrato_id ? (
-          <StatusChip tone="warn">sin contrato</StatusChip>
+          <StatusChip tone="warn">
+            {(p.notas ?? "").toLowerCase().includes("no vinculado")
+              ? "otro número"
+              : "sin contrato"}
+          </StatusChip>
         ) : p.rubro === "salida_interior" || p.salida ? (
           <StatusChip tone={p.salida?.estado === "autorizada" ? "good" : "warn"}>
             {p.salida

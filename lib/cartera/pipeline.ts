@@ -10,7 +10,7 @@ import { estadoCuentaContrato, money, cuotasAtraso } from "@/lib/cartera/estado-
 import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
-import { aplicarPagoEnObligaciones, textoComoSeAplico } from "./aplicar-pago";
+import { textoComoSeAplico } from "./aplicar-pago";
 import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
 import { carroCompatibleConChat } from "@/lib/cartera/cruce";
 import { detectarDiasViaje, textoTarifasInterior, type DestinoInterior } from "./salidas-interior";
@@ -830,7 +830,66 @@ type ResolucionCarro = {
   estado: "ok" | "sin_contrato" | "ambiguo" | "sin_carro";
 };
 
-/** # de carro (del comentario) → vehículo → contrato ACTIVO. */
+/**
+ * Si el cliente responde solo el # de carro tras "¿de qué carro?", anota ese
+ * carro en el último comprobante pendiente sin contrato (sigue en revisión).
+ * Devuelve el número anotado, o null si no aplica.
+ */
+export async function anexarCarroAComprobantePendiente(
+  conversacion: Conversacion,
+  texto: string,
+): Promise<string | null> {
+  const t = (texto ?? "").trim();
+  if (!t || t.length > 24) return null;
+  // "G45", "carro 144", "144", "GD G32"…
+  if (!/^(carro\s*)?[a-z]{0,3}\s*\d{1,4}$/i.test(t.replace(/\s+/g, " ").trim())) return null;
+
+  const hist = await historialReciente(conversacion.id, 8);
+  const ultimoOut = [...hist].reverse().find((m) => m.direccion === "out");
+  if (!ultimoOut || !/de qu[eé] carro/i.test(ultimoOut.texto)) return null;
+
+  const r = await resolverContratoPorCarro(t);
+  if (r.estado === "sin_carro") return null;
+  const numero =
+    r.etiqueta?.replace(/^carro\s+/i, "") ??
+    t.replace(/^carro\s+/i, "").trim().toUpperCase();
+
+  const sb = createServerSupabase();
+  // Pagos pendientes recientes de este chat (misma ventana ~2h) sin contrato.
+  const desde = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+  const { data: pagos } = await sb
+    .from("pagos")
+    .select("id, notas, numero_carro")
+    .eq("estado_conciliacion", "pendiente")
+    .is("contrato_id", null)
+    .eq("origen", "comprobante")
+    .gte("created_at", desde)
+    .order("created_at", { ascending: false })
+    .limit(5);
+
+  const propio = (pagos ?? []).find((p) =>
+    String((p as { notas?: string }).notas ?? "").includes(conversacion.wa_numero),
+  ) ?? (pagos ?? [])[0];
+  if (!propio) return null;
+
+  const notasPrev = String((propio as { notas?: string }).notas ?? "");
+  const { error } = await sb
+    .from("pagos")
+    .update({
+      numero_carro: numero,
+      notas: `${notasPrev} · Cliente indicó carro ${numero}.`.trim(),
+    })
+    .eq("id", (propio as { id: string }).id);
+  if (error) return null;
+
+  await marcarAmbiguo(
+    conversacion.id,
+    `Comprobante pendiente: cliente indicó carro ${numero}. Revisar en Pagos.`,
+  );
+  return numero;
+}
+
+/** # de carro (del comentario o del chat) → vehículo → contrato ACTIVO. */
 export async function resolverContratoPorCarro(numeroCarro: string | null): Promise<ResolucionCarro> {
   const vacio: ResolucionCarro = {
     vehiculoId: null, contratoId: null, clienteId: null, etiqueta: null, estado: "sin_carro",
@@ -838,29 +897,59 @@ export async function resolverContratoPorCarro(numeroCarro: string | null): Prom
   if (!numeroCarro) return vacio;
   const sb = createServerSupabase();
 
-  const num = numeroCarro.replace(/\D/g, "") || numeroCarro; // "CARRO 144" -> "144"
+  const raw = String(numeroCarro).trim().replace(/^carro\s+/i, "");
+  const digits = raw.replace(/\D/g, "");
+  const candidatos = new Set<string>();
+  if (raw) {
+    candidatos.add(raw);
+    candidatos.add(raw.toUpperCase());
+  }
+  if (digits) {
+    candidatos.add(digits);
+    candidatos.add(`G${digits}`);
+  }
+  if (candidatos.size === 0) return vacio;
+
   const { data: vehs } = await sb
     .from("vehiculos")
     .select("id, numero, empresa:empresas(codigo)")
-    .eq("numero", num);
+    .in("numero", [...candidatos]);
   if (!vehs?.length) return { ...vacio, estado: "sin_carro" };
 
-  const vehIds = vehs.map((v) => v.id);
+  // Preferencia: match exacto del texto (G45) sobre solo dígitos (45).
+  const exacto = vehs.find((v) => v.numero.toUpperCase() === raw.toUpperCase());
+  const lista = exacto ? [exacto] : vehs;
+
+  const vehIds = lista.map((v) => v.id);
   const { data: contratos } = await sb
     .from("contratos")
     .select("id, cliente_id, vehiculo_id")
     .in("vehiculo_id", vehIds)
     .eq("estado", "activo");
 
-  const etiqueta = `Carro ${num}`;
+  const numeroEtiqueta = exacto?.numero ?? lista[0].numero;
+  const etiqueta = `Carro ${numeroEtiqueta}`;
   if (!contratos?.length) {
-    return { vehiculoId: vehs[0].id, contratoId: null, clienteId: null, etiqueta, estado: "sin_contrato" };
+    return {
+      vehiculoId: lista[0].id,
+      contratoId: null,
+      clienteId: null,
+      etiqueta,
+      estado: "sin_contrato",
+    };
   }
   if (contratos.length > 1) {
     return { vehiculoId: null, contratoId: null, clienteId: null, etiqueta, estado: "ambiguo" };
   }
   const c = contratos[0];
-  return { vehiculoId: c.vehiculo_id, contratoId: c.id, clienteId: c.cliente_id, etiqueta, estado: "ok" };
+  const veh = lista.find((v) => v.id === c.vehiculo_id) ?? lista[0];
+  return {
+    vehiculoId: c.vehiculo_id,
+    contratoId: c.id,
+    clienteId: c.cliente_id,
+    etiqueta: `Carro ${veh.numero}`,
+    estado: "ok",
+  };
 }
 
 type ResultadoPago = {
@@ -911,6 +1000,8 @@ export async function procesarPagoComprobante(opts: {
     .replace(/^carro\s+/i, "")
     .trim() || null;
   const ocrCompatibleConChat = carroCompatibleConChat(comprobante.numero_carro, carroChat);
+  /** Chat ya amarrado al arrendatario (su WhatsApp). Si no, es “otro número”. */
+  const chatVinculado = Boolean(conversacion.contrato_id);
 
   // El # de carro sale de un OCR sobre el comentario de la transferencia: un
   // dígito mal leído o mal escrito apuntaría a OTRO contrato. Si la conversación
@@ -918,12 +1009,14 @@ export async function procesarPagoComprobante(opts: {
   // vínculo manda; el carro del comprobante solo puede confirmarlo, no cambiarlo.
   // Excepción: "15" vs "G15" (mismo dígito, OCR sin prefijo) → NO contradice.
   const contradice =
+    chatVinculado &&
     porCarro.estado === "ok" &&
     conversacion.contrato_id != null &&
     porCarro.contratoId !== conversacion.contrato_id &&
     !ocrCompatibleConChat;
 
   let resolucion: ResolucionCarro;
+  let sugerenciaCarro: string | null = null;
   if (contradice) {
     // Ni se aplica al carro leído ni se asume el de la conversación: lo ve una persona.
     resolucion = {
@@ -933,8 +1026,9 @@ export async function procesarPagoComprobante(opts: {
       etiqueta: conversacion.etiqueta,
       estado: "ambiguo",
     };
+    sugerenciaCarro = comprobante.numero_carro;
   } else if (
-    conversacion.contrato_id &&
+    chatVinculado &&
     (ocrCompatibleConChat || porCarro.estado !== "ok" || porCarro.contratoId === conversacion.contrato_id)
   ) {
     // Chat vinculado manda: OCR sin prefijo (15→G15) o sin carro legible.
@@ -945,31 +1039,55 @@ export async function procesarPagoComprobante(opts: {
       etiqueta: conversacion.etiqueta,
       estado: "ok",
     };
+  } else if (!chatVinculado) {
+    // Otro número / chat sin vínculo: NUNCA aplicar solo ni amarrar el chat al carro.
+    // El pago queda pendiente de revisión; el OCR solo sugiere el carro en notas.
+    sugerenciaCarro =
+      comprobante.numero_carro ??
+      (porCarro.etiqueta ? porCarro.etiqueta.replace(/^carro\s+/i, "") : null);
+    resolucion = {
+      vehiculoId: null,
+      contratoId: null,
+      clienteId: null,
+      etiqueta: null,
+      estado: porCarro.estado === "ok" ? "ambiguo" : porCarro.estado,
+    };
   } else {
     resolucion = porCarro;
   }
 
-  const empresaId = await empresaDelVehiculo(resolucion.vehiculoId);
+  const empresaId = await empresaDelVehiculo(
+    resolucion.vehiculoId ?? (chatVinculado ? conversacion.vehiculo_id : null),
+  );
   const veredicto = await validarComprobante({
     comprobante,
     empresaId,
     contratoId: resolucion.contratoId ?? conversacion.contrato_id,
   });
 
-  // Solo se RELLENA lo que falte. Nunca se sobreescribe un vínculo existente:
-  // eso le entregaría a este cliente el saldo del contrato equivocado.
-  const patch: Record<string, unknown> = {};
-  if (!conversacion.vehiculo_id && resolucion.vehiculoId) patch.vehiculo_id = resolucion.vehiculoId;
-  if (!conversacion.contrato_id && resolucion.contratoId) patch.contrato_id = resolucion.contratoId;
-  if (!conversacion.etiqueta && resolucion.etiqueta) patch.etiqueta = resolucion.etiqueta;
-  if (Object.keys(patch).length > 0) {
-    await sb.from("conversaciones").update(patch).eq("id", conversacion.id);
+  // Solo se RELLENA lo que falte, y SOLO si el chat ya estaba vinculado.
+  // Un comprobante desde otro número no puede secuestrar el vínculo del carro.
+  if (chatVinculado) {
+    const patch: Record<string, unknown> = {};
+    if (!conversacion.vehiculo_id && resolucion.vehiculoId) patch.vehiculo_id = resolucion.vehiculoId;
+    if (!conversacion.contrato_id && resolucion.contratoId) patch.contrato_id = resolucion.contratoId;
+    if (!conversacion.etiqueta && resolucion.etiqueta) patch.etiqueta = resolucion.etiqueta;
+    if (Object.keys(patch).length > 0) {
+      await sb.from("conversaciones").update(patch).eq("id", conversacion.id);
+    }
   }
 
   if (contradice) {
     await marcarAmbiguo(
       conversacion.id,
       `El comprobante dice carro ${comprobante.numero_carro}, pero el chat es del ${conversacion.etiqueta ?? "contrato vinculado por teléfono"}. Confirmar a cuál se aplica.`,
+    );
+  } else if (!chatVinculado) {
+    await marcarAmbiguo(
+      conversacion.id,
+      sugerenciaCarro
+        ? `Comprobante desde un número no vinculado. Sugiere carro ${sugerenciaCarro}. Revisar en Pagos.`
+        : "Comprobante desde un número no vinculado al carro. Revisar en Pagos.",
     );
   }
 
@@ -989,11 +1107,15 @@ export async function procesarPagoComprobante(opts: {
     return { pagoId: null, comprobantePath: path, resolucion, estadoConciliacion: "duplicado", veredicto };
   }
 
-  // Si resolvió un solo contrato activo → queda pendiente de conciliación.
-  // Si no (sin carro / sin contrato / ambiguo) → revisión manual.
-  const estadoConciliacion = resolucion.estado === "ok" ? "pendiente" : "manual";
+  // Todo comprobante de WhatsApp queda pendiente de revisión / banco.
+  // Nunca "manual" acá: eso es solo para pagos de oficina. Antes, sin carro
+  // quedaba manual y desaparecía de la cola de Pagos.
+  const estadoConciliacion = "pendiente" as const;
   const notas = [
     `Lectura IA (confianza: ${comprobante.confianza}). Resolución carro: ${resolucion.estado}.`,
+    !chatVinculado
+      ? `Desde número no vinculado (${conversacion.wa_numero}).${sugerenciaCarro ? ` Sugiere ${sugerenciaCarro}.` : ""}`
+      : null,
     veredicto.alertas.length ? `ALERTAS: ${resumirAlertas(veredicto.alertas)}` : null,
   ]
     .filter(Boolean)
@@ -1017,6 +1139,11 @@ export async function procesarPagoComprobante(opts: {
     pagadoAt = instantePanama(fechaPago, 12, 0).toISOString();
   }
 
+  const numeroCarroPago =
+    comprobante.numero_carro ??
+    sugerenciaCarro ??
+    (resolucion.etiqueta ? resolucion.etiqueta.replace(/^carro\s+/i, "") : null);
+
   const { data: pago, error } = await sb
     .from("pagos")
     .insert({
@@ -1029,7 +1156,7 @@ export async function procesarPagoComprobante(opts: {
       referencia: comprobante.referencia,
       cuenta_destino: comprobante.cuenta_destino,
       comprobante_url: path,
-      numero_carro: comprobante.numero_carro,
+      numero_carro: numeroCarroPago,
       origen: "comprobante",
       estado_conciliacion: estadoConciliacion,
       notas,
@@ -1081,14 +1208,6 @@ export async function procesarPagoComprobante(opts: {
     }
   } catch (e) {
     console.error("[pipeline] salida interior", e);
-  }
-
-  if (estadoConciliacion === "manual") {
-    try {
-      await aplicarPagoEnObligaciones(pagoId);
-    } catch (e) {
-      console.error("[pipeline] waterfall pago manual", e);
-    }
   }
 
   return {

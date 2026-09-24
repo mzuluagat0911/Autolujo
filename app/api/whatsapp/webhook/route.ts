@@ -16,6 +16,7 @@ import {
   notasRecientes,
   hayImagenEntranteReciente,
   resumenContrato,
+  anexarCarroAComprobantePendiente,
   type Conversacion,
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
@@ -185,6 +186,19 @@ async function manejarMensaje(msg: WhatsAppMessage) {
     if (pareceCaptionDeAdjunto(msg.text?.body ?? "")) {
       await new Promise((r) => setTimeout(r, VENTANA_ADJUNTO_MS));
       if (await hayImagenEntranteReciente(conv.id, VENTANA_ADJUNTO_MS * 2)) return;
+    }
+    // Si acabamos de preguntar "¿de qué carro?" y responden G45 / 144, anotá el
+    // carro en el comprobante pendiente (sigue en revisión; no se aplica solo).
+    const anexado = await anexarCarroAComprobantePendiente(conv, msg.text?.body ?? "");
+    if (anexado) {
+      await responder(
+        conv.id,
+        from,
+        conPieHorario(
+          `Listo, anoté el carro ${anexado}. El comprobante quedó en revisión del equipo.`,
+        ),
+      );
+      return;
     }
     await responderConAgente(conv, from);
   } else if (tipo === "image") {
@@ -467,8 +481,21 @@ function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: s
   }
   if (res.resolucion.estado === "sin_carro") {
     return {
-      respuesta: `Vi el comprobante${monto ? ` de ${monto}` : ""}. ¿De qué carro es?`,
-      escalarMotivo: null,
+      respuesta: conPieHorario(
+        `Vi el comprobante${monto ? ` de ${monto}` : ""}. ¿De qué carro es? Ya quedó registrado para revisión del equipo.`,
+      ),
+      escalarMotivo: "Comprobante sin carro claro — revisión en Pagos.",
+    };
+  }
+  if (res.resolucion.estado === "ambiguo" || res.resolucion.estado === "sin_contrato") {
+    return {
+      respuesta: conPieHorario(
+        `Vi el comprobante${monto ? ` de ${monto}` : ""}. Ya quedó registrado para revisión del equipo.`,
+      ),
+      escalarMotivo:
+        res.resolucion.estado === "ambiguo"
+          ? "Comprobante ambiguo o desde otro número — revisión en Pagos."
+          : "Comprobante sin contrato activo — revisión en Pagos.",
     };
   }
   if (res.resolucion.estado === "ok" && res.resolucion.contratoId) {
@@ -513,6 +540,7 @@ function lineaComprobante(c: Comprobante, res: ResPago): string {
   if (alerta("fecha_vieja") || alerta("fecha_futura")) return `${monto} fecha rara`;
   if (res.resolucion.estado === "ok" && res.resolucion.contratoId) return `${monto} del ${res.resolucion.etiqueta ?? "carro"}`;
   if (res.resolucion.estado === "sin_carro") return `${monto} ¿de qué carro?`;
+  if (res.resolucion.estado === "ambiguo") return `${monto} a revisión`;
   return `${monto}`;
 }
 
