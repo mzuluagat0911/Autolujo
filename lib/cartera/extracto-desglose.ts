@@ -151,7 +151,10 @@ export function armarExtractoDiario(
 
   const out: LineaExtracto[] = [...lineasBase];
 
-  // Acuerdos: solo lo que aún falta hoy (aparte de la letra).
+  // Acuerdos: SOLO si aún falta la cuota de hoy. Si se lista, SUMA al total
+  // (vía extraElegido / candidatos con faltaAcuerdo). Nunca mostrar $5 “de
+  // adorno” fuera del total — confunde. Plan con saldo pero cuota cubierta:
+  // no va en el extracto de cobro de hoy.
   const faltaAcuerdo = Math.max(Number(e.faltaAcuerdo) || 0, 0);
   if (faltaAcuerdo > 0.009) {
     const saldoAcuerdo = Math.max(Number(opts?.acuerdoSaldo) || 0, 0);
