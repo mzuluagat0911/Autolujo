@@ -290,7 +290,11 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                     )}
                   </td>
                   <td className="px-4 py-2.5">
-                    <StatusChip tone={tonoSituacion(e)}>{textoSituacionCuotas(e)}</StatusChip>
+                    <StatusChip tone={e.totalCobrarHoy <= 0.009 && !e.pendiente ? "good" : tonoSituacion(e)}>
+                      {e.totalCobrarHoy <= 0.009 && !e.pendiente && !esAdelantado(e)
+                        ? "Al día"
+                        : textoSituacionCuotas(e)}
+                    </StatusChip>
                     {esAdelantado(e) ? (
                       <p className="mt-1 text-[11px] text-muted tabular-nums">
                         {e.diasAdelantados} cuota{e.diasAdelantados === 1 ? "" : "s"} por delante
@@ -298,17 +302,17 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                           ? ` · cubierto hasta ${fechaCorta(e.cubiertoHasta)}`
                           : ""}
                       </p>
-                    ) : esAlDiaHoy(e) ? (
-                      e.acuerdoHoy > 0.009 ? (
+                    ) : e.totalCobrarHoy <= 0.009 || esAlDiaHoy(e) ? (
+                      e.acuerdoHoy > 0.009 && e.totalCobrarHoy > 0.009 ? (
                         <p className="mt-1 text-[11px] text-muted tabular-nums">
                           Acuerdo pendiente {money(e.acuerdoHoy)}
                         </p>
                       ) : (
-                        <p className="mt-1 text-[11px] text-muted">Letra del día cubierta</p>
+                        <p className="mt-1 text-[11px] text-muted">Nada que cobrar hoy</p>
                       )
                     ) : (
                       <p className="mt-1 text-[11px] font-medium tabular-nums text-ink">
-                        A pagar hoy {money(e.totalHoy)}
+                        A pagar hoy {money(e.totalCobrarHoy)}
                       </p>
                     )}
                     <BotonPreviewMensaje onClick={() => setPreview(e)} />

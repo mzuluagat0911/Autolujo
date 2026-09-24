@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { Suspense } from "react";
 import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
-import { esAlDiaHoy } from "@/lib/cartera/estado-cuenta";
 import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta-cache";
+import { cobroHoyDe } from "@/lib/cartera/cobro-hoy";
 import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
 import {
   acuerdosSaldoPorContrato,
@@ -47,11 +47,12 @@ async function EstadosCuerpo() {
       acuerdosSaldoPorContrato(ids),
       cargosExtraPorContrato(ids),
     ]);
-    estados = base.map((e) => ({
-      ...e,
-      acuerdoSaldo: acuerdoMap.get(e.contratoId) ?? 0,
-      extras: extrasMap.get(e.contratoId) ?? [],
-    }));
+    estados = base.map((e) => {
+      const acuerdoSaldo = acuerdoMap.get(e.contratoId) ?? 0;
+      const extras = extrasMap.get(e.contratoId) ?? [];
+      const cobro = cobroHoyDe(e, { acuerdoSaldo, extras });
+      return { ...e, acuerdoSaldo, extras, totalCobrarHoy: cobro.totalCobrarHoy };
+    });
   } catch (e) {
     estados = [];
     error = e instanceof Error ? e.message : "Error";
@@ -62,8 +63,8 @@ async function EstadosCuerpo() {
   const deudaCerradaTotal = cerradas.reduce((a, d) => a + d.saldo, 0);
 
   const totalACobrar = estados
-    .filter((e) => e.totalHoy > 0.009 && !esAlDiaHoy(e))
-    .reduce((a, e) => a + e.totalHoy, 0);
+    .filter((e) => e.totalCobrarHoy > 0.009)
+    .reduce((a, e) => a + e.totalCobrarHoy, 0);
   const conRecargo = estados.filter((e) => e.recargosAcumulados > 0.009).length;
   const primero = estados[0] ?? null;
 

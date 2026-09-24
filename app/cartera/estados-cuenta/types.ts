@@ -5,4 +5,6 @@ import type { LineaExtracto } from "@/lib/cartera/extracto-desglose";
 export type EstadoCuentaFila = EstadoCuenta & {
   acuerdoSaldo: number;
   extras: LineaExtracto[];
+  /** Misma cifra del extracto / WhatsApp. La situación cobra esto, no el ledger. */
+  totalCobrarHoy: number;
 };

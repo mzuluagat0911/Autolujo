@@ -249,13 +249,11 @@ export function DetalleEstadoModal({
             <div className="space-y-5 px-5 py-5">
               <div className="rounded-xl bg-surface-2 px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                  {adelantado
+                  {adelantado || alDia || (estado.totalCobrarHoy ?? estado.totalHoy) <= 0.009
                     ? "Situación"
-                    : alDia
-                      ? "A pagar hoy"
-                      : estado.pendiente
-                        ? "Monto en validación"
-                        : "A pagar hoy"}
+                    : estado.pendiente
+                      ? "Monto en validación"
+                      : "A pagar hoy"}
                 </p>
                 {adelantado ? (
                   <p className="mt-1 text-2xl font-bold tracking-tight text-azul">
@@ -275,7 +273,7 @@ export function DetalleEstadoModal({
                     {alDia ? (
                       "Al día"
                     ) : (
-                      <Money amount={estado.totalHoy} className="text-3xl font-bold" />
+                      <Money amount={estado.totalCobrarHoy ?? estado.totalHoy} className="text-3xl font-bold" />
                     )}
                   </p>
                 )}
@@ -363,7 +361,7 @@ export function DetalleEstadoModal({
                 )}
                 {!alDia && !adelantado && (
                   <Fila label="Total">
-                    <span className="text-base font-semibold">{money(estado.totalHoy)}</span>
+                    <span className="text-base font-semibold">{money(estado.totalCobrarHoy ?? estado.totalHoy)}</span>
                   </Fila>
                 )}
                 {!adelantado && !alDia && estado.recargoSiTarda > 0.009 && (
