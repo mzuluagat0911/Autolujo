@@ -276,10 +276,10 @@ export function EditorLedger({
 
   return (
     <div className="space-y-5 px-5 py-5">
-      <p className="text-sm text-muted">
-        Cambiá montos, agregá mantenimiento, salida al interior u otros conceptos, o ajustá acuerdos.
-        Al guardar se actualiza la base de datos al instante.
-      </p>
+      <div className="rounded-xl bg-azul-wash px-3.5 py-3 text-sm text-azul">
+        Acá corregís lo que arma el extracto: letra, cargos (mant., domingo, multas…) y acuerdos.
+        Guardá solo cuando los números cuadren — el panel se actualiza al instante.
+      </div>
 
       {error && (
         <p className="rounded-lg bg-rojo-wash px-3 py-2 text-sm text-rojo">{error}</p>
@@ -726,14 +726,14 @@ export function EditorLedger({
         )}
       </section>
 
-      <div className="flex flex-col gap-2 border-t border-line pt-4 sm:flex-row">
+      <div className="sticky bottom-0 -mx-5 flex flex-col gap-2 border-t border-line bg-surface px-5 pt-4 sm:flex-row">
         <button
           type="button"
           onClick={onCancel}
           disabled={saving}
           className="flex-1 rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
         >
-          Cancelar
+          Volver al resumen
         </button>
         <button
           type="button"

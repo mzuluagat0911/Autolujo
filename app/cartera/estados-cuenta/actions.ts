@@ -556,3 +556,268 @@ export async function reaplicarPagoHistorial(pagoId: string, contratoId: string)
   invalidarLecturaEstados();
   return { ok: true, msg: "Desglose reaplicado." };
 }
+
+const TIPOS_ASIG = new Set([
+  "acuerdo",
+  "saldo_anterior",
+  "recargo",
+  "cuenta_diaria",
+  "salida_interior",
+]);
+
+const ETIQUETA_ASIG: Record<string, string> = {
+  acuerdo: "arreglo",
+  saldo_anterior: "saldo anterior",
+  recargo: "recargo",
+  cuenta_diaria: "cuota / letra",
+  salida_interior: "salida al interior",
+};
+
+function r2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Guarda a mano cómo se partió el pago (reasignar conceptos).
+ * Revierte el waterfall previo, escribe las líneas y ajusta saldos de acuerdo.
+ */
+export async function guardarAsignacionesHistorial(opts: {
+  pagoId: string;
+  contratoId: string;
+  lineas: { tipo: string; aplicado: number; etiqueta?: string }[];
+  sobrante?: number;
+}): Promise<ResultadoEditarPago> {
+  const pagoId = String(opts.pagoId ?? "").trim();
+  const contratoId = String(opts.contratoId ?? "").trim();
+  if (!pagoId || !contratoId) return { ok: false, msg: "Faltan datos." };
+
+  const sb = createServerSupabase();
+  const { data: p, error } = await sb
+    .from("pagos")
+    .select("id, contrato_id, monto, estado_conciliacion, pagado_at, notas")
+    .eq("id", pagoId)
+    .maybeSingle();
+  if (error) return { ok: false, msg: error.message };
+  if (!p || (p as { contrato_id: string | null }).contrato_id !== contratoId) {
+    return { ok: false, msg: "El pago no pertenece a este contrato." };
+  }
+  const est = String((p as { estado_conciliacion: string }).estado_conciliacion);
+  if (est !== "conciliado" && est !== "manual") {
+    return { ok: false, msg: "Solo se reasigna si el pago ya cuenta (manual/conciliado)." };
+  }
+
+  const monto = Number((p as { monto: number }).monto) || 0;
+  const lineas = (opts.lineas ?? [])
+    .map((l) => ({
+      tipo: String(l.tipo ?? "").trim(),
+      aplicado: r2(Number(l.aplicado) || 0),
+      etiqueta: (l.etiqueta ?? "").trim() || undefined,
+    }))
+    .filter((l) => l.aplicado > 0.009 && TIPOS_ASIG.has(l.tipo));
+
+  const suma = r2(lineas.reduce((s, l) => s + l.aplicado, 0));
+  let sobrante = opts.sobrante != null ? r2(Number(opts.sobrante) || 0) : r2(monto - suma);
+  if (sobrante < -0.009) return { ok: false, msg: "La suma de conceptos supera el monto del pago." };
+  if (sobrante < 0) sobrante = 0;
+  if (Math.abs(suma + sobrante - monto) > 0.05) {
+    return {
+      ok: false,
+      msg: `La suma ($${suma}) + sobrante ($${sobrante}) debe igualar el pago ($${monto}).`,
+    };
+  }
+
+  try {
+    await revertirPagoEnObligaciones(pagoId);
+  } catch (e) {
+    console.error("[guardarAsignaciones] revertir", e);
+  }
+
+  const asignaciones = lineas.map((l) => ({
+    tipo: l.tipo,
+    aplicado: l.aplicado,
+    etiqueta: l.etiqueta || ETIQUETA_ASIG[l.tipo] || l.tipo,
+  }));
+  const payload = {
+    asignaciones,
+    sobrante,
+    totalAplicado: suma,
+  };
+
+  const notasPrev = String((p as { notas: string | null }).notas ?? "").trim();
+  const nota = `Asignación manual en estado de cuenta (${hoyPanama()}).`;
+  const notas = [notasPrev.replace(/\s*·\s*Asignación manual en estado de cuenta[^·]*/g, "").trim(), nota]
+    .filter(Boolean)
+    .join(" · ");
+
+  const { error: errUp } = await sb
+    .from("pagos")
+    .update({ asignaciones: payload, notas })
+    .eq("id", pagoId);
+  if (errUp) return { ok: false, msg: errUp.message };
+
+  // Baja saldos de acuerdos activos (reparte el monto “acuerdo” entre ellos).
+  let restoAcuerdo = r2(
+    asignaciones.filter((a) => a.tipo === "acuerdo").reduce((s, a) => s + a.aplicado, 0),
+  );
+  if (restoAcuerdo > 0.009) {
+    const { data: acuerdos } = await sb
+      .from("acuerdos")
+      .select("id, saldo")
+      .eq("contrato_id", contratoId)
+      .eq("activo", true)
+      .order("created_at", { ascending: true });
+    for (const a of (acuerdos ?? []) as { id: string; saldo: number }[]) {
+      if (restoAcuerdo <= 0.009) break;
+      const saldo = Math.max(Number(a.saldo) || 0, 0);
+      if (saldo <= 0.009) continue;
+      const take = r2(Math.min(saldo, restoAcuerdo));
+      const nuevo = r2(saldo - take);
+      await sb.from("acuerdos").update({ saldo: nuevo, activo: nuevo > 0.009 }).eq("id", a.id);
+      restoAcuerdo = r2(restoAcuerdo - take);
+    }
+  }
+
+  try {
+    await recalcularRecargo(contratoId, fechaContable((p as { pagado_at: string }).pagado_at));
+  } catch (e) {
+    console.error("[guardarAsignaciones] recargo", e);
+  }
+
+  revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/cartera/pagos");
+  revalidatePath("/cartera");
+  invalidarLecturaEstados();
+  return { ok: true, msg: "Conceptos reasignados." };
+}
+
+/** Registra un pago anterior (u hoy) desde el historial. */
+export async function agregarPagoHistorial(
+  _prev: ResultadoEditarPago | null,
+  formData: FormData,
+): Promise<ResultadoEditarPago> {
+  const contratoId = String(formData.get("contrato_id") ?? "").trim();
+  const montoRaw = String(formData.get("monto") ?? "").replace(",", ".").trim();
+  const fecha = String(formData.get("fecha") ?? "").trim() || hoyPanama();
+  const hora = String(formData.get("hora") ?? "").trim() || "12:00";
+  const metodo = String(formData.get("metodo") ?? "transferencia").trim().toLowerCase();
+  const referencia = String(formData.get("referencia") ?? "").trim() || null;
+  const notasExtra = String(formData.get("notas") ?? "").trim();
+
+  if (!contratoId) return { ok: false, msg: "Falta el contrato." };
+  const monto = Number(montoRaw);
+  if (!Number.isFinite(monto) || monto <= 0) return { ok: false, msg: "Monto inválido." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { ok: false, msg: "Fecha inválida." };
+  if (!METODOS_PAGO.has(metodo)) return { ok: false, msg: "Método inválido." };
+
+  const sb = createServerSupabase();
+  const { data: c, error: errC } = await sb
+    .from("contratos")
+    .select("id, cliente_id, vehiculo:vehiculos(numero)")
+    .eq("id", contratoId)
+    .maybeSingle();
+  if (errC) return { ok: false, msg: errC.message };
+  if (!c) return { ok: false, msg: "No encontré el contrato." };
+
+  const numero =
+    (c as { vehiculo?: { numero?: string } | null }).vehiculo?.numero ?? null;
+  const pagadoAt = pagadoAtDesdeForm(fecha, hora);
+  const notas = [
+    `Pago agregado en estado de cuenta (${hoyPanama()}).`,
+    notasExtra,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const { data: inserted, error: errIns } = await sb
+    .from("pagos")
+    .insert({
+      contrato_id: contratoId,
+      cliente_id: (c as { cliente_id: string | null }).cliente_id,
+      fecha,
+      pagado_at: pagadoAt,
+      monto,
+      metodo,
+      numero_carro: numero,
+      origen: "manual",
+      estado_conciliacion: "manual",
+      referencia,
+      notas,
+    })
+    .select("id")
+    .single();
+  if (errIns) return { ok: false, msg: errIns.message };
+
+  const pagoId = (inserted as { id: string }).id;
+  try {
+    await aplicarPagoEnObligaciones(pagoId);
+    await recalcularRecargo(contratoId, fecha);
+  } catch (e) {
+    console.error("[agregarPagoHistorial] aplicar", e);
+    return {
+      ok: false,
+      msg: e instanceof Error ? e.message : "Creé el pago pero no pude aplicar el desglose.",
+    };
+  }
+
+  revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/cartera/pagos");
+  revalidatePath("/cartera");
+  invalidarLecturaEstados();
+  return { ok: true, msg: "Pago agregado y aplicado." };
+}
+
+/** Elimina un pago del historial (revierte acuerdos y borra la fila). */
+export async function eliminarPagoHistorial(
+  pagoId: string,
+  contratoId: string,
+): Promise<ResultadoEditarPago> {
+  const id = String(pagoId ?? "").trim();
+  const cid = String(contratoId ?? "").trim();
+  if (!id || !cid) return { ok: false, msg: "Faltan datos." };
+
+  const sb = createServerSupabase();
+  const { data: p, error } = await sb
+    .from("pagos")
+    .select("id, contrato_id, pagado_at, estado_conciliacion")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) return { ok: false, msg: error.message };
+  if (!p || (p as { contrato_id: string | null }).contrato_id !== cid) {
+    return { ok: false, msg: "El pago no pertenece a este contrato." };
+  }
+
+  try {
+    await revertirPagoEnObligaciones(id);
+  } catch (e) {
+    console.error("[eliminarPagoHistorial] revertir", e);
+  }
+
+  // Desvincular mensajes que apunten al pago
+  await sb.from("mensajes").update({ pago_id: null }).eq("pago_id", id);
+
+  const { error: errDel } = await sb.from("pagos").delete().eq("id", id);
+  if (errDel) {
+    // Fallback: marcar rechazado si hay FKs
+    const { error: errUp } = await sb
+      .from("pagos")
+      .update({
+        estado_conciliacion: "rechazado",
+        asignaciones: null,
+        notas: `Eliminado en estado de cuenta (${hoyPanama()}).`,
+      })
+      .eq("id", id);
+    if (errUp) return { ok: false, msg: errDel.message };
+  }
+
+  try {
+    await recalcularRecargo(cid, fechaContable((p as { pagado_at: string }).pagado_at));
+  } catch (e) {
+    console.error("[eliminarPagoHistorial] recargo", e);
+  }
+
+  revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/cartera/pagos");
+  revalidatePath("/cartera");
+  invalidarLecturaEstados();
+  return { ok: true, msg: "Pago eliminado." };
+}
