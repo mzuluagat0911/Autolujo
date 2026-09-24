@@ -11,7 +11,10 @@
 //
 // 2) ACUERDO (aparte de la letra):
 //    - Plan en tabla `acuerdos` (saldo + cuota_diaria).
-//    - Waterfall del pago: PRIMERO al acuerdo, después letra.
+//    - Un pago normal NO lo toca. Solo baja el saldo si el rubro es "acuerdo"
+//      o si en el historial se reasigna a mano. Si un comprobante se come la
+//      cuota, faltaAcuerdo queda en 0 y el extracto cobra el extra siguiente
+//      (G20: mantenimiento $26 en vez de los $5 del acuerdo).
 //    - Cargo compensatorio tipo=acuerdo al aplicar → el pago al arreglo
 //      NO come la letra.
 //    - `acuerdoHoy`  = cuota programada hoy (aunque ya la haya pagado).

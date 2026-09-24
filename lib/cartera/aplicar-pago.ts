@@ -1,6 +1,9 @@
-// Waterfall de un abono: primero arreglo, luego saldo anterior y recargo,
-// al final la letra del día. El cliente NO elige; el código reparte y lo deja
-// escrito. Si discute la asignación, eso escala a una persona.
+// Waterfall de un abono a la LETRA: saldo anterior, recargo, cuota del día.
+// El acuerdo NO entra solo. Un comprobante normal baja lo que debe de letra;
+// si se lo come el arreglo, el extracto deja de cobrar los $5 del día y salta
+// al siguiente extra (caso G20: $20 → $5 acuerdo + $15 deuda, y cobró
+// mantenimiento). Al acuerdo solo va un pago con rubro "acuerdo", o una
+// reasignación manual del historial.
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { distribuirPago } from "./rules";
@@ -358,13 +361,18 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     pendiente: false,
   });
 
-  const acuerdosBase = acuerdos
-    .map((a) => ({
-      id: a.id,
-      monto: cuotaAcuerdoHoy(a, fecha),
-      etiqueta: a.descripcion?.trim() || "arreglo",
-    }))
-    .filter((a) => a.monto > 0.009);
+  // Solo si el pago viene marcado como acuerdo. Si no, el arreglo sigue
+  // debiéndose en el extracto (prioridad 1) y este dinero baja la letra.
+  const pagoEsAcuerdo = (pago.rubro ?? "") === "acuerdo";
+  const acuerdosBase = pagoEsAcuerdo
+    ? acuerdos
+        .map((a) => ({
+          id: a.id,
+          monto: cuotaAcuerdoHoy(a, fecha),
+          etiqueta: a.descripcion?.trim() || "arreglo",
+        }))
+        .filter((a) => a.monto > 0.009)
+    : [];
 
   const obligaciones = obligacionesRestantes(
     {
