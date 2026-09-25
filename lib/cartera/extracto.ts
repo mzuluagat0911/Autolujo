@@ -8,6 +8,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, fechaContable, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
+import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { destinoPorId } from "./salidas-interior";
