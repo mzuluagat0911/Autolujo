@@ -77,6 +77,8 @@ export type LedgerEditable = {
   cuotasPagadas: number | null;
   cargos: CargoEditable[];
   acuerdos: AcuerdoEditable[];
+  /** null = menor valor. */
+  prioridadAbono: string | null;
 };
 
 export type CargoDraft = {
@@ -111,6 +113,7 @@ export type GuardarLedgerInput = {
   cuotasPagadas: number | null;
   cargos: CargoDraft[];
   acuerdos: AcuerdoDraft[];
+  prioridadAbono?: string | null;
   nota?: string;
 };
 
@@ -128,6 +131,21 @@ const TIPOS_CARGO_OK = new Set([
 function n(v: unknown): number {
   const x = Number(v);
   return Number.isFinite(x) ? x : 0;
+}
+
+/** Cargos editables (no renta diaria) + acuerdos del contrato. */
+async function prioridadAbonoDe(
+  sb: ReturnType<typeof createServerSupabase>,
+  contratoId: string,
+): Promise<string | null> {
+  const { data, error } = await sb
+    .from("contratos")
+    .select("prioridad_abono")
+    .eq("id", contratoId)
+    .maybeSingle();
+  if (error) return null;
+  const v = (data as { prioridad_abono?: string | null } | null)?.prioridad_abono;
+  return v && v !== "menor" ? v : null;
 }
 
 /** Cargos editables (no renta diaria) + acuerdos del contrato. */
@@ -231,6 +249,7 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
           (a as { fecha_especifica?: string | null }).fecha_especifica,
         ),
       })),
+      prioridadAbono: await prioridadAbonoDe(sb, contratoId),
     },
   };
 }
@@ -264,6 +283,12 @@ export async function guardarLedgerEditable(
     } else if (error) {
       return { ok: false, error: error.message };
     }
+  }
+  if (input.prioridadAbono !== undefined) {
+    const valor =
+      input.prioridadAbono && input.prioridadAbono !== "menor" ? input.prioridadAbono : null;
+    const { error } = await sb.from("contratos").update({ prioridad_abono: valor }).eq("id", contratoId);
+    if (error && !/prioridad_abono/i.test(error.message)) return { ok: false, error: error.message };
   }
 
   for (const c of input.cargos ?? []) {

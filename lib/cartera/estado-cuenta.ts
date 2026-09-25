@@ -831,7 +831,7 @@ async function adelantoFuturoPorContrato(
 }
 
 /** Arma estados de todos los contratos activos del alcance. */
-async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
+export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
   const sb = createServerSupabase();
   const hoy = hoyPanama();
   const corte = pasoCorte();

@@ -2,13 +2,10 @@
 //
 //   SIEMPRE: letra (cuenta + saldo anterior de letra) + recargo si aplica + cierre de semana
 //            + abono de enganche si hay plan activo.
-//   MÁS: un SOLO ítem adicional por día, en este orden:
-//     1. Acuerdos de pago
-//     2. Mantenimiento
-//     3. Resto (extensiones, km, etc.) — el de MENOR saldo primero
+//   MÁS: un SOLO concepto por día. Sin preferencia del carro: el de menor valor.
+//   Con preferencia (prioridad_abono): ese concepto.
 //
-//   DOMINGO (saldo arrastrado / cuota domingo): NUNCA entra al TOTAL A PAGAR HOY.
-//   Solo se lista en el mensaje (como pendiente / aviso). No se cobra en el total.
+//   DOMINGO no entra al total salvo que el carro lo elija.
 //
 // Cuando ese ítem llega a cero, al día siguiente entra el siguiente de la cola.
 // El mensaje puede listar TODO lo debido; el TOTAL A PAGAR HOY solo incluye el
@@ -58,36 +55,24 @@ export function categoriaDeEtiqueta(etiqueta: string): CategoriaExtra {
 }
 
 /**
- * Elige el único ítem adicional a cobrar hoy.
- * `candidatos` ya deben excluir cargos base (cierre, etc.) y domingos.
+ * Elige el único concepto adicional del día (además del recargo).
+ * Sin preferencia del carro: el de menor monto. Con preferencia: ese, si hay.
  */
-export function elegirExtraDelDia(candidatos: ItemExtra[]): ItemExtraElegido | null {
+export function elegirExtraDelDia(
+  candidatos: ItemExtra[],
+  preferencia?: string | null,
+): ItemExtraElegido | null {
   const vivos = candidatos.filter((c) => c.montoHoy > 0.009);
   if (vivos.length === 0) return null;
 
-  const acuerdos = vivos.filter((c) => c.categoria === "acuerdo");
-  if (acuerdos.length > 0) {
-    // Si hubiera varios, cobramos el de menor montoHoy (cuota).
-    const pick = [...acuerdos].sort((a, b) => a.montoHoy - b.montoHoy)[0]!;
-    return { ...pick, motivo: "prioridad 1: acuerdos de pago" };
+  const pref = (preferencia ?? "").trim().toLowerCase();
+  if (pref && pref !== "menor") {
+    const hit = vivos.find((c) => c.categoria === pref || c.etiqueta.toLowerCase().includes(pref));
+    if (hit) return { ...hit, motivo: `prioridad del carro: ${pref}` };
   }
 
-  const mants = vivos.filter((c) => c.categoria === "mantenimiento");
-  if (mants.length > 0) {
-    const pick = [...mants].sort((a, b) => a.montoHoy - b.montoHoy)[0]!;
-    return { ...pick, motivo: "prioridad 2: mantenimiento" };
-  }
-
-  const otros = vivos.filter((c) => c.categoria === "otro");
-  if (otros.length === 0) return null;
-  // Menor saldo primero; si no hay saldo, menor montoHoy.
-  const pick = [...otros].sort((a, b) => {
-    const sa = a.saldo != null && a.saldo > 0.009 ? a.saldo : a.montoHoy;
-    const sb = b.saldo != null && b.saldo > 0.009 ? b.saldo : b.montoHoy;
-    if (sa !== sb) return sa - sb;
-    return a.montoHoy - b.montoHoy;
-  })[0]!;
-  return { ...pick, motivo: "prioridad 3: saldo menor" };
+  const pick = [...vivos].sort((a, b) => a.montoHoy - b.montoHoy)[0]!;
+  return { ...pick, motivo: "menor valor" };
 }
 
 /**

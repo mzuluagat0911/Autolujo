@@ -134,6 +134,7 @@ export function EditorLedger({
   const [letra, setLetra] = useState(0);
   const [numTotal, setNumTotal] = useState<string>("");
   const [pagadas, setPagadas] = useState<string>("");
+  const [prioridad, setPrioridad] = useState("menor");
   const [cargos, setCargos] = useState<(CargoDraft & { key: string })[]>([]);
   const [acuerdos, setAcuerdos] = useState<(AcuerdoDraft & { key: string })[]>([]);
 
@@ -153,6 +154,7 @@ export function EditorLedger({
     setLetra(data.letraDiaria);
     setNumTotal(data.numCuotasTotal != null ? String(data.numCuotasTotal) : "");
     setPagadas(data.cuotasPagadas != null ? String(data.cuotasPagadas) : "");
+    setPrioridad(data.prioridadAbono || "menor");
     setCargos(
       data.cargos.map((c) => ({
         key: c.id,
@@ -257,6 +259,7 @@ export function EditorLedger({
       cuotasPagadas: pagadas.trim() === "" ? null : Number(pagadas),
       cargos: cargos.map(({ key: _k, ...c }) => c),
       acuerdos: acuerdos.map(({ key: _k, ...a }) => a),
+      prioridadAbono: prioridad,
     });
     setSaving(false);
     setConfirmar(false);
@@ -324,6 +327,15 @@ export function EditorLedger({
               onChange={(e) => setPagadas(e.target.value)}
               placeholder="—"
             />
+          </label>
+          <label className="flex flex-col gap-1 col-span-3">
+            <span className="text-[11px] text-muted">Después del recargo, abonar</span>
+            <select className={INPUT} value={prioridad} onChange={(e) => setPrioridad(e.target.value)}>
+              <option value="menor">El de menor valor</option>
+              <option value="acuerdo">Acuerdo de pago</option>
+              <option value="mantenimiento">Mantenimiento</option>
+              <option value="domingo">Domingo</option>
+            </select>
           </label>
         </div>
       </section>

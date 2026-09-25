@@ -1,9 +1,10 @@
-// Waterfall de un abono a la LETRA: saldo anterior, recargo, cuota del día.
-// El acuerdo NO entra solo. Un comprobante normal baja lo que debe de letra;
-// si se lo come el arreglo, el extracto deja de cobrar los $5 del día y salta
-// al siguiente extra (caso G20: $20 → $5 acuerdo + $15 deuda, y cobró
-// mantenimiento). Al acuerdo solo va un pago con rubro "acuerdo", o una
-// reasignación manual del historial.
+// Árbol de un abono (estricto):
+// 1) Recargo por no pago.
+// 2) Un solo concepto más (acuerdo vencido y, si alcanza, el de hoy;
+//    si el carro no eligió, gana el de menor valor).
+// 3) Letra diaria de hoy.
+// 4) Si sobra: días siguientes, cada uno acuerdo y luego letra,
+//    hasta donde alcance (un día, dos, o acuerdo + parte de la letra).
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { distribuirPago } from "./rules";
@@ -24,9 +25,9 @@ import { destinoLibre, destinoPorNombre, partirMontoInterior, type DestinoInteri
 
 export const PRIORIDAD: Record<TipoObligacion, number> = {
   salida_interior: 5,
-  acuerdo: 10,
+  recargo: 8,
+  acuerdo: 12,
   saldo_anterior: 20,
-  recargo: 25,
   cuenta_diaria: 30,
 };
 
@@ -40,6 +41,49 @@ const ETIQUETA: Record<TipoObligacion, string> = {
 
 function r2(n: number): number {
   return Math.round(n * 100) / 100;
+}
+
+function diaSiguiente(iso: string, n: number): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const dt = new Date(Date.UTC(y!, (m ?? 1) - 1, (d ?? 1) + n));
+  return dt.toISOString().slice(0, 10);
+}
+
+/** Sobrante: días siguientes, cada uno acuerdo y luego letra, hasta que se acabe. */
+function adelantarDias(opts: {
+  sobrante: number;
+  acuerdos: AcuerdoActivo[];
+  letra: number;
+  desde: string;
+}): { asignaciones: AsignacionPago[]; sobrante: number; aplicado: number } {
+  let queda = r2(opts.sobrante);
+  const saldos = new Map(opts.acuerdos.map((a) => [a.id, Math.max(Number(a.saldo) || 0, 0)]));
+  const asignaciones: AsignacionPago[] = [];
+  let aplicado = 0;
+  for (let i = 1; i <= 14 && queda > 0.009; i++) {
+    const fecha = diaSiguiente(opts.desde, i);
+    for (const a of opts.acuerdos) {
+      const cupo = Math.min(cuotaAcuerdoHoy(a, fecha), saldos.get(a.id) ?? 0, queda);
+      if (cupo <= 0.009) continue;
+      const toma = r2(cupo);
+      asignaciones.push({
+        tipo: "acuerdo",
+        aplicado: toma,
+        ref: a.id,
+        etiqueta: `acuerdo ${fecha}`,
+      });
+      saldos.set(a.id, r2((saldos.get(a.id) ?? 0) - toma));
+      queda = r2(queda - toma);
+      aplicado = r2(aplicado + toma);
+    }
+    if (opts.letra > 0.009 && queda > 0.009) {
+      const toma = r2(Math.min(opts.letra, queda));
+      asignaciones.push({ tipo: "cuenta_diaria", aplicado: toma, etiqueta: `letra ${fecha}` });
+      queda = r2(queda - toma);
+      aplicado = r2(aplicado + toma);
+    }
+  }
+  return { asignaciones, sobrante: queda, aplicado };
 }
 
 function yaAplicado(ya: AsignacionPago[], tipo: TipoObligacion, ref?: string): number {
@@ -341,6 +385,15 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const estePuntual = esPagoPuntual(pago.pagado_at, fecha);
   const pagadoPuntualAntes = Math.max((pagado.pagadoPuntual ?? 0) - (estePuntual ? monto : 0), 0);
   const acuerdoHoy = acuerdoHoyDe(acuerdos, fecha);
+  let preferencia: string | null = null;
+  {
+    const pref = await sb.from("contratos").select("prioridad_abono").eq("id", contratoId).maybeSingle();
+    if (!pref.error) {
+      const v = (pref.data as { prioridad_abono?: string | null } | null)?.prioridad_abono ?? null;
+      preferencia = v && v !== "menor" ? v : null;
+    }
+  }
+  const cobraAcuerdoHoy = !preferencia || preferencia === "acuerdo";
   // Multa de “no pago” = solo letra; el acuerdo no entra a la meta puntual.
   const meta = cuotaHoy;
   const pagoPuntualAntes = cubrioCuotaDelDia(pagadoPuntualAntes, meta);
@@ -361,10 +414,9 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     pendiente: false,
   });
 
-  // Solo si el pago viene marcado como acuerdo. Si no, el arreglo sigue
-  // debiéndose en el extracto (prioridad 1) y este dinero baja la letra.
-  const pagoEsAcuerdo = (pago.rubro ?? "") === "acuerdo";
-  const acuerdosBase = pagoEsAcuerdo
+  // Recargo primero, después la cuota de acuerdo (vencida o de hoy, lo que
+  // toque y quepa). El saldo completo del plan no se cobra de un golpe.
+  const acuerdosBase = cobraAcuerdoHoy
     ? acuerdos
         .map((a) => ({
           id: a.id,
@@ -406,6 +458,22 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     };
   } else {
     resultado = distribuirPago(monto, obligaciones);
+  }
+
+  if (resultado.sobrante > 0.009) {
+    const adelanto = adelantarDias({
+      sobrante: resultado.sobrante,
+      acuerdos,
+      letra: cuotaHoy,
+      desde: fecha,
+    });
+    if (adelanto.aplicado > 0.009) {
+      resultado = {
+        asignaciones: [...resultado.asignaciones, ...adelanto.asignaciones],
+        sobrante: adelanto.sobrante,
+        totalAplicado: r2(resultado.totalAplicado + adelanto.aplicado),
+      };
+    }
   }
 
   const payload = {

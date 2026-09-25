@@ -9,25 +9,18 @@
 // 1) LETRA (siempre, si hay): cuota de hoy + atraso de letra + recargo/cierre.
 //    Vive en el ledger (cargos renta / saldo). Un pago baja ese saldo.
 //
-// 2) ACUERDO (aparte de la letra):
-//    - Plan en tabla `acuerdos` (saldo + cuota_diaria).
-//    - Un pago normal NO lo toca. Solo baja el saldo si el rubro es "acuerdo"
-//      o si en el historial se reasigna a mano. Si un comprobante se come la
-//      cuota, faltaAcuerdo queda en 0 y el extracto cobra el extra siguiente
-//      (G20: mantenimiento $26 en vez de los $5 del acuerdo).
-//    - Cargo compensatorio tipo=acuerdo al aplicar → el pago al arreglo
-//      NO come la letra.
-//    - `acuerdoHoy`  = cuota programada hoy (aunque ya la haya pagado).
-//    - `faltaAcuerdo` = lo que AÚN falta de esa cuota hoy.
-//    - Si faltaAcuerdo > 0 → entra al TOTAL (prioridad 1 del ítem extra).
-//    - Si faltaAcuerdo = 0 pero hay plan/saldo → se LISTA el plan (aviso),
-//      no se vuelve a cobrar.
+// 2) ACUERDO (aparte de la letra, un solo plan):
+//    Entra al cobro de hoy solo si es el concepto elegido (por defecto el de
+//    menor valor) y aún falta la cuota. Si ya se pagó, se avisa y no se suma.
 //
-// 3) UN SOLO ÍTEM EXTRA por día (además de letra/recargo/cierre):
-//    prioridad: acuerdos (falta) → mantenimiento → menor saldo.
-//    Los no elegidos se listan con “(pendiente)” y NO suman al total.
+// 3) UN SOLO CONCEPTO más, además del recargo:
+//    el que tenga el carro (prioridad_abono) o, si no, el de menor valor.
+//    Los demás se listan “(pendiente)” y no suman.
 //
-// 4) DOMINGO: se lista; NUNCA suma al total (lun–sáb).
+// 4) DOMINGO: no entra al total salvo que el carro lo elija como ese concepto.
+//
+// Árbol de un pago: recargo → ese concepto → letra de hoy → días siguientes
+// (acuerdo de ese día, luego la letra), hasta donde alcance.
 //
 // 5) “Pagado hoy” YA está neto en el saldo / total. NUNCA inventar una
 //    línea “abono” con ese monto (duplicaba el cobro).
@@ -43,6 +36,7 @@ import {
   acuerdoSaldoContrato,
   armarExtractoDiario,
   cargosExtraAgrupados,
+  preferenciaAbonoContrato,
   textoDesgloseExtracto,
   type ExtractoArmado,
   type LineaExtracto,
@@ -58,6 +52,8 @@ export function pagoEsperaConceptoExcedente(notas: string | null | undefined): b
 export type CobroHoyCtx = {
   acuerdoSaldo: number;
   extras: LineaExtracto[];
+  /** null = menor valor. */
+  preferencia?: string | null;
 };
 
 export type CobroHoy = ExtractoArmado & {
@@ -72,11 +68,12 @@ export type CobroHoy = ExtractoArmado & {
 
 /** Carga saldo de acuerdos + cargos extra del contrato. */
 export async function ctxCobroHoy(contratoId: string): Promise<CobroHoyCtx> {
-  const [acuerdoSaldo, extras] = await Promise.all([
+  const [acuerdoSaldo, extras, preferencia] = await Promise.all([
     acuerdoSaldoContrato(contratoId),
     cargosExtraAgrupados(contratoId),
+    preferenciaAbonoContrato(contratoId),
   ]);
-  return { acuerdoSaldo, extras };
+  return { acuerdoSaldo, extras, preferencia };
 }
 
 /** Cálculo canónico de cobro del día a partir del estado de cuenta. */
@@ -84,6 +81,7 @@ export function cobroHoyDe(e: EstadoCuenta, ctx: CobroHoyCtx): CobroHoy {
   const armado = armarExtractoDiario(e, {
     acuerdoSaldo: ctx.acuerdoSaldo,
     extras: ctx.extras,
+    preferencia: ctx.preferencia,
   });
   return {
     ...armado,

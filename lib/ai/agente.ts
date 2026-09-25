@@ -86,8 +86,9 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   comprobante por aquí. Así se aplica el pago. Puede mandar 2 o 3 comprobantes el mismo día:
   se SUMAN. Si a las 7:00 p.m. no cubrió la cuota del día (y el arreglo, si tiene), pierde
   el descuento de ese día y lo que falte se cobra mañana junto con la cuota nueva.
-- Un abono que NO pasa del TOTAL A PAGAR HOY no se pregunta: el sistema lo aplica a la letra.
-  Tú informas el total del CONTEXTO. Si discute la letra, explícasela una vez.
+- Un pago se parte así, sin que lo recalcules: primero recargo por no pago, después
+  un solo concepto más (el que diga el CONTEXTO; si no, el de menor valor), después la
+  letra de hoy. Si sobra, días siguientes: acuerdo de ese día y luego la letra.
 - PAGO MAYOR AL TOTAL DEL DÍA (obligatorio): si el monto del comprobante es MAYOR que
   TOTAL A PAGAR HOY del CONTEXTO, el sobrante NO lo repartes tú.
   · Pregunta a cuál concepto va ese excedente. Ofrécele SOLO conceptos que el CONTEXTO

@@ -1,9 +1,8 @@
 // Desglose del extracto diario (plantilla `extracto_detalle`).
 // Arma las líneas que ve el cliente: cuenta, recargos, acuerdos, cargos extras.
 //
-// TOTAL A PAGAR HOY = letra/recargo/cierre/abono + UN solo ítem adicional
-// (prioridad: acuerdos → mantenimiento → saldo menor). El mensaje lista todo
-// lo debido; los ítems no cobrados hoy llevan “(pendiente)”.
+// TOTAL A PAGAR HOY = letra/recargo/cierre + UN solo concepto
+// (el del carro, o el de menor valor). El mensaje lista el resto como pendiente.
 //
 // Anti-duplicado: un cargo extra (mant/otros/cierre) solo se resta de “cuenta”
 // hasta donde quepa en pendienteAnterior. La letra/cuota de hoy no se toca.
@@ -90,7 +89,7 @@ export type ExtractoArmado = {
 /** Líneas + total con la regla de un solo ítem adicional. */
 export function armarExtractoDiario(
   e: EstadoCuenta,
-  opts?: { acuerdoSaldo?: number; extras?: LineaExtracto[] },
+  opts?: { acuerdoSaldo?: number; extras?: LineaExtracto[]; preferencia?: string | null },
 ): ExtractoArmado {
   const extrasAll = (opts?.extras ?? []).filter((x) => x.monto > 0.009);
   // Domingo vive en domingoSaldo (aparte): se lista, nunca se resta de la letra.
@@ -131,7 +130,7 @@ export function armarExtractoDiario(
     acuerdoSaldo: opts?.acuerdoSaldo,
     extras: extrasCompetidores,
   });
-  const extraElegido = elegirExtraDelDia(candidatos);
+  const extraElegido = elegirExtraDelDia(candidatos, opts?.preferencia);
   const totalCobrarHoy = Math.round(totalConUnExtra(baseMonto, extraElegido) * 100) / 100;
 
   const out: LineaExtracto[] = [...lineasBase];
@@ -222,6 +221,18 @@ export async function acuerdoSaldoContrato(contratoId: string): Promise<number> 
     .eq("contrato_id", contratoId)
     .eq("activo", true);
   return ((data ?? []) as { saldo: number }[]).reduce((s, a) => s + Math.max(Number(a.saldo) || 0, 0), 0);
+}
+
+export async function preferenciaAbonoContrato(contratoId: string): Promise<string | null> {
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("contratos")
+    .select("prioridad_abono")
+    .eq("id", contratoId)
+    .maybeSingle();
+  if (error) return null;
+  const v = (data as { prioridad_abono?: string | null } | null)?.prioridad_abono ?? null;
+  return v && v !== "menor" ? v : null;
 }
 
 export async function cargosExtraAgrupados(contratoId: string): Promise<LineaExtracto[]> {

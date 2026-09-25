@@ -46,7 +46,7 @@ const r2 = distribuirPago(15, resto);
 check("el segundo $15 cierra la cuota", r2.asignaciones[0]?.aplicado, 15);
 check("y no toca de nuevo el arreglo", r2.asignaciones.some((a) => a.tipo === "acuerdo"), false);
 
-console.log("\n· Orden: arreglo antes que saldo anterior y recargo");
+console.log("\n· Orden: recargo, luego acuerdo, luego saldo");
 const todo: Obligacion[] = [
   { tipo: "cuenta_diaria", prioridad: PRIORIDAD.cuenta_diaria, monto: 30 },
   { tipo: "recargo", prioridad: PRIORIDAD.recargo, monto: 5 },
@@ -54,9 +54,9 @@ const todo: Obligacion[] = [
   { tipo: "acuerdo", prioridad: PRIORIDAD.acuerdo, monto: 5, ref: "a1" },
 ];
 const r3 = distribuirPago(12, todo);
-check("primero el arreglo", r3.asignaciones[0]?.tipo, "acuerdo");
-check("luego el saldo anterior", r3.asignaciones[1]?.tipo, "saldo_anterior");
-check("el recargo no entra con $12", r3.asignaciones.some((a) => a.tipo === "recargo"), false);
+check("primero el recargo", r3.asignaciones[0]?.tipo, "recargo");
+check("luego el acuerdo", r3.asignaciones[1]?.tipo, "acuerdo");
+check("el resto al saldo", r3.asignaciones[2]?.tipo, "saldo_anterior");
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

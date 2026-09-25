@@ -435,7 +435,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         ``,
         `CARGOS EN LA CUENTA aparte de las cuotas diarias (para cuando pregunte "¿por qué debo tanto?" o discuta un cobro):`,
         ...extras.map((x) => `- ${m(x.monto)} · ${x.concepto} · ${fechaConDia(x.fecha)}`),
-        `Esos cargos NO son la letra del día. El domingo se lista y NO se suma a lo que debe pagar hoy.`,
+        `Esos cargos NO son la letra del día. El domingo se lista; solo entra al total si este carro lo tiene como prioridad de abono.`,
         `Si el cliente pregunta qué compone su saldo, explícaselo con este detalle. No lo enumeres si no lo pide.`,
       );
     }
@@ -445,10 +445,9 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `REGLA DE COBRO DIARIO (OBLIGATORIA — “cuánto debo HOY” / extracto):`,
       `- La cifra oficial es TOTAL A PAGAR HOY de arriba (${m(cobro.totalCobrarHoy)}) y su desglose. No inventes otra.`,
       `- SIEMPRE se cobra: letra del día + saldo anterior de letra + recargo/cierre de semana si aplica.`,
-      `- Además, SOLO UN ítem adicional por día (aunque deba varios). Orden de prioridad:`,
-      `  1) Acuerdos de pago (solo lo que FALTA hoy del arreglo)  2) Mantenimiento  3) Cualquier otro que no sea domingo (extensión, km, etc.) eligiendo el de MENOR saldo.`,
+      `- ÁRBOL DE UN PAGO (estricto, por carro): 1) recargo por no pago  2) un solo concepto más (si el carro no eligió, el de menor valor; si es acuerdo, primero lo vencido y si alcanza el de hoy)  3) letra de hoy  4) si sobra, días siguientes: acuerdo de ese día y luego la letra, hasta donde alcance.`,
       `- Si tiene plan de acuerdo con saldo pero la cuota de hoy YA está pagada: dilo (saldo del plan), NO lo sumes otra vez.`,
-      `- ESE ÍTEM NUNCA ES EL DOMINGO. El domingo se lista como pendiente y no entra al total, ni hoy ni ningún otro día.`,
+      `- El domingo no entra al total, salvo que la prioridad de este carro sea domingo.`,
       `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL solo incluye letra/recargo/cierre + ese un ítem.`,
       `- NO sumes mantenimiento + acuerdos + domingo el mismo día en el total de hoy.`,
       `- NUNCA inventes una línea “abono” con lo pagado hoy: eso ya está descontado.`,

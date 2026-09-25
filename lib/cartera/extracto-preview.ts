@@ -8,7 +8,11 @@ import {
   type LineaExtracto,
 } from "./extracto-desglose";
 
-export type ExtractoCtx = { acuerdoSaldo: number; extras: LineaExtracto[] };
+export type ExtractoCtx = {
+  acuerdoSaldo: number;
+  extras: LineaExtracto[];
+  preferencia?: string | null;
+};
 
 /** Sin saldo de días anteriores: solo le toca la cuota de hoy. */
 export function estaAlDia(e: EstadoCuenta): boolean {
@@ -25,6 +29,7 @@ export function varsExtractoDetalle(e: EstadoCuenta, ctx?: ExtractoCtx): string[
   const armado = armarExtractoDiario(e, {
     acuerdoSaldo: ctx?.acuerdoSaldo ?? 0,
     extras: ctx?.extras ?? [],
+    preferencia: ctx?.preferencia,
   });
   return [
     nombre,
@@ -64,5 +69,6 @@ export function totalCobrarHoyExtracto(e: EstadoCuenta, ctx?: ExtractoCtx): numb
   return armarExtractoDiario(e, {
     acuerdoSaldo: ctx?.acuerdoSaldo ?? 0,
     extras: ctx?.extras ?? [],
+    preferencia: ctx?.preferencia,
   }).totalCobrarHoy;
 }
