@@ -354,6 +354,7 @@ export function InboxConversaciones({
 
           {selectedId && detalle && detalle.id === selectedId && (
             <ChatPanel
+              key={detalle.id}
               detalle={detalle}
               demo={demo}
               onBack={cerrarDetalle}
@@ -759,34 +760,29 @@ function Thread({
   agenteEscribiendo?: boolean;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const prevLastIdRef = useRef<string | null>(null);
   const prevConvRef = useRef<string | null>(null);
-  const openGenRef = useRef(0);
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false);
-  /** false = chat recién abierto: invisible hasta anclar abajo (sin parpadeo). */
-  const [anclado, setAnclado] = useState(false);
   const lastId = mensajes.at(-1)?.id ?? null;
 
+  // flex-col-reverse: scrollTop ≈ 0 = abajo (último mensaje). Sin pegar con JS al abrir.
   function syncNearBottom() {
     const el = scrollerRef.current;
     if (!el) return;
-    const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    const near = dist < 80;
+    const near = el.scrollTop < 80;
     nearBottomRef.current = near;
-    setMostrarIrAbajo(!near && mensajes.length > 0 && anclado);
+    setMostrarIrAbajo(!near && mensajes.length > 0);
   }
 
   function irAlFinal() {
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    el.scrollTop = 0;
     nearBottomRef.current = true;
     setMostrarIrAbajo(false);
   }
 
-  // Al abrir: baja ANTES del paint y solo entonces muestra el hilo.
   useLayoutEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
@@ -797,148 +793,120 @@ function Thread({
       prevLastIdRef.current = null;
       nearBottomRef.current = true;
       setMostrarIrAbajo(false);
-      setAnclado(false);
-      openGenRef.current += 1;
+      el.scrollTop = 0;
     }
 
     const prev = prevLastIdRef.current;
-    const openedOrFirst = switched || prev === null;
     const newTail = lastId != null && lastId !== prev;
     prevLastIdRef.current = lastId;
 
-    const shouldStick =
-      openedOrFirst || (newTail && nearBottomRef.current) || agenteEscribiendo;
-    if (!shouldStick) {
-      if (newTail && !nearBottomRef.current) setMostrarIrAbajo(true);
-      return;
-    }
+    if (switched) return;
 
-    const gen = openGenRef.current;
-    const pegar = () => {
-      el.scrollTop = el.scrollHeight;
-    };
-    pegar();
-    if (openedOrFirst) {
-      nearBottomRef.current = true;
-      requestAnimationFrame(() => {
-        if (openGenRef.current !== gen) return;
-        pegar();
-        requestAnimationFrame(() => {
-          if (openGenRef.current !== gen) return;
-          pegar();
-          setAnclado(true);
-        });
-      });
+    // Mensaje nuevo: si estabas abajo, quédate abajo. Si leías arriba, no te arrastra.
+    if (newTail || agenteEscribiendo) {
+      if (nearBottomRef.current || agenteEscribiendo) {
+        el.scrollTop = 0;
+        nearBottomRef.current = true;
+        setMostrarIrAbajo(false);
+      } else if (newTail) {
+        setMostrarIrAbajo(true);
+      }
     }
-  }, [conversacionId, mensajes.length, lastId, agenteEscribiendo]);
+  }, [conversacionId, lastId, agenteEscribiendo, mensajes.length]);
 
-  // Mientras carga el alto (fotos), se queda abajo sin que se vea el salto.
-  useEffect(() => {
-    if (anclado) return;
-    const el = scrollerRef.current;
-    const inner = contentRef.current;
-    if (!el || !inner) return;
-    const pegar = () => {
-      el.scrollTop = el.scrollHeight;
-    };
-    const ro = new ResizeObserver(() => pegar());
-    ro.observe(inner);
-    return () => ro.disconnect();
-  }, [anclado, conversacionId]);
+  // Más nuevos primero en el DOM → con column-reverse quedan abajo en pantalla.
+  const ordenVisual = [...mensajes].reverse();
 
   return (
     <div className="relative min-h-0 flex-1">
       <div
+        key={conversacionId}
         ref={scrollerRef}
         onScroll={syncNearBottom}
-        className={`h-full overflow-y-auto overscroll-contain px-4 py-3 [overflow-anchor:none] sm:px-5 ${
-          anclado ? "opacity-100" : "opacity-0"
-        }`}
+        className="flex h-full flex-col-reverse gap-2 overflow-y-auto overscroll-contain px-4 py-3 [overflow-anchor:none] sm:px-5"
       >
-        <div ref={contentRef} className="space-y-2">
-          {mensajes.map((m) => {
-            const out = m.direccion === "out";
-            const system = m.tipo === "system";
-            const audio = esNotaDeVoz(m);
-            const transcript =
-              m.texto &&
-              !/^🎤\s*nota de voz$/i.test(m.texto.trim())
-                ? m.texto.replace(/^🎤\s*/, "").trim()
-                : null;
-            return (
+        {agenteEscribiendo && (
+          <div className="flex justify-end">
+            <div className="rounded-2xl bg-ink/80 px-4 py-2.5 text-sm text-surface">
+              <span className="inline-flex gap-1">
+                <span className="animate-pulse">●</span>
+                <span className="animate-pulse [animation-delay:150ms]">●</span>
+                <span className="animate-pulse [animation-delay:300ms]">●</span>
+              </span>
+              <span className="ml-2 text-xs text-surface/70">{NOMBRE_AGENTE} escribiendo…</span>
+            </div>
+          </div>
+        )}
+        {ordenVisual.map((m) => {
+          const out = m.direccion === "out";
+          const system = m.tipo === "system";
+          const audio = esNotaDeVoz(m);
+          const transcript =
+            m.texto &&
+            !/^🎤\s*nota de voz$/i.test(m.texto.trim())
+              ? m.texto.replace(/^🎤\s*/, "").trim()
+              : null;
+          return (
+            <div
+              key={m.id}
+              className={`flex ${system ? "justify-center" : out ? "justify-end" : "justify-start"}`}
+            >
               <div
-                key={m.id}
-                className={`flex ${system ? "justify-center" : out ? "justify-end" : "justify-start"}`}
+                className={`max-w-[min(82%,30rem)] rounded-2xl px-3.5 py-2 text-sm ${
+                  system
+                    ? "bg-rojo-wash text-rojo ring-1 ring-rojo/20"
+                    : out
+                      ? "bg-ink text-white"
+                      : "bg-gris-wash text-ink"
+                }`}
               >
-                <div
-                  className={`max-w-[min(82%,30rem)] rounded-2xl px-3.5 py-2 text-sm ${
-                    system
-                      ? "bg-rojo-wash text-rojo ring-1 ring-rojo/20"
-                      : out
-                        ? "bg-ink text-white"
-                        : "bg-gris-wash text-ink"
-                  }`}
-                >
-                  {audio && m.signedUrl ? (
-                    <AudioNote src={m.signedUrl} outbound={out && !system} />
-                  ) : null}
-                  {audio && !m.signedUrl ? (
-                    <p className={`mb-1 text-xs ${out && !system ? "text-white/70" : "text-muted"}`}>
-                      Nota de voz (sin audio guardado)
-                    </p>
-                  ) : null}
-                  {m.signedUrl && !audio ? (
-                    <a href={m.signedUrl} target="_blank" rel="noreferrer" className="mb-1.5 block">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={m.signedUrl}
-                        alt="Comprobante"
-                        className="max-h-64 rounded-md object-contain"
-                      />
-                    </a>
-                  ) : null}
-                  {!audio && m.texto ? (
-                    <p className="whitespace-pre-wrap leading-relaxed">{m.texto}</p>
-                  ) : null}
-                  {audio && transcript ? (
-                    <p
-                      className={`mt-1.5 whitespace-pre-wrap text-[13px] leading-snug ${
-                        out && !system ? "text-white/85" : "text-ink/90"
-                      }`}
-                    >
-                      {transcript}
-                    </p>
-                  ) : null}
+                {audio && m.signedUrl ? (
+                  <AudioNote src={m.signedUrl} outbound={out && !system} />
+                ) : null}
+                {audio && !m.signedUrl ? (
+                  <p className={`mb-1 text-xs ${out && !system ? "text-white/70" : "text-muted"}`}>
+                    Nota de voz (sin audio guardado)
+                  </p>
+                ) : null}
+                {m.signedUrl && !audio ? (
+                  <a href={m.signedUrl} target="_blank" rel="noreferrer" className="mb-1.5 block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={m.signedUrl}
+                      alt="Comprobante"
+                      className="max-h-64 rounded-md object-contain"
+                    />
+                  </a>
+                ) : null}
+                {!audio && m.texto ? (
+                  <p className="whitespace-pre-wrap leading-relaxed">{m.texto}</p>
+                ) : null}
+                {audio && transcript ? (
                   <p
-                    className={`mt-1 text-right text-[10px] tabular-nums ${
-                      out && !system ? "text-white/55" : "text-muted"
+                    className={`mt-1.5 whitespace-pre-wrap text-[13px] leading-snug ${
+                      out && !system ? "text-white/85" : "text-ink/90"
                     }`}
                   >
-                    {out && !system
-                      ? `${m.enviado_por ? m.enviado_por : NOMBRE_AGENTE} · `
-                      : ""}
-                    {horaMensaje(m.created_at)}
+                    {transcript}
                   </p>
-                </div>
-              </div>
-            );
-          })}
-          {agenteEscribiendo && (
-            <div className="flex justify-end">
-              <div className="rounded-2xl bg-ink/80 px-4 py-2.5 text-sm text-surface">
-                <span className="inline-flex gap-1">
-                  <span className="animate-pulse">●</span>
-                  <span className="animate-pulse [animation-delay:150ms]">●</span>
-                  <span className="animate-pulse [animation-delay:300ms]">●</span>
-                </span>
-                <span className="ml-2 text-xs text-surface/70">{NOMBRE_AGENTE} escribiendo…</span>
+                ) : null}
+                <p
+                  className={`mt-1 text-right text-[10px] tabular-nums ${
+                    out && !system ? "text-white/55" : "text-muted"
+                  }`}
+                >
+                  {out && !system
+                    ? `${m.enviado_por ? m.enviado_por : NOMBRE_AGENTE} · `
+                    : ""}
+                  {horaMensaje(m.created_at)}
+                </p>
               </div>
             </div>
-          )}
-          {mensajes.length === 0 && (
-            <p className="py-16 text-center text-sm text-muted">Sin mensajes todavía.</p>
-          )}
-        </div>
+          );
+        })}
+        {mensajes.length === 0 && !agenteEscribiendo && (
+          <p className="py-16 text-center text-sm text-muted">Sin mensajes todavía.</p>
+        )}
       </div>
       {mostrarIrAbajo && (
         <button
