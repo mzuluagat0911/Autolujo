@@ -144,6 +144,14 @@ export function DetalleEstadoModal({
   const progreso = pctCuotas(estado);
   const adelantado = esAdelantado(estado);
   const alDia = esAlDiaHoy(estado);
+  const lineasHoy = estado.lineas.filter(
+    (l) => !(l.concepto.includes("no pagar") && (estado.recargosAcumulados ?? 0) <= 0.009),
+  );
+  const recargoSoloCalculado = estado.lineas.reduce(
+    (s, l) => s + (l.concepto.includes("no pagar") && (estado.recargosAcumulados ?? 0) <= 0.009 ? l.monto : 0),
+    0,
+  );
+  const totalHoyVisible = Math.max((estado.totalCobrarHoy ?? estado.totalHoy) - recargoSoloCalculado, 0);
 
   const partesSaldo = useMemo(
     () =>
@@ -249,7 +257,7 @@ export function DetalleEstadoModal({
             <div className="space-y-5 px-5 py-5">
               <div className="rounded-xl bg-surface-2 px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                  {adelantado || alDia || (estado.totalCobrarHoy ?? estado.totalHoy) <= 0.009
+                  {adelantado || alDia || totalHoyVisible <= 0.009
                     ? "Situación"
                     : estado.pendiente
                       ? "Monto en validación"
@@ -273,7 +281,7 @@ export function DetalleEstadoModal({
                     {alDia ? (
                       "Al día"
                     ) : (
-                      <Money amount={estado.totalCobrarHoy ?? estado.totalHoy} className="text-3xl font-bold" />
+                      <Money amount={totalHoyVisible} className="text-3xl font-bold" />
                     )}
                   </p>
                 )}
@@ -324,10 +332,10 @@ export function DetalleEstadoModal({
                   </button>
                 }
               >
-                {estado.lineas.length === 0 ? (
+                {lineasHoy.length === 0 ? (
                   <p className="py-2.5 text-sm text-muted">Sin cargos pendientes para hoy.</p>
                 ) : (
-                  estado.lineas.map((l, i) => {
+                  lineasHoy.map((l, i) => {
                     const esSaldoAnt = l.concepto === "saldo anterior" && l.monto > 0.009;
                     const partes = esSaldoAnt ? partesSaldo : [];
                     return (
@@ -361,7 +369,7 @@ export function DetalleEstadoModal({
                 )}
                 {!alDia && !adelantado && (
                   <Fila label="Total">
-                    <span className="text-base font-semibold">{money(estado.totalCobrarHoy ?? estado.totalHoy)}</span>
+                    <span className="text-base font-semibold">{money(totalHoyVisible)}</span>
                   </Fila>
                 )}
                 {!adelantado && !alDia && estado.recargoSiTarda > 0.009 && (

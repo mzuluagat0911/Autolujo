@@ -13,7 +13,7 @@ const panelDesdeCache = unstable_cache(
     if (!hoy) return [];
     return panelEnVivo();
   },
-  ["estados-cuenta-panel-v2"],
+  ["estados-cuenta-panel-v3"],
   { revalidate: 20, tags: [PANEL_TAG] },
 );
 
