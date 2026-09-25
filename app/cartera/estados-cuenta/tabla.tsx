@@ -289,7 +289,15 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                     )}
                   </td>
                   <td className="px-4 py-2.5">
-                    <StatusChip tone={e.totalCobrarHoy <= 0.009 && !e.pendiente ? "good" : tonoSituacion(e)}>
+                    <StatusChip
+                      tone={
+                        esAdelantado(e) || e.pendiente
+                          ? tonoSituacion(e)
+                          : e.totalCobrarHoy <= 0.009
+                            ? "good"
+                            : tonoSituacion(e)
+                      }
+                    >
                       {e.totalCobrarHoy <= 0.009 && !e.pendiente && !esAdelantado(e)
                         ? "Al día"
                         : textoSituacionCuotas(e)}
