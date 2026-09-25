@@ -19,6 +19,7 @@ import { sendText } from "@/lib/whatsapp/client";
 import { destinoLibre, destinoPorId, type DestinoInterior } from "@/lib/cartera/salidas-interior";
 import { darAvalSalida, etiquetarPagoSalida, idsVehiculoYCliente } from "@/lib/cartera/salidas-aplicar";
 import { esRubroConcepto, etiquetaRubro } from "@/lib/cartera/rubros-pago";
+import { pagoEsperaConceptoExcedente } from "@/lib/cartera/cobro-hoy";
 
 function destDesdeForm(formData: FormData, monto: number): DestinoInterior | null {
   const destinoId = String(formData.get("destino_interior") ?? "").trim();
@@ -55,6 +56,20 @@ export async function resolverPago(formData: FormData): Promise<void> {
   if (!nuevoEstado) throw new Error("Acción inválida.");
 
   const sb = createServerSupabase();
+  if (nuevoEstado === "conciliado") {
+    const { data: actual } = await sb
+      .from("pagos")
+      .select("notas, rubro, asignaciones")
+      .eq("id", pagoId)
+      .maybeSingle();
+    const row = actual as { notas: string | null; rubro: string | null; asignaciones: unknown } | null;
+    if (row && pagoEsperaConceptoExcedente(row.notas) && !row.rubro && !row.asignaciones) {
+      throw new Error(
+        "Este comprobante trae excedente sin concepto. Asígnelo a un concepto antes de aprobar.",
+      );
+    }
+  }
+
   const patch: Record<string, unknown> = { estado_conciliacion: nuevoEstado };
   if (contratoId) patch.contrato_id = contratoId;
 

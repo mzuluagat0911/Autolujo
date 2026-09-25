@@ -11,7 +11,7 @@ import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
 import { textoComoSeAplico } from "./aplicar-pago";
-import { cobroHoyContrato } from "./cobro-hoy";
+import { cobroHoyContrato, MARCA_EXCEDENTE_SIN_CONCEPTO } from "./cobro-hoy";
 import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
 import { carroCompatibleConChat } from "@/lib/cartera/cruce";
 import { detectarDiasViaje, textoTarifasInterior, type DestinoInterior } from "./salidas-interior";
@@ -452,6 +452,12 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL solo incluye letra/recargo/cierre + ese un ítem.`,
       `- NO sumes mantenimiento + acuerdos + domingo el mismo día en el total de hoy.`,
       `- NUNCA inventes una línea “abono” con lo pagado hoy: eso ya está descontado.`,
+      `- PAGO MAYOR AL TOTAL: si paga más de ${m(cobro.totalCobrarHoy)}, pregunta a dónde va el excedente.`,
+      cobro.acuerdoSaldo > 0.009 || (est.domingoSaldo ?? 0) > 0.009
+        ? `- Conceptos a los que SÍ puede abonar el excedente (parcial vale):${cobro.acuerdoSaldo > 0.009 ? ` acuerdo (saldo ${m(cobro.acuerdoSaldo)})` : ""}${(est.domingoSaldo ?? 0) > 0.009 ? ` domingo (${m(est.domingoSaldo)})` : ""}.`
+        : `- NO tiene acuerdo ni domingo ni otro concepto: el excedente es pago adelantado de una letra diaria. No le ofrezcas otro destino.`,
+      `- Si nombra un concepto que no está en esta lista, no lo aceptes: el comprobante queda para revisión manual del equipo.`,
+      `- Si no dice el destino y SÍ tiene conceptos, el excedente queda sin concepto y solo lo aprueba el equipo asignándolo.`,
       `- Clientes nuevos: pueden deber panapass/domingos de entrada y abono inicial; respeta las cifras del sistema.`,
     );
   }
@@ -1149,12 +1155,34 @@ export async function procesarPagoComprobante(opts: {
   // Nunca "manual" acá: eso es solo para pagos de oficina. Antes, sin carro
   // quedaba manual y desaparecía de la cola de Pagos.
   const estadoConciliacion = "pendiente" as const;
+  let notaExcedente: string | null = null;
+  const montoComp = Number(comprobante.monto) || 0;
+  if (resolucion.contratoId && montoComp > 0.009) {
+    try {
+      const estPago = await estadoCuentaContrato(resolucion.contratoId);
+      if (estPago) {
+        const cobroPago = await cobroHoyContrato(estPago);
+        if (montoComp > cobroPago.totalCobrarHoy + 0.05) {
+          const tieneConcepto =
+            cobroPago.acuerdoSaldo > 0.009 ||
+            (estPago.domingoSaldo ?? 0) > 0.009 ||
+            cobroPago.lineas.some((l) => /\(pendiente\)/i.test(l.etiqueta));
+          notaExcedente = tieneConcepto
+            ? MARCA_EXCEDENTE_SIN_CONCEPTO
+            : "EXCEDENTE: pago adelantado de letra diaria";
+        }
+      }
+    } catch (e) {
+      console.error("[pipeline] excedente", e);
+    }
+  }
   const notas = [
     `Lectura IA (confianza: ${comprobante.confianza}). Resolución carro: ${resolucion.estado}.`,
     !chatVinculado
       ? `Desde número no vinculado (${conversacion.wa_numero}).${sugerenciaCarro ? ` Sugiere ${sugerenciaCarro}.` : ""}`
       : null,
     veredicto.alertas.length ? `ALERTAS: ${resumirAlertas(veredicto.alertas)}` : null,
+    notaExcedente,
   ]
     .filter(Boolean)
     .join(" ");

@@ -6,6 +6,7 @@ import { instantePanama } from "./fecha";
 import { recalcularRecargo } from "./devengo";
 import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
+import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
 import { canonCarro, fechaCubrePago, montoExacto } from "./cruce";
 
 export type ResultadoRevision = { ok: boolean; error?: string };
@@ -87,13 +88,16 @@ async function comprobantePendienteCalza(
   const sb = createServerSupabase();
   const { data } = await sb
     .from("pagos")
-    .select("id, monto, pagado_at")
+    .select("id, monto, pagado_at, notas")
     .eq("contrato_id", contratoId)
     .eq("estado_conciliacion", "pendiente")
     .eq("origen", "comprobante")
     .order("pagado_at", { ascending: true });
-  const hits = ((data ?? []) as { id: string; monto: number; pagado_at: string }[]).filter(
-    (p) => montoExacto(Number(p.monto), monto) && fechaCubrePago(p.pagado_at, fechaMov),
+  const hits = ((data ?? []) as { id: string; monto: number; pagado_at: string; notas: string | null }[]).filter(
+    (p) =>
+      !pagoEsperaConceptoExcedente(p.notas) &&
+      montoExacto(Number(p.monto), monto) &&
+      fechaCubrePago(p.pagado_at, fechaMov),
   );
   return hits[0] ? { id: hits[0].id, pagadoAt: hits[0].pagado_at } : null;
 }
@@ -173,7 +177,7 @@ export async function aplicarMovimientoExtracto(opts: {
   if (opts.pagoId) {
     const { data: elegido } = await sb
       .from("pagos")
-      .select("id, monto, pagado_at, estado_conciliacion, origen, contrato_id, numero_carro")
+      .select("id, monto, pagado_at, estado_conciliacion, origen, contrato_id, numero_carro, notas, rubro, asignaciones")
       .eq("id", opts.pagoId)
       .maybeSingle();
     const p = elegido as {
@@ -184,9 +188,18 @@ export async function aplicarMovimientoExtracto(opts: {
       origen: string | null;
       contrato_id: string | null;
       numero_carro: string | null;
+      notas: string | null;
+      rubro: string | null;
+      asignaciones: unknown;
     } | null;
     if (!p || p.estado_conciliacion !== "pendiente" || p.origen !== "comprobante") {
       return { ok: false, error: "Ese comprobante ya no está pendiente." };
+    }
+    if (pagoEsperaConceptoExcedente(p.notas) && !p.rubro && !p.asignaciones) {
+      return {
+        ok: false,
+        error: "Este pago trae excedente sin concepto. Asígnalo antes de cruzarlo con el extracto.",
+      };
     }
     if (!montoExacto(Number(p.monto), monto) || !fechaCubrePago(p.pagado_at, mov.fecha)) {
       return { ok: false, error: "Ese comprobante no calza en monto/fecha con el movimiento." };

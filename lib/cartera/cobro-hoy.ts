@@ -48,6 +48,13 @@ import {
   type LineaExtracto,
 } from "./extracto-desglose";
 
+export const MARCA_EXCEDENTE_SIN_CONCEPTO = "EXCEDENTE_SIN_CONCEPTO";
+
+/** El banco puede cuadrar el monto, pero el equipo tiene que ponerle concepto antes de aprobar. */
+export function pagoEsperaConceptoExcedente(notas: string | null | undefined): boolean {
+  return (notas ?? "").includes(MARCA_EXCEDENTE_SIN_CONCEPTO);
+}
+
 export type CobroHoyCtx = {
   acuerdoSaldo: number;
   extras: LineaExtracto[];

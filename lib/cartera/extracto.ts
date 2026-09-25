@@ -8,7 +8,7 @@ import { extractText, getDocumentProxy } from "unpdf";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, fechaContable, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
-import { aplicarPagoEnObligaciones } from "./aplicar-pago";
+import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { destinoPorId } from "./salidas-interior";
 import {
@@ -499,7 +499,7 @@ export async function procesarExtracto(
 
   let pagosQ = await sb
     .from("pagos")
-    .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion, destino_interior, referencia")
+    .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion, destino_interior, referencia, notas")
     .eq("estado_conciliacion", "pendiente")
     .eq("origen", "comprobante");
   if (pagosQ.error && /destino_interior/i.test(pagosQ.error.message)) {
@@ -520,7 +520,9 @@ export async function procesarExtracto(
     origen: string | null;
     destino_interior?: string | null;
     referencia?: string | null;
+    notas?: string | null;
   }[])
+    .filter((p) => !pagoEsperaConceptoExcedente(p.notas))
     .filter((p) => {
       if (p.contrato_id && contratoIds.has(p.contrato_id)) return true;
       if (p.numero_carro && flota.some((c) => canonCarro(c.numero) === canonCarro(p.numero_carro!))) return true;
