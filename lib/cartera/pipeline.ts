@@ -12,7 +12,7 @@ import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
 import { textoComoSeAplico } from "./aplicar-pago";
 import { cobroHoyContrato, MARCA_EXCEDENTE_SIN_CONCEPTO } from "./cobro-hoy";
-import { validarComprobante, resumirAlertas, type Veredicto } from "@/lib/cartera/comprobante-validacion";
+import { validarComprobante, resumirAlertas, FRASE_PEDIR_CONFIRMACION, MARCA_REVISION_DOS_PAGOS, type Veredicto } from "@/lib/cartera/comprobante-validacion";
 import { carroCompatibleConChat } from "@/lib/cartera/cruce";
 import { detectarDiasViaje, textoTarifasInterior, type DestinoInterior } from "./salidas-interior";
 import {
@@ -1102,10 +1102,19 @@ export async function procesarPagoComprobante(opts: {
   const empresaId = await empresaDelVehiculo(
     resolucion.vehiculoId ?? (chatVinculado ? conversacion.vehiculo_id : null),
   );
+  const { data: pedidoRef } = await sb
+    .from("mensajes")
+    .select("id")
+    .eq("conversacion_id", conversacion.id)
+    .eq("direccion", "out")
+    .ilike("texto", `%${FRASE_PEDIR_CONFIRMACION}%`)
+    .limit(1)
+    .maybeSingle();
   const veredicto = await validarComprobante({
     comprobante,
     empresaId,
     contratoId: resolucion.contratoId ?? conversacion.contrato_id,
+    yaPidieronReferencia: !!pedidoRef,
   });
 
   // Solo se RELLENA lo que falte, y SOLO si el chat ya estaba vinculado.
@@ -1138,7 +1147,9 @@ export async function procesarPagoComprobante(opts: {
   const soloReenvioODup =
     !veredicto.crearPago &&
     veredicto.alertas.length > 0 &&
-    veredicto.alertas.every((a) => a.codigo === "duplicado" || a.codigo === "reenvio_dia");
+    veredicto.alertas.every(
+      (a) => a.codigo === "duplicado" || a.codigo === "reenvio_dia" || a.codigo === "pedir_referencia",
+    );
 
   // Otras alertas antifraude sí van al panel.
   if (veredicto.revisionHumana && !soloReenvioODup) {
@@ -1181,6 +1192,7 @@ export async function procesarPagoComprobante(opts: {
       ? `Desde número no vinculado (${conversacion.wa_numero}).${sugerenciaCarro ? ` Sugiere ${sugerenciaCarro}.` : ""}`
       : null,
     veredicto.alertas.length ? `ALERTAS: ${resumirAlertas(veredicto.alertas)}` : null,
+    veredicto.alertas.some((a) => a.codigo === "hora_distinta") ? MARCA_REVISION_DOS_PAGOS : null,
     notaExcedente,
   ]
     .filter(Boolean)

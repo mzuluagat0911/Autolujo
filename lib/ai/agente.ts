@@ -86,6 +86,11 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   comprobante por aquí. Así se aplica el pago. Puede mandar 2 o 3 comprobantes el mismo día:
   se SUMAN. Si a las 7:00 p.m. no cubrió la cuota del día (y el arreglo, si tiene), pierde
   el descuento de ese día y lo que falte se cobra mañana junto con la cuota nueva.
+- DOS COMPROBANTES IGUALES (mismo monto, mismo día) y no se puede saber si son dos pagos:
+  · Si la captura NO muestra el número de confirmación, pídelo: "Mándeme una captura donde se vea el número de confirmación de la transferencia."
+  · Si ya lo pediste y esta captura tampoco lo trae: hora distinta a la del primer pago → dile que el equipo lo revisa antes de aplicarlo. Marca pasar_a_humano = true. No lo des por aplicado.
+  · Si no se lee la hora, o es la misma hora del primer pago → es el mismo comprobante. No registres un segundo pago.
+  · Si el número de confirmación es distinto al del primer pago, sí son dos pagos. No pidas nada más por eso.
 - Un pago se parte así, sin que lo recalcules: primero recargo por no pago, después
   un solo concepto más (el que diga el CONTEXTO; si no, el de menor valor), después la
   letra de hoy. Si sobra, días siguientes: acuerdo de ese día y luego la letra.

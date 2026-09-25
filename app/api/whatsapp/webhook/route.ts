@@ -24,6 +24,7 @@ import { revisarRespuesta } from "@/lib/ai/guard";
 import { destinarCharla } from "@/lib/ai/filtro-charla";
 import { transcribirAudio } from "@/lib/ai/transcribir";
 import { fueraHorarioOperativo } from "@/lib/cartera/fecha";
+import { FRASE_PEDIR_CONFIRMACION } from "@/lib/cartera/comprobante-validacion";
 
 type Conv = Conversacion;
 
@@ -430,12 +431,24 @@ function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: s
   const alerta = (codigo: string) => res.veredicto.alertas.some((a) => a.codigo === codigo);
   const fuera = fueraHorarioOperativo();
 
-  if (res.estadoConciliacion === "duplicado") {
-    const reenvio = res.veredicto.alertas.some((a) => a.codigo === "reenvio_dia");
+  if (alerta("hora_distinta")) {
     return {
-      respuesta: reenvio
-        ? "El pago de ese día ya lo tenía registrado. Si es otro abono (mora u otro monto), mándeme esa captura."
-        : "Ese comprobante ya me aparece. Si fue otro pago, mándeme esa captura.",
+      respuesta: conPieHorario(
+        `Vi otro comprobante${monto ? ` de ${monto}` : ""} a una hora distinta, pero sin número de confirmación. El equipo lo revisa antes de aplicarlo.`,
+      ),
+      escalarMotivo: "Segundo comprobante del mismo monto, sin referencia y con otra hora. Revisar antes de aplicar.",
+    };
+  }
+
+  if (res.estadoConciliacion === "duplicado") {
+    const pedir = alerta("pedir_referencia");
+    const reenvio = alerta("reenvio_dia");
+    return {
+      respuesta: pedir
+        ? `Ese monto ya me aparece hoy y en esta captura no se ve el número de confirmación. ${FRASE_PEDIR_CONFIRMACION}`
+        : reenvio
+          ? "Esa captura es la del pago que ya tengo. No se ve otra hora ni otro número de confirmación, así que no registro un segundo pago."
+          : "Ese comprobante ya me aparece. Si fue otro pago, mándeme esa captura.",
       escalarMotivo: null,
     };
   }
@@ -533,7 +546,10 @@ function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: s
 function lineaComprobante(c: Comprobante, res: ResPago): string {
   const monto = c.monto != null ? `$${c.monto.toFixed(2)}` : "monto ?";
   const alerta = (codigo: string) => res.veredicto.alertas.some((a) => a.codigo === codigo);
-  if (res.estadoConciliacion === "duplicado") return `${monto} ya estaba`;
+  if (res.estadoConciliacion === "duplicado") {
+    return alerta("pedir_referencia") ? `${monto} falta el número de confirmación` : `${monto} ya estaba`;
+  }
+  if (alerta("hora_distinta")) return `${monto} otra hora, lo revisa el equipo`;
   if (alerta("cuenta_otra_empresa")) return `${monto} fue a otra empresa`;
   if (alerta("cuenta_ajena")) return `${monto} no es nuestra cuenta`;
   if (alerta("moneda_no_esperada")) return `${monto} no está en dólares`;

@@ -10,6 +10,7 @@ import { hoyPanama, fechaContable, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
 import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
+import { pagoEsperaRevisionDosPagos } from "./comprobante-validacion";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { destinoPorId } from "./salidas-interior";
 import {
@@ -523,7 +524,7 @@ export async function procesarExtracto(
     referencia?: string | null;
     notas?: string | null;
   }[])
-    .filter((p) => !pagoEsperaConceptoExcedente(p.notas))
+    .filter((p) => !pagoEsperaConceptoExcedente(p.notas) && !pagoEsperaRevisionDosPagos(p.notas))
     .filter((p) => {
       if (p.contrato_id && contratoIds.has(p.contrato_id)) return true;
       if (p.numero_carro && flota.some((c) => canonCarro(c.numero) === canonCarro(p.numero_carro!))) return true;

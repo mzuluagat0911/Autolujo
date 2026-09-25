@@ -7,6 +7,7 @@ import { recalcularRecargo } from "./devengo";
 import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
+import { pagoEsperaRevisionDosPagos } from "./comprobante-validacion";
 import { canonCarro, fechaCubrePago, montoExacto } from "./cruce";
 
 export type ResultadoRevision = { ok: boolean; error?: string };
@@ -96,6 +97,7 @@ async function comprobantePendienteCalza(
   const hits = ((data ?? []) as { id: string; monto: number; pagado_at: string; notas: string | null }[]).filter(
     (p) =>
       !pagoEsperaConceptoExcedente(p.notas) &&
+      !pagoEsperaRevisionDosPagos(p.notas) &&
       montoExacto(Number(p.monto), monto) &&
       fechaCubrePago(p.pagado_at, fechaMov),
   );

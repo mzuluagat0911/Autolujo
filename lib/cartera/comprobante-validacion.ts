@@ -9,8 +9,15 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
-import { hoyPanama, sumarDias } from "./fecha";
+import { hoyPanama, horaPanama, sumarDias } from "./fecha";
 import { digitos, mismaCuenta } from "./cuenta";
+
+/** Texto exacto que el agente manda cuando faltó el número. Sirve para saber que ya se pidió. */
+export const FRASE_PEDIR_CONFIRMACION =
+  "Mándeme una captura donde se vea el número de confirmación de la transferencia.";
+
+/** El banco no lo cruza solo: el equipo confirma que sí fueron dos pagos. */
+export const MARCA_REVISION_DOS_PAGOS = "REVISION_DOS_PAGOS";
 
 /** Días hacia atrás que se aceptan sin levantar la mano. */
 const DIAS_TOLERANCIA = 7;
@@ -19,6 +26,8 @@ export type Alerta = {
   codigo:
     | "duplicado"
     | "reenvio_dia"
+    | "pedir_referencia"
+    | "hora_distinta"
     | "cuenta_ajena"
     | "cuenta_otra_empresa"
     | "fecha_vieja"
@@ -51,6 +60,12 @@ function escaparLike(v: string): string {
   return v.replace(/[\\%_]/g, (ch) => `\\${ch}`);
 }
 
+function normalizarHora(hora: string | null | undefined): string | null {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec((hora ?? "").trim());
+  if (!m) return null;
+  return `${m[1]!.padStart(2, "0")}:${m[2]}`;
+}
+
 export async function validarComprobante(opts: {
   comprobante: Comprobante;
   /** Empresa del carro al que se va a aplicar, si ya se resolvió. */
@@ -61,6 +76,8 @@ export async function validarComprobante(opts: {
    * quedó cargado por Excel / otro canal, sin referencia bancaria en el primero.
    */
   contratoId?: string | null;
+  /** Ya le pedimos en este chat la captura con el número de confirmación. */
+  yaPidieronReferencia?: boolean;
 }): Promise<Veredicto> {
   const sb = createServerSupabase();
   const { comprobante: c, empresaId, contratoId } = opts;
@@ -89,31 +106,74 @@ export async function validarComprobante(opts: {
     }
   }
 
-  // --- 1b. ¿Ya hay pago del mismo día/monto en ESTE contrato? (reenvío) ------
-  // Típico del go-live: el del Excel ya bajó el saldo; el cliente reenvía la foto
-  // al número nuevo. Sin referencia en el primero, el chequeo 1 no alcanza.
+  // --- 1b. Mismo día y mismo monto ------------------------------------------
+  // Si el número de confirmación es distinto, son dos pagos: no se pide nada.
+  // Si no se ve el número y ya hay un pago igual, primero se pide la captura.
+  // Si ya se pidió y no llega el número: hora distinta → el equipo lo revisa
+  // antes de aplicarlo; sin hora o la misma hora → es el mismo comprobante.
   const fechaComp = (c.fecha && /^\d{4}-\d{2}-\d{2}$/.test(c.fecha) ? c.fecha : null) ?? hoyPanama();
   const montoComp = c.monto != null && c.monto > 0 ? Number(c.monto) : null;
   if (crearPago && contratoId && montoComp != null) {
     const { data: delDia } = await sb
       .from("pagos")
-      .select("id, monto, origen, fecha")
+      .select("id, monto, origen, fecha, pagado_at, referencia")
       .eq("contrato_id", contratoId)
       .eq("fecha", fechaComp)
       .neq("estado_conciliacion", "rechazado")
-      .limit(10);
-    const mismo = ((delDia ?? []) as { id: string; monto: number; origen: string | null; fecha: string }[]).find(
-      (p) => Math.abs(Number(p.monto) - montoComp) < 0.02,
-    );
-    if (mismo) {
-      crearPago = false;
-      pagoDuplicadoId = mismo.id;
-      alertas.push({
-        codigo: "reenvio_dia",
-        detalle:
-          `Este contrato ya tiene un pago del ${fechaComp} por $${Number(mismo.monto).toFixed(2)}` +
-          `${mismo.origen ? ` (origen ${mismo.origen})` : ""}. Parece reenvío del comprobante del día, no mora nueva.`,
-      });
+      .limit(20);
+    const mismos = ((delDia ?? []) as {
+      id: string;
+      monto: number;
+      origen: string | null;
+      fecha: string;
+      pagado_at: string | null;
+      referencia: string | null;
+    }[]).filter((p) => Math.abs(Number(p.monto) - montoComp) < 0.02);
+    if (mismos.length > 0) {
+      const refNueva = ref.toLowerCase();
+      const mismaRef = refNueva
+        ? mismos.some((p) => (p.referencia ?? "").trim().toLowerCase() === refNueva)
+        : false;
+      if (refNueva && mismaRef) {
+        crearPago = false;
+        pagoDuplicadoId = mismos.find((p) => (p.referencia ?? "").trim().toLowerCase() === refNueva)?.id ?? mismos[0]!.id;
+        alertas.push({
+          codigo: "duplicado",
+          detalle: `La referencia ${ref} ya está en un pago de hoy por $${montoComp.toFixed(2)}.`,
+        });
+      } else if (!refNueva) {
+        const primero = mismos[0]!;
+        if (!opts.yaPidieronReferencia) {
+          crearPago = false;
+          pagoDuplicadoId = primero.id;
+          alertas.push({
+            codigo: "pedir_referencia",
+            detalle: `Ya hay un pago del ${fechaComp} por $${montoComp.toFixed(2)} y esta captura no trae número de confirmación.`,
+          });
+        } else {
+          const horaNueva = normalizarHora(c.hora);
+          const horasPrevias = mismos
+            .map((p) => (p.pagado_at ? horaPanama(new Date(p.pagado_at)) : null))
+            .filter((h): h is string => !!h);
+          const horaRepetida = !!horaNueva && horasPrevias.includes(horaNueva);
+          if (!horaNueva || horaRepetida) {
+            crearPago = false;
+            pagoDuplicadoId = primero.id;
+            alertas.push({
+              codigo: "reenvio_dia",
+              detalle: horaRepetida
+                ? `La hora ${horaNueva} es la del pago que ya está registrado. Es el mismo comprobante.`
+                : `No se lee la hora ni el número de confirmación. Se toma como el mismo comprobante de $${montoComp.toFixed(2)}.`,
+            });
+          } else {
+            pagoDuplicadoId = primero.id;
+            alertas.push({
+              codigo: "hora_distinta",
+              detalle: `Mismo monto ($${montoComp.toFixed(2)}) sin número de confirmación, hora ${horaNueva} distinta a ${horasPrevias.join(", ") || "la del primer pago"}. Lo revisa el equipo antes de aplicarlo.`,
+            });
+          }
+        }
+      }
     }
   }
 
@@ -183,4 +243,8 @@ export async function validarComprobante(opts: {
 /** Resumen de las alertas para dejarlo en las notas del pago / la conversación. */
 export function resumirAlertas(alertas: Alerta[]): string {
   return alertas.map((a) => a.detalle).join(" · ");
+}
+
+export function pagoEsperaRevisionDosPagos(notas: string | null | undefined): boolean {
+  return (notas ?? "").includes(MARCA_REVISION_DOS_PAGOS);
 }
