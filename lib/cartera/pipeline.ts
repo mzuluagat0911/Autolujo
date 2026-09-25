@@ -445,7 +445,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `REGLA DE COBRO DIARIO (OBLIGATORIA — “cuánto debo HOY” / extracto):`,
       `- La cifra oficial es TOTAL A PAGAR HOY de arriba (${m(cobro.totalCobrarHoy)}) y su desglose. No inventes otra.`,
       `- SIEMPRE se cobra: letra del día + saldo anterior de letra + recargo/cierre de semana si aplica.`,
-      `- ÁRBOL DE UN PAGO (estricto, por carro): 1) recargo por no pago  2) un solo concepto más (si el carro no eligió, el de menor valor; si es acuerdo, primero lo vencido y si alcanza el de hoy)  3) letra de hoy  4) si sobra, días siguientes: acuerdo de ese día y luego la letra, hasta donde alcance.`,
+      `- ÁRBOL DE UN PAGO (estricto, por carro): 1) recargo por no pago  2) un solo concepto más. Si el acuerdo tiene saldo, ESE es el concepto hasta que quede en cero: mantenimiento y lo demás se listan pendientes y no entran al total. Si no hay acuerdo, el de menor valor (o el que el carro eligió)  3) letra de hoy  4) si sobra, días siguientes: acuerdo de ese día y luego la letra, hasta donde alcance.`,
       `- Si tiene plan de acuerdo con saldo pero la cuota de hoy YA está pagada: dilo (saldo del plan), NO lo sumes otra vez.`,
       `- El domingo no entra al total, salvo que la prioridad de este carro sea domingo.`,
       `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL solo incluye letra/recargo/cierre + ese un ítem.`,

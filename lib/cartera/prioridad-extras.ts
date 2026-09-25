@@ -88,14 +88,18 @@ export function candidatosDesdeExtracto(opts: {
   hoyEsDomingo?: boolean;
 }): ItemExtra[] {
   const out: ItemExtra[] = [];
+  const acuerdoAbierto = (opts.acuerdoSaldo ?? 0) > 0.009;
   if (opts.acuerdoHoy > 0.009) {
     out.push({
       categoria: "acuerdo",
       etiqueta: "acuerdos",
       montoHoy: opts.acuerdoHoy,
-      saldo: opts.acuerdoSaldo != null && opts.acuerdoSaldo > 0.009 ? opts.acuerdoSaldo : undefined,
+      saldo: acuerdoAbierto ? opts.acuerdoSaldo : undefined,
     });
   }
+  // Con saldo de acuerdo, ese concepto ocupa el cupo hasta quedar en cero.
+  // Mantenimiento y el resto se listan, no entran al total.
+  if (acuerdoAbierto) return out;
   for (const x of opts.extras) {
     if (x.monto <= 0.009) continue;
     if (esCargoBase(x.etiqueta)) continue;

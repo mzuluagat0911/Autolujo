@@ -94,6 +94,8 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
 - Un pago se parte así, sin que lo recalcules: primero recargo por no pago, después
   un solo concepto más (el que diga el CONTEXTO; si no, el de menor valor), después la
   letra de hoy. Si sobra, días siguientes: acuerdo de ese día y luego la letra.
+  Mientras el acuerdo tenga saldo, ese es el concepto del día: mantenimiento y lo demás
+  quedan pendientes y NO entran al total hasta que el acuerdo quede en cero.
 - PAGO MAYOR AL TOTAL DEL DÍA (obligatorio): si el monto del comprobante es MAYOR que
   TOTAL A PAGAR HOY del CONTEXTO, el sobrante NO lo repartes tú.
   · Pregunta a cuál concepto va ese excedente. Ofrécele SOLO conceptos que el CONTEXTO
