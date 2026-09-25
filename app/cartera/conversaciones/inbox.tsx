@@ -766,13 +766,20 @@ function Thread({
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false);
   const lastId = mensajes.at(-1)?.id ?? null;
 
-  // flex-col-reverse: scrollTop ≈ 0 = abajo (último mensaje). Sin pegar con JS al abrir.
+  // flex-col-reverse: scrollTop ≈ 0 = abajo (último mensaje).
   function syncNearBottom() {
     const el = scrollerRef.current;
     if (!el) return;
     const near = el.scrollTop < 80;
     nearBottomRef.current = near;
     setMostrarIrAbajo(!near && mensajes.length > 0);
+  }
+
+  function pegarAbajoSiCorresponde() {
+    if (!nearBottomRef.current) return;
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTop = 0;
   }
 
   function irAlFinal() {
@@ -802,7 +809,6 @@ function Thread({
 
     if (switched) return;
 
-    // Mensaje nuevo: si estabas abajo, quédate abajo. Si leías arriba, no te arrastra.
     if (newTail || agenteEscribiendo) {
       if (nearBottomRef.current || agenteEscribiendo) {
         el.scrollTop = 0;
@@ -814,7 +820,20 @@ function Thread({
     }
   }, [conversacionId, lastId, agenteEscribiendo, mensajes.length]);
 
-  // Más nuevos primero en el DOM → con column-reverse quedan abajo en pantalla.
+  // Si una foto termina de cargar y el alto cambia, re-ancla solo si ya estabas abajo.
+  useEffect(() => {
+    const el = scrollerRef.current;
+    if (!el) return;
+    const onLoad = (ev: Event) => {
+      const t = ev.target;
+      if (!(t instanceof HTMLImageElement)) return;
+      if (!el.contains(t)) return;
+      pegarAbajoSiCorresponde();
+    };
+    el.addEventListener("load", onLoad, true);
+    return () => el.removeEventListener("load", onLoad, true);
+  }, [conversacionId]);
+
   const ordenVisual = [...mensajes].reverse();
 
   return (
@@ -869,14 +888,7 @@ function Thread({
                   </p>
                 ) : null}
                 {m.signedUrl && !audio ? (
-                  <a href={m.signedUrl} target="_blank" rel="noreferrer" className="mb-1.5 block">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={m.signedUrl}
-                      alt="Comprobante"
-                      className="max-h-64 rounded-md object-contain"
-                    />
-                  </a>
+                  <ChatImage src={m.signedUrl} onSettled={pegarAbajoSiCorresponde} />
                 ) : null}
                 {!audio && m.texto ? (
                   <p className="whitespace-pre-wrap leading-relaxed">{m.texto}</p>
@@ -928,6 +940,43 @@ function Thread({
         </button>
       )}
     </div>
+  );
+}
+
+/** Hueco fijo antes de que cargue la foto: evita el salto del hilo al abrir. */
+function ChatImage({ src, onSettled }: { src: string; onSettled?: () => void }) {
+  const [listo, setListo] = useState(false);
+
+  function marcarListo() {
+    setListo(true);
+    onSettled?.();
+  }
+
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noreferrer"
+      className="mb-1.5 block w-[min(100%,14rem)]"
+    >
+      <span
+        className={`relative block h-56 w-full overflow-hidden rounded-md ${
+          listo ? "bg-transparent" : "bg-line/70"
+        }`}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={src}
+          alt="Comprobante"
+          decoding="async"
+          className={`h-full w-full object-contain transition-opacity duration-150 ${
+            listo ? "opacity-100" : "opacity-0"
+          }`}
+          onLoad={marcarListo}
+          onError={marcarListo}
+        />
+      </span>
+    </a>
   );
 }
 
