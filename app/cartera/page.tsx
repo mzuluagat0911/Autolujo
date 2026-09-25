@@ -255,11 +255,11 @@ export default async function PanelCartera() {
               value={d.contratosActivos}
               hint={etiqueta ? `En alcance · ${etiqueta}` : "Carros con arrendatario"}
             />
-            <Kpi
-              label="Saldo libro"
-              value={<Money amount={d.saldoLibro} />}
-              hint="Deuda viva del ledger (no es el extracto)"
-            />
+              <Kpi
+                label="Saldo libro"
+                value={<Money amount={d.saldoLibro} />}
+                hint="Deuda viva en cuenta (cargos − pagos)"
+              />
             <Kpi
               label="Cobertura del día"
               value={`${cobertura}%`}
