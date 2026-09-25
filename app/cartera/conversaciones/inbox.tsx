@@ -42,7 +42,38 @@ const RESPUESTAS_RAPIDAS = [
   "¿A qué número de carro corresponde el pago?",
 ];
 
-const POLL_MS = 8_000;
+/** Lista: cada 6s. Chat abierto: cada 2.5s. Pausa si la pestaña está oculta. */
+const POLL_LISTA_MS = 6_000;
+const POLL_CHAT_MS = 2_500;
+
+function esNotaDeVoz(m: Mensaje): boolean {
+  if (m.tipo === "audio") return true;
+  const p = (m.media_url ?? "").toLowerCase();
+  return /chat-audio\/|\.(ogg|opus|wav|mp3|m4a|webm|aac)(\?|$)/i.test(p);
+}
+
+function conservarSignedUrls(prev: Mensaje[] | undefined, next: Mensaje[]): Mensaje[] {
+  if (!prev?.length) return next;
+  const map = new Map(prev.filter((m) => m.signedUrl && m.media_url).map((m) => [m.id, m]));
+  return next.map((m) => {
+    const old = map.get(m.id);
+    if (old && old.media_url === m.media_url && old.signedUrl) {
+      return m.signedUrl ? m : { ...m, signedUrl: old.signedUrl };
+    }
+    return m;
+  });
+}
+
+function aplicarDetalle(
+  prev: ConversacionDetalle | null,
+  next: ConversacionDetalle,
+): ConversacionDetalle {
+  if (!prev || prev.id !== next.id) return next;
+  return {
+    ...next,
+    mensajes: conservarSignedUrls(prev.mensajes, next.mensajes),
+  };
+}
 
 type Props = {
   inicial: ConversacionLista[];
@@ -94,40 +125,68 @@ export function InboxConversaciones({
     });
   }, [selectedId, demo]);
 
-  // Polling: la lista solo se reemplaza si cambió algo. El hilo abierto
-  // solo se recarga si llegó un mensaje nuevo (no en cada tick).
+  // Polling: lista cada 6s; chat abierto cada 2.5s. Pausa si la pestaña está oculta.
   useEffect(() => {
     if (demo) return;
     let cancelled = false;
+    let timer: number | null = null;
+
+    const schedule = () => {
+      if (timer) window.clearTimeout(timer);
+      if (typeof document !== "undefined" && document.hidden) return;
+      const ms = selectedIdRef.current ? POLL_CHAT_MS : POLL_LISTA_MS;
+      timer = window.setTimeout(() => {
+        void tick();
+      }, ms);
+    };
+
     const tick = async () => {
+      if (cancelled) return;
+      if (typeof document !== "undefined" && document.hidden) {
+        schedule();
+        return;
+      }
       const { convs: next, error: err } = await cargarBandeja();
-      if (cancelled || err) return;
+      if (cancelled || err) {
+        schedule();
+        return;
+      }
       const el = listaRef.current;
       if (el) listaScrollRef.current = el.scrollTop;
       setConvs((prev) => (mismaBandeja(prev, next) ? prev : next));
 
       const sid = selectedIdRef.current;
-      if (!sid) return;
-      const row = next.find((c) => c.id === sid);
-      const cur = detalleRef.current;
-      const sinCambio =
-        cur?.id === sid &&
-        row &&
-        cur.ultimo_mensaje_at === row.ultimo_mensaje_at &&
-        cur.necesita_humano === row.necesita_humano &&
-        cur.modo === row.modo &&
-        (cur.ultimo_texto ?? "") === (row.ultimo_texto ?? "");
-      if (sinCambio) return;
-
-      const { detalle: d } = await cargarDetalle(sid);
-      if (cancelled || !d || selectedIdRef.current !== sid) return;
-      setDetalle(d);
-      setConvs((prev) => prev.map((c) => (c.id === sid ? { ...c, no_leidos: 0 } : c)));
+      if (sid) {
+        const row = next.find((c) => c.id === sid);
+        const cur = detalleRef.current;
+        const sinCambio =
+          cur?.id === sid &&
+          row &&
+          cur.ultimo_mensaje_at === row.ultimo_mensaje_at &&
+          cur.necesita_humano === row.necesita_humano &&
+          cur.modo === row.modo &&
+          (cur.ultimo_texto ?? "") === (row.ultimo_texto ?? "");
+        if (!sinCambio) {
+          const { detalle: d } = await cargarDetalle(sid);
+          if (!cancelled && d && selectedIdRef.current === sid) {
+            setDetalle((prev) => aplicarDetalle(prev, d));
+            setConvs((prev) => prev.map((c) => (c.id === sid ? { ...c, no_leidos: 0 } : c)));
+          }
+        }
+      }
+      schedule();
     };
-    const id = window.setInterval(tick, POLL_MS);
+
+    const onVis = () => {
+      if (!document.hidden) void tick();
+      else if (timer) window.clearTimeout(timer);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    schedule();
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      if (timer) window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [demo]);
 
@@ -700,18 +759,28 @@ function Thread({
   const nearBottomRef = useRef(true);
   const prevLastIdRef = useRef<string | null>(null);
   const prevConvRef = useRef<string | null>(null);
+  const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false);
   const lastId = mensajes.at(-1)?.id ?? null;
 
-  function onScroll() {
+  function syncNearBottom() {
     const el = scrollerRef.current;
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    nearBottomRef.current = dist < 120;
+    const near = dist < 80;
+    nearBottomRef.current = near;
+    setMostrarIrAbajo(!near && mensajes.length > 0);
   }
 
-  // Solo scrollea DENTRO del hilo (nunca scrollIntoView: eso arrastra la lista).
-  // Como WhatsApp: al abrir baja; si el usuario subió a leer historia, no lo fuerza.
-  useEffect(() => {
+  function irAlFinal() {
+    const el = scrollerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+    nearBottomRef.current = true;
+    setMostrarIrAbajo(false);
+  }
+
+  // Como WhatsApp: al abrir baja al instante; si estás leyendo arriba, no te arrastra.
+  useLayoutEffect(() => {
     const el = scrollerRef.current;
     if (!el) return;
 
@@ -720,6 +789,7 @@ function Thread({
       prevConvRef.current = conversacionId;
       prevLastIdRef.current = null;
       nearBottomRef.current = true;
+      setMostrarIrAbajo(false);
     }
 
     const prev = prevLastIdRef.current;
@@ -727,81 +797,217 @@ function Thread({
     const newTail = lastId != null && lastId !== prev;
     prevLastIdRef.current = lastId;
 
-    // Solo baja si acabas de abrir el chat o ya estabas al final.
-    // Si subiste a leer historia, un mensaje nuevo no te arrastra.
-    const shouldStick = openedOrFirst || (newTail && nearBottomRef.current) || agenteEscribiendo;
+    const shouldStick =
+      openedOrFirst || (newTail && nearBottomRef.current) || agenteEscribiendo;
+    if (!shouldStick) {
+      if (newTail && !nearBottomRef.current) setMostrarIrAbajo(true);
+      return;
+    }
 
-    if (!shouldStick) return;
-
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-      if (openedOrFirst) nearBottomRef.current = true;
-    });
+    el.scrollTop = el.scrollHeight;
+    if (openedOrFirst) nearBottomRef.current = true;
   }, [conversacionId, mensajes.length, lastId, agenteEscribiendo]);
 
   return (
-    <div
-      ref={scrollerRef}
-      onScroll={onScroll}
-      className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-4 [overflow-anchor:none] sm:px-5"
-    >
-      {mensajes.map((m) => {
-        const out = m.direccion === "out";
-        const system = m.tipo === "system";
-        return (
-          <div key={m.id} className={`flex ${system ? "justify-center" : out ? "justify-end" : "justify-start"}`}>
+    <div className="relative min-h-0 flex-1">
+      <div
+        ref={scrollerRef}
+        onScroll={syncNearBottom}
+        className="h-full space-y-2 overflow-y-auto overscroll-contain px-4 py-3 [overflow-anchor:none] sm:px-5"
+      >
+        {mensajes.map((m) => {
+          const out = m.direccion === "out";
+          const system = m.tipo === "system";
+          const audio = esNotaDeVoz(m);
+          const transcript =
+            m.texto &&
+            !/^🎤\s*nota de voz$/i.test(m.texto.trim())
+              ? m.texto.replace(/^🎤\s*/, "").trim()
+              : null;
+          return (
             <div
-              className={`max-w-[min(78%,28rem)] rounded-2xl px-4 py-2.5 text-sm ${
-                system
-                  ? "bg-rojo-wash text-rojo ring-1 ring-rojo/20"
-                  : out
-                    ? "bg-ink text-white"
-                    : "bg-gris-wash text-ink"
-              }`}
+              key={m.id}
+              className={`flex ${system ? "justify-center" : out ? "justify-end" : "justify-start"}`}
             >
-              {m.signedUrl && m.tipo === "audio" && (
-                <audio controls src={m.signedUrl} className="mb-2 max-w-full" preload="metadata" />
-              )}
-              {m.signedUrl && m.tipo !== "audio" && (
-                <a href={m.signedUrl} target="_blank" rel="noreferrer" className="mb-2 block">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={m.signedUrl}
-                    alt="Comprobante"
-                    className="max-h-64 rounded-md object-contain"
-                  />
-                </a>
-              )}
-              {m.texto && <p className="whitespace-pre-wrap leading-relaxed">{m.texto}</p>}
-              <p
-                className={`mt-1 text-right text-[10px] tabular-nums ${
-                  out && !system ? "text-white/55" : "text-muted"
+              <div
+                className={`max-w-[min(82%,30rem)] rounded-2xl px-3.5 py-2 text-sm ${
+                  system
+                    ? "bg-rojo-wash text-rojo ring-1 ring-rojo/20"
+                    : out
+                      ? "bg-ink text-white"
+                      : "bg-gris-wash text-ink"
                 }`}
               >
-                {out && !system
-                  ? `${m.enviado_por ? m.enviado_por : NOMBRE_AGENTE} · `
-                  : ""}
-                {horaMensaje(m.created_at)}
-              </p>
+                {audio && m.signedUrl ? (
+                  <AudioNote src={m.signedUrl} outbound={out && !system} />
+                ) : null}
+                {audio && !m.signedUrl ? (
+                  <p className={`mb-1 text-xs ${out && !system ? "text-white/70" : "text-muted"}`}>
+                    Nota de voz (sin audio guardado)
+                  </p>
+                ) : null}
+                {m.signedUrl && !audio ? (
+                  <a href={m.signedUrl} target="_blank" rel="noreferrer" className="mb-1.5 block">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={m.signedUrl}
+                      alt="Comprobante"
+                      className="max-h-64 rounded-md object-contain"
+                    />
+                  </a>
+                ) : null}
+                {!audio && m.texto ? (
+                  <p className="whitespace-pre-wrap leading-relaxed">{m.texto}</p>
+                ) : null}
+                {audio && transcript ? (
+                  <p
+                    className={`mt-1.5 whitespace-pre-wrap text-[13px] leading-snug ${
+                      out && !system ? "text-white/85" : "text-ink/90"
+                    }`}
+                  >
+                    {transcript}
+                  </p>
+                ) : null}
+                <p
+                  className={`mt-1 text-right text-[10px] tabular-nums ${
+                    out && !system ? "text-white/55" : "text-muted"
+                  }`}
+                >
+                  {out && !system
+                    ? `${m.enviado_por ? m.enviado_por : NOMBRE_AGENTE} · `
+                    : ""}
+                  {horaMensaje(m.created_at)}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+        {agenteEscribiendo && (
+          <div className="flex justify-end">
+            <div className="rounded-2xl bg-ink/80 px-4 py-2.5 text-sm text-surface">
+              <span className="inline-flex gap-1">
+                <span className="animate-pulse">●</span>
+                <span className="animate-pulse [animation-delay:150ms]">●</span>
+                <span className="animate-pulse [animation-delay:300ms]">●</span>
+              </span>
+              <span className="ml-2 text-xs text-surface/70">{NOMBRE_AGENTE} escribiendo…</span>
             </div>
           </div>
-        );
-      })}
-      {agenteEscribiendo && (
-        <div className="flex justify-end">
-          <div className="rounded-lg bg-ink/80 px-4 py-2.5 text-sm text-surface">
-            <span className="inline-flex gap-1">
-              <span className="animate-pulse">●</span>
-              <span className="animate-pulse [animation-delay:150ms]">●</span>
-              <span className="animate-pulse [animation-delay:300ms]">●</span>
-            </span>
-            <span className="ml-2 text-xs text-surface/70">{NOMBRE_AGENTE} escribiendo…</span>
-          </div>
+        )}
+        {mensajes.length === 0 && (
+          <p className="py-16 text-center text-sm text-muted">Sin mensajes todavía.</p>
+        )}
+      </div>
+      {mostrarIrAbajo && (
+        <button
+          type="button"
+          onClick={irAlFinal}
+          className="absolute bottom-3 right-4 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-surface text-ink shadow-md ring-1 ring-line transition hover:bg-paper"
+          aria-label="Ir al último mensaje"
+          title="Ir al final"
+        >
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path
+              d="M4 6l4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AudioNote({ src, outbound }: { src: string; outbound: boolean }) {
+  const ref = useRef<HTMLAudioElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [dur, setDur] = useState(0);
+
+  useEffect(() => {
+    const a = ref.current;
+    if (!a) return;
+    const onTime = () => {
+      if (!a.duration || !Number.isFinite(a.duration)) return;
+      setProgress(a.currentTime / a.duration);
+      setDur(a.duration);
+    };
+    const onEnd = () => {
+      setPlaying(false);
+      setProgress(0);
+    };
+    const onMeta = () => {
+      if (Number.isFinite(a.duration)) setDur(a.duration);
+    };
+    a.addEventListener("timeupdate", onTime);
+    a.addEventListener("ended", onEnd);
+    a.addEventListener("loadedmetadata", onMeta);
+    return () => {
+      a.removeEventListener("timeupdate", onTime);
+      a.removeEventListener("ended", onEnd);
+      a.removeEventListener("loadedmetadata", onMeta);
+    };
+  }, [src]);
+
+  function toggle() {
+    const a = ref.current;
+    if (!a) return;
+    if (a.paused) {
+      void a.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    } else {
+      a.pause();
+      setPlaying(false);
+    }
+  }
+
+  const secs = Math.max(0, Math.round(dur || 0));
+  const mm = Math.floor(secs / 60);
+  const ss = String(secs % 60).padStart(2, "0");
+
+  return (
+    <div className={`flex min-w-[11rem] items-center gap-2.5 ${outbound ? "" : ""}`}>
+      <audio ref={ref} src={src} preload="metadata" className="hidden" />
+      <button
+        type="button"
+        onClick={toggle}
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition ${
+          outbound ? "bg-white/15 text-white hover:bg-white/25" : "bg-ink text-white hover:bg-black"
+        }`}
+        aria-label={playing ? "Pausar nota de voz" : "Reproducir nota de voz"}
+      >
+        {playing ? (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+            <rect x="2" y="2" width="3" height="8" rx="0.5" />
+            <rect x="7" y="2" width="3" height="8" rx="0.5" />
+          </svg>
+        ) : (
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">
+            <path d="M3 1.5v9l8-4.5-8-4.5z" />
+          </svg>
+        )}
+      </button>
+      <div className="min-w-0 flex-1">
+        <div
+          className={`h-1 overflow-hidden rounded-full ${outbound ? "bg-white/25" : "bg-line"}`}
+        >
+          <div
+            className={`h-full rounded-full transition-[width] duration-100 ${
+              outbound ? "bg-white" : "bg-ink"
+            }`}
+            style={{ width: `${Math.min(100, Math.max(0, progress * 100))}%` }}
+          />
         </div>
-      )}
-      {mensajes.length === 0 && (
-        <p className="py-16 text-center text-sm text-muted">Sin mensajes todavía.</p>
-      )}
+        <p
+          className={`mt-1 text-[10px] tabular-nums ${
+            outbound ? "text-white/60" : "text-muted"
+          }`}
+        >
+          {secs > 0 ? `${mm}:${ss}` : "Nota de voz"}
+        </p>
+      </div>
     </div>
   );
 }

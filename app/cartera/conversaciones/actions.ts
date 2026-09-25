@@ -225,27 +225,30 @@ export async function cargarDetalle(
       .eq("conversacion_id", id)
       .order("created_at", { ascending: true });
 
-    const mensajes = (msgs as Mensaje[]) ?? [];
-    await Promise.all(
-      mensajes.map(async (m) => {
-        if (!m.media_url) return;
-        const { data: signed } = await sb.storage
-          .from("comprobantes")
-          .createSignedUrl(m.media_url, 3600);
-        m.signedUrl = signed?.signedUrl ?? null;
-      }),
-    );
-
-    let saldo: number | null = null;
+    const mensajesRaw = (msgs as Mensaje[]) ?? [];
     const contratoId = (conv as { contrato_id: string | null }).contrato_id;
-    if (contratoId) {
-      const { data: s } = await sb
-        .from("vw_saldo_contrato")
-        .select("saldo_actual")
-        .eq("contrato_id", contratoId)
-        .maybeSingle();
-      saldo = (s as { saldo_actual: number } | null)?.saldo_actual ?? null;
-    }
+
+    const [mensajes, saldoRes] = await Promise.all([
+      Promise.all(
+        mensajesRaw.map(async (m) => {
+          if (!m.media_url) return m;
+          const { data: signed } = await sb.storage
+            .from("comprobantes")
+            .createSignedUrl(m.media_url, 3600);
+          return { ...m, signedUrl: signed?.signedUrl ?? null };
+        }),
+      ),
+      contratoId
+        ? sb
+            .from("vw_saldo_contrato")
+            .select("saldo_actual")
+            .eq("contrato_id", contratoId)
+            .maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+
+    const saldo =
+      (saldoRes.data as { saldo_actual: number } | null)?.saldo_actual ?? null;
 
     const base = conv as unknown as ConversacionLista & { contrato_id: string | null };
     const detalle: ConversacionDetalle = {

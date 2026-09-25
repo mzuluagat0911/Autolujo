@@ -646,7 +646,7 @@ export async function conversacionesEnEspera(minutos: number): Promise<number> {
 export async function reclamarMensajeEntrante(opts: {
   conversacionId: string;
   waMessageId?: string | null;
-  tipo: "text" | "image";
+  tipo: "text" | "image" | "audio";
   texto: string;
 }): Promise<string | null> {
   const sb = createServerSupabase();
@@ -689,16 +689,22 @@ export async function marcarLeida(conversacionId: string): Promise<void> {
   await sb.from("conversaciones").update({ no_leidos: 0 }).eq("id", conversacionId);
 }
 
-/** Completa un mensaje ya reclamado (imagen del comprobante, pago o transcripción). */
+/** Completa un mensaje ya reclamado (imagen del comprobante, audio o transcripción). */
 export async function completarMensaje(
   mensajeId: string,
-  patch: { mediaUrl?: string | null; pagoId?: string | null; texto?: string },
+  patch: {
+    mediaUrl?: string | null;
+    pagoId?: string | null;
+    texto?: string;
+    tipo?: "text" | "image" | "audio" | "system";
+  },
 ): Promise<void> {
   const sb = createServerSupabase();
   const upd: Record<string, unknown> = {};
   if (patch.mediaUrl !== undefined) upd.media_url = patch.mediaUrl;
   if (patch.pagoId !== undefined) upd.pago_id = patch.pagoId;
   if (patch.texto !== undefined) upd.texto = patch.texto;
+  if (patch.tipo !== undefined) upd.tipo = patch.tipo;
   if (Object.keys(upd).length === 0) return;
   await sb.from("mensajes").update(upd).eq("id", mensajeId);
 
@@ -835,6 +841,35 @@ export async function subirComprobante(bytes: Buffer, mime: string): Promise<str
   const path = `${new Date().getFullYear()}/${crypto.randomUUID()}.${ext}`;
   const { error } = await sb.storage.from(BUCKET).upload(path, bytes, {
     contentType: mime,
+    upsert: false,
+  });
+  if (error) throw error;
+  return path;
+}
+
+/** Nota de voz del cliente (OGG/Opus de WhatsApp) para escucharla en el inbox. */
+export async function subirAudioChat(
+  conversacionId: string,
+  bytes: Buffer,
+  mime: string,
+): Promise<string> {
+  const sb = createServerSupabase();
+  const raw = (mime ?? "audio/ogg").toLowerCase();
+  const contentType =
+    raw.includes("mpeg") || raw.includes("mp3") ? "audio/mpeg"
+    : raw.includes("mp4") || raw.includes("m4a") || raw.includes("aac") ? "audio/mp4"
+    : raw.includes("wav") ? "audio/wav"
+    : raw.includes("webm") ? "audio/webm"
+    : "audio/ogg";
+  const ext =
+    contentType.includes("mpeg") ? "mp3"
+    : contentType.includes("mp4") ? "m4a"
+    : contentType.includes("wav") ? "wav"
+    : contentType.includes("webm") ? "webm"
+    : "ogg";
+  const path = `chat-audio/${conversacionId}/${Date.now()}.${ext}`;
+  const { error } = await sb.storage.from(BUCKET).upload(path, bytes, {
+    contentType,
     upsert: false,
   });
   if (error) throw error;

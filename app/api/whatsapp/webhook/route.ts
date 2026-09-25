@@ -7,6 +7,7 @@ import {
   registrarMensaje,
   procesarPagoComprobante,
   subirComprobante,
+  subirAudioChat,
   reclamarMensajeEntrante,
   completarMensaje,
   historialReciente,
@@ -169,7 +170,8 @@ async function manejarMensaje(msg: WhatsAppMessage) {
   // Si Meta reintenta, el segundo choca con el unique y sale sin reprocesar.
   const mensajeId = await reclamarMensajeEntrante({
     conversacionId: conv.id, waMessageId: msg.id,
-    tipo: tipo === "image" ? "image" : "text", texto,
+    tipo: tipo === "image" ? "image" : tipo === "audio" ? "audio" : "text",
+    texto,
   });
   if (!mensajeId) return; // duplicado (reintento de Meta)
 
@@ -311,7 +313,7 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
   }
 }
 
-// Descarga la nota de voz, la transcribe y deja que el agente responda al texto.
+// Descarga la nota de voz, la guarda para el equipo, la transcribe y responde.
 async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, mensajeId: string) {
   const mediaId = msg.audio?.id;
   if (!mediaId) {
@@ -324,10 +326,24 @@ async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, men
     return;
   }
   try {
+    const mime = msg.audio?.mime_type ?? "audio/ogg";
     const bytes = await downloadMedia(mediaId);
-    const transcript = await transcribirAudio(bytes, msg.audio?.mime_type ?? "audio/ogg");
-    await completarMensaje(mensajeId, { texto: transcript });
-    await responderConAgente(conv, from, { direccion: "in", texto: transcript });
+    let mediaUrl: string | null = null;
+    try {
+      mediaUrl = await subirAudioChat(conv.id, bytes, mime);
+    } catch (upErr) {
+      console.error("[whatsapp/webhook] subir audio falló:", upErr);
+    }
+    const transcript = await transcribirAudio(bytes, mime);
+    await completarMensaje(mensajeId, {
+      tipo: "audio",
+      mediaUrl,
+      texto: transcript?.trim() || "🎤 Nota de voz",
+    });
+    await responderConAgente(conv, from, {
+      direccion: "in",
+      texto: transcript?.trim() || "🎤 Nota de voz",
+    });
   } catch (e) {
     console.error("[whatsapp/webhook] transcribir audio falló:", e);
     await responderYEscalar(
