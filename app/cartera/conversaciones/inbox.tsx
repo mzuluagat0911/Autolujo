@@ -98,10 +98,43 @@ export function InboxConversaciones({
   const [toast, setToast] = useState<{ tone: "good" | "crit"; text: string } | null>(null);
   const listaRef = useRef<HTMLDivElement>(null);
   const listaScrollRef = useRef(0);
+  /** Si el usuario bajó en la lista, no reordenamos filas en el poll (como WhatsApp). */
+  const listaOrdenFijoRef = useRef<string[] | null>(null);
   const selectedIdRef = useRef(selectedId);
   const detalleRef = useRef(detalle);
   selectedIdRef.current = selectedId;
   detalleRef.current = detalle;
+
+  function guardarScrollLista() {
+    const el = listaRef.current;
+    if (el) listaScrollRef.current = el.scrollTop;
+  }
+
+  function aplicarBandeja(prev: ConversacionLista[], next: ConversacionLista[]): ConversacionLista[] {
+    if (mismaBandeja(prev, next)) return prev;
+    const el = listaRef.current;
+    const abajo = (el?.scrollTop ?? listaScrollRef.current) > 64;
+    if (!abajo) {
+      listaOrdenFijoRef.current = null;
+      return next;
+    }
+    // Mantén el orden que el usuario está viendo; solo actualiza datos y agrega chats nuevos al final.
+    const byId = new Map(next.map((c) => [c.id, c]));
+    const orden = listaOrdenFijoRef.current ?? prev.map((c) => c.id);
+    listaOrdenFijoRef.current = orden;
+    const out: ConversacionLista[] = [];
+    const vistos = new Set<string>();
+    for (const id of orden) {
+      const row = byId.get(id);
+      if (!row) continue;
+      out.push(row);
+      vistos.add(id);
+    }
+    for (const c of next) {
+      if (!vistos.has(c.id)) out.push(c);
+    }
+    return out;
+  }
 
   // Sync URL (preserva ?demo=1).
   useEffect(() => {
@@ -151,9 +184,8 @@ export function InboxConversaciones({
         schedule();
         return;
       }
-      const el = listaRef.current;
-      if (el) listaScrollRef.current = el.scrollTop;
-      setConvs((prev) => (mismaBandeja(prev, next) ? prev : next));
+      guardarScrollLista();
+      setConvs((prev) => aplicarBandeja(prev, next));
 
       const sid = selectedIdRef.current;
       if (sid) {
@@ -206,7 +238,7 @@ export function InboxConversaciones({
 
   async function abrir(id: string) {
     if (id === selectedId && detalle?.id === id && !cargandoDetalle) return;
-    if (listaRef.current) listaScrollRef.current = listaRef.current.scrollTop;
+    guardarScrollLista();
     setSelectedId(id);
     if (demo) {
       const d = demoDetalle(id);
@@ -293,7 +325,11 @@ export function InboxConversaciones({
           <div
             ref={listaRef}
             onScroll={() => {
-              if (listaRef.current) listaScrollRef.current = listaRef.current.scrollTop;
+              const el = listaRef.current;
+              if (!el) return;
+              listaScrollRef.current = el.scrollTop;
+              // Volvió arriba: el próximo poll puede reordenar con normalidad.
+              if (el.scrollTop <= 64) listaOrdenFijoRef.current = null;
             }}
             className="min-h-0 flex-1 overflow-y-auto [overflow-anchor:none]"
           >
@@ -368,8 +404,9 @@ export function InboxConversaciones({
                   cargarDetalle(detalle.id),
                   cargarBandeja(),
                 ]);
-                if (d) setDetalle(d);
-                setConvs(next);
+                if (d) setDetalle((prev) => (prev ? aplicarDetalle(prev, d) : d));
+                guardarScrollLista();
+                setConvs((prev) => aplicarBandeja(prev, next));
               }}
               onFlash={(msg) => showToast("good", msg)}
               onLocalPatch={(patch) => {
