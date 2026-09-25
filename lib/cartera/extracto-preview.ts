@@ -20,7 +20,7 @@ export function estaAlDia(e: EstadoCuenta): boolean {
 }
 
 function avisoRecargoDe(e: EstadoCuenta): string {
-  return e.recargo > 0.009 ? money(e.recargo) : "$0";
+  return money(e.recargoSiTarda > 0.009 ? e.recargoSiTarda : e.penalidad);
 }
 
 /** Vars de `extracto_detalle`: nombre, fecha, carro, desglose, total, avisoRecargo. */
@@ -58,7 +58,7 @@ export function previewEstadoCuenta(e: EstadoCuenta, ctx?: ExtractoCtx): string 
     `*DEBE TOTAL PAGAR HOY: ${total}*`,
     ``,
     `*RECUERDE:* El sistema cierra a las 7:00 p.m.`,
-    ...(avisoRecargo !== "$0" ? [`*Recargo cargado por el equipo: ${avisoRecargo}.*`] : []),
+    `*Se genera ${avisoRecargo} de recargo por no pagar.*`,
     ``,
     `Envíanos tu comprobante por aquí. ¡Gracias!`,
   ].join("\n");

@@ -41,7 +41,7 @@ const TEMPLATE_FALLBACK = "estado_cuenta_diario";
 type ExtraCtx = ExtractoCtx;
 
 function avisoRecargoDe(e: EstadoCuenta): string {
-  return e.recargo > 0.009 ? money(e.recargo) : "$0";
+  return money(e.recargoSiTarda > 0.009 ? e.recargoSiTarda : e.penalidad);
 }
 
 function varsFallbackAlDia(e: EstadoCuenta): string[] {
