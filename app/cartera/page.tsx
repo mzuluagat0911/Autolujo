@@ -5,17 +5,35 @@ import { conversacionesEnEspera } from "@/lib/cartera/pipeline";
 import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
 import { lineaSalidaHoy, salidasDelDia } from "@/lib/cartera/salidas-aplicar";
 import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
+import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta-cache";
+import { esAdelantado, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
+import { cobroHoyDe } from "@/lib/cartera/cobro-hoy";
+import {
+  acuerdosSaldoPorContrato,
+  cargosExtraPorContrato,
+} from "@/lib/cartera/extracto-desglose";
 
 export const dynamic = "force-dynamic";
 
 type Datos = {
   ok: boolean;
   contratosActivos: number;
-  saldoTotal: number;
+  /** Deuda viva del ledger (referencia). */
+  saldoLibro: number;
+  /** Suma de totalCobrarHoy del extracto (misma cifra del WhatsApp). */
+  aCobrarHoy: number;
+  /** Pagos conciliados / manuales de hoy. */
   cobradoHoy: number;
-  alDia: number;
-  sinPagoHoy: number;
-  porRevisar: number;
+  /** Comprobantes pendientes: cantidad y monto. */
+  porConciliarN: number;
+  porConciliarMonto: number;
+  /** Contratos con extracto en $0 (cubrieron hoy o adelantados sin cobro). */
+  cubiertos: number;
+  /** Contratos que aún deben el extracto de hoy. */
+  sinCubrirN: number;
+  sinCubrirMonto: number;
+  /** Adelantados (letra por delante). */
+  adelantados: number;
   necesitaRespuesta: number;
   esperandoHace: number;
   error: string | null;
@@ -27,7 +45,6 @@ const MINUTOS_ESPERA = 120;
 async function idsContratosAlcance(
   empresaIds: string[] | null,
 ): Promise<string[] | null> {
-  // null = sin filtro (todas)
   if (!empresaIds) return null;
   if (empresaIds.length === 0) return [];
   const sb = createServerSupabase();
@@ -40,22 +57,36 @@ async function idsContratosAlcance(
   return ((data ?? []) as { id: string }[]).map((r) => r.id);
 }
 
+function enAlcance(e: EstadoCuenta, ids: string[] | null): boolean {
+  if (!ids) return true;
+  return ids.includes(e.contratoId);
+}
+
 async function getDatos(contratoIds: string[] | null): Promise<Datos> {
   const base: Datos = {
-    ok: false, contratosActivos: 0, saldoTotal: 0, cobradoHoy: 0, alDia: 0,
-    sinPagoHoy: 0, porRevisar: 0, necesitaRespuesta: 0, esperandoHace: 0, error: null,
+    ok: false,
+    contratosActivos: 0,
+    saldoLibro: 0,
+    aCobrarHoy: 0,
+    cobradoHoy: 0,
+    porConciliarN: 0,
+    porConciliarMonto: 0,
+    cubiertos: 0,
+    sinCubrirN: 0,
+    sinCubrirMonto: 0,
+    adelantados: 0,
+    necesitaRespuesta: 0,
+    esperandoHace: 0,
+    error: null,
   };
   try {
     const sb = createServerSupabase();
     const hoy = hoyPanama();
 
-    // Alcance vacío explícito (piloto mal configurado) → ceros.
     if (contratoIds && contratoIds.length === 0) {
       return { ...base, ok: true };
     }
 
-    let cActQ = sb.from("contratos").select("*", { count: "exact", head: true }).eq("estado", "activo");
-    let saldosQ = sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual");
     let pagosHoyQ = sb
       .from("pagos")
       .select("contrato_id, monto")
@@ -63,48 +94,76 @@ async function getDatos(contratoIds: string[] | null): Promise<Datos> {
       .in("estado_conciliacion", ["conciliado", "manual"]);
     let porRevQ = sb
       .from("pagos")
-      .select("*", { count: "exact", head: true })
+      .select("monto")
       .eq("estado_conciliacion", "pendiente");
 
     if (contratoIds) {
-      cActQ = cActQ.in("id", contratoIds);
-      saldosQ = saldosQ.in("contrato_id", contratoIds);
       pagosHoyQ = pagosHoyQ.in("contrato_id", contratoIds);
       porRevQ = porRevQ.in("contrato_id", contratoIds);
     }
 
-    const [cAct, saldos, pagosHoy, porRev, necesita, esperando] = await Promise.all([
-      cActQ,
-      saldosQ,
+    const [pagosHoy, porRev, necesita, esperando, estados] = await Promise.all([
       pagosHoyQ,
       porRevQ,
       sb.from("conversaciones").select("*", { count: "exact", head: true }).eq("necesita_humano", true),
       conversacionesEnEspera(MINUTOS_ESPERA),
+      estadosCuentaPanel(),
     ]);
-    const err = cAct.error ?? saldos.error ?? pagosHoy.error ?? porRev.error ?? necesita.error;
+    const err = pagosHoy.error ?? porRev.error ?? necesita.error;
     if (err) throw err;
 
-    const contratosActivos = cAct.count ?? 0;
-    const saldoTotal = (saldos.data ?? []).reduce(
-      (a, r: { saldo_actual: number | null }) => a + Number(r.saldo_actual ?? 0),
-      0,
-    );
+    const vivos = estados.filter((e) => enAlcance(e, contratoIds));
+    const ids = vivos.map((e) => e.contratoId);
+    const [acuerdoMap, extrasMap] = await Promise.all([
+      acuerdosSaldoPorContrato(ids),
+      cargosExtraPorContrato(ids),
+    ]);
+
+    let aCobrarHoy = 0;
+    let cubiertos = 0;
+    let sinCubrirN = 0;
+    let sinCubrirMonto = 0;
+    let adelantados = 0;
+    let saldoLibro = 0;
+
+    for (const e of vivos) {
+      saldoLibro += Math.max(Number(e.saldoVista) || 0, 0);
+      if (esAdelantado(e)) adelantados += 1;
+      const cobro = cobroHoyDe(e, {
+        acuerdoSaldo: acuerdoMap.get(e.contratoId) ?? 0,
+        extras: extrasMap.get(e.contratoId) ?? [],
+      });
+      const t = cobro.totalCobrarHoy;
+      if (t > 0.009) {
+        aCobrarHoy += t;
+        sinCubrirN += 1;
+        sinCubrirMonto += t;
+      } else {
+        cubiertos += 1;
+      }
+    }
+
     const cobradoHoy = (pagosHoy.data ?? []).reduce(
       (a, r: { monto: number | null }) => a + Number(r.monto ?? 0),
       0,
     );
-    const alDia = new Set(
-      (pagosHoy.data ?? []).map((r: { contrato_id: string | null }) => r.contrato_id),
-    ).size;
+    const porConciliarMonto = (porRev.data ?? []).reduce(
+      (a, r: { monto: number | null }) => a + Number(r.monto ?? 0),
+      0,
+    );
 
     return {
       ok: true,
-      contratosActivos,
-      saldoTotal,
-      cobradoHoy,
-      alDia,
-      sinPagoHoy: Math.max(contratosActivos - alDia, 0),
-      porRevisar: porRev.count ?? 0,
+      contratosActivos: vivos.length,
+      saldoLibro: Math.round(saldoLibro * 100) / 100,
+      aCobrarHoy: Math.round(aCobrarHoy * 100) / 100,
+      cobradoHoy: Math.round(cobradoHoy * 100) / 100,
+      porConciliarN: porRev.data?.length ?? 0,
+      porConciliarMonto: Math.round(porConciliarMonto * 100) / 100,
+      cubiertos,
+      sinCubrirN,
+      sinCubrirMonto: Math.round(sinCubrirMonto * 100) / 100,
+      adelantados,
       necesitaRespuesta: necesita.count ?? 0,
       esperandoHace: esperando,
       error: null,
@@ -121,6 +180,10 @@ export default async function PanelCartera() {
   const contratoIds = await idsContratosAlcance(alcance.empresaIds);
   const [d, salidasHoy] = await Promise.all([getDatos(contratoIds), salidasDelDia(hoyPanama())]);
   const etiqueta = etiquetaAlcance(alcance.codigos);
+  const cobertura =
+    d.contratosActivos > 0
+      ? Math.round((d.cubiertos / d.contratosActivos) * 100)
+      : 0;
 
   return (
     <div className="mx-auto max-w-6xl py-10">
@@ -148,21 +211,61 @@ export default async function PanelCartera() {
         </p>
       ) : (
         <div className="mt-8 space-y-10">
-          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1.15fr_2fr]">
-            <Kpi
-              size="hero"
-              label="Saldo en cartera"
-              value={<Money amount={d.saldoTotal} />}
-              hint={etiqueta ? `Por cobrar · ${etiqueta}` : "Total por cobrar en la flota activa"}
-            />
-            <div className="grid grid-cols-2 gap-4">
-              <Kpi label="Cobrado hoy" value={<Money amount={d.cobradoHoy} />} hint="Conciliado del día" />
+          <div>
+            <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">Hoy</h2>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Kpi
-                label="Contratos activos"
-                value={d.contratosActivos}
-                hint={etiqueta ? `En alcance · ${etiqueta}` : "Carros con arrendatario"}
+                label="A cobrar hoy"
+                value={<Money amount={d.aCobrarHoy} />}
+                hint="Suma del extracto (WhatsApp)"
+                tone={d.aCobrarHoy > 0.009 ? "crit" : "good"}
+              />
+              <Kpi
+                label="Cobrado hoy"
+                value={<Money amount={d.cobradoHoy} />}
+                hint="Conciliado / oficina"
+                tone="good"
+              />
+              <Kpi
+                label="Por conciliar"
+                value={<Money amount={d.porConciliarMonto} />}
+                hint={
+                  d.porConciliarN > 0
+                    ? `${d.porConciliarN} comprobante${d.porConciliarN === 1 ? "" : "s"} pendiente${d.porConciliarN === 1 ? "" : "s"}`
+                    : "Bandeja limpia"
+                }
+                tone={d.porConciliarMonto > 0.009 ? "warn" : "default"}
+              />
+              <Kpi
+                label="Sin cubrir"
+                value={<Money amount={d.sinCubrirMonto} />}
+                hint={
+                  d.sinCubrirN > 0
+                    ? `${d.sinCubrirN} carro${d.sinCubrirN === 1 ? "" : "s"} con extracto abierto`
+                    : "Todos cubiertos"
+                }
+                tone={d.sinCubrirMonto > 0.009 ? "crit" : "good"}
               />
             </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Kpi
+              label="Contratos activos"
+              value={d.contratosActivos}
+              hint={etiqueta ? `En alcance · ${etiqueta}` : "Carros con arrendatario"}
+            />
+            <Kpi
+              label="Saldo libro"
+              value={<Money amount={d.saldoLibro} />}
+              hint="Deuda viva del ledger (no es el extracto)"
+            />
+            <Kpi
+              label="Cobertura del día"
+              value={`${cobertura}%`}
+              hint={`${d.cubiertos} de ${d.contratosActivos} con extracto en $0`}
+              tone={cobertura >= 70 ? "good" : cobertura >= 40 ? "warn" : "crit"}
+            />
           </div>
 
           {salidasHoy.length > 0 && (
@@ -185,17 +288,47 @@ export default async function PanelCartera() {
           <div>
             <h2 className="text-xs font-semibold uppercase tracking-[0.16em] text-muted">El día de hoy</h2>
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Cubeta label="Al día" valor={d.alDia} tono="good" hint="Pagaron hoy" />
-              <Cubeta label="Sin pago hoy" valor={d.sinPagoHoy} tono="warn" hint="Por cobrar / llamar" href="/cartera/por-llamar" />
-              <Cubeta label="Comprobantes" valor={d.porRevisar} tono="crit" hint="Bandeja WA / alertas" href="/cartera/pagos" />
+              <Cubeta
+                label="Cubiertos"
+                valor={d.cubiertos}
+                tono="good"
+                hint="Extracto en $0 (pagaron o adelanto)"
+              />
+              <Cubeta
+                label="Sin cubrir"
+                valor={d.sinCubrirN}
+                tono="warn"
+                hint="Aún deben el extracto de hoy"
+                href="/cartera/por-llamar"
+              />
+              <Cubeta
+                label="Comprobantes"
+                valor={d.porConciliarN}
+                tono="crit"
+                hint={
+                  d.porConciliarMonto > 0.009
+                    ? `USD ${Math.round(d.porConciliarMonto).toLocaleString("es-PA")} por conciliar`
+                    : "Bandeja WA / alertas"
+                }
+                href="/cartera/pagos"
+              />
               <Cubeta
                 label="Necesitan respuesta"
                 valor={d.necesitaRespuesta}
                 tono={d.esperandoHace > 0 ? "crit" : "azul"}
-                hint={d.esperandoHace > 0 ? `${d.esperandoHace} llevan +2 h esperando` : "Chats escalados"}
+                hint={
+                  d.esperandoHace > 0
+                    ? `${d.esperandoHace} llevan +2 h esperando`
+                    : "Chats escalados"
+                }
                 href="/cartera/conversaciones"
               />
             </div>
+            {d.adelantados > 0 && (
+              <p className="mt-3 text-xs text-muted">
+                {d.adelantados} carro{d.adelantados === 1 ? "" : "s"} con pago adelantado (letra por delante).
+              </p>
+            )}
           </div>
 
           <div>
@@ -225,20 +358,35 @@ export default async function PanelCartera() {
   );
 }
 
-function Cubeta({ label, valor, tono, hint, href }: {
-  label: string; valor: number; hint: string; href?: string;
+function Cubeta({
+  label,
+  valor,
+  tono,
+  hint,
+  href,
+}: {
+  label: string;
+  valor: number;
+  hint: string;
+  href?: string;
   tono: "good" | "warn" | "crit" | "azul";
 }) {
   const color =
-    tono === "good" ? "text-verde"
-    : tono === "crit" ? "text-rojo"
-    : tono === "warn" ? "text-ambar"
-    : "text-azul";
+    tono === "good"
+      ? "text-verde"
+      : tono === "crit"
+        ? "text-rojo"
+        : tono === "warn"
+          ? "text-ambar"
+          : "text-azul";
   const dot =
-    tono === "good" ? "bg-verde"
-    : tono === "crit" ? "bg-rojo"
-    : tono === "warn" ? "bg-ambar"
-    : "bg-azul";
+    tono === "good"
+      ? "bg-verde"
+      : tono === "crit"
+        ? "bg-rojo"
+        : tono === "warn"
+          ? "bg-ambar"
+          : "bg-azul";
   const inner = (
     <div className="rounded-xl bg-surface p-5 ring-1 ring-line transition hover:ring-line-strong">
       <div className="flex items-center justify-between">
