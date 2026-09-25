@@ -218,7 +218,7 @@ function EditorAsignaciones({
           Reasignar conceptos
         </p>
         <p className="mt-1 text-xs text-muted">
-          El agente reparte así: arreglo → saldo anterior → recargo → cuota. Acá podés forzar a qué
+          El agente reparte así: recargo solo si está cargado → acuerdo (mientras tenga saldo) → letra. Acá podés forzar a qué
           cuenta fue cada parte. La suma + sobrante debe igualar {money(pago.monto)}.
         </p>
       </div>
@@ -528,8 +528,7 @@ export function HistorialPagosSeccion({
           </button>
         </div>
         <p className="text-[11px] text-faint">
-          Orden del agente: arreglo → saldo anterior → recargo → cuota del día. Domingo no entra al
-          total a pagar (solo se lista).
+          Orden del agente: recargo manual → acuerdo hasta saldo cero → letra. Mantenimiento y domingo se listan y no entran al total mientras el acuerdo tenga saldo.
         </p>
       </div>
 

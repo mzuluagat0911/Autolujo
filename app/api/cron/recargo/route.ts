@@ -4,8 +4,7 @@ import { hoyPanama } from "@/lib/cartera/fecha";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Cron diario — aplica el recargo de las 7:00 p.m. a quien no pagó hoy.
-// Corre a las 7:05 p.m. Panamá (00:05 UTC del día siguiente).
+// Cron de las 7:05 p.m. Panamá. Ya no crea el recargo: solo el equipo lo carga a mano.
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (secret) {

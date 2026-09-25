@@ -25,7 +25,7 @@
 // 5) “Pagado hoy” YA está neto en el saldo / total. NUNCA inventar una
 //    línea “abono” con ese monto (duplicaba el cobro).
 //
-// 6) “Por no pagar” SOLO con recargo real (PAGO_TARDE / corte). No partir
+// 6) “Por no pagar” solo si el equipo cargó la multa. El corte de las 7 no lo crea solo.
 //    el saldo en letras + $5 para “cuadrar”. G20 24-sep: $25 inventados
 //    sobre deuda de letra; el mantenimiento $26 era el único cargo aparte.
 //
