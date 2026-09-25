@@ -40,7 +40,7 @@ export const ComprobanteSchema = z.object({
     .string()
     .nullable()
     .describe(
-      "ID único de la transacción tal como aparece. Alias equivalentes (elige UNO, el que esté impreso): 'Referencia', 'Número de confirmación', 'Nº de comprobante', 'Comprobante de canje', 'No. Confirmación', 'Ref'. En un cheque, el número del cheque. Devuelve solo el código/número, sin la etiqueta.",
+      "ID único de la transacción. SIEMPRE hay que buscarlo: es lo que separa dos pagos del mismo día y del mismo monto. Alias: Referencia, Número de confirmación, Nº de comprobante, Comprobante de canje, No. Confirmación, Ref. Solo el código, sin etiqueta. null solo si en la imagen no aparece.",
     ),
   banco: z.string().nullable().describe("Banco o entidad EMISORA (desde dónde se pagó), si es visible."),
   banco_destino: z.string().nullable().describe("Banco o entidad que RECIBE el pago (ej. 'Banco General'), si es visible."),
@@ -79,10 +79,12 @@ PASO 2 — Si es comprobante, extrae con MUCHA precisión:
 - fecha: la fecha EXACTA impresa en el comprobante (YYYY-MM-DD). NUNCA uses la fecha de hoy por
   defecto. Si no la puedes leer, null y baja la confianza.
 - hora: si aparece hora en el comprobante, HH:mm en 24h; si no, null.
-- referencia: el ID de la transferencia. En apps panameñas aparece con nombres distintos
-  pero es el MISMO dato: Referencia, Número de confirmación, Nº de comprobante,
-  Comprobante de canje, No. Confirmación, Ref. Extrae el código/número (no la etiqueta).
-  En un cheque, el número del cheque.
+- referencia: SIEMPRE búscalo antes que nada. Es lo que distingue un pago de otro.
+  Un cliente puede mandar 1 o varios pagos el mismo día, del mismo monto. Si el número
+  de confirmación es distinto, es OTRO pago. Alias (elige el que esté impreso): Referencia,
+  Número de confirmación, Nº de comprobante, Comprobante de canje, No. Confirmación, Ref.
+  Devuelve solo el código/número, sin la etiqueta. En un cheque, el número del cheque.
+  Si el número está en la imagen y no lo copias, la lectura está mal. Si de verdad no aparece, null y confianza baja.
 - banco emisor y banco destino, si se ven.
 - cuenta destino: el número de cuenta que RECIBE, tal como aparece.
 - número de carro: SOLO si el cliente lo puso en el comentario/descripción ("CARRO 144", "auto172").
@@ -100,8 +102,14 @@ const RANGO_CONFIANZA = { alta: 3, media: 2, baja: 1 } as const;
 /** ¿Vale la pena pedir una segunda opinión al modelo más fuerte? */
 function lecturaFloja(c: Comprobante): boolean {
   if (!c.es_comprobante) return false; // no es comprobante: no hay nada que releer
-  // La fecha es crítica (detecta comprobantes viejos/reusados): si falta, relee.
-  return c.confianza === "baja" || c.monto == null || c.fecha == null || c.numero_carro == null;
+  // Sin número de confirmación no se puede saber si es otro pago del mismo día.
+  return (
+    c.confianza === "baja" ||
+    c.monto == null ||
+    c.fecha == null ||
+    c.referencia == null ||
+    c.numero_carro == null
+  );
 }
 
 function puntaje(c: Comprobante): number {
@@ -109,7 +117,7 @@ function puntaje(c: Comprobante): number {
     RANGO_CONFIANZA[c.confianza] * 10 +
     (c.monto != null ? 4 : 0) +
     (c.numero_carro != null ? 3 : 0) +
-    (c.referencia != null ? 2 : 0) +
+    (c.referencia != null ? 8 : 0) +
     (c.cuenta_destino != null ? 1 : 0)
   );
 }
