@@ -188,71 +188,9 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
  * recargo como cargo `multa` (PAGO_TARDE) para que el saldo quede correcto.
  */
 export async function aplicarRecargosDelDia(fecha: string): Promise<ResultadoRecargo> {
-  const sb = createServerSupabase();
-
-  const { data: contratos, error } = await sb
-    .from("contratos")
-    .select("id, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
-    .eq("estado", "activo");
-  if (error) throw error;
-
-  const [pagaronPuntual, conPendiente, conRecargo, conRenta, saldos] = await Promise.all([
-    contratosQueCubrieronElDia(fecha),
-    graciaVigente(fecha) ? contratosConComprobantePendienteEnDia(fecha) : new Set<string>(),
-    contratosConRecargo(fecha),
-    sb.from("cargos").select("contrato_id").eq("fecha", fecha).eq("tipo", "renta"),
-    sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual"),
-  ]);
-  const tieneRenta = new Set(
-    ((conRenta.data ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id),
-  );
-  // Crédito de pagos adelantados: si el saldo (ya con la cuota de hoy) es <= 0,
-  // el cliente está cubierto/adelantado y NO se le cobra recargo por hoy.
-  const saldoMap = new Map<string, number>();
-  for (const s of (saldos.data ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {
-    saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
-  }
-
-  const res: ResultadoRecargo = { fecha, creados: 0, yaTenian: 0, diferidos: 0 };
-  const filas: Record<string, unknown>[] = [];
-
-  for (const c of ((contratos ?? []) as unknown as ContratoDevengo[])) {
-    if (inicioLetraDe(c) > fecha) continue;
-    if (!tieneRenta.has(c.id)) continue; // domingo libre u otro día sin cuota
-    if (pagaronPuntual.has(c.id)) continue;
-    if ((saldoMap.get(c.id) ?? 1) <= 0.009) continue; // adelantado / al día: sin recargo
-    // Mandó comprobante y nadie lo ha validado: el recargo espera. Si el pago
-    // resulta malo, `recalcularRecargo` lo aplica retroactivo.
-    if (conPendiente.has(c.id)) { res.diferidos++; continue; }
-    if (conRecargo.has(c.id)) { res.yaTenian++; continue; }
-
-    const penalidad = penalidadDe(c);
-    if (penalidad <= 0) continue;
-
-    filas.push({
-      contrato_id: c.id,
-      fecha,
-      tipo: "multa",
-      concepto_codigo: "PAGO_TARDE",
-      concepto: "Pago después de las 7 PM",
-      monto: penalidad,
-    });
-  }
-
-  if (filas.length === 0) return res;
-
-  const { error: errInsert } = await sb.from("cargos").insert(filas);
-  if (!errInsert) {
-    res.creados = filas.length;
-    return res;
-  }
-
-  for (const fila of filas) {
-    const { error: e } = await sb.from("cargos").insert(fila);
-    if (e) res.yaTenian++;
-    else res.creados++;
-  }
-  return res;
+  // El recargo de no pago solo lo carga el equipo, a mano. El cron no lo crea.
+  void fecha;
+  return { fecha, creados: 0, yaTenian: 0, diferidos: 0 };
 }
 
 /**
@@ -273,54 +211,10 @@ export async function recalcularRecargo(
   contratoId: string,
   fecha: string,
 ): Promise<"creado" | "borrado" | "sin_cambio"> {
-  const sb = createServerSupabase();
-
-  const [rentaRes, multaRes, contratoRes] = await Promise.all([
-    sb.from("cargos").select("id").eq("contrato_id", contratoId)
-      .eq("fecha", fecha).eq("tipo", "renta").limit(1),
-    sb.from("cargos").select("id").eq("contrato_id", contratoId)
-      .eq("fecha", fecha).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE").limit(1),
-    sb.from("contratos")
-      .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
-      .eq("id", contratoId).maybeSingle(),
-  ]);
-
-  const multaId = (multaRes.data ?? [])[0]?.id as string | undefined;
-  const borrar = async (): Promise<"borrado" | "sin_cambio"> => {
-    if (!multaId) return "sin_cambio";
-    await sb.from("cargos").delete().eq("id", multaId);
-    return "borrado";
-  };
-
-  if ((rentaRes.data ?? []).length === 0) return borrar();
-
-  const [{ pagadoPuntualCuota }, { pendiente }] = await Promise.all([
-    pagoHoyContrato(contratoId, fecha),
-    comprobantePendienteContrato(contratoId, fecha),
-  ]);
-  const diaAbierto = fecha === hoyPanama() && !pasoCorte();
-  const enGracia = pendiente && graciaVigente(fecha);
-
-  const c = contratoRes.data as TerminosCuota | null;
-  // Multa de “no pago” solo por la letra; el acuerdo es ítem extra aparte.
-  const meta = c ? cuotaDeFecha(c, fecha) : 0;
-  const cubrio = cubrioCuotaDelDia(pagadoPuntualCuota, meta);
-
-  if (cubrio || enGracia || diaAbierto) return borrar();
-  if (multaId) return "sin_cambio";
-
-  const penalidad = c ? penalidadDe(c) : 0;
-  if (penalidad <= 0) return "sin_cambio";
-
-  const { error } = await sb.from("cargos").insert({
-    contrato_id: contratoId,
-    fecha,
-    tipo: "multa",
-    concepto_codigo: "PAGO_TARDE",
-    concepto: "Pago después de las 7 PM",
-    monto: penalidad,
-  });
-  return error ? "sin_cambio" : "creado";
+  // No crea ni borra la multa. Si el equipo la cargó, se queda.
+  void contratoId;
+  void fecha;
+  return "sin_cambio";
 }
 
 /**

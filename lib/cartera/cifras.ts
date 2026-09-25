@@ -123,13 +123,12 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const letraAbierta = Math.max(saldoLetra + faltaHoy, 0);
 
   const hayLetraAbierta = cuotaHoy > 0.009 && letraAbierta > 0.009;
-  const recargo =
-    hayLetraAbierta && !e.pagoPuntual && e.corte && !e.multaHoyRegistrada && !pendiente
-      ? penalidad
-      : 0;
-  // Un abono parcial de la LETRA también pierde el descuento si no completa antes de las 7.
-  const recargoSiTarda =
-    hayLetraAbierta && !e.pagoPuntual && !e.corte && !pendiente ? penalidad : 0;
+  // El recargo de las 7:00 p.m. no se calcula solo. Entra únicamente si el
+  // equipo cargó la multa a mano (ese monto ya vive en el saldo).
+  const recargo = 0;
+  const recargoSiTarda = 0;
+  void hayLetraAbierta;
+  void penalidad;
 
   const totalHoy = Math.max(bruto + recargo, 0);
   const totalHoyTarde =
