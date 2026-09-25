@@ -23,8 +23,7 @@ function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
   if (esAdelantado(e)) return "azul";
   if (esAlDiaHoy(e)) return "good";
-  if (e.pendienteAnterior > 0.009) return "crit";
-  return "warn";
+  return "crit";
 }
 
 function fechaCorta(iso: string | null | undefined): string | null {
@@ -271,11 +270,7 @@ export function DetalleEstadoModal({
                 ) : (
                   <p
                     className={`mt-1 text-3xl font-bold tracking-tight tabular-nums ${
-                      alDia
-                        ? "text-verde"
-                        : estado.pendienteAnterior > 0.009
-                          ? "text-rojo"
-                          : "text-ink"
+                      alDia || totalHoyVisible <= 0.009 ? "text-verde" : "text-rojo"
                     }`}
                   >
                     {alDia ? (
@@ -336,28 +331,19 @@ export function DetalleEstadoModal({
                   <p className="py-2.5 text-sm text-muted">Sin cargos pendientes para hoy.</p>
                 ) : (
                   lineasHoy.map((l, i) => {
-                    const esSaldoAnt = l.concepto === "saldo anterior" && l.monto > 0.009;
-                    const partes = esSaldoAnt ? partesSaldo : [];
+                    const partes = l.concepto === "saldo anterior" && l.monto > 0.009 ? partesSaldo : [];
                     return (
                       <div key={`${l.concepto}-${i}`}>
                         <Fila
                           label={capEtiqueta(l.concepto)}
-                          tone={
-                            l.monto < 0
-                              ? "good"
-                              : l.concepto.includes("no pagar")
-                                ? "warn"
-                                : esSaldoAnt
-                                  ? "crit"
-                                  : "default"
-                          }
+                          tone={l.monto < -0.009 ? "good" : l.monto > 0.009 ? "crit" : "muted"}
                         >
                           {l.monto < 0 ? `−${money(-l.monto)}` : money(l.monto)}
                         </Fila>
                         {partes.length > 0 && (
-                          <div className="mb-1 ml-1 border-l-2 border-line pl-2">
+                          <div className="mb-1 ml-1 border-l-2 border-rojo/30 pl-2">
                             {partes.map((p) => (
-                              <Fila key={p.etiqueta} label={capEtiqueta(p.etiqueta)} tone="muted" indent>
+                              <Fila key={p.etiqueta} label={capEtiqueta(p.etiqueta)} tone="crit" indent>
                                 {money(p.monto)}
                               </Fila>
                             ))}
@@ -368,7 +354,7 @@ export function DetalleEstadoModal({
                   })
                 )}
                 {!alDia && !adelantado && (
-                  <Fila label="Total">
+                  <Fila label="Total" tone={totalHoyVisible > 0.009 ? "crit" : "muted"}>
                     <span className="text-base font-semibold">{money(totalHoyVisible)}</span>
                   </Fila>
                 )}
@@ -392,11 +378,13 @@ export function DetalleEstadoModal({
                     </button>
                   }
                 >
-                  <Fila label="Saldo del plan" tone="warn">
+                  <Fila label="Saldo del plan" tone="crit">
                     {money(estado.acuerdoSaldo)}
                   </Fila>
                   {estado.acuerdoHoy > 0.009 && (
-                    <Fila label="Cuota de hoy">{money(estado.acuerdoHoy)}</Fila>
+                    <Fila label="Cuota de hoy" tone="crit">
+                      {money(estado.acuerdoHoy)}
+                    </Fila>
                   )}
                 </Seccion>
               )}
@@ -414,7 +402,7 @@ export function DetalleEstadoModal({
                   </Fila>
                 )}
                 {estado.cuotasDebe != null && (
-                  <Fila label="Faltantes" tone={estado.cuotasDebe > 0 ? "warn" : "good"}>
+                  <Fila label="Faltantes" tone={estado.cuotasDebe > 0 ? "crit" : "good"}>
                     {estado.cuotasDebe.toLocaleString("es-PA")}
                   </Fila>
                 )}
@@ -437,7 +425,7 @@ export function DetalleEstadoModal({
               <Seccion title="Detalle">
                 <Fila
                   label="Recargos acumulados"
-                  tone={estado.recargosAcumulados > 0.009 ? "warn" : "muted"}
+                  tone={estado.recargosAcumulados > 0.009 ? "crit" : "muted"}
                 >
                   {estado.recargosAcumulados > 0.009 ? money(estado.recargosAcumulados) : "—"}
                 </Fila>

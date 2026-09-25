@@ -31,8 +31,7 @@ function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
   if (esAdelantado(e)) return "azul";
   if (esAlDiaHoy(e)) return "good";
-  if (e.pendienteAnterior > 0.009) return "crit";
-  return "warn";
+  return "crit";
 }
 
 function recargoMostrado(e: EstadoCuenta): number {
@@ -259,12 +258,12 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                   <td className="px-4 py-2.5 text-right tabular-nums">
                     {e.letra > 0.009 ? <Money amount={e.letra} /> : "—"}
                   </td>
-                  <td className="px-4 py-2.5 text-right tabular-nums text-ambar">
+                  <td className="px-4 py-2.5 text-right tabular-nums text-rojo">
                     {esAdelantado(e) || esAlDiaHoy(e) ? (
                       e.recargosAcumulados > 0.009 ? (
                         <Money amount={e.recargosAcumulados} />
                       ) : (
-                        "—"
+                        <span className="text-muted">—</span>
                       )
                     ) : e.recargosAcumulados > 0.009 ? (
                       <Money amount={e.recargosAcumulados} />
@@ -278,7 +277,7 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                         +<Money amount={e.recargoSiTarda} />
                       </span>
                     ) : (
-                      "—"
+                      <span className="text-muted">—</span>
                     )}
                   </td>
                   <td className="px-4 py-2.5 tabular-nums whitespace-nowrap">
@@ -304,14 +303,14 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                       </p>
                     ) : e.totalCobrarHoy <= 0.009 || esAlDiaHoy(e) ? (
                       e.acuerdoHoy > 0.009 && e.totalCobrarHoy > 0.009 ? (
-                        <p className="mt-1 text-[11px] text-muted tabular-nums">
+                        <p className="mt-1 text-[11px] text-rojo tabular-nums">
                           Acuerdo pendiente {money(e.acuerdoHoy)}
                         </p>
                       ) : (
                         <p className="mt-1 text-[11px] text-muted">Nada que cobrar hoy</p>
                       )
                     ) : (
-                      <p className="mt-1 text-[11px] font-medium tabular-nums text-ink">
+                      <p className="mt-1 text-[11px] font-medium tabular-nums text-rojo">
                         A pagar hoy {money(e.totalCobrarHoy)}
                       </p>
                     )}
