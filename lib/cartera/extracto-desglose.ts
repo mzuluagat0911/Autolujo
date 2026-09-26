@@ -164,15 +164,8 @@ export function armarExtractoDiario(
     });
   }
 
-  // Aviso de domingo MAÑANA. No suma y no se pinta como línea de cobro ($).
-  if (e.domingo && e.domingo > 0.009) {
-    const dia = e.domingoDia ?? "";
-    out.push({
-      etiqueta: `domingo ${dia}: ${money(e.domingo)} (no se cobra hoy)`.replace(/\s+/g, " ").trim(),
-      monto: e.domingo,
-      aviso: true,
-    });
-  }
+  // La cuota del domingo de mañana no se anuncia en el extracto.
+  // Si hay domingos ya debidos, van en la línea de pendiente (aviso, no suma).
 
   for (const x of extrasCompetidores) {
     const esElegido =
