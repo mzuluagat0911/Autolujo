@@ -11,6 +11,7 @@ import {
   type DestinoInterior,
 } from "./salidas-interior";
 import type { AsignacionPago, ResultadoPago } from "./types";
+import { cubetaDeConcepto } from "./rubros-pago";
 
 export type SalidaFila = {
   id: string;
@@ -40,6 +41,7 @@ export function esPagoSalidaInterior(p: {
   return asigs.some((a) => a.tipo === "salida_interior");
 }
 
+/** Cuánto del pago baja la letra (no panapass, abono, domingo, salida, …). */
 export function montoQueCubreCuota(p: {
   monto: number;
   rubro?: string | null;
@@ -48,15 +50,22 @@ export function montoQueCubreCuota(p: {
 }): number {
   const total = Number(p.monto) || 0;
   const asigs = extraerAsignaciones(p.asignaciones);
-  const interior = asigs
-    .filter((a) => a.tipo === "salida_interior")
-    .reduce((s, a) => s + Number(a.aplicado || 0), 0);
-  if (interior > 0.009) return Math.max(0, Math.round((total - interior) * 100) / 100);
+  if (asigs.length > 0) {
+    const fueraLetra = asigs
+      .filter((a) => {
+        if (a.tipo === "salida_interior") return true;
+        return Boolean(cubetaDeConcepto(a.tipo, a.etiqueta));
+      })
+      .reduce((s, a) => s + Number(a.aplicado || 0), 0);
+    return Math.max(0, Math.round((total - fueraLetra) * 100) / 100);
+  }
   if (p.rubro === "salida_interior") {
     const dest = destinoDePago(p.destino_interior);
     if (dest) return partirMontoInterior(total, dest.monto).resto;
     return 0;
   }
+  // Rubro entero a un concepto (panapass, domingo, etc.): no es letra.
+  if (p.rubro && cubetaDeConcepto(p.rubro, p.rubro)) return 0;
   return total;
 }
 

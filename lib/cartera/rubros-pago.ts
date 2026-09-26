@@ -43,6 +43,7 @@ export const CONCEPTOS_PAGO = [
   { value: "saldo_anterior", label: "Saldo anterior", cubeta: null },
   { value: "acuerdo", label: "Arreglo / acuerdo", cubeta: null },
   { value: "recargo", label: "Recargo", cubeta: "por no pagar" },
+  { value: "abono", label: "Abono inicial", cubeta: "abono inicial" },
   { value: "domingo", label: "Domingo", cubeta: "domingo" },
   { value: "mantenimiento", label: "Mantenimiento", cubeta: "mantenimiento" },
   { value: "panapass", label: "Panapass", cubeta: "panapass" },
@@ -59,6 +60,7 @@ export const CARGO_DE_CONCEPTO: Record<
   string,
   { tipo: string; codigo: string | null; concepto: string }
 > = {
+  abono: { tipo: "afiliacion", codigo: "AFILIACION", concepto: "Abono inicial" },
   domingo: { tipo: "otras", codigo: "DOMINGOS", concepto: "Domingo" },
   mantenimiento: { tipo: "otras", codigo: "124", concepto: "Mantenimiento" },
   panapass: { tipo: "panapass", codigo: "PANAPASS", concepto: "Panapass" },
@@ -69,10 +71,15 @@ export const CARGO_DE_CONCEPTO: Record<
 
 export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string | null {
   const t = (tipo ?? "").toLowerCase();
+  // Alta de contrato: mismos baldes que el extracto.
+  if (t === "abono" || t === "afiliacion") return "abono inicial";
+  if (t === "prepago_domingo") return "domingo";
+  if (t === "prepago_letra") return null; // es letra, no un extra
   const hit = CONCEPTOS_PAGO.find((c) => c.value === t);
   if (hit?.cubeta) return hit.cubeta;
   const et = (etiqueta ?? "").trim().toLowerCase();
   if (/recargo|por no pagar/.test(et)) return "por no pagar";
+  if (/abono\s*inicial|afiliaci[oó]n/.test(et)) return "abono inicial";
   if (/\bdomingo\b/.test(et)) return "domingo";
   if (/manten/.test(et)) return "mantenimiento";
   if (/panapass/.test(et)) return "panapass";

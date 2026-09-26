@@ -169,6 +169,7 @@ function cubetaDeCargo(c: { tipo: string; concepto: string | null; concepto_codi
   const codigo = (c.concepto_codigo ?? "").toUpperCase();
   if (codigo === "PAGO_TARDE") return "recargo";
   if (c.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(c.concepto ?? "")) return "recargo";
+  if (codigo === "AFILIACION" || c.tipo === "afiliacion") return "abono inicial";
   const et = etiquetaCargo(c.concepto, c.concepto_codigo, c.tipo);
   return cubetaDeConcepto("", et) ?? et.toLowerCase();
 }
