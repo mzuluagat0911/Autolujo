@@ -375,7 +375,7 @@ export function EditorLedger({
 
         {cargosVivos.length === 0 ? (
           <p className="py-3 text-sm text-muted">
-            Sin cargos extras. Agregá mantenimiento, salida al interior, multa, etc.
+            No hay cargos pendientes. Lo ya cruzado con un pago no se lista acá.
           </p>
         ) : (
           <ul className="space-y-2">

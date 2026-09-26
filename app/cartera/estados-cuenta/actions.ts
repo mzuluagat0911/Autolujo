@@ -17,6 +17,7 @@ import {
 } from "@/lib/cartera/aplicar-pago";
 import { recalcularRecargo } from "@/lib/cartera/devengo";
 import type { EstadoCuentaFila } from "./types";
+import { etiquetaCargo } from "@/lib/cartera/extracto-desglose";
 
 const FRECUENCIAS_OK = new Set<FrecuenciaAcuerdo>([
   "dia",
@@ -150,6 +151,62 @@ async function prioridadAbonoDe(
 }
 
 /** Cargos editables (no renta diaria) + acuerdos del contrato. */
+function cubetaDeAsignacion(a: { tipo?: string; etiqueta?: string }): string | null {
+  const tipo = (a.tipo ?? "").toLowerCase();
+  const et = (a.etiqueta ?? "").trim().toLowerCase();
+  if (tipo === "recargo" || /recargo|por no pagar/.test(et)) return "recargo";
+  if (tipo === "acuerdo") return null;
+  if (/\bdomingo\b/.test(et)) return "domingo";
+  if (!et || et === "saldo anterior" || et.startsWith("cuota") || et.startsWith("letra")) return null;
+  return et;
+}
+
+function cubetaDeCargo(c: { tipo: string; concepto: string | null; concepto_codigo: string | null }): string | null {
+  if (c.tipo === "acuerdo") return null;
+  const codigo = (c.concepto_codigo ?? "").toUpperCase();
+  if (codigo === "PAGO_TARDE") return "recargo";
+  if (c.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(c.concepto ?? "")) return "recargo";
+  if (codigo === "DOMINGOS" || /\bdomingo\b/i.test(c.concepto ?? "")) return "domingo";
+  return etiquetaCargo(c.concepto, c.concepto_codigo, c.tipo).toLowerCase();
+}
+
+/** Cargos ya cubiertos por un pago no se editan acá: siguen en el libro, no en la lista. */
+function cargosPendientesActivos(
+  cargos: CargoEditable[],
+  pagos: { asignaciones: unknown }[],
+): CargoEditable[] {
+  const cover = new Map<string, number>();
+  for (const p of pagos) {
+    const raw = p.asignaciones as
+      | { asignaciones?: { tipo?: string; etiqueta?: string; aplicado?: number }[] }
+      | { tipo?: string; etiqueta?: string; aplicado?: number }[]
+      | null;
+    const lineas = Array.isArray(raw) ? raw : (raw?.asignaciones ?? []);
+    for (const a of lineas) {
+      const key = cubetaDeAsignacion(a);
+      if (!key) continue;
+      cover.set(key, (cover.get(key) ?? 0) + Math.max(Number(a.aplicado) || 0, 0));
+    }
+  }
+  const hidden = new Set<string>();
+  const ordered = [...cargos].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
+  for (const c of ordered) {
+    if (c.tipo === "acuerdo") {
+      hidden.add(c.id);
+      continue;
+    }
+    const key = cubetaDeCargo(c);
+    if (!key) continue;
+    const monto = Number(c.monto) || 0;
+    const disponible = cover.get(key) ?? 0;
+    if (monto > 0.009 && disponible + 0.009 >= monto) {
+      cover.set(key, Math.round((disponible - monto) * 100) / 100);
+      hidden.add(c.id);
+    }
+  }
+  return cargos.filter((c) => !hidden.has(c.id));
+}
+
 export async function cargarLedgerEditable(contratoId: string): Promise<
   { ok: true; data: LedgerEditable } | { ok: false; error: string }
 > {
@@ -193,6 +250,17 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
 
   if (carErr) return { ok: false, error: carErr.message };
 
+  const cargosCrudos = (cargosData ?? []) as CargoEditable[];
+  const { data: pagosCubiertos } = await sb
+    .from("pagos")
+    .select("asignaciones")
+    .eq("contrato_id", contratoId)
+    .in("estado_conciliacion", ["conciliado", "manual"]);
+  const cargosPendientes = cargosPendientesActivos(
+    cargosCrudos,
+    (pagosCubiertos ?? []) as { asignaciones: unknown }[],
+  );
+
   const acuSel =
     "id, tipo, descripcion, saldo, cuota_diaria, cuota_domingo, monto_total, activo, frecuencia, fecha_especifica";
   let acuData: unknown[] | null = null;
@@ -226,7 +294,7 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
       letraDiaria: Number(row.letra_diaria) || 0,
       numCuotasTotal: row.num_cuotas_total != null ? Number(row.num_cuotas_total) : null,
       cuotasPagadas: row.cuotas_pagadas != null ? Number(row.cuotas_pagadas) : null,
-      cargos: ((cargosData ?? []) as CargoEditable[]).map((c) => ({
+      cargos: cargosPendientes.map((c) => ({
         id: c.id,
         fecha: String(c.fecha).slice(0, 10),
         tipo: c.tipo,
@@ -234,7 +302,9 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
         concepto_codigo: c.concepto_codigo ?? null,
         monto: Number(c.monto) || 0,
       })),
-      acuerdos: ((acuData ?? []) as AcuerdoEditable[]).map((a) => ({
+      acuerdos: ((acuData ?? []) as AcuerdoEditable[])
+        .filter((a) => a.activo !== false && Number(a.saldo) > 0.009)
+        .map((a) => ({
         id: a.id,
         tipo: a.tipo,
         descripcion: a.descripcion ?? "",
