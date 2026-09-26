@@ -13,7 +13,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
-import { esDomingo, sumarDias } from "./fecha";
+import { esDomingo, hoyPanama, sumarDias } from "./fecha";
 import {
   candidatosDesdeExtracto,
   elegirExtraDelDia,
@@ -104,10 +104,13 @@ export function armarExtractoDiario(
   // Domingo vive en domingoSaldo (aparte): no se resta de la letra.
   const extrasDomingo = extrasAll.filter((x) => esEtiquetaDomingo(x.etiqueta));
   const extrasParaSaldo = extrasAll.filter((x) => !esEtiquetaDomingo(x.etiqueta));
-  const hoyIso = opts?.hoy ?? (e as EstadoCuenta & { hoyIso?: string }).hoyIso;
-  const hoyEsDomingo = Boolean(hoyIso && esDomingo(hoyIso));
+  const hoyIso =
+    opts?.hoy ??
+    (e as EstadoCuenta & { hoyIso?: string }).hoyIso ??
+    hoyPanama();
+  const hoyEsDomingo = esDomingo(hoyIso);
   // Sábado = mañana es domingo → solo aviso, no cobra todavía.
-  const sabadoAntesDeDomingo = Boolean(hoyIso && esDomingo(sumarDias(hoyIso, 1)));
+  const sabadoAntesDeDomingo = esDomingo(sumarDias(hoyIso, 1));
 
   const baldeDomingo = extrasDomingo.reduce((s, x) => s + x.monto, 0);
   const cuotaDom =
