@@ -5,6 +5,7 @@ import { Money, StatusChip } from "@/components/kit";
 import { Field, Select } from "@/components/form";
 import { money } from "@/lib/cartera/estado-cuenta";
 import { fechaConDia, hoyPanama } from "@/lib/cartera/fecha";
+import { CONCEPTOS_PAGO } from "@/lib/cartera/rubros-pago";
 import type { PagoHistorial } from "./actions";
 import {
   cargarHistorialPagos,
@@ -17,13 +18,7 @@ import {
 
 type Linea = { tipo: string; etiqueta: string; aplicado: number };
 
-const CONCEPTOS = [
-  { value: "cuenta_diaria", label: "Cuota / letra" },
-  { value: "saldo_anterior", label: "Saldo anterior" },
-  { value: "acuerdo", label: "Arreglo / acuerdo" },
-  { value: "recargo", label: "Recargo" },
-  { value: "salida_interior", label: "Salida al interior" },
-] as const;
+const CONCEPTOS = CONCEPTOS_PAGO;
 
 function etiquetaMetodo(metodo: string | null | undefined): string {
   const m = (metodo ?? "").toLowerCase();
@@ -218,7 +213,7 @@ function EditorAsignaciones({
           Reasignar conceptos
         </p>
         <p className="mt-1 text-xs text-muted">
-          El agente reparte así: recargo solo si está cargado → acuerdo (mientras tenga saldo) → letra. Si asignás una parte a recargo y no había cargo, se carga ese monto para que no baje la letra. La suma + sobrante debe igualar {money(pago.monto)}.
+          Letra, acuerdo y recargo, y también domingo, mantenimiento, panapass, cierre, exceso de km y ajuste. Si asignás una parte a uno de esos y no había cargo, se carga ese monto para que no baje la letra. La suma + sobrante debe igualar {money(pago.monto)}.
         </p>
       </div>
 

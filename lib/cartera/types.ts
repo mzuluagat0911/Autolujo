@@ -27,7 +27,13 @@ export type TipoObligacion =
   | "saldo_anterior"
   | "recargo"
   | "cuenta_diaria"
-  | "salida_interior";
+  | "salida_interior"
+  | "domingo"
+  | "mantenimiento"
+  | "panapass"
+  | "cierre_semana"
+  | "exceso_km"
+  | "ajuste";
 
 export type Obligacion = {
   tipo: TipoObligacion;

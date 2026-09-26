@@ -18,6 +18,8 @@ import {
 import { recalcularRecargo } from "@/lib/cartera/devengo";
 import type { EstadoCuentaFila } from "./types";
 import { etiquetaCargo } from "@/lib/cartera/extracto-desglose";
+import { CONCEPTOS_PAGO, cubetaDeConcepto } from "@/lib/cartera/rubros-pago";
+import type { TipoObligacion } from "@/lib/cartera/types";
 
 const FRECUENCIAS_OK = new Set<FrecuenciaAcuerdo>([
   "dia",
@@ -152,11 +154,12 @@ async function prioridadAbonoDe(
 
 /** Cargos editables (no renta diaria) + acuerdos del contrato. */
 function cubetaDeAsignacion(a: { tipo?: string; etiqueta?: string }): string | null {
+  const cubeta = cubetaDeConcepto(a.tipo ?? "", a.etiqueta);
+  if (cubeta === "por no pagar") return "recargo";
+  if (cubeta) return cubeta;
   const tipo = (a.tipo ?? "").toLowerCase();
   const et = (a.etiqueta ?? "").trim().toLowerCase();
-  if (tipo === "recargo" || /recargo|por no pagar/.test(et)) return "recargo";
   if (tipo === "acuerdo") return null;
-  if (/\bdomingo\b/.test(et)) return "domingo";
   if (!et || et === "saldo anterior" || et.startsWith("cuota") || et.startsWith("letra")) return null;
   return et;
 }
@@ -166,8 +169,8 @@ function cubetaDeCargo(c: { tipo: string; concepto: string | null; concepto_codi
   const codigo = (c.concepto_codigo ?? "").toUpperCase();
   if (codigo === "PAGO_TARDE") return "recargo";
   if (c.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(c.concepto ?? "")) return "recargo";
-  if (codigo === "DOMINGOS" || /\bdomingo\b/i.test(c.concepto ?? "")) return "domingo";
-  return etiquetaCargo(c.concepto, c.concepto_codigo, c.tipo).toLowerCase();
+  const et = etiquetaCargo(c.concepto, c.concepto_codigo, c.tipo);
+  return cubetaDeConcepto("", et) ?? et.toLowerCase();
 }
 
 /** Cargos ya cubiertos por un pago no se editan acá: siguen en el libro, no en la lista. */
@@ -653,21 +656,11 @@ export async function reaplicarPagoHistorial(pagoId: string, contratoId: string)
   return { ok: true, msg: "Desglose reaplicado." };
 }
 
-const TIPOS_ASIG = new Set([
-  "acuerdo",
-  "saldo_anterior",
-  "recargo",
-  "cuenta_diaria",
-  "salida_interior",
-]);
+const TIPOS_ASIG = new Set<string>(CONCEPTOS_PAGO.map((c) => c.value));
 
-const ETIQUETA_ASIG: Record<string, string> = {
-  acuerdo: "arreglo",
-  saldo_anterior: "saldo anterior",
-  recargo: "recargo",
-  cuenta_diaria: "cuota / letra",
-  salida_interior: "salida al interior",
-};
+const ETIQUETA_ASIG: Record<string, string> = Object.fromEntries(
+  CONCEPTOS_PAGO.map((c) => [c.value, c.label.toLowerCase()]),
+);
 
 function r2(n: number): number {
   return Math.round(n * 100) / 100;
@@ -773,27 +766,30 @@ export async function guardarAsignacionesHistorial(opts: {
     }
   }
 
-  const { asegurarCargosAcuerdoDelPago, asegurarCargoRecargoDelPago } = await import("@/lib/cartera/aplicar-pago");
+  const { asegurarCargosAcuerdoDelPago, asegurarCargoRecargoDelPago, asegurarCargosConceptoDelPago } = await import("@/lib/cartera/aplicar-pago");
+  const lineasPago = asignaciones.map((a) => ({
+    tipo: a.tipo as TipoObligacion,
+    aplicado: a.aplicado,
+    etiqueta: a.etiqueta,
+  }));
+  const fechaPago = fechaContable((p as { pagado_at: string }).pagado_at);
   await asegurarCargoRecargoDelPago({
     contratoId,
     pagoId,
-    fecha: fechaContable((p as { pagado_at: string }).pagado_at),
-    asignaciones: asignaciones.map((a) => ({
-      tipo: a.tipo as "acuerdo" | "saldo_anterior" | "recargo" | "cuenta_diaria" | "salida_interior",
-      aplicado: a.aplicado,
-      etiqueta: a.etiqueta,
-    })),
+    fecha: fechaPago,
+    asignaciones: lineasPago,
+  });
+  await asegurarCargosConceptoDelPago({
+    contratoId,
+    pagoId,
+    fecha: fechaPago,
+    asignaciones: lineasPago,
   });
   await asegurarCargosAcuerdoDelPago({
     contratoId,
     pagoId,
-    fecha: fechaContable((p as { pagado_at: string }).pagado_at),
-    asignaciones: asignaciones.map((a) => ({
-      tipo: a.tipo as "acuerdo" | "saldo_anterior" | "recargo" | "cuenta_diaria" | "salida_interior",
-      aplicado: a.aplicado,
-      etiqueta: a.etiqueta,
-      ref: undefined,
-    })),
+    fecha: fechaPago,
+    asignaciones: lineasPago,
   });
 
   try {

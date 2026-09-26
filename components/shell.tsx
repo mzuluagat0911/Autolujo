@@ -9,7 +9,7 @@ import { Brand } from "./brand";
 import {
   AlertasAsesorProvider,
   AlertasCampana,
-  useAlertasCount,
+  useChatsEsperandoCount,
 } from "./alertas-asesor";
 
 type Item = { label: string; href: string; status: "active" | "pronto" };
@@ -282,7 +282,7 @@ export function Shell({
 }
 
 function NavRow({ item, active }: { item: Item; active: boolean }) {
-  const esperando = useAlertasCount();
+  const esperando = useChatsEsperandoCount();
   const badge = item.href === "/cartera/conversaciones" ? esperando : 0;
   if (item.status === "pronto") {
     return (

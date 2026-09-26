@@ -21,6 +21,7 @@ import {
   totalConUnExtra,
   type ItemExtraElegido,
 } from "./prioridad-extras";
+import { cubetaDeConcepto } from "./rubros-pago";
 
 export type LineaExtracto = { etiqueta: string; monto: number; /** Solo aviso: no lleva $ delante ni suma al total. */ aviso?: boolean };
 
@@ -295,18 +296,20 @@ export async function cargosExtraPorContrato(
     m.set(et, (m.get(et) ?? 0) + monto);
     maps.set(f.contrato_id, m);
   }
-  // El cargo de recargo queda en el ledger por el monto original. Si un pago
-  // ya lo asignó (tipo recargo), ese monto no se vuelve a discriminar.
-  const abonoRecargo = await abonoRecargoPorContrato(ids);
+  // Si un pago ya cubrió el concepto (recargo, domingo, mantenimiento, …),
+  // ese monto no se vuelve a discriminar.
+  const abonos = await abonosExtraPorContrato(ids);
   for (const [id, m] of maps) {
-    let abono = abonoRecargo.get(id) ?? 0;
+    const porCubeta = new Map(abonos.get(id) ?? []);
     const lineas: LineaExtracto[] = [];
     for (const [etiqueta, monto] of m) {
+      const cubeta = cubetaDeConcepto("", etiqueta);
       let queda = monto;
-      if (abono > 0.009 && esEtiquetaRecargo(etiqueta)) {
+      const abono = cubeta ? (porCubeta.get(cubeta) ?? 0) : 0;
+      if (abono > 0.009) {
         const toma = Math.min(queda, abono);
         queda = Math.round((queda - toma) * 100) / 100;
-        abono = Math.round((abono - toma) * 100) / 100;
+        porCubeta.set(cubeta!, Math.round((abono - toma) * 100) / 100);
       }
       if (queda > 0.009) lineas.push({ etiqueta, monto: queda });
     }
@@ -329,8 +332,8 @@ function lineasDeAsignaciones(
   return [];
 }
 
-async function abonoRecargoPorContrato(ids: string[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
+async function abonosExtraPorContrato(ids: string[]): Promise<Map<string, Map<string, number>>> {
+  const out = new Map<string, Map<string, number>>();
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
   const { data } = await sb
@@ -340,14 +343,15 @@ async function abonoRecargoPorContrato(ids: string[]): Promise<Map<string, numbe
     .in("estado_conciliacion", ["conciliado", "manual"]);
   for (const p of (data ?? []) as { contrato_id: string | null; asignaciones: unknown }[]) {
     if (!p.contrato_id) continue;
-    let suma = 0;
+    const cubetas = out.get(p.contrato_id) ?? new Map<string, number>();
     for (const a of lineasDeAsignaciones(p.asignaciones)) {
-      const tipo = (a.tipo ?? "").toLowerCase();
-      if (tipo === "recargo" || esEtiquetaRecargo(a.etiqueta ?? "")) {
-        suma += Math.max(Number(a.aplicado) || 0, 0);
-      }
+      const cubeta = cubetaDeConcepto(a.tipo ?? "", a.etiqueta);
+      if (!cubeta) continue;
+      const suma = Math.max(Number(a.aplicado) || 0, 0);
+      if (suma <= 0.009) continue;
+      cubetas.set(cubeta, Math.round(((cubetas.get(cubeta) ?? 0) + suma) * 100) / 100);
     }
-    if (suma > 0.009) out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + suma);
+    if (cubetas.size > 0) out.set(p.contrato_id, cubetas);
   }
   return out;
 }

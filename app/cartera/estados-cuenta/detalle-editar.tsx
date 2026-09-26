@@ -116,6 +116,7 @@ const PRESETS: { label: string; tipo: string; concepto: string; codigo: string |
   { label: "Multa no pago", tipo: "multa", concepto: "Pago después de las 7 PM", codigo: "PAGO_TARDE" },
   { label: "Cierre de semana", tipo: "multa", concepto: "No cerrar semana al día", codigo: "CIERRE_SEMANA" },
   { label: "Negociación / ajuste", tipo: "ajuste", concepto: "Ajuste / negociación", codigo: null },
+  { label: "Exceso de km", tipo: "exceso_km", concepto: "Exceso de kilometraje", codigo: "122" },
 ];
 
 export function EditorLedger({
@@ -335,6 +336,9 @@ export function EditorLedger({
               <option value="acuerdo">Acuerdo de pago</option>
               <option value="mantenimiento">Mantenimiento</option>
               <option value="domingo">Domingo</option>
+              <option value="panapass">Panapass</option>
+              <option value="exceso">Exceso de km</option>
+              <option value="ajuste">Negociación / ajuste</option>
             </select>
           </label>
         </div>
@@ -346,7 +350,7 @@ export function EditorLedger({
             Cargos en cuenta
           </h3>
           <div className="flex flex-wrap gap-1.5">
-            {PRESETS.slice(0, 3).map((p) => (
+            {PRESETS.map((p) => (
               <button
                 key={p.label}
                 type="button"

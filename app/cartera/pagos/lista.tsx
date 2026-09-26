@@ -284,6 +284,12 @@ function Fila({
                 <option value="cuenta">Letra siguiente (recomendado)</option>
                 <option value="domingo">Domingo</option>
                 <option value="acuerdo">Acuerdo</option>
+                <option value="mantenimiento">Mantenimiento</option>
+                <option value="panapass">Panapass</option>
+                <option value="cierre_semana">Cierre de semana</option>
+                <option value="exceso_km">Exceso de km</option>
+                <option value="ajuste">Negociación / ajuste</option>
+                <option value="recargo">Recargo</option>
               </select>
             </label>
           )}

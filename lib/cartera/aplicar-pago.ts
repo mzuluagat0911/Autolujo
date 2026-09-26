@@ -27,6 +27,7 @@ import {
   upsertSalidaAutorizada,
 } from "./salidas-aplicar";
 import { destinoLibre, destinoPorNombre, partirMontoInterior, type DestinoInterior } from "./salidas-interior";
+import { CARGO_DE_CONCEPTO, cubetaDeConcepto } from "./rubros-pago";
 
 export const PRIORIDAD: Record<TipoObligacion, number> = {
   salida_interior: 5,
@@ -34,6 +35,12 @@ export const PRIORIDAD: Record<TipoObligacion, number> = {
   acuerdo: 12,
   saldo_anterior: 20,
   cuenta_diaria: 30,
+  domingo: 40,
+  mantenimiento: 41,
+  panapass: 42,
+  cierre_semana: 43,
+  exceso_km: 44,
+  ajuste: 45,
 };
 
 const ETIQUETA: Record<TipoObligacion, string> = {
@@ -42,6 +49,12 @@ const ETIQUETA: Record<TipoObligacion, string> = {
   saldo_anterior: "saldo anterior",
   recargo: "recargo",
   cuenta_diaria: "cuota de hoy",
+  domingo: "domingo",
+  mantenimiento: "mantenimiento",
+  panapass: "panapass",
+  cierre_semana: "cierre de semana",
+  exceso_km: "exceso de kilometraje",
+  ajuste: "ajuste",
 };
 
 function r2(n: number): number {
@@ -346,6 +359,122 @@ export async function asegurarCargoRecargoDelPago(opts: {
   }
 }
 
+/**
+ * Domingo, mantenimiento y el resto de conceptos viven fuera de la letra.
+ * Si el equipo asigna plata a uno y no hay cargo pendiente que la cubra,
+ * se carga la diferencia. Si el cargo ya estaba, no se duplica.
+ */
+export async function asegurarCargosConceptoDelPago(opts: {
+  contratoId: string;
+  pagoId: string;
+  fecha: string;
+  asignaciones: AsignacionPago[];
+}): Promise<void> {
+  const sb = createServerSupabase();
+  const pedidos = new Map<string, number>();
+  for (const a of opts.asignaciones) {
+    const cubeta = cubetaDeConcepto(a.tipo, a.etiqueta);
+    if (!cubeta || cubeta === "por no pagar" || !CARGO_DE_CONCEPTO[a.tipo]) continue;
+    pedidos.set(cubeta, r2((pedidos.get(cubeta) ?? 0) + (Number(a.aplicado) || 0)));
+  }
+
+  const { data: cargos } = await sb
+    .from("cargos")
+    .select("id, monto, tipo, concepto, concepto_codigo, pago_id")
+    .eq("contrato_id", opts.contratoId);
+  const filas = (cargos ?? []) as {
+    id: string;
+    monto: number;
+    tipo: string;
+    concepto: string | null;
+    concepto_codigo: string | null;
+    pago_id: string | null;
+  }[];
+
+  const { data: otros } = await sb
+    .from("pagos")
+    .select("id, asignaciones")
+    .eq("contrato_id", opts.contratoId)
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .neq("id", opts.pagoId);
+  const abonoAjeno = new Map<string, number>();
+  for (const p of (otros ?? []) as { asignaciones: unknown }[]) {
+    const parsed = parseAsignaciones(p.asignaciones);
+    if (!parsed) continue;
+    for (const a of parsed.asignaciones) {
+      const cubeta = cubetaDeConcepto(a.tipo, a.etiqueta);
+      if (!cubeta || cubeta === "por no pagar") continue;
+      abonoAjeno.set(cubeta, r2((abonoAjeno.get(cubeta) ?? 0) + (Number(a.aplicado) || 0)));
+    }
+  }
+
+  const cubetas = new Set<string>([
+    ...pedidos.keys(),
+    ...filas
+      .filter((c) => c.pago_id === opts.pagoId)
+      .map((c) => cubetaDeCargoFila(c))
+      .filter((c): c is string => Boolean(c) && c !== "por no pagar"),
+  ]);
+
+  for (const cubeta of cubetas) {
+    const spec = Object.entries(CARGO_DE_CONCEPTO).find(
+      ([tipo]) => cubetaDeConcepto(tipo, ETIQUETA[tipo as TipoObligacion]) === cubeta,
+    )?.[1];
+    if (!spec) continue;
+    const monto = pedidos.get(cubeta) ?? 0;
+    const deCubeta = filas.filter((c) => cubetaDeCargoFila(c) === cubeta);
+    const propios = deCubeta.filter((c) => c.pago_id === opts.pagoId);
+    const ajenos = r2(
+      deCubeta
+        .filter((c) => c.pago_id !== opts.pagoId)
+        .reduce((s, c) => s + (Number(c.monto) || 0), 0),
+    );
+    const libre = r2(Math.max(ajenos - (abonoAjeno.get(cubeta) ?? 0), 0));
+    const falta = r2(Math.max(monto - libre, 0));
+    const sumaPropia = r2(propios.reduce((s, c) => s + (Number(c.monto) || 0), 0));
+    if (Math.abs(sumaPropia - falta) < 0.05 && (falta > 0.009) === (propios.length > 0)) continue;
+    if (propios.length > 0) {
+      await sb.from("cargos").delete().in("id", propios.map((c) => c.id));
+    }
+    if (falta <= 0.009) continue;
+    const fila: Record<string, unknown> = {
+      contrato_id: opts.contratoId,
+      fecha: opts.fecha,
+      tipo: spec.tipo,
+      concepto: spec.concepto,
+      monto: falta,
+      pago_id: opts.pagoId,
+    };
+    if (spec.codigo) fila.concepto_codigo = spec.codigo;
+    const { error } = await sb.from("cargos").insert(fila);
+    if (error && /pago_id|concepto_codigo/i.test(error.message)) {
+      delete fila.pago_id;
+      delete fila.concepto_codigo;
+      const retry = await sb.from("cargos").insert(fila);
+      if (retry.error) console.error("[aplicar-pago] cargo concepto:", retry.error.message);
+    } else if (error) {
+      console.error("[aplicar-pago] cargo concepto:", error.message);
+    }
+  }
+}
+
+function cubetaDeCargoFila(c: {
+  tipo: string;
+  concepto: string | null;
+  concepto_codigo: string | null;
+}): string | null {
+  const codigo = (c.concepto_codigo ?? "").toUpperCase();
+  if (codigo === "DOMINGOS" || /\bdomingo\b/i.test(c.concepto ?? "")) return "domingo";
+  if (codigo === "124" || /manten/i.test(c.concepto ?? "")) return "mantenimiento";
+  if (codigo === "PANAPASS" || c.tipo === "panapass" || /panapass/i.test(c.concepto ?? "")) return "panapass";
+  if (codigo === "CIERRE_SEMANA" || /cierre\s+de\s+semana/i.test(c.concepto ?? "")) return "cierre de semana";
+  if (codigo === "122" || (/exceso/i.test(c.concepto ?? "") && /km|kilom/i.test(c.concepto ?? ""))) {
+    return "exceso de kilometraje";
+  }
+  if (c.tipo === "ajuste" || /negociaci[oó]n|^ajuste\b/i.test(c.concepto ?? "")) return "ajuste";
+  return null;
+}
+
 export async function borrarCargosAcuerdoDelPago(pagoId: string): Promise<void> {
   if (!pagoId) return;
   const sb = createServerSupabase();
@@ -562,12 +691,22 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     resultado = distribuirPago(monto, obligaciones);
   }
 
-  if (resultado.sobrante > 0.009 && pago.rubro === "domingo") {
+  const rubroConcepto =
+    pago.rubro === "recargo"
+      ? "recargo"
+      : pago.rubro && CARGO_DE_CONCEPTO[pago.rubro]
+        ? pago.rubro
+        : null;
+  if (resultado.sobrante > 0.009 && rubroConcepto) {
     const toma = resultado.sobrante;
     resultado = {
       asignaciones: [
         ...resultado.asignaciones,
-        { tipo: "saldo_anterior", aplicado: toma, etiqueta: "domingo" },
+        {
+          tipo: rubroConcepto as TipoObligacion,
+          aplicado: toma,
+          etiqueta: ETIQUETA[rubroConcepto as TipoObligacion],
+        },
       ],
       sobrante: 0,
       totalAplicado: r2(resultado.totalAplicado + toma),
@@ -660,6 +799,12 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     asignaciones: resultado.asignaciones,
   });
   await asegurarCargoRecargoDelPago({
+    contratoId,
+    pagoId,
+    fecha,
+    asignaciones: resultado.asignaciones,
+  });
+  await asegurarCargosConceptoDelPago({
     contratoId,
     pagoId,
     fecha,

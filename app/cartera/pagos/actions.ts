@@ -19,7 +19,7 @@ import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { sendText } from "@/lib/whatsapp/client";
 import { destinoLibre, destinoPorId, type DestinoInterior } from "@/lib/cartera/salidas-interior";
 import { darAvalSalida, etiquetarPagoSalida, idsVehiculoYCliente } from "@/lib/cartera/salidas-aplicar";
-import { esRubroConcepto, etiquetaRubro } from "@/lib/cartera/rubros-pago";
+import { esRubroConcepto, etiquetaRubro, CARGO_DE_CONCEPTO } from "@/lib/cartera/rubros-pago";
 import { pagoEsperaConceptoExcedente } from "@/lib/cartera/cobro-hoy";
 
 function destDesdeForm(formData: FormData, monto: number): DestinoInterior | null {
@@ -76,9 +76,14 @@ export async function resolverPago(formData: FormData): Promise<void> {
       contrato_id: string | null;
     } | null;
     if (row && pagoEsperaConceptoExcedente(row.notas) && !row.rubro && !row.asignaciones) {
-      if (rubroExcedente !== "cuenta" && rubroExcedente !== "domingo" && rubroExcedente !== "acuerdo") {
+      const rubroOk =
+        rubroExcedente === "cuenta" ||
+        rubroExcedente === "acuerdo" ||
+        rubroExcedente in CARGO_DE_CONCEPTO ||
+        rubroExcedente === "recargo";
+      if (!rubroOk) {
         volverConAviso(
-          "Este pago trae excedente. Elige a dónde va: letra siguiente (recomendado si el cliente no contestó), domingo o acuerdo.",
+          "Este pago trae excedente. Elige a dónde va: letra siguiente, domingo, acuerdo, mantenimiento u otro concepto.",
         );
       }
       if (rubroExcedente === "acuerdo") {
@@ -90,18 +95,18 @@ export async function resolverPago(formData: FormData): Promise<void> {
           volverConAviso("Este carro no tiene acuerdo. El excedente va a la letra siguiente o al domingo.");
         }
       }
-      notaAsignacion =
-        rubroExcedente === "domingo"
-          ? "Equipo asignó el excedente al domingo."
-          : rubroExcedente === "acuerdo"
-            ? "Equipo asignó el excedente al acuerdo."
-            : "Equipo asignó el excedente a la letra siguiente.";
+      notaAsignacion = `Equipo asignó el excedente a ${etiquetaRubro(rubroExcedente)}.`;
     }
   }
 
   const patch: Record<string, unknown> = { estado_conciliacion: nuevoEstado };
   if (contratoId) patch.contrato_id = contratoId;
-  if (rubroExcedente === "cuenta" || rubroExcedente === "domingo" || rubroExcedente === "acuerdo") {
+  if (
+    rubroExcedente === "cuenta" ||
+    rubroExcedente === "acuerdo" ||
+    rubroExcedente === "recargo" ||
+    rubroExcedente in CARGO_DE_CONCEPTO
+  ) {
     patch.rubro = rubroExcedente;
   }
 

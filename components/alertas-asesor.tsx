@@ -55,6 +55,12 @@ export function useAlertasCount(): number {
   return useContext(AlertasCtx)?.items.length ?? 0;
 }
 
+/** Solo chats que nadie ha tomado. GPS y salidas viven en la campana. */
+export function useChatsEsperandoCount(): number {
+  const items = useContext(AlertasCtx)?.items ?? [];
+  return items.filter((a) => a.clase === "chat" || a.clase == null).length;
+}
+
 export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<AlertaEscalada[]>([]);
   const [open, setOpen] = useState(false);
@@ -287,7 +293,7 @@ export function AlertasCampana({ variant }: { variant: "side" | "mobile" }) {
     <div ref={panelRef} className="relative">
       <button
         type="button"
-        aria-label={n > 0 ? `${n} chats esperando a un asesor` : "Sin chats esperando"}
+        aria-label={n > 0 ? `${n} alertas` : "Sin alertas"}
         onClick={() => {
           desbloquearAudio();
           setOpen(!open);
@@ -312,7 +318,7 @@ export function AlertasCampana({ variant }: { variant: "side" | "mobile" }) {
         >
           <div className="flex items-center justify-between border-b border-line px-4 py-3">
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-              Esperan asesor
+              Alertas
             </p>
             {n > 0 && <span className="text-xs tabular-nums text-ambar">{n}</span>}
           </div>
@@ -355,44 +361,86 @@ export function AlertasCampana({ variant }: { variant: "side" | "mobile" }) {
             )}
           </div>
           {n === 0 ? (
-            <p className="px-4 py-6 text-sm text-muted">Nadie está esperando ahora.</p>
+            <p className="px-4 py-6 text-sm text-muted">No hay alertas pendientes.</p>
           ) : (
-            <ul className="max-h-80 overflow-y-auto">
-              {items.map((a) => (
-                <li key={a.id} className="border-b border-line last:border-0">
-                  <div className="flex items-start gap-2 px-4 py-3 hover:bg-surface-2">
-                    <Link
-                      href={a.href ?? `/cartera/conversaciones/${a.id}`}
-                      onClick={() => setOpen(false)}
-                      className="min-w-0 flex-1"
-                    >
-                      <p className="text-sm font-medium text-ink">{a.titulo}</p>
-                      <p className="mt-0.5 line-clamp-2 text-xs text-muted">
-                        {a.motivo ?? a.preview ?? "Pasado a una persona"}
-                      </p>
-                      <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-faint">
-                        {haceCuanto(a.desde)}
-                      </p>
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        void tomar(a.id);
-                      }}
-                      className="shrink-0 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-black"
-                    >
-                      {a.clase === "gps" ? "Ver" : "Tomar"}
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
+            <div className="max-h-80 overflow-y-auto">
+              <GrupoAlertas
+                titulo="Conversaciones"
+                items={items.filter((a) => a.clase === "chat" || a.clase == null)}
+                tomar={tomar}
+                setOpen={setOpen}
+              />
+              <GrupoAlertas
+                titulo="GPS"
+                items={items.filter((a) => a.clase === "gps")}
+                tomar={tomar}
+                setOpen={setOpen}
+              />
+              <GrupoAlertas
+                titulo="Salidas"
+                items={items.filter((a) => a.clase === "salida")}
+                tomar={tomar}
+                setOpen={setOpen}
+              />
+            </div>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+function GrupoAlertas({
+  titulo,
+  items,
+  tomar,
+  setOpen,
+}: {
+  titulo: string;
+  items: AlertaEscalada[];
+  tomar: (id: string) => Promise<void>;
+  setOpen: (v: boolean) => void;
+}) {
+  if (items.length === 0) return null;
+  return (
+    <section>
+      <p className="bg-surface-2 px-4 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted">
+        {titulo}
+        <span className="ml-2 tabular-nums">{items.length}</span>
+      </p>
+      <ul>
+        {items.map((a) => (
+          <li key={a.id} className="border-b border-line last:border-0">
+            <div className="flex items-start gap-2 px-4 py-3 hover:bg-surface-2">
+              <Link
+                href={a.href ?? `/cartera/conversaciones/${a.id}`}
+                onClick={() => setOpen(false)}
+                className="min-w-0 flex-1"
+              >
+                <p className="text-sm font-medium text-ink">{a.titulo}</p>
+                <p className="mt-0.5 line-clamp-2 text-xs text-muted">
+                  {a.motivo ?? a.preview ?? "Pasado a una persona"}
+                </p>
+                <p className="mt-1 text-[10px] uppercase tracking-[0.12em] text-faint">
+                  {haceCuanto(a.desde)}
+                </p>
+              </Link>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void tomar(a.id);
+                }}
+                className="shrink-0 rounded-lg bg-ink px-2.5 py-1.5 text-[11px] font-medium text-white hover:bg-black"
+              >
+                {a.clase === "chat" || a.clase == null ? "Tomar" : "Ver"}
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }
 
