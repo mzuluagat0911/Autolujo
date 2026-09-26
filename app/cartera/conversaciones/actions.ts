@@ -9,6 +9,7 @@ import {
   marcarLeida,
 } from "@/lib/cartera/pipeline";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { estadoCuentaContrato } from "@/lib/cartera/estado-cuenta";
 import { revalidatePath } from "next/cache";
 import type { ConversacionDetalle, ConversacionLista, Mensaje } from "./types";
 import { alertasGpsPendientes, marcarAlertaGpsVista } from "@/lib/gps/revisar-dia";
@@ -228,7 +229,7 @@ export async function cargarDetalle(
     const mensajesRaw = (msgs as Mensaje[]) ?? [];
     const contratoId = (conv as { contrato_id: string | null }).contrato_id;
 
-    const [mensajes, saldoRes] = await Promise.all([
+    const [mensajes, estado] = await Promise.all([
       Promise.all(
         mensajesRaw.map(async (m) => {
           if (!m.media_url) return m;
@@ -238,17 +239,23 @@ export async function cargarDetalle(
           return { ...m, signedUrl: signed?.signedUrl ?? null };
         }),
       ),
-      contratoId
-        ? sb
-            .from("vw_saldo_contrato")
-            .select("saldo_actual")
-            .eq("contrato_id", contratoId)
-            .maybeSingle()
-        : Promise.resolve({ data: null }),
+      contratoId ? estadoCuentaContrato(contratoId) : Promise.resolve(null),
     ]);
 
-    const saldo =
-      (saldoRes.data as { saldo_actual: number } | null)?.saldo_actual ?? null;
+    // Saldo del chat = deuda por baldes, no el neto crudo del libro.
+    // Si no, un prepago de letra “come” el domingo (G51: $90−$35=$55).
+    // Con domingo pendiente: letra adeudada (sin crédito fantasma) + balde domingo.
+    let saldo: number | null = null;
+    if (estado) {
+      const domingo = Math.max(Number(estado.domingoSaldo) || 0, 0);
+      const vista = Number(estado.saldoVista) || 0;
+      if (domingo > 0.009) {
+        const letraAdeudada = Math.max(vista - domingo, 0);
+        saldo = Math.round((letraAdeudada + domingo) * 100) / 100;
+      } else {
+        saldo = vista;
+      }
+    }
 
     const base = conv as unknown as ConversacionLista & { contrato_id: string | null };
     const detalle: ConversacionDetalle = {
