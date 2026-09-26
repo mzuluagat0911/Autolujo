@@ -590,8 +590,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
       () => row.num_cuotas_total ?? null,
     ),
     generosDe(row.cliente_id ? [row.cliente_id] : []),
-    sb.from("cargos").select("monto").eq("contrato_id", contratoId).eq("tipo", "multa")
-      .eq("concepto_codigo", "PAGO_TARDE"),
+    sb.from("cargos").select("monto, concepto, concepto_codigo").eq("contrato_id", contratoId).eq("tipo", "multa"),
     domingoPorContrato([contratoId]),
   ]);
 
@@ -646,10 +645,16 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     },
   );
   const cifras = cumple.cifras;
-  const recargosLedger = ((multasTodas.data ?? []) as { monto: number }[]).reduce(
-    (s, g) => s + Number(g.monto || 0),
-    0,
-  );
+  const recargosLedger = ((multasTodas.data ?? []) as {
+    monto: number;
+    concepto: string | null;
+    concepto_codigo: string | null;
+  }[])
+    .filter((g) => {
+      const codigo = (g.concepto_codigo ?? "").toUpperCase();
+      return codigo === "PAGO_TARDE" || /recargo|por no pagar|pago despu[eé]s/i.test(g.concepto ?? "");
+    })
+    .reduce((s, g) => s + Number(g.monto || 0), 0);
   const { data: pagosRecargo } = await sb
     .from("pagos")
     .select("monto, rubro, asignaciones")
@@ -791,9 +796,8 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
   const [{ data }, { data: pagos }] = await Promise.all([
     sb
       .from("cargos")
-      .select("contrato_id, monto")
+      .select("contrato_id, monto, tipo, concepto, concepto_codigo")
       .eq("tipo", "multa")
-      .eq("concepto_codigo", "PAGO_TARDE")
       .in("contrato_id", ids),
     sb
       .from("pagos")
@@ -801,7 +805,18 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
       .in("contrato_id", ids)
       .in("estado_conciliacion", ["conciliado", "manual"]),
   ]);
-  for (const g of (data ?? []) as { contrato_id: string; monto: number }[]) {
+  for (const g of (data ?? []) as {
+    contrato_id: string;
+    monto: number;
+    tipo: string;
+    concepto: string | null;
+    concepto_codigo: string | null;
+  }[]) {
+    const codigo = (g.concepto_codigo ?? "").toUpperCase();
+    const esRecargo =
+      codigo === "PAGO_TARDE" ||
+      /recargo|por no pagar|pago despu[eé]s/i.test(g.concepto ?? "");
+    if (!esRecargo) continue;
     out.set(g.contrato_id, (out.get(g.contrato_id) ?? 0) + Number(g.monto || 0));
   }
   for (const p of (pagos ?? []) as {

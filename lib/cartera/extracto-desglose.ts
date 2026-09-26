@@ -280,10 +280,17 @@ export async function cargosExtraPorContrato(
     monto: number;
   }[]) {
     const codigo = (f.concepto_codigo ?? "").toUpperCase();
-    if (SKIP_CODIGOS.has(codigo)) continue;
     const monto = Number(f.monto) || 0;
     if (monto <= 0.009) continue;
-    const et = etiquetaCargo(f.concepto, f.concepto_codigo, f.tipo);
+    const crudo = etiquetaCargo(f.concepto, f.concepto_codigo, f.tipo);
+    const esRecargo =
+      codigo === "PAGO_TARDE" ||
+      esEtiquetaRecargo(crudo) ||
+      (f.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(f.concepto ?? ""));
+    if (!esRecargo && SKIP_CODIGOS.has(codigo)) continue;
+    // Un solo balde: el pago ya cruzado se resta aquí, y lo que queda
+    // sale como “por no pagar”, no metido en la letra.
+    const et = esRecargo ? "por no pagar" : crudo;
     const m = maps.get(f.contrato_id) ?? new Map<string, number>();
     m.set(et, (m.get(et) ?? 0) + monto);
     maps.set(f.contrato_id, m);
