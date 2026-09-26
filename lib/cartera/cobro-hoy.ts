@@ -10,8 +10,10 @@
 //    Vive en el ledger (cargos renta / saldo). Un pago baja ese saldo.
 //
 // 2) ACUERDO (aparte de la letra, un solo plan):
-//    Entra al cobro de hoy solo si es el concepto elegido (por defecto el de
-//    menor valor) y aún falta la cuota. Si ya se pagó, se avisa y no se suma.
+//    Entra al cobro de hoy solo si es el concepto elegido y aún falta la cuota.
+//    Un pago antes de las 9:00 a.m., si ayer no se cubrió esa cuota diaria,
+//    abona el día atrasado: la de hoy se sigue cobrando. Si la de hoy ya se
+//    pagó, se avisa y no se suma.
 //
 // 3) UN SOLO CONCEPTO más, además del recargo:
 //    el que tenga el carro (prioridad_abono) o, si no, el de menor valor.

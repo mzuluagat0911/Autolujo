@@ -8,6 +8,9 @@ export const TZ = "America/Panama";
 /** Hora a la que se pierde el descuento por pago puntual. */
 export const HORA_CORTE = 19;
 
+/** Antes de esta hora el extracto del día todavía no salió. */
+export const HORA_EXTRACTO = 9;
+
 const MESES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",
   "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
@@ -34,6 +37,13 @@ function partesPanama(d: Date): { fecha: string; hora: number; minuto: number } 
     hora: Number(p.hour),
     minuto: Number(p.minute),
   };
+}
+
+/** Fecha y hora de un instante, en Panamá. */
+export function partesPagoPanama(pagadoAt: string | Date): { fecha: string; hora: number } {
+  const d = typeof pagadoAt === "string" ? new Date(pagadoAt) : pagadoAt;
+  const p = partesPanama(d);
+  return { fecha: p.fecha, hora: p.hora };
 }
 
 /** Fecha de hoy en Panamá, "YYYY-MM-DD". */

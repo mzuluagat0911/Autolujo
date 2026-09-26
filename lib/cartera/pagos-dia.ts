@@ -7,9 +7,10 @@
 // hubiera pagado, o se le cobra un recargo por dinero que ya envió.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { rangoDiaPanama, esPagoPuntual } from "./fecha";
+import { rangoDiaPanama, esPagoPuntual, partesPagoPanama, HORA_EXTRACTO, sumarDias } from "./fecha";
 import { cuotaDeFecha, type TerminosCuota } from "./cuota";
 import { cubrioCuotaDelDia } from "./cifras";
+import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
 import type { AsignacionPago, ResultadoPago } from "./types";
 import { montoQueCubreCuota } from "./salidas-aplicar";
 
@@ -184,26 +185,96 @@ function parseAsignacionesPago(raw: unknown): AsignacionPago[] {
   return Array.isArray(o.asignaciones) ? o.asignaciones : [];
 }
 
-/** Cuánto de los abonos validados de hoy ya se fue al arreglo. */
+/**
+ * Cuánto del arreglo abonado hoy cubre la cuota de HOY.
+ * Un pago antes de las 9:00 a.m., si ayer no se cubrió la cuota diaria,
+ * abona ese día atrasado y no el de hoy.
+ */
+export function abonoAcuerdoQueCubreHoy(opts: {
+  fechaHoy: string;
+  cuotaAyer: number;
+  abonoAyer: number;
+  pagosHoy: { pagadoAt: string; aplicado: number }[];
+}): number {
+  let huecoAyer = Math.max(Math.round((opts.cuotaAyer - opts.abonoAyer) * 100) / 100, 0);
+  let cubreHoy = 0;
+  const ordered = [...opts.pagosHoy].sort((a, b) => a.pagadoAt.localeCompare(b.pagadoAt));
+  for (const p of ordered) {
+    let queda = Math.max(Number(p.aplicado) || 0, 0);
+    if (queda <= 0.009) continue;
+    const cuando = partesPagoPanama(p.pagadoAt);
+    if (huecoAyer > 0.009 && cuando.fecha === opts.fechaHoy && cuando.hora < HORA_EXTRACTO) {
+      const toma = Math.min(queda, huecoAyer);
+      huecoAyer = Math.round((huecoAyer - toma) * 100) / 100;
+      queda = Math.round((queda - toma) * 100) / 100;
+    }
+    cubreHoy = Math.round((cubreHoy + queda) * 100) / 100;
+  }
+  return cubreHoy;
+}
+
+function aplicadoAcuerdoDe(raw: unknown): number {
+  return parseAsignacionesPago(raw)
+    .filter((a) => a.tipo === "acuerdo")
+    .reduce((s, a) => s + Number(a.aplicado || 0), 0);
+}
+
+/** Cuánto de los abonos validados de hoy ya se fue al arreglo de HOY. */
 export async function aplicadoArregloHoyPorContrato(
   fecha: string,
 ): Promise<Map<string, number>> {
   const sb = createServerSupabase();
-  const { desde, hasta } = rangoDiaPanama(fecha);
+  const ayer = sumarDias(fecha, -1);
+  const { desde } = rangoDiaPanama(ayer);
+  const { hasta } = rangoDiaPanama(fecha);
   const { data, error } = await sb
     .from("pagos")
-    .select("contrato_id, asignaciones")
+    .select("contrato_id, pagado_at, asignaciones")
     .in("estado_conciliacion", ["conciliado", "manual"])
     .gte("pagado_at", desde.toISOString())
     .lt("pagado_at", hasta.toISOString());
   if (error) return new Map();
-  const out = new Map<string, number>();
-  for (const p of (data ?? []) as { contrato_id: string | null; asignaciones: unknown }[]) {
+  const pagos = (data ?? []) as {
+    contrato_id: string | null;
+    pagado_at: string;
+    asignaciones: unknown;
+  }[];
+  const ids = [...new Set(pagos.map((p) => p.contrato_id).filter(Boolean))] as string[];
+  const cuotasAyer = new Map<string, number>();
+  if (ids.length > 0) {
+    const { data: planes } = await sb
+      .from("acuerdos")
+      .select("id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica")
+      .in("contrato_id", ids)
+      .eq("activo", true);
+    const porContrato = new Map<string, AcuerdoActivo[]>();
+    for (const a of (planes ?? []) as (AcuerdoActivo & { contrato_id: string })[]) {
+      const lista = porContrato.get(a.contrato_id) ?? [];
+      lista.push(a);
+      porContrato.set(a.contrato_id, lista);
+    }
+    for (const [id, lista] of porContrato) cuotasAyer.set(id, acuerdoHoyDe(lista, ayer));
+  }
+  const porId = new Map<string, { ayer: number; hoy: { pagadoAt: string; aplicado: number }[] }>();
+  for (const p of pagos) {
     if (!p.contrato_id) continue;
-    const n = parseAsignacionesPago(p.asignaciones)
-      .filter((a) => a.tipo === "acuerdo")
-      .reduce((s, a) => s + Number(a.aplicado || 0), 0);
-    if (n > 0.009) out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + n);
+    const aplicado = aplicadoAcuerdoDe(p.asignaciones);
+    if (aplicado <= 0.009) continue;
+    const slot = porId.get(p.contrato_id) ?? { ayer: 0, hoy: [] };
+    const dia = partesPagoPanama(p.pagado_at).fecha;
+    if (dia === ayer) slot.ayer = Math.round((slot.ayer + aplicado) * 100) / 100;
+    else if (dia === fecha) slot.hoy.push({ pagadoAt: p.pagado_at, aplicado });
+    porId.set(p.contrato_id, slot);
+  }
+  const out = new Map<string, number>();
+  for (const [id, slot] of porId) {
+    const cubre = abonoAcuerdoQueCubreHoy({
+      fechaHoy: fecha,
+      cuotaAyer: cuotasAyer.get(id) ?? 0,
+      abonoAyer: slot.ayer,
+      pagosHoy: slot.hoy,
+    });
+    if (cubre > 0.009) out.set(id, cubre);
   }
   return out;
 }
@@ -213,23 +284,37 @@ export async function aplicadoArregloHoyContrato(
   fecha: string,
 ): Promise<number> {
   const sb = createServerSupabase();
-  const { desde, hasta } = rangoDiaPanama(fecha);
+  const ayer = sumarDias(fecha, -1);
+  const { desde } = rangoDiaPanama(ayer);
+  const { hasta } = rangoDiaPanama(fecha);
   const { data, error } = await sb
     .from("pagos")
-    .select("asignaciones")
+    .select("pagado_at, asignaciones")
     .eq("contrato_id", contratoId)
     .in("estado_conciliacion", ["conciliado", "manual"])
     .gte("pagado_at", desde.toISOString())
     .lt("pagado_at", hasta.toISOString());
-  if (error) return 0;
-  return ((data ?? []) as { asignaciones: unknown }[]).reduce((s, p) => {
-    return (
-      s +
-      parseAsignacionesPago(p.asignaciones)
-        .filter((a) => a.tipo === "acuerdo")
-        .reduce((x, a) => x + Number(a.aplicado || 0), 0)
-    );
-  }, 0);
+  if (error || !data?.length) return 0;
+  const { data: planes } = await sb
+    .from("acuerdos")
+    .select("id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica")
+    .eq("contrato_id", contratoId)
+    .eq("activo", true);
+  let abonoAyer = 0;
+  const pagosHoy: { pagadoAt: string; aplicado: number }[] = [];
+  for (const p of data as { pagado_at: string; asignaciones: unknown }[]) {
+    const aplicado = aplicadoAcuerdoDe(p.asignaciones);
+    if (aplicado <= 0.009) continue;
+    const dia = partesPagoPanama(p.pagado_at).fecha;
+    if (dia === ayer) abonoAyer = Math.round((abonoAyer + aplicado) * 100) / 100;
+    else if (dia === fecha) pagosHoy.push({ pagadoAt: p.pagado_at, aplicado });
+  }
+  return abonoAcuerdoQueCubreHoy({
+    fechaHoy: fecha,
+    cuotaAyer: acuerdoHoyDe((planes ?? []) as AcuerdoActivo[], ayer),
+    abonoAyer,
+    pagosHoy,
+  });
 }
 
 /** Últimos pagos del contrato, de cualquier estado (el agente necesita verlos). */
