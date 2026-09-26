@@ -129,7 +129,12 @@ async function getData() {
   }
 }
 
-export default async function PagosPage() {
+export default async function PagosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ aviso?: string }>;
+}) {
+  const { aviso } = await searchParams;
   const { pendientes, contratos, error } = await getData();
   const esperando = pendientes.filter((p) => !p.alertaCuenta && p.contrato_id).length;
   const alertas = pendientes.filter((p) => p.alertaCuenta).length;
@@ -149,6 +154,12 @@ export default async function PagosPage() {
           </Link>
         }
       />
+
+      {aviso && (
+        <p className="mt-6 rounded-lg bg-ambar-wash px-4 py-3 text-sm text-ink ring-1 ring-ambar/40">
+          {aviso}
+        </p>
+      )}
 
       {error && (
         <p className="mt-6 rounded-lg bg-surface p-4 font-mono text-xs text-muted ring-1 ring-line">{error}</p>

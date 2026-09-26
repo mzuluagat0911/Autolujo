@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
@@ -45,15 +46,19 @@ function hastaDesdeForm(formData: FormData, fecha: string): string | null {
  * - conciliar: lo marca aplicado (opcionalmente a un contrato).
  * - rechazar: lo descarta (ej. comprobante inválido o duplicado).
  */
+function volverConAviso(msg: string): never {
+  redirect(`/cartera/pagos?aviso=${encodeURIComponent(msg)}`);
+}
+
 export async function resolverPago(formData: FormData): Promise<void> {
   const pagoId = String(formData.get("pago_id") ?? "");
   const accion = String(formData.get("accion") ?? "");
   const contratoId = String(formData.get("contrato_id") ?? "").trim() || null;
-  if (!pagoId) throw new Error("Falta el pago.");
+  if (!pagoId) volverConAviso("Falta el pago.");
 
   const nuevoEstado =
     accion === "conciliar" ? "conciliado" : accion === "rechazar" ? "rechazado" : null;
-  if (!nuevoEstado) throw new Error("Acción inválida.");
+  if (!nuevoEstado) volverConAviso("Acción inválida.");
 
   const sb = createServerSupabase();
   if (nuevoEstado === "conciliado") {
@@ -64,8 +69,8 @@ export async function resolverPago(formData: FormData): Promise<void> {
       .maybeSingle();
     const row = actual as { notas: string | null; rubro: string | null; asignaciones: unknown } | null;
     if (row && pagoEsperaConceptoExcedente(row.notas) && !row.rubro && !row.asignaciones) {
-      throw new Error(
-        "Este comprobante trae excedente sin concepto. Asígnelo a un concepto antes de aprobar.",
+      volverConAviso(
+        "Este comprobante trae excedente sin concepto. Pregúntale al cliente a dónde va (domingo o letra siguiente) y asígnalo antes de aprobar.",
       );
     }
   }
@@ -83,7 +88,7 @@ export async function resolverPago(formData: FormData): Promise<void> {
     .eq("id", pagoId)
     .select("contrato_id, pagado_at")
     .maybeSingle();
-  if (error) throw new Error(error.message);
+  if (error) volverConAviso(error.message);
 
   // Mientras el comprobante estuvo pendiente, el recargo de ese día quedó
   // congelado. Ya hay desenlace: si el pago era bueno se confirma la gracia,

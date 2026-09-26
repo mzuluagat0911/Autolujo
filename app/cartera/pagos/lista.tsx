@@ -225,6 +225,12 @@ function Fila({
         </div>
       </div>
 
+      {p.notas?.includes("EXCEDENTE_SIN_CONCEPTO") && (
+        <p className="mt-1.5 text-xs text-ambar">
+          Excedente sin concepto. El sábado hay que preguntar si va al domingo o a la letra siguiente antes de aprobar.
+        </p>
+      )}
+
       {(alertaTxt || p.referencia || p.contratoLabel) && (
         <p className="mt-1.5 truncate text-xs text-muted">
           {alertaTxt ?? (p.contratoLabel ? p.contratoLabel : null) ?? (p.referencia ? `Ref ${p.referencia}` : null)}
