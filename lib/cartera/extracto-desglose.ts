@@ -164,12 +164,13 @@ export function armarExtractoDiario(
     });
   }
 
-  // Aviso de domingo MAÑANA (cuota del día domingo, no saldo arrastrado).
-  // Nunca suma al total — solo informativo.
+  // Aviso de domingo MAÑANA. No suma y no se pinta como línea de cobro ($).
   if (e.domingo && e.domingo > 0.009) {
+    const dia = e.domingoDia ?? "";
     out.push({
-      etiqueta: `domingo ${e.domingoDia ?? ""}`.trim(),
+      etiqueta: `domingo ${dia}: ${money(e.domingo)} (no se cobra hoy)`.replace(/\s+/g, " ").trim(),
       monto: e.domingo,
+      aviso: true,
     });
   }
 
@@ -186,10 +187,14 @@ export function armarExtractoDiario(
     });
   }
 
-  // Domingo arrastrado: siempre pendiente, monto del cargo/aviso (no del pool pa).
+  // Domingo arrastrado: se menciona, no es cobro de hoy (sábado ni entre semana).
   for (const x of extrasDomingo) {
     const baseEtiqueta = x.etiqueta.replace(/\s*\(pendiente\)\s*$/i, "");
-    out.push({ etiqueta: `${baseEtiqueta} (pendiente)`, monto: x.monto });
+    out.push({
+      etiqueta: `${baseEtiqueta} pendiente: ${money(x.monto)} (no se cobra hoy)`,
+      monto: x.monto,
+      aviso: true,
+    });
   }
 
   if (out.length === 0 && totalCobrarHoy > 0.009) {
