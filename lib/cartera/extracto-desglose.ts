@@ -184,7 +184,7 @@ export function armarExtractoDiario(
   for (const x of extrasDomingo) {
     const baseEtiqueta = x.etiqueta.replace(/\s*\(pendiente\)\s*$/i, "");
     out.push({
-      etiqueta: `${baseEtiqueta} pendiente: ${money(x.monto)} (no se cobra hoy)`,
+      etiqueta: `${baseEtiqueta} pendiente: ${money(x.monto)}`,
       monto: x.monto,
       aviso: true,
     });
