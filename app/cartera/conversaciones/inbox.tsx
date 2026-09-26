@@ -676,7 +676,7 @@ function ChatPanel({
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-right">
-            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">Saldo</p>
+            <p className="text-[10px] font-medium uppercase tracking-[0.14em] text-muted">Hoy</p>
             <p className="text-lg font-bold tabular-nums">{formatSaldo(detalle.saldo)}</p>
           </div>
           {esHumano ? (

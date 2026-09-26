@@ -9,6 +9,7 @@ import {
   marcarLeida,
 } from "@/lib/cartera/pipeline";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { cobroHoyContrato } from "@/lib/cartera/cobro-hoy";
 import { estadoCuentaContrato } from "@/lib/cartera/estado-cuenta";
 import { revalidatePath } from "next/cache";
 import type { ConversacionDetalle, ConversacionLista, Mensaje } from "./types";
@@ -242,18 +243,15 @@ export async function cargarDetalle(
       contratoId ? estadoCuentaContrato(contratoId) : Promise.resolve(null),
     ]);
 
-    // Saldo del chat = deuda por baldes, no el neto crudo del libro.
-    // Si no, un prepago de letra “come” el domingo (G51: $90−$35=$55).
-    // Con domingo pendiente: letra adeudada (sin crédito fantasma) + balde domingo.
+    // En el chat: TOTAL A PAGAR HOY (misma lógica del extracto / cobroHoy).
+    // Baja con pagos del día; no es el saldo acumulado del libro.
     let saldo: number | null = null;
     if (estado) {
-      const domingo = Math.max(Number(estado.domingoSaldo) || 0, 0);
-      const vista = Number(estado.saldoVista) || 0;
-      if (domingo > 0.009) {
-        const letraAdeudada = Math.max(vista - domingo, 0);
-        saldo = Math.round((letraAdeudada + domingo) * 100) / 100;
-      } else {
-        saldo = vista;
+      try {
+        const cobro = await cobroHoyContrato(estado);
+        saldo = Math.round(cobro.totalCobrarHoy * 100) / 100;
+      } catch {
+        saldo = Math.max(Number(estado.totalHoy) || 0, 0);
       }
     }
 
