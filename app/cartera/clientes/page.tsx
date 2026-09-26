@@ -19,13 +19,19 @@ async function getClientes(): Promise<{ data: ClienteFila[]; error: string | nul
   }
 }
 
-export default async function ClientesPage() {
+export default async function ClientesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ aviso?: string }>;
+}) {
+  const { aviso } = await searchParams;
   const [{ data, error }, carros] = await Promise.all([getClientes(), listarCarrosLibres()]);
 
   return (
     <ClientesDirectorio
       clientes={data}
       error={error}
+      aviso={aviso}
       carros={carros}
       fechaHoy={hoyPanama()}
       createCliente={createCliente}

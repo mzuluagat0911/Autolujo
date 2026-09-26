@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, horaPanama } from "@/lib/cartera/fecha";
 import { normalizarGenero } from "@/lib/cartera/tratamiento";
-import { etiquetaCarroUi, siglaEmpresa } from "@/lib/cartera/empresa";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
+import { enlazarChatDelContrato, telefonosDeAlta } from "@/lib/cartera/enlazar-alta";
 
 const PANAPASS_ENTRADA = 20;
 const DOMINGOS_ENTRADA_DEFAULT = 90; // 3 × $30
@@ -26,24 +28,61 @@ function r2(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+function volverClientes(msg: string): never {
+  redirect(`/cartera/clientes?aviso=${encodeURIComponent(msg)}`);
+}
+
 export async function createCliente(formData: FormData): Promise<void> {
   const nombre = String(formData.get("nombre") ?? "").trim();
-  if (!nombre) throw new Error("El nombre es obligatorio.");
+  if (!nombre) volverClientes("El nombre es obligatorio.");
   const genero = normalizarGenero(formData.get("genero"));
-  if (!genero) throw new Error("Indicá el género (Sr. / Sra.) para saludar bien por WhatsApp.");
+  if (!genero) volverClientes("Indicá el género (Sr. / Sra.) para saludar bien por WhatsApp.");
+
+  const tels = telefonosDeAlta(str(formData.get("whatsapp")), str(formData.get("telefono")));
+  if ((str(formData.get("whatsapp")) || str(formData.get("telefono"))) && !tels) {
+    volverClientes("Celular inválido. Usa 8 dígitos o +507XXXXXXXX.");
+  }
 
   const sb = createServerSupabase();
-  const { error } = await sb.from("clientes").insert({
-    nombre,
-    genero,
-    cedula: str(formData.get("cedula")),
-    telefono: str(formData.get("telefono")),
-    whatsapp: str(formData.get("whatsapp")),
-    mayor_de_25: formData.get("mayor_de_25") === "on",
-  });
-  if (error) throw new Error(error.message);
+  const { data: cliente, error } = await sb
+    .from("clientes")
+    .insert({
+      nombre,
+      genero,
+      cedula: str(formData.get("cedula")),
+      telefono: tels?.telefono ?? str(formData.get("telefono")),
+      whatsapp: tels?.whatsapp ?? str(formData.get("whatsapp")),
+      mayor_de_25: formData.get("mayor_de_25") === "on",
+    })
+    .select("id")
+    .single();
+  if (error || !cliente) volverClientes(error?.message ?? "No pude crear el cliente.");
+
+  if (tels) {
+    const sb2 = createServerSupabase();
+    const { data: ya } = await sb2
+      .from("conversaciones")
+      .select("id, cliente_id")
+      .eq("wa_numero", tels.waNorm)
+      .maybeSingle();
+    const row = ya as { id: string; cliente_id: string | null } | null;
+    const clienteId = (cliente as { id: string }).id;
+    if (!row) {
+      await sb2.from("conversaciones").insert({
+        wa_numero: tels.waNorm,
+        cliente_id: clienteId,
+        etiqueta: nombre,
+      });
+    } else if (!row.cliente_id || row.cliente_id === clienteId) {
+      await sb2.from("conversaciones").update({ cliente_id: clienteId }).eq("id", row.id);
+    }
+  }
 
   revalidatePath("/cartera/clientes");
+  revalidatePath("/cartera/conversaciones");
+  volverClientes(
+    tels ? `${nombre} quedó creado y el chat enlazado a su celular.` : `${nombre} quedó creado. Sin celular no hay chat.`,
+  );
 }
 
 type ParteDesglose = {
@@ -63,7 +102,7 @@ type ParteDesglose = {
  */
 export async function createClienteConContrato(
   formData: FormData,
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; msg?: string }> {
   const nombre = String(formData.get("nombre") ?? "").trim();
   if (!nombre) return { ok: false, error: "El nombre es obligatorio." };
   const genero = normalizarGenero(formData.get("genero"));
@@ -150,14 +189,19 @@ export async function createClienteConContrato(
     .maybeSingle();
   if (activo) return { ok: false, error: "Ese carro ya tiene un contrato activo." };
 
+  const tels = telefonosDeAlta(str(formData.get("whatsapp")), str(formData.get("telefono")));
+  if ((str(formData.get("whatsapp")) || str(formData.get("telefono"))) && !tels) {
+    return { ok: false, error: "Celular inválido. Usa 8 dígitos o +507XXXXXXXX." };
+  }
+
   const { data: cliente, error: cErr } = await sb
     .from("clientes")
     .insert({
       nombre,
       genero,
       cedula: str(formData.get("cedula")),
-      telefono: str(formData.get("telefono")),
-      whatsapp: str(formData.get("whatsapp")),
+      telefono: tels?.telefono ?? str(formData.get("telefono")),
+      whatsapp: tels?.whatsapp ?? str(formData.get("whatsapp")),
       mayor_de_25: formData.get("mayor_de_25") === "on",
       codigo: str(formData.get("codigo")),
     })
@@ -359,29 +403,35 @@ export async function createClienteConContrato(
     }
   }
 
-  // Si ya hay chat por WhatsApp, enlazarlo.
-  const wa = str(formData.get("whatsapp"));
-  if (wa) {
-    const emp = (veh as { empresa?: { codigo?: string } | null }).empresa?.codigo ?? null;
-    const etiqueta = etiquetaCarroUi(emp, (veh as { numero: string }).numero);
-    await sb
-      .from("conversaciones")
-      .update({
-        cliente_id: cliente.id,
-        vehiculo_id: vehiculoId,
-        contrato_id: contratoId,
-        etiqueta: etiqueta || `Carro ${(veh as { numero: string }).numero}`,
-      })
-      .eq("wa_numero", wa.replace(/\s+/g, ""));
-  }
-
   void acuerdoId; // creado; el extracto lo toma de acuerdos activos
+
+  let avisoChat: string | null = null;
+  if (tels) {
+    const empRaw = (veh as { empresa?: { codigo?: string } | { codigo?: string }[] | null }).empresa;
+    const emp = Array.isArray(empRaw) ? empRaw[0]?.codigo ?? null : empRaw?.codigo ?? null;
+    avisoChat = await enlazarChatDelContrato({
+      clienteId: cliente.id,
+      contratoId,
+      vehiculoId,
+      numero: (veh as { numero: string }).numero,
+      empresaCodigo: emp,
+      waNorm: tels.waNorm,
+    });
+  }
 
   revalidatePath("/cartera/clientes");
   revalidatePath("/cartera/vehiculos");
   revalidatePath("/cartera/conversaciones");
   revalidatePath("/cartera/pagos");
-  return { ok: true };
+  revalidatePath("/cartera");
+  return {
+    ok: true,
+    msg: avisoChat
+      ? `Cliente y contrato creados. ${avisoChat}`
+      : tels
+        ? "Cliente, contrato y chat enlazados."
+        : "Cliente y contrato creados. Sin celular no queda chat.",
+  };
 }
 
 export type CarroLibre = {

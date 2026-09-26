@@ -5,6 +5,8 @@ import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
+import { crearArrendatarioEnCarro, generoDeAlta } from "@/lib/cartera/enlazar-alta";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 
 function str(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
@@ -35,28 +37,70 @@ export async function createVehiculo(formData: FormData): Promise<void> {
   if (!empresa_id) volverVehiculos("Selecciona la empresa.");
   if (!numero) volverVehiculos("El número de carro es obligatorio.");
 
+  const nombreArr = str(formData.get("arrendatario_nombre"));
+  const generoArr = generoDeAlta(formData.get("arrendatario_genero"));
+  const waArr = str(formData.get("arrendatario_whatsapp"));
+  const letraArr = num(formData.get("arrendatario_letra"));
+  const quiereCliente = Boolean(nombreArr || waArr || (letraArr != null && letraArr > 0));
+  if (quiereCliente) {
+    if (!nombreArr || nombreArr.length < 2) volverVehiculos("Para enlazar el cliente, el nombre es obligatorio.");
+    if (!generoArr) volverVehiculos("Indicá el género (Sr. / Sra.) del arrendatario.");
+    if (!waArr) volverVehiculos("El celular / WhatsApp es obligatorio para enlazar el chat.");
+    if (letraArr == null || letraArr <= 0) volverVehiculos("La letra diaria es obligatoria para que el cobro funcione.");
+  }
+
   const sb = createServerSupabase();
-  const { error } = await sb.from("vehiculos").insert({
-    empresa_id,
-    numero,
-    placa: str(formData.get("placa")),
-    marca: str(formData.get("marca")),
-    modelo: str(formData.get("modelo")),
-    anio: num(formData.get("anio")),
-    km_actual: num(formData.get("km_actual")) ?? 0,
-    gps_id: str(formData.get("gps_id")),
-    panapass: str(formData.get("panapass")),
-    estado: String(formData.get("estado") ?? "activo"),
-  });
-  if (error) {
-    if (/unique|duplicate|23505/i.test(error.message)) {
+  const { data: creado, error } = await sb
+    .from("vehiculos")
+    .insert({
+      empresa_id,
+      numero,
+      placa: str(formData.get("placa")),
+      marca: str(formData.get("marca")),
+      modelo: str(formData.get("modelo")),
+      anio: num(formData.get("anio")),
+      km_actual: num(formData.get("km_actual")) ?? 0,
+      gps_id: str(formData.get("gps_id")),
+      panapass: str(formData.get("panapass")),
+      estado: String(formData.get("estado") ?? "activo"),
+    })
+    .select("id, empresa:empresas(codigo)")
+    .single();
+  if (error || !creado) {
+    if (error && /unique|duplicate|23505/i.test(error.message)) {
       volverVehiculos(`El carro ${numero} ya existe en esa empresa. No hace falta crearlo otra vez.`);
     }
-    volverVehiculos(error.message);
+    volverVehiculos(error?.message ?? "No pude guardar el carro.");
+  }
+
+  let aviso = `Carro ${numero} guardado.`;
+  if (quiereCliente && nombreArr && generoArr && waArr && letraArr != null) {
+    const emp = (creado as { empresa?: { codigo?: string } | { codigo?: string }[] | null }).empresa;
+    const codigo = Array.isArray(emp) ? emp[0]?.codigo ?? null : emp?.codigo ?? null;
+    const enlace = await crearArrendatarioEnCarro({
+      vehiculoId: (creado as { id: string }).id,
+      numero,
+      empresaCodigo: codigo,
+      nombre: nombreArr,
+      genero: generoArr,
+      whatsappRaw: waArr,
+      letra: letraArr,
+    });
+    if (!enlace.ok) {
+      aviso = `El carro ${numero} quedó guardado, pero no enlacé al cliente: ${enlace.error}`;
+    } else {
+      const sigla = siglaEmpresa(codigo);
+      aviso = enlace.aviso
+        ? `Carro ${sigla ? `${sigla} · ` : ""}${numero} guardado con contrato. ${enlace.aviso}`
+        : `Carro ${numero} guardado con ${nombreArr}: contrato, letra $${letraArr} y chat enlazados.`;
+    }
   }
 
   revalidatePath("/cartera/vehiculos");
-  volverVehiculos(`Carro ${numero} guardado.`);
+  revalidatePath("/cartera/clientes");
+  revalidatePath("/cartera/conversaciones");
+  revalidatePath("/cartera");
+  volverVehiculos(aviso);
 }
 
 export type ResultadoFicha = { ok: boolean; msg: string };
@@ -72,6 +116,8 @@ export async function guardarIdentidadCarro(input: {
   clienteId: string | null;
   nombre: string | null;
   celular: string | null;
+  genero?: string | null;
+  letra?: number | null;
 }): Promise<ResultadoFicha> {
   const id = String(input.vehiculoId ?? "").trim();
   const numero = String(input.numero ?? "").trim();
@@ -116,6 +162,50 @@ export async function guardarIdentidadCarro(input: {
       const otro = (choque as { nombre?: string }).nombre ?? "otro cliente";
       return { ok: false, msg: `Ese celular ya está en ${otro}.` };
     }
+  }
+
+  const quiereCliente =
+    !clienteContrato &&
+    Boolean(nombre || celularRaw || input.genero || (Number(input.letra) > 0));
+  if (quiereCliente) {
+    if (!nombre || nombre.length < 2 || !celularRaw) {
+      return { ok: false, msg: "Para enlazar el cliente hacen falta nombre y WhatsApp." };
+    }
+    const genero = generoDeAlta(input.genero);
+    const letra = Number(input.letra);
+    if (!genero) return { ok: false, msg: "Indicá el género (Sr. / Sra.) para enlazar el cliente." };
+    if (!(letra > 0)) return { ok: false, msg: "La letra diaria es obligatoria para que el cobro funcione." };
+    const { error: vErrNuevo } = await sb.from("vehiculos").update({ numero }).eq("id", id);
+    if (vErrNuevo && /unique|duplicate|23505/i.test(vErrNuevo.message)) {
+      return { ok: false, msg: "Ese número ya existe en esta empresa." };
+    }
+    if (vErrNuevo) return { ok: false, msg: vErrNuevo.message };
+    const { data: veh } = await sb
+      .from("vehiculos")
+      .select("empresa:empresas(codigo)")
+      .eq("id", id)
+      .maybeSingle();
+    const emp = (veh as { empresa?: { codigo?: string } | { codigo?: string }[] | null } | null)?.empresa;
+    const codigo = Array.isArray(emp) ? emp[0]?.codigo ?? null : emp?.codigo ?? null;
+    const enlace = await crearArrendatarioEnCarro({
+      vehiculoId: id,
+      numero,
+      empresaCodigo: codigo,
+      nombre,
+      genero,
+      whatsappRaw: celularRaw,
+      letra,
+    });
+    if (!enlace.ok) return { ok: false, msg: enlace.error };
+    invalidarLecturaEstados();
+    revalidatePath("/cartera/vehiculos");
+    revalidatePath("/cartera/clientes");
+    revalidatePath("/cartera/conversaciones");
+    revalidatePath("/cartera");
+    return {
+      ok: true,
+      msg: enlace.aviso ?? `${nombre} quedó en el carro ${numero}: contrato, letra y chat enlazados.`,
+    };
   }
 
   const { error: vErr } = await sb.from("vehiculos").update({ numero }).eq("id", id);

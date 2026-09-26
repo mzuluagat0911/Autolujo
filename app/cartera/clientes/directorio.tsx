@@ -31,6 +31,7 @@ type PanelAlta = null | "contrato" | "solo";
 export function ClientesDirectorio({
   clientes,
   error,
+  aviso,
   carros,
   fechaHoy,
   createCliente,
@@ -38,10 +39,11 @@ export function ClientesDirectorio({
 }: {
   clientes: ClienteFila[];
   error: string | null;
+  aviso?: string;
   carros: CarroLibre[];
   fechaHoy: string;
   createCliente: (fd: FormData) => Promise<void>;
-  createClienteConContrato: (fd: FormData) => Promise<{ ok: boolean; error?: string }>;
+  createClienteConContrato: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string }>;
 }) {
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todos");
@@ -104,6 +106,12 @@ export function ClientesDirectorio({
           </div>
         }
       />
+
+      {aviso && (
+        <p className="mt-6 rounded-lg bg-ambar-wash px-4 py-3 text-sm text-ink ring-1 ring-ambar/40">
+          {aviso}
+        </p>
+      )}
 
       {alta === "contrato" && (
         <section className="mt-6 rounded-xl bg-surface p-5 ring-1 ring-line">

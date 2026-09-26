@@ -577,6 +577,8 @@ function PanelEditarCarro({
   const [numero, setNumero] = useState(carro.numero);
   const [nombre, setNombre] = useState(carro.cliente ?? "");
   const [celular, setCelular] = useState(carro.celular ?? "");
+  const [genero, setGenero] = useState("");
+  const [letra, setLetra] = useState(carro.letra != null ? String(carro.letra) : "");
   const [err, setErr] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const titulo = `${carro.empresa ? `${siglaEmpresa(carro.empresa)} · ` : ""}${carro.numero}`;
@@ -589,8 +591,10 @@ function PanelEditarCarro({
         vehiculoId: carro.id,
         numero,
         clienteId: carro.clienteId,
-        nombre: carro.clienteId ? nombre : null,
-        celular: carro.clienteId ? celular : null,
+        nombre: nombre.trim() || null,
+        celular: celular.trim() || null,
+        genero: genero || null,
+        letra: Number(String(letra).replace(",", ".")) || null,
       });
       if (!r.ok) {
         setErr(r.msg);
@@ -614,7 +618,9 @@ function PanelEditarCarro({
       >
         <h2 className="text-lg font-semibold tracking-tight">Editar {titulo}</h2>
         <p className="mt-1 text-sm text-muted">
-          Corregí nombre o celular si hay error. El próximo extracto y recordatorio salen con esos datos.
+          {carro.clienteId
+            ? "Corregí nombre o celular si hay error. El próximo extracto y recordatorio salen con esos datos."
+            : "Si es cliente nuevo, dejanos nombre, género, WhatsApp y letra. Quedan el contrato y el chat enlazados."}
         </p>
         <div className="mt-5 space-y-4">
           <label className="flex flex-col gap-1.5">
@@ -657,7 +663,55 @@ function PanelEditarCarro({
               </label>
             </>
           ) : (
-            <p className="text-sm text-muted">Sin contrato activo. Solo se puede cambiar el número del carro.</p>
+            <>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Nombre del arrendatario
+                </span>
+                <input
+                  value={nombre}
+                  onChange={(e) => setNombre(e.target.value)}
+                  placeholder="Si es cliente nuevo"
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Género</span>
+                <select
+                  value={genero}
+                  onChange={(e) => setGenero(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                >
+                  <option value="">Elegí…</option>
+                  <option value="m">Masculino — Sr.</option>
+                  <option value="f">Femenino — Sra.</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Celular / WhatsApp
+                </span>
+                <input
+                  inputMode="tel"
+                  placeholder="+50761234567"
+                  value={celular}
+                  onChange={(e) => setCelular(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 font-mono text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Letra diaria
+                </span>
+                <input
+                  inputMode="decimal"
+                  placeholder="35"
+                  value={letra}
+                  onChange={(e) => setLetra(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm tabular-nums ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+            </>
           )}
         </div>
         {err && <p className="mt-3 text-sm text-rojo">{err}</p>}

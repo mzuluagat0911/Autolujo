@@ -21,7 +21,7 @@ export function AltaContratoForm({
 }: {
   carros: CarroLibre[];
   fechaHoy: string;
-  action: (fd: FormData) => Promise<{ ok: boolean; error?: string }>;
+  action: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string }>;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -71,7 +71,7 @@ export function AltaContratoForm({
         setErr(r.error ?? "No se pudo guardar.");
         return;
       }
-      setMsg("Cliente, contrato y pago de entrada registrados.");
+      setMsg(r.msg ?? "Cliente, contrato y chat enlazados.");
       e.currentTarget.reset();
       setCobraDomingo(true);
       setCuotaDomingo(String(CUOTA_DOMINGO));

@@ -321,9 +321,24 @@ export default async function VehiculosPage({
           <Field label="ID GPS Diacor" name="gps_id" placeholder="34287" />
           <Field label="PanaPass" name="panapass" placeholder="Opcional" />
           <Select label="Estado" name="estado" options={ESTADOS} defaultValue="activo" />
-          <div className="flex items-end">
+          <Field label="Arrendatario" name="arrendatario_nombre" placeholder="Si es cliente nuevo" />
+          <Select
+            label="Género"
+            name="arrendatario_genero"
+            placeholder="Sr. / Sra."
+            options={[
+              { value: "m", label: "Masculino — Sr." },
+              { value: "f", label: "Femenino — Sra." },
+            ]}
+          />
+          <Field label="WhatsApp" name="arrendatario_whatsapp" placeholder="+50760000000" />
+          <Field label="Letra diaria" name="arrendatario_letra" type="number" placeholder="35" />
+          <div className="flex items-end sm:col-span-2 lg:col-span-3">
             <SubmitButton>Guardar vehículo</SubmitButton>
           </div>
+          <p className="text-xs text-muted sm:col-span-2 lg:col-span-3">
+            Si llenás arrendatario, género, WhatsApp y letra, el carro queda con contrato y chat. Si no, solo entra a la flota.
+          </p>
         </FormCard>
       </div>
 
