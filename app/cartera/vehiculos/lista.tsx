@@ -352,7 +352,11 @@ export function ListaVehiculos({
           onSaved={(texto) => {
             setElegido(null);
             setMsg(texto);
-            router.refresh();
+            // Carga limpia: un refresh RSC con el modal a medio cerrar
+            // tiraba la página en blanco (client-side exception).
+            window.location.assign(
+              `/cartera/vehiculos?aviso=${encodeURIComponent(texto)}`,
+            );
           }}
         />
       )}
@@ -587,20 +591,24 @@ function PanelEditarCarro({
     e.preventDefault();
     setErr(null);
     start(async () => {
-      const r = await guardarIdentidadCarro({
-        vehiculoId: carro.id,
-        numero,
-        clienteId: carro.clienteId,
-        nombre: nombre.trim() || null,
-        celular: celular.trim() || null,
-        genero: genero || null,
-        letra: Number(String(letra).replace(",", ".")) || null,
-      });
-      if (!r.ok) {
-        setErr(r.msg);
-        return;
+      try {
+        const r = await guardarIdentidadCarro({
+          vehiculoId: carro.id,
+          numero,
+          clienteId: carro.clienteId,
+          nombre: nombre.trim() || null,
+          celular: celular.trim() || null,
+          genero: genero || null,
+          letra: Number(String(letra).replace(",", ".")) || null,
+        });
+        if (!r.ok) {
+          setErr(r.msg);
+          return;
+        }
+        onSaved(r.msg);
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : "No pude guardar. Probá de nuevo.");
       }
-      onSaved(r.msg);
     });
   }
 

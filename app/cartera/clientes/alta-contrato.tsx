@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import { Field, Select } from "@/components/form";
 import type { CarroLibre } from "./actions";
 
@@ -23,7 +22,6 @@ export function AltaContratoForm({
   fechaHoy: string;
   action: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string }>;
 }) {
-  const router = useRouter();
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -83,7 +81,9 @@ export function AltaContratoForm({
       setPrepagoLetras("0");
       setPrepagoDomingos("0");
       setLetra("");
-      router.refresh();
+      window.location.assign(
+        `/cartera/clientes?aviso=${encodeURIComponent(r.msg ?? "Cliente, contrato y chat enlazados.")}`,
+      );
     });
   }
 

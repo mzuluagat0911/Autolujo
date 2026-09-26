@@ -126,186 +126,199 @@ export async function guardarIdentidadCarro(input: {
   if (!id) return { ok: false, msg: "Falta el carro." };
   if (!numero || numero.length > 20) return { ok: false, msg: "El número del carro es obligatorio." };
 
-  const sb = createServerSupabase();
-  const { data: contrato, error: cErr } = await sb
-    .from("contratos")
-    .select("id, cliente_id")
-    .eq("vehiculo_id", id)
-    .eq("estado", "activo")
-    .maybeSingle();
-  if (cErr) return { ok: false, msg: cErr.message };
-
-  const clienteContrato = (contrato as { cliente_id: string } | null)?.cliente_id ?? null;
-  if (input.clienteId && clienteContrato !== input.clienteId) {
-    return { ok: false, msg: "Ese nombre no corresponde al contrato activo de este carro." };
-  }
-  if (clienteContrato && (!nombre || nombre.length < 2)) {
-    return { ok: false, msg: "El nombre del arrendatario es obligatorio." };
-  }
-
-  let telefonos: ReturnType<typeof armarTelefonos> = null;
-  if (clienteContrato) {
-    if (!celularRaw) return { ok: false, msg: "El celular / WhatsApp es obligatorio." };
-    telefonos = armarTelefonos(celularRaw);
-    if (!telefonos) {
-      return { ok: false, msg: "Celular inválido. Usa 8 dígitos o +507XXXXXXXX." };
-    }
-    // No pisar a otro cliente que ya tenga ese WhatsApp.
-    const { data: choque } = await sb
-      .from("clientes")
-      .select("id, nombre")
-      .or(`wa_norm.eq.${telefonos.waNorm},tel_norm.eq.${telefonos.waNorm}`)
-      .neq("id", clienteContrato)
-      .limit(1)
-      .maybeSingle();
-    if (choque) {
-      const otro = (choque as { nombre?: string }).nombre ?? "otro cliente";
-      return { ok: false, msg: `Ese celular ya está en ${otro}.` };
-    }
-  }
-
-  const quiereCliente =
-    !clienteContrato &&
-    Boolean(nombre || celularRaw || input.genero || (Number(input.letra) > 0));
-  if (quiereCliente) {
-    if (!nombre || nombre.length < 2 || !celularRaw) {
-      return { ok: false, msg: "Para enlazar el cliente hacen falta nombre y WhatsApp." };
-    }
-    const genero = generoDeAlta(input.genero);
-    const letra = Number(input.letra);
-    if (!genero) return { ok: false, msg: "Indicá el género (Sr. / Sra.) para enlazar el cliente." };
-    if (!(letra > 0)) return { ok: false, msg: "La letra diaria es obligatoria para que el cobro funcione." };
-    const { error: vErrNuevo } = await sb.from("vehiculos").update({ numero }).eq("id", id);
-    if (vErrNuevo && /unique|duplicate|23505/i.test(vErrNuevo.message)) {
-      return { ok: false, msg: "Ese número ya existe en esta empresa." };
-    }
-    if (vErrNuevo) return { ok: false, msg: vErrNuevo.message };
-    const { data: veh } = await sb
-      .from("vehiculos")
-      .select("empresa:empresas(codigo)")
-      .eq("id", id)
-      .maybeSingle();
-    const emp = (veh as { empresa?: { codigo?: string } | { codigo?: string }[] | null } | null)?.empresa;
-    const codigo = Array.isArray(emp) ? emp[0]?.codigo ?? null : emp?.codigo ?? null;
-    const enlace = await crearArrendatarioEnCarro({
-      vehiculoId: id,
-      numero,
-      empresaCodigo: codigo,
-      nombre,
-      genero,
-      whatsappRaw: celularRaw,
-      letra,
-    });
-    if (!enlace.ok) return { ok: false, msg: enlace.error };
-    invalidarLecturaEstados();
-    revalidatePath("/cartera/vehiculos");
-    revalidatePath("/cartera/clientes");
-    revalidatePath("/cartera/conversaciones");
-    revalidatePath("/cartera");
-    return {
-      ok: true,
-      msg: enlace.aviso ?? `${nombre} quedó en el carro ${numero}: contrato, letra y chat enlazados.`,
-    };
-  }
-
-  const { error: vErr } = await sb.from("vehiculos").update({ numero }).eq("id", id);
-  if (vErr) {
-    if (/unique|duplicate|23505/i.test(vErr.message)) {
-      return { ok: false, msg: "Ese número ya existe en esta empresa." };
-    }
-    return { ok: false, msg: vErr.message };
-  }
-
-  if (clienteContrato && nombre && telefonos) {
-    const { error: nErr } = await sb
-      .from("clientes")
-      .update({
-        nombre,
-        whatsapp: telefonos.whatsapp,
-        telefono: telefonos.telefono,
-      })
-      .eq("id", clienteContrato);
-    if (nErr) return { ok: false, msg: nErr.message };
-
-    // Reenganchar el chat al número nuevo para que inbox y espejo coincidan.
-    const etiqueta = `Carro ${numero}`;
-    const { data: convNueva } = await sb
-      .from("conversaciones")
+  try {
+    const sb = createServerSupabase();
+    const { data: contrato, error: cErr } = await sb
+      .from("contratos")
       .select("id, cliente_id")
-      .eq("wa_numero", telefonos.waNorm)
+      .eq("vehiculo_id", id)
+      .eq("estado", "activo")
       .maybeSingle();
-    const convNuevaRow = convNueva as { id: string; cliente_id: string | null } | null;
+    if (cErr) return { ok: false, msg: cErr.message };
 
-    if (convNuevaRow && convNuevaRow.cliente_id && convNuevaRow.cliente_id !== clienteContrato) {
+    const clienteContrato = (contrato as { cliente_id: string } | null)?.cliente_id ?? null;
+    if (input.clienteId && clienteContrato !== input.clienteId) {
+      return { ok: false, msg: "Ese nombre no corresponde al contrato activo de este carro." };
+    }
+    if (clienteContrato && (!nombre || nombre.length < 2)) {
+      return { ok: false, msg: "El nombre del arrendatario es obligatorio." };
+    }
+
+    let telefonos: ReturnType<typeof armarTelefonos> = null;
+    if (clienteContrato) {
+      if (!celularRaw) return { ok: false, msg: "El celular / WhatsApp es obligatorio." };
+      telefonos = armarTelefonos(celularRaw);
+      if (!telefonos) {
+        return { ok: false, msg: "Celular inválido. Usa 8 dígitos o +507XXXXXXXX." };
+      }
+      // No pisar a otro cliente que ya tenga ese WhatsApp.
+      const { data: choque } = await sb
+        .from("clientes")
+        .select("id, nombre")
+        .or(`wa_norm.eq.${telefonos.waNorm},tel_norm.eq.${telefonos.waNorm}`)
+        .neq("id", clienteContrato)
+        .limit(1)
+        .maybeSingle();
+      if (choque) {
+        const otro = (choque as { nombre?: string }).nombre ?? "otro cliente";
+        return { ok: false, msg: `Ese celular ya está en ${otro}.` };
+      }
+    }
+
+    const quiereCliente =
+      !clienteContrato &&
+      Boolean(nombre || celularRaw || input.genero || (Number(input.letra) > 0));
+    if (quiereCliente) {
+      if (!nombre || nombre.length < 2 || !celularRaw) {
+        return { ok: false, msg: "Para enlazar el cliente hacen falta nombre y WhatsApp." };
+      }
+      const genero = generoDeAlta(input.genero);
+      const letra = Number(input.letra);
+      if (!genero) return { ok: false, msg: "Indicá el género (Sr. / Sra.) para enlazar el cliente." };
+      if (!(letra > 0)) return { ok: false, msg: "La letra diaria es obligatoria para que el cobro funcione." };
+      const { error: vErrNuevo } = await sb.from("vehiculos").update({ numero }).eq("id", id);
+      if (vErrNuevo && /unique|duplicate|23505/i.test(vErrNuevo.message)) {
+        return { ok: false, msg: "Ese número ya existe en esta empresa." };
+      }
+      if (vErrNuevo) return { ok: false, msg: vErrNuevo.message };
+      const { data: veh } = await sb
+        .from("vehiculos")
+        .select("empresa:empresas(codigo)")
+        .eq("id", id)
+        .maybeSingle();
+      const emp = (veh as { empresa?: { codigo?: string } | { codigo?: string }[] | null } | null)?.empresa;
+      const codigo = Array.isArray(emp) ? emp[0]?.codigo ?? null : emp?.codigo ?? null;
+      const enlace = await crearArrendatarioEnCarro({
+        vehiculoId: id,
+        numero,
+        empresaCodigo: codigo,
+        nombre,
+        genero,
+        whatsappRaw: celularRaw,
+        letra,
+      });
+      if (!enlace.ok) return { ok: false, msg: enlace.error };
+      try {
+        invalidarLecturaEstados();
+      } catch (e) {
+        console.error("[guardarIdentidadCarro] cache", e);
+      }
+      revalidatePath("/cartera/vehiculos");
+      revalidatePath("/cartera/clientes");
+      revalidatePath("/cartera/conversaciones");
+      revalidatePath("/cartera");
       return {
-        ok: false,
-        msg: "Ese celular ya tiene un chat de otro cliente. Revisá en Conversaciones.",
+        ok: true,
+        msg: enlace.aviso ?? `${nombre} quedó en el carro ${numero}: contrato, letra y chat enlazados.`,
       };
     }
 
-    if (convNuevaRow) {
-      await sb
-        .from("conversaciones")
+    const { error: vErr } = await sb.from("vehiculos").update({ numero }).eq("id", id);
+    if (vErr) {
+      if (/unique|duplicate|23505/i.test(vErr.message)) {
+        return { ok: false, msg: "Ese número ya existe en esta empresa." };
+      }
+      return { ok: false, msg: vErr.message };
+    }
+
+    if (clienteContrato && nombre && telefonos) {
+      const { error: nErr } = await sb
+        .from("clientes")
         .update({
-          cliente_id: clienteContrato,
-          vehiculo_id: id,
-          contrato_id: (contrato as { id: string }).id,
-          etiqueta,
+          nombre,
+          whatsapp: telefonos.whatsapp,
+          telefono: telefonos.telefono,
         })
-        .eq("id", convNuevaRow.id);
-      // Chats viejos del mismo cliente/carro: dejar de apuntar al vehículo
-      // para no duplicar la ficha en el inbox.
-      await sb
+        .eq("id", clienteContrato);
+      if (nErr) return { ok: false, msg: nErr.message };
+
+      // Reenganchar el chat al número nuevo para que inbox y espejo coincidan.
+      const etiqueta = `Carro ${numero}`;
+      const { data: convNueva } = await sb
         .from("conversaciones")
-        .update({ vehiculo_id: null, etiqueta: `${etiqueta} (número anterior)` })
-        .eq("cliente_id", clienteContrato)
-        .neq("id", convNuevaRow.id);
-    } else {
-      const { data: convVieja } = await sb
-        .from("conversaciones")
-        .select("id")
-        .or(`vehiculo_id.eq.${id},cliente_id.eq.${clienteContrato}`)
-        .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
-        .limit(1)
+        .select("id, cliente_id")
+        .eq("wa_numero", telefonos.waNorm)
         .maybeSingle();
-      if (convVieja) {
-        const { error: waErr } = await sb
+      const convNuevaRow = convNueva as { id: string; cliente_id: string | null } | null;
+
+      if (convNuevaRow && convNuevaRow.cliente_id && convNuevaRow.cliente_id !== clienteContrato) {
+        return {
+          ok: false,
+          msg: "Ese celular ya tiene un chat de otro cliente. Revisá en Conversaciones.",
+        };
+      }
+
+      if (convNuevaRow) {
+        await sb
           .from("conversaciones")
           .update({
-            wa_numero: telefonos.waNorm,
             cliente_id: clienteContrato,
             vehiculo_id: id,
             contrato_id: (contrato as { id: string }).id,
             etiqueta,
           })
-          .eq("id", (convVieja as { id: string }).id);
-        if (waErr && /unique|duplicate|23505/i.test(waErr.message)) {
-          return { ok: false, msg: "No pude mover el chat: ese número ya tiene conversación." };
-        }
-        if (waErr) return { ok: false, msg: waErr.message };
+          .eq("id", convNuevaRow.id);
+        // Chats viejos del mismo cliente/carro: dejar de apuntar al vehículo
+        // para no duplicar la ficha en el inbox.
+        await sb
+          .from("conversaciones")
+          .update({ vehiculo_id: null, etiqueta: `${etiqueta} (número anterior)` })
+          .eq("cliente_id", clienteContrato)
+          .neq("id", convNuevaRow.id);
       } else {
-        await sb.from("conversaciones").insert({
-          wa_numero: telefonos.waNorm,
-          cliente_id: clienteContrato,
-          vehiculo_id: id,
-          contrato_id: (contrato as { id: string }).id,
-          etiqueta,
-        });
+        const { data: convVieja } = await sb
+          .from("conversaciones")
+          .select("id")
+          .or(`vehiculo_id.eq.${id},cliente_id.eq.${clienteContrato}`)
+          .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
+          .limit(1)
+          .maybeSingle();
+        if (convVieja) {
+          const { error: waErr } = await sb
+            .from("conversaciones")
+            .update({
+              wa_numero: telefonos.waNorm,
+              cliente_id: clienteContrato,
+              vehiculo_id: id,
+              contrato_id: (contrato as { id: string }).id,
+              etiqueta,
+            })
+            .eq("id", (convVieja as { id: string }).id);
+          if (waErr && /unique|duplicate|23505/i.test(waErr.message)) {
+            return { ok: false, msg: "No pude mover el chat: ese número ya tiene conversación." };
+          }
+          if (waErr) return { ok: false, msg: waErr.message };
+        } else {
+          await sb.from("conversaciones").insert({
+            wa_numero: telefonos.waNorm,
+            cliente_id: clienteContrato,
+            vehiculo_id: id,
+            contrato_id: (contrato as { id: string }).id,
+            etiqueta,
+          });
+        }
       }
+    } else {
+      await sb.from("conversaciones").update({ etiqueta: `Carro ${numero}` }).eq("vehiculo_id", id);
     }
-  } else {
-    await sb.from("conversaciones").update({ etiqueta: `Carro ${numero}` }).eq("vehiculo_id", id);
-  }
 
-  invalidarLecturaEstados();
-  revalidatePath("/cartera/vehiculos");
-  revalidatePath("/cartera/clientes");
-  revalidatePath("/cartera/conversaciones");
-  revalidatePath("/cartera/estados-cuenta");
-  revalidatePath("/cartera");
-  revalidatePath("/operaciones/hoja-vida");
-  revalidatePath(`/operaciones/hoja-vida/${id}`);
-  return { ok: true, msg: "Ficha actualizada. Los próximos envíos usan este nombre y celular." };
+    try {
+      invalidarLecturaEstados();
+    } catch (e) {
+      console.error("[guardarIdentidadCarro] cache", e);
+    }
+    revalidatePath("/cartera/vehiculos");
+    revalidatePath("/cartera/clientes");
+    revalidatePath("/cartera/conversaciones");
+    revalidatePath("/cartera/estados-cuenta");
+    revalidatePath("/cartera");
+    revalidatePath("/operaciones/hoja-vida");
+    revalidatePath(`/operaciones/hoja-vida/${id}`);
+    return { ok: true, msg: "Ficha actualizada. Los próximos envíos usan este nombre y celular." };
+  } catch (e) {
+    console.error("[guardarIdentidadCarro]", e);
+    return { ok: false, msg: e instanceof Error ? e.message : "No pude guardar la ficha." };
+  }
 }
 
 export type ResultadoMasivo = { ok: boolean; msg: string; actualizados: number };
