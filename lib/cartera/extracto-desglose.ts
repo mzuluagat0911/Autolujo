@@ -233,31 +233,10 @@ export async function preferenciaAbonoContrato(contratoId: string): Promise<stri
   return v && v !== "menor" ? v : null;
 }
 
+/** Misma lista que el cron: el recargo ya asignado en un pago no vuelve a salir. */
 export async function cargosExtraAgrupados(contratoId: string): Promise<LineaExtracto[]> {
-  const sb = createServerSupabase();
-  const { data } = await sb
-    .from("cargos")
-    .select("tipo, concepto, concepto_codigo, monto")
-    .eq("contrato_id", contratoId)
-    .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)")
-    .order("fecha", { ascending: false })
-    .limit(40);
-
-  const map = new Map<string, number>();
-  for (const f of (data ?? []) as {
-    tipo: string;
-    concepto: string | null;
-    concepto_codigo: string | null;
-    monto: number;
-  }[]) {
-    const codigo = f.concepto_codigo ?? "";
-    if (SKIP_CODIGOS.has(codigo.toUpperCase())) continue;
-    const monto = Number(f.monto) || 0;
-    if (monto <= 0.009) continue;
-    const et = etiquetaCargo(f.concepto, f.concepto_codigo, f.tipo);
-    map.set(et, (map.get(et) ?? 0) + monto);
-  }
-  return [...map.entries()].map(([etiqueta, monto]) => ({ etiqueta, monto }));
+  const map = await cargosExtraPorContrato([contratoId]);
+  return map.get(contratoId) ?? [];
 }
 
 export async function acuerdosSaldoPorContrato(
