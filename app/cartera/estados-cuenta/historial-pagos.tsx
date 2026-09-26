@@ -218,8 +218,7 @@ function EditorAsignaciones({
           Reasignar conceptos
         </p>
         <p className="mt-1 text-xs text-muted">
-          El agente reparte así: recargo solo si está cargado → acuerdo (mientras tenga saldo) → letra. Acá podés forzar a qué
-          cuenta fue cada parte. La suma + sobrante debe igualar {money(pago.monto)}.
+          El agente reparte así: recargo solo si está cargado → acuerdo (mientras tenga saldo) → letra. Si asignás una parte a recargo y no había cargo, se carga ese monto para que no baje la letra. La suma + sobrante debe igualar {money(pago.monto)}.
         </p>
       </div>
 

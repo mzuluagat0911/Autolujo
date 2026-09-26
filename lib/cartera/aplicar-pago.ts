@@ -249,6 +249,103 @@ export async function asegurarCargosAcuerdoDelPago(opts: {
   }
 }
 
+function esAsignacionRecargo(a: AsignacionPago): boolean {
+  if (a.tipo === "recargo") return true;
+  return /recargo|por no pagar/i.test(a.etiqueta ?? "");
+}
+
+function esCargoRecargo(c: {
+  tipo: string;
+  concepto: string | null;
+  concepto_codigo: string | null;
+}): boolean {
+  const codigo = (c.concepto_codigo ?? "").toUpperCase();
+  if (codigo === "PAGO_TARDE") return true;
+  return c.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(c.concepto ?? "");
+}
+
+/**
+ * El recargo vive fuera de la letra, igual que el acuerdo: el pago baja el
+ * saldo único. Si el equipo asigna una parte a recargo y no hay cargo que
+ * la cubra, se carga esa diferencia para que no se descuente de la letra.
+ * Si el cargo ya existe (lo cargó el equipo), no se duplica.
+ */
+export async function asegurarCargoRecargoDelPago(opts: {
+  contratoId: string;
+  pagoId: string;
+  fecha: string;
+  asignaciones: AsignacionPago[];
+}): Promise<void> {
+  const sb = createServerSupabase();
+  const monto = r2(
+    opts.asignaciones
+      .filter(esAsignacionRecargo)
+      .reduce((s, a) => s + (Number(a.aplicado) || 0), 0),
+  );
+
+  const { data: cargos } = await sb
+    .from("cargos")
+    .select("id, monto, tipo, concepto, concepto_codigo, pago_id")
+    .eq("contrato_id", opts.contratoId);
+  const recargos = ((cargos ?? []) as {
+    id: string;
+    monto: number;
+    tipo: string;
+    concepto: string | null;
+    concepto_codigo: string | null;
+    pago_id: string | null;
+  }[]).filter(esCargoRecargo);
+  const propios = recargos.filter((c) => c.pago_id === opts.pagoId);
+  const ajenos = r2(
+    recargos
+      .filter((c) => c.pago_id !== opts.pagoId)
+      .reduce((s, c) => s + (Number(c.monto) || 0), 0),
+  );
+
+  const { data: otros } = await sb
+    .from("pagos")
+    .select("id, asignaciones")
+    .eq("contrato_id", opts.contratoId)
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .neq("id", opts.pagoId);
+  let otrosAbonos = 0;
+  for (const p of (otros ?? []) as { asignaciones: unknown }[]) {
+    const parsed = parseAsignaciones(p.asignaciones);
+    if (!parsed) continue;
+    for (const a of parsed.asignaciones) {
+      if (esAsignacionRecargo(a)) otrosAbonos += Number(a.aplicado) || 0;
+    }
+  }
+  const libre = r2(Math.max(ajenos - r2(otrosAbonos), 0));
+  const falta = r2(Math.max(monto - libre, 0));
+  const sumaPropia = r2(propios.reduce((s, c) => s + (Number(c.monto) || 0), 0));
+  if (Math.abs(sumaPropia - falta) < 0.05 && (falta > 0.009) === (propios.length > 0)) return;
+
+  if (propios.length > 0) {
+    await sb.from("cargos").delete().in("id", propios.map((c) => c.id));
+  }
+  if (falta <= 0.009) return;
+
+  const fila: Record<string, unknown> = {
+    contrato_id: opts.contratoId,
+    fecha: opts.fecha,
+    tipo: "multa",
+    concepto: "Recargo",
+    concepto_codigo: "PAGO_TARDE",
+    monto: falta,
+    pago_id: opts.pagoId,
+  };
+  const { error } = await sb.from("cargos").insert(fila);
+  if (error && /pago_id|concepto_codigo/i.test(error.message)) {
+    delete fila.pago_id;
+    delete fila.concepto_codigo;
+    const retry = await sb.from("cargos").insert(fila);
+    if (retry.error) console.error("[aplicar-pago] cargo recargo:", retry.error.message);
+  } else if (error) {
+    console.error("[aplicar-pago] cargo recargo:", error.message);
+  }
+}
+
 export async function borrarCargosAcuerdoDelPago(pagoId: string): Promise<void> {
   if (!pagoId) return;
   const sb = createServerSupabase();
