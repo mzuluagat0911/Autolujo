@@ -7,4 +7,8 @@ export type EstadoCuentaFila = EstadoCuenta & {
   extras: LineaExtracto[];
   /** Misma cifra del extracto / WhatsApp. La situación cobra esto, no el ledger. */
   totalCobrarHoy: number;
+  /** Mismas líneas que el mensaje. */
+  lineasCobro: LineaExtracto[];
+  /** Mismo texto del desglose que el mensaje. */
+  desgloseCobro: string;
 };

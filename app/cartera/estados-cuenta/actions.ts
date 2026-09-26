@@ -960,6 +960,8 @@ export async function filaEstadoEnVivo(
       acuerdoSaldo: ctx.acuerdoSaldo,
       extras: ctx.extras,
       totalCobrarHoy: cobro.totalCobrarHoy,
+      lineasCobro: cobro.lineas,
+      desgloseCobro: cobro.desglose,
     };
     return { ok: true, fila };
   } catch (err) {

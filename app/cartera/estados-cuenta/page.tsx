@@ -51,7 +51,14 @@ async function EstadosCuerpo() {
       const acuerdoSaldo = acuerdoMap.get(e.contratoId) ?? 0;
       const extras = extrasMap.get(e.contratoId) ?? [];
       const cobro = cobroHoyDe(e, { acuerdoSaldo, extras });
-      return { ...e, acuerdoSaldo, extras, totalCobrarHoy: cobro.totalCobrarHoy };
+      return {
+        ...e,
+        acuerdoSaldo,
+        extras,
+        totalCobrarHoy: cobro.totalCobrarHoy,
+        lineasCobro: cobro.lineas,
+        desgloseCobro: cobro.desglose,
+      };
     });
   } catch (e) {
     estados = [];

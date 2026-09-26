@@ -297,8 +297,10 @@ export function DetalleEstadoModal({
                     Cubierto hasta {fechaCorta(vivo.cubiertoHasta)}
                   </p>
                 )}
-                {!adelantado && !alDia && vivo.desglose && (
-                  <p className="mt-2 text-sm leading-snug text-muted">{vivo.desglose}</p>
+                {!adelantado && !alDia && (vivo.desgloseCobro || vivo.desglose) && (
+                  <p className="mt-2 text-sm leading-snug text-muted">
+                    {vivo.desgloseCobro || vivo.desglose}
+                  </p>
                 )}
                 {vivo.pendiente && (
                   <p className="mt-2 text-sm text-azul">
@@ -339,7 +341,17 @@ export function DetalleEstadoModal({
                   </button>
                 }
               >
-                {lineasHoy.length === 0 ? (
+                {(vivo.lineasCobro?.length ?? 0) > 0 ? (
+                  vivo.lineasCobro.map((l, i) => (
+                    <Fila
+                      key={`${l.etiqueta}-${i}`}
+                      label={capEtiqueta(l.etiqueta)}
+                      tone={l.aviso || l.monto <= 0.009 ? "muted" : "crit"}
+                    >
+                      {l.aviso || l.monto <= 0.009 ? "—" : money(l.monto)}
+                    </Fila>
+                  ))
+                ) : lineasHoy.length === 0 ? (
                   <p className="py-2.5 text-sm text-muted">Sin cargos pendientes para hoy.</p>
                 ) : (
                   lineasHoy.map((l, i) => {
