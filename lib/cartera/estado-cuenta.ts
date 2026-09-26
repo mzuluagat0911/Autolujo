@@ -650,9 +650,22 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     (s, g) => s + Number(g.monto || 0),
     0,
   );
-  const recargosAcumulados =
-    recargosLedger +
-    (cifras.recargo > 0.009 && !(multa.data?.length ?? 0) ? cifras.recargo : 0);
+  const { data: pagosRecargo } = await sb
+    .from("pagos")
+    .select("monto, rubro, asignaciones")
+    .eq("contrato_id", contratoId)
+    .in("estado_conciliacion", ["conciliado", "manual"]);
+  const abonoRecargo = ((pagosRecargo ?? []) as {
+    monto: number;
+    rubro: string | null;
+    asignaciones: unknown;
+  }[]).reduce((s, p) => s + abonoRecargoDePago(p), 0);
+  const recargosAcumulados = Math.max(
+    recargosLedger -
+      abonoRecargo +
+      (cifras.recargo > 0.009 && !(multa.data?.length ?? 0) ? cifras.recargo : 0),
+    0,
+  );
 
   return armar(row, cifras, {
     hoy,
@@ -748,18 +761,62 @@ async function filasContratosActivos(): Promise<ContratoRow[]> {
   }));
 }
 
+function abonoRecargoDePago(p: {
+  monto: number;
+  rubro?: string | null;
+  asignaciones?: unknown;
+}): number {
+  const raw = p.asignaciones as
+    | { asignaciones?: { tipo?: string; etiqueta?: string; aplicado?: number }[] }
+    | { tipo?: string; etiqueta?: string; aplicado?: number }[]
+    | null
+    | undefined;
+  const lineas = Array.isArray(raw) ? raw : (raw?.asignaciones ?? []);
+  const marcado = lineas
+    .filter((a) => {
+      const tipo = (a.tipo ?? "").toLowerCase();
+      return tipo === "recargo" || /recargo|por no pagar/i.test(a.etiqueta ?? "");
+    })
+    .reduce((s, a) => s + (Number(a.aplicado) || 0), 0);
+  if (marcado > 0.009) return marcado;
+  if ((p.rubro ?? "").toLowerCase() === "recargo") return Number(p.monto) || 0;
+  return 0;
+}
+
+/** Recargo que SIGUE debiéndose. Cargos PAGO_TARDE menos lo ya cruzado en un pago. */
 async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
-  const { data } = await sb
-    .from("cargos")
-    .select("contrato_id, monto")
-    .eq("tipo", "multa")
-    .eq("concepto_codigo", "PAGO_TARDE")
-    .in("contrato_id", ids);
+  const [{ data }, { data: pagos }] = await Promise.all([
+    sb
+      .from("cargos")
+      .select("contrato_id, monto")
+      .eq("tipo", "multa")
+      .eq("concepto_codigo", "PAGO_TARDE")
+      .in("contrato_id", ids),
+    sb
+      .from("pagos")
+      .select("contrato_id, monto, rubro, asignaciones")
+      .in("contrato_id", ids)
+      .in("estado_conciliacion", ["conciliado", "manual"]),
+  ]);
   for (const g of (data ?? []) as { contrato_id: string; monto: number }[]) {
     out.set(g.contrato_id, (out.get(g.contrato_id) ?? 0) + Number(g.monto || 0));
+  }
+  for (const p of (pagos ?? []) as {
+    contrato_id: string | null;
+    monto: number;
+    rubro: string | null;
+    asignaciones: unknown;
+  }[]) {
+    if (!p.contrato_id || !out.has(p.contrato_id)) continue;
+    const abono = abonoRecargoDePago(p);
+    if (abono <= 0.009) continue;
+    out.set(p.contrato_id, Math.max((out.get(p.contrato_id) ?? 0) - abono, 0));
+  }
+  for (const [id, monto] of out) {
+    if (monto <= 0.009) out.delete(id);
   }
   return out;
 }

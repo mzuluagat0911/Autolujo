@@ -11,6 +11,7 @@ import {
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
 import { partesSaldoAnterior } from "@/lib/cartera/extracto-desglose";
+import { filaEstadoEnVivo } from "./actions";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { fechaConDia, fechaLarga } from "@/lib/cartera/fecha";
 import type { EstadoCuentaFila } from "./types";
@@ -139,27 +140,38 @@ export function DetalleEstadoModal({
   const closeRef = useRef<HTMLButtonElement>(null);
   const [tab, setTab] = useState<TabId>("resumen");
   const [toast, setToast] = useState<string | null>(null);
-  const carro = etiquetaCarroUi(estado.empresa, estado.vehiculoNumero);
-  const progreso = pctCuotas(estado);
-  const adelantado = esAdelantado(estado);
-  const alDia = esAlDiaHoy(estado);
-  const lineasHoy = estado.lineas.filter(
-    (l) => !(l.concepto.includes("no pagar") && (estado.recargosAcumulados ?? 0) <= 0.009),
+  const [vivo, setVivo] = useState(estado);
+  const carro = etiquetaCarroUi(vivo.empresa, vivo.vehiculoNumero);
+  const progreso = pctCuotas(vivo);
+  const adelantado = esAdelantado(vivo);
+  const alDia = esAlDiaHoy(vivo);
+  const lineasHoy = vivo.lineas.filter(
+    (l) => !(l.concepto.includes("no pagar") && (vivo.recargosAcumulados ?? 0) <= 0.009),
   );
-  const recargoSoloCalculado = estado.lineas.reduce(
-    (s, l) => s + (l.concepto.includes("no pagar") && (estado.recargosAcumulados ?? 0) <= 0.009 ? l.monto : 0),
+  const recargoSoloCalculado = vivo.lineas.reduce(
+    (s, l) => s + (l.concepto.includes("no pagar") && (vivo.recargosAcumulados ?? 0) <= 0.009 ? l.monto : 0),
     0,
   );
-  const totalHoyVisible = Math.max((estado.totalCobrarHoy ?? estado.totalHoy) - recargoSoloCalculado, 0);
+  const totalHoyVisible = Math.max((vivo.totalCobrarHoy ?? vivo.totalHoy) - recargoSoloCalculado, 0);
 
   const partesSaldo = useMemo(
     () =>
       partesSaldoAnterior({
-        pendienteAnterior: estado.pendienteAnterior,
-        extras: estado.extras,
+        pendienteAnterior: vivo.pendienteAnterior,
+        extras: vivo.extras,
       }),
-    [estado],
+    [vivo],
   );
+
+  useEffect(() => {
+    let cancel = false;
+    filaEstadoEnVivo(vivo.contratoId).then((res) => {
+      if (!cancel && res.ok) setVivo(res.fila);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [vivo.contratoId]);
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -210,15 +222,15 @@ export function DetalleEstadoModal({
             <div className="min-w-0">
               <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                 Estado de cuenta
-                {fechaLargaUi(estado.fecha) ? ` · ${fechaLargaUi(estado.fecha)}` : ""}
+                {fechaLargaUi(vivo.fecha) ? ` · ${fechaLargaUi(vivo.fecha)}` : ""}
               </p>
               <h2 id={titleId} className="mt-1 truncate text-xl font-bold tracking-tight">
                 {carro}
               </h2>
-              <p className="mt-0.5 truncate text-sm text-muted">{estado.clienteNombre}</p>
+              <p className="mt-0.5 truncate text-sm text-muted">{vivo.clienteNombre}</p>
               <div className="mt-2.5">
                 <StatusChip tone={tonoSituacion(estado)}>
-                  {textoSituacionCuotas(estado)}
+                  {textoSituacionCuotas(vivo)}
                 </StatusChip>
               </div>
             </div>
@@ -258,14 +270,14 @@ export function DetalleEstadoModal({
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
                   {adelantado || alDia || totalHoyVisible <= 0.009
                     ? "Situación"
-                    : estado.pendiente
+                    : vivo.pendiente
                       ? "Monto en validación"
                       : "A pagar hoy"}
                 </p>
                 {adelantado ? (
                   <p className="mt-1 text-2xl font-bold tracking-tight text-azul">
-                    {estado.diasAdelantados} cuota
-                    {estado.diasAdelantados === 1 ? "" : "s"} por delante
+                    {vivo.diasAdelantados} cuota
+                    {vivo.diasAdelantados === 1 ? "" : "s"} por delante
                   </p>
                 ) : (
                   <p
@@ -280,19 +292,19 @@ export function DetalleEstadoModal({
                     )}
                   </p>
                 )}
-                {adelantado && estado.cubiertoHasta && (
+                {adelantado && vivo.cubiertoHasta && (
                   <p className="mt-1 text-sm text-muted">
-                    Cubierto hasta {fechaCorta(estado.cubiertoHasta)}
+                    Cubierto hasta {fechaCorta(vivo.cubiertoHasta)}
                   </p>
                 )}
-                {!adelantado && !alDia && estado.desglose && (
-                  <p className="mt-2 text-sm leading-snug text-muted">{estado.desglose}</p>
+                {!adelantado && !alDia && vivo.desglose && (
+                  <p className="mt-2 text-sm leading-snug text-muted">{vivo.desglose}</p>
                 )}
-                {estado.pendiente && (
+                {vivo.pendiente && (
                   <p className="mt-2 text-sm text-azul">
                     Comprobante en validación
-                    {estado.pendienteMonto > 0.009 ? ` · ${money(estado.pendienteMonto)}` : ""}
-                    {estado.pendienteHora ? ` · ${estado.pendienteHora}` : ""}
+                    {vivo.pendienteMonto > 0.009 ? ` · ${money(vivo.pendienteMonto)}` : ""}
+                    {vivo.pendienteHora ? ` · ${vivo.pendienteHora}` : ""}
                   </p>
                 )}
               </div>
@@ -358,14 +370,14 @@ export function DetalleEstadoModal({
                     <span className="text-base font-semibold">{money(totalHoyVisible)}</span>
                   </Fila>
                 )}
-                {!adelantado && !alDia && estado.recargoSiTarda > 0.009 && (
+                {!adelantado && !alDia && vivo.recargoSiTarda > 0.009 && (
                   <Fila label="Si no completa antes de las 7 p.m." tone="warn">
-                    +{money(estado.recargoSiTarda)} → {money(estado.totalHoyTarde)}
+                    +{money(vivo.recargoSiTarda)} → {money(vivo.totalHoyTarde)}
                   </Fila>
                 )}
               </Seccion>
 
-              {estado.acuerdoSaldo > 0.009 && (
+              {vivo.acuerdoSaldo > 0.009 && (
                 <Seccion
                   title="Acuerdos"
                   action={
@@ -379,11 +391,11 @@ export function DetalleEstadoModal({
                   }
                 >
                   <Fila label="Saldo del plan" tone="crit">
-                    {money(estado.acuerdoSaldo)}
+                    {money(vivo.acuerdoSaldo)}
                   </Fila>
-                  {estado.acuerdoHoy > 0.009 && (
+                  {vivo.acuerdoHoy > 0.009 && (
                     <Fila label="Cuota de hoy" tone="crit">
-                      {money(estado.acuerdoHoy)}
+                      {money(vivo.acuerdoHoy)}
                     </Fila>
                   )}
                 </Seccion>
@@ -391,19 +403,19 @@ export function DetalleEstadoModal({
 
               <Seccion title="Plan de cuotas">
                 <Fila label="Resumen">{textoEstadoCuotas(estado)}</Fila>
-                {estado.numCuotasTotal != null && (
+                {vivo.numCuotasTotal != null && (
                   <Fila label="Totales del deal">
-                    {estado.numCuotasTotal.toLocaleString("es-PA")}
+                    {vivo.numCuotasTotal.toLocaleString("es-PA")}
                   </Fila>
                 )}
-                {estado.cuotasPagadas != null && (
+                {vivo.cuotasPagadas != null && (
                   <Fila label="Pagadas" tone="good">
-                    {estado.cuotasPagadas.toLocaleString("es-PA")}
+                    {vivo.cuotasPagadas.toLocaleString("es-PA")}
                   </Fila>
                 )}
-                {estado.cuotasDebe != null && (
-                  <Fila label="Faltantes" tone={estado.cuotasDebe > 0 ? "crit" : "good"}>
-                    {estado.cuotasDebe.toLocaleString("es-PA")}
+                {vivo.cuotasDebe != null && (
+                  <Fila label="Faltantes" tone={vivo.cuotasDebe > 0 ? "crit" : "good"}>
+                    {vivo.cuotasDebe.toLocaleString("es-PA")}
                   </Fila>
                 )}
                 {progreso != null && (
@@ -425,28 +437,28 @@ export function DetalleEstadoModal({
               <Seccion title="Detalle">
                 <Fila
                   label="Recargos acumulados"
-                  tone={estado.recargosAcumulados > 0.009 ? "crit" : "muted"}
+                  tone={vivo.recargosAcumulados > 0.009 ? "crit" : "muted"}
                 >
-                  {estado.recargosAcumulados > 0.009 ? money(estado.recargosAcumulados) : "—"}
+                  {vivo.recargosAcumulados > 0.009 ? money(vivo.recargosAcumulados) : "—"}
                 </Fila>
                 <Fila label="Letra diaria">
-                  {estado.letra > 0.009 ? money(estado.letra) : "—"}
+                  {vivo.letra > 0.009 ? money(vivo.letra) : "—"}
                 </Fila>
-                {estado.cobraDomingo && (
+                {vivo.cobraDomingo && (
                   <Fila label="Cuota domingo">
-                    {estado.cuotaDomingo > 0.009 ? money(estado.cuotaDomingo) : "Sí"}
+                    {vivo.cuotaDomingo > 0.009 ? money(vivo.cuotaDomingo) : "Sí"}
                   </Fila>
                 )}
-                <Fila label="Pagado hoy" tone={estado.pagadoHoy > 0.009 ? "good" : "muted"}>
-                  {estado.pagadoHoy > 0.009 ? money(estado.pagadoHoy) : "—"}
+                <Fila label="Pagado hoy" tone={vivo.pagadoHoy > 0.009 ? "good" : "muted"}>
+                  {vivo.pagadoHoy > 0.009 ? money(vivo.pagadoHoy) : "—"}
                 </Fila>
-                {estado.waNumero && (
+                {vivo.waNumero && (
                   <Fila label="WhatsApp">
-                    <span className="font-mono text-xs">{estado.waNumero}</span>
+                    <span className="font-mono text-xs">{vivo.waNumero}</span>
                   </Fila>
                 )}
-                {estado.cubiertoHasta && (
-                  <Fila label="Cubierto hasta">{fechaCorta(estado.cubiertoHasta)}</Fila>
+                {vivo.cubiertoHasta && (
+                  <Fila label="Cubierto hasta">{fechaCorta(vivo.cubiertoHasta)}</Fila>
                 )}
               </Seccion>
             </div>
@@ -454,7 +466,7 @@ export function DetalleEstadoModal({
 
           {tab === "ajustar" && (
             <EditorLedger
-              contratoId={estado.contratoId}
+              contratoId={vivo.contratoId}
               onCancel={() => setTab("resumen")}
               onSaved={() => afterSave("Cuenta actualizada.")}
             />
@@ -463,7 +475,7 @@ export function DetalleEstadoModal({
           {tab === "pagos" && (
             <div className="px-5 py-5">
               <HistorialPagosSeccion
-                contratoId={estado.contratoId}
+                contratoId={vivo.contratoId}
                 embedded
                 onChanged={() => {
                   setToast("Pago actualizado · el resumen se refresca.");

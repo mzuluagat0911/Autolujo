@@ -16,6 +16,7 @@ import {
   revertirPagoEnObligaciones,
 } from "@/lib/cartera/aplicar-pago";
 import { recalcularRecargo } from "@/lib/cartera/devengo";
+import type { EstadoCuentaFila } from "./types";
 
 const FRECUENCIAS_OK = new Set<FrecuenciaAcuerdo>([
   "dia",
@@ -868,6 +869,32 @@ export async function eliminarPagoHistorial(
   revalidatePath("/cartera");
   invalidarLecturaEstados();
   return { ok: true, msg: "Pago eliminado." };
+}
+
+/** Misma lectura que el mensaje de las 9: saldo, desglose y recargo ya cruzado. */
+export async function filaEstadoEnVivo(
+  contratoId: string,
+): Promise<{ ok: true; fila: EstadoCuentaFila } | { ok: false; error: string }> {
+  const id = String(contratoId ?? "").trim();
+  if (!id) return { ok: false, error: "Falta el contrato." };
+  try {
+    const { estadoCuentaContrato } = await import("@/lib/cartera/estado-cuenta");
+    const { enrichExtracto } = await import("@/lib/cartera/envios");
+    const { cobroHoyDe } = await import("@/lib/cartera/cobro-hoy");
+    const e = await estadoCuentaContrato(id);
+    if (!e) return { ok: false, error: "No encontré el contrato." };
+    const ctx = await enrichExtracto(e);
+    const cobro = cobroHoyDe(e, ctx);
+    const fila: EstadoCuentaFila = {
+      ...e,
+      acuerdoSaldo: ctx.acuerdoSaldo,
+      extras: ctx.extras,
+      totalCobrarHoy: cobro.totalCobrarHoy,
+    };
+    return { ok: true, fila };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "No pude leer el estado." };
+  }
 }
 
 export type PreviewMensajeResultado = {
