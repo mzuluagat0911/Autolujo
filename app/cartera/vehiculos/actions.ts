@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
@@ -24,11 +25,15 @@ function armarTelefonos(celularRaw: string): { whatsapp: string; telefono: strin
   return { whatsapp: `+${waNorm}`, telefono, waNorm };
 }
 
+function volverVehiculos(msg: string): never {
+  redirect(`/cartera/vehiculos?aviso=${encodeURIComponent(msg)}`);
+}
+
 export async function createVehiculo(formData: FormData): Promise<void> {
   const empresa_id = String(formData.get("empresa_id") ?? "");
   const numero = String(formData.get("numero") ?? "").trim();
-  if (!empresa_id) throw new Error("Selecciona la empresa.");
-  if (!numero) throw new Error("El número de carro es obligatorio.");
+  if (!empresa_id) volverVehiculos("Selecciona la empresa.");
+  if (!numero) volverVehiculos("El número de carro es obligatorio.");
 
   const sb = createServerSupabase();
   const { error } = await sb.from("vehiculos").insert({
@@ -43,9 +48,15 @@ export async function createVehiculo(formData: FormData): Promise<void> {
     panapass: str(formData.get("panapass")),
     estado: String(formData.get("estado") ?? "activo"),
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    if (/unique|duplicate|23505/i.test(error.message)) {
+      volverVehiculos(`El carro ${numero} ya existe en esa empresa. No hace falta crearlo otra vez.`);
+    }
+    volverVehiculos(error.message);
+  }
 
   revalidatePath("/cartera/vehiculos");
+  volverVehiculos(`Carro ${numero} guardado.`);
 }
 
 export type ResultadoFicha = { ok: boolean; msg: string };

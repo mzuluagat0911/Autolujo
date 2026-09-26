@@ -252,7 +252,12 @@ async function getData() {
   }
 }
 
-export default async function VehiculosPage() {
+export default async function VehiculosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ aviso?: string }>;
+}) {
+  const { aviso } = await searchParams;
   const { empresas, filas, salidas, error } = await getData();
   const empOptions = empresas.map((e) => ({ value: e.id, label: `${siglaEmpresa(e.codigo)} — ${e.nombre}` }));
 
@@ -284,6 +289,12 @@ export default async function VehiculosPage() {
           hint={`${sinGps} sin amarre GPS`}
         />
       </div>
+
+      {aviso && (
+        <p className="mt-6 rounded-lg bg-ambar-wash px-4 py-3 text-sm text-ink ring-1 ring-ambar/40">
+          {aviso}
+        </p>
+      )}
 
       {salidas.length > 0 && (
         <div className="mt-6 rounded-xl bg-ambar-wash px-5 py-4 ring-1 ring-ambar/25">
