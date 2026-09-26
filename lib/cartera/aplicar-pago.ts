@@ -475,8 +475,42 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       sobrante: 0,
       totalAplicado: r2(resultado.totalAplicado + toma),
     };
-  } else if (resultado.sobrante > 0.009 && diaSemana(fecha) === 6 && pago.rubro !== "cuenta") {
-    // Sábado: no se asume letra del lunes ni domingo. Se pregunta.
+  } else if (resultado.sobrante > 0.009 && pago.rubro === "acuerdo") {
+    const plan = acuerdos.find((a) => Number(a.saldo) > 0.009);
+    if (plan) {
+      const ya = yaAplicado(resultado.asignaciones, "acuerdo", plan.id);
+      const cupo = r2(Math.max(Number(plan.saldo) - ya, 0));
+      const toma = r2(Math.min(resultado.sobrante, cupo));
+      const resto = r2(resultado.sobrante - toma);
+      const restantes = acuerdos.map((a) =>
+        a.id === plan.id ? { ...a, saldo: r2(Number(a.saldo) - ya - toma) } : a,
+      );
+      const cola = resto > 0.009
+        ? adelantarDias({ sobrante: resto, acuerdos: restantes, letra: cuotaHoy, desde: fecha })
+        : { asignaciones: [] as AsignacionPago[], sobrante: 0, aplicado: 0 };
+      resultado = {
+        asignaciones: [
+          ...resultado.asignaciones,
+          ...(toma > 0.009
+            ? [{
+                tipo: "acuerdo" as const,
+                aplicado: toma,
+                ref: plan.id,
+                etiqueta: plan.descripcion?.trim() || "acuerdo",
+              }]
+            : []),
+          ...cola.asignaciones,
+        ],
+        sobrante: cola.sobrante,
+        totalAplicado: r2(resultado.totalAplicado + toma + cola.aplicado),
+      };
+    }
+  } else if (
+    resultado.sobrante > 0.009 &&
+    diaSemana(fecha) === 6 &&
+    pago.rubro !== "cuenta"
+  ) {
+    // Sábado sin decisión del equipo: no se asume letra ni domingo.
   } else if (resultado.sobrante > 0.009) {
     const adelanto = adelantarDias({
       sobrante: resultado.sobrante,

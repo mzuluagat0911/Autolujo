@@ -61,25 +61,58 @@ export async function resolverPago(formData: FormData): Promise<void> {
   if (!nuevoEstado) volverConAviso("Acción inválida.");
 
   const sb = createServerSupabase();
+  const rubroExcedente = String(formData.get("rubro_excedente") ?? "").trim();
+  let notaAsignacion = "";
   if (nuevoEstado === "conciliado") {
     const { data: actual } = await sb
       .from("pagos")
-      .select("notas, rubro, asignaciones")
+      .select("notas, rubro, asignaciones, contrato_id")
       .eq("id", pagoId)
       .maybeSingle();
-    const row = actual as { notas: string | null; rubro: string | null; asignaciones: unknown } | null;
+    const row = actual as {
+      notas: string | null;
+      rubro: string | null;
+      asignaciones: unknown;
+      contrato_id: string | null;
+    } | null;
     if (row && pagoEsperaConceptoExcedente(row.notas) && !row.rubro && !row.asignaciones) {
-      volverConAviso(
-        "Este comprobante trae excedente sin concepto. Pregúntale al cliente a dónde va (domingo o letra siguiente) y asígnalo antes de aprobar.",
-      );
+      if (rubroExcedente !== "cuenta" && rubroExcedente !== "domingo" && rubroExcedente !== "acuerdo") {
+        volverConAviso(
+          "Este pago trae excedente. Elige a dónde va: letra siguiente (recomendado si el cliente no contestó), domingo o acuerdo.",
+        );
+      }
+      if (rubroExcedente === "acuerdo") {
+        const cid = contratoId || row.contrato_id;
+        const { data: planes } = cid
+          ? await sb.from("acuerdos").select("id").eq("contrato_id", cid).eq("activo", true).limit(1)
+          : { data: [] };
+        if (!planes?.length) {
+          volverConAviso("Este carro no tiene acuerdo. El excedente va a la letra siguiente o al domingo.");
+        }
+      }
+      notaAsignacion =
+        rubroExcedente === "domingo"
+          ? "Equipo asignó el excedente al domingo."
+          : rubroExcedente === "acuerdo"
+            ? "Equipo asignó el excedente al acuerdo."
+            : "Equipo asignó el excedente a la letra siguiente.";
     }
   }
 
   const patch: Record<string, unknown> = { estado_conciliacion: nuevoEstado };
   if (contratoId) patch.contrato_id = contratoId;
+  if (rubroExcedente === "cuenta" || rubroExcedente === "domingo" || rubroExcedente === "acuerdo") {
+    patch.rubro = rubroExcedente;
+  }
 
   if (nuevoEstado === "rechazado") {
     await revertirPagoEnObligaciones(pagoId);
+  }
+
+  if (notaAsignacion) {
+    const { data: prev } = await sb.from("pagos").select("notas").eq("id", pagoId).maybeSingle();
+    const notas = (prev as { notas: string | null } | null)?.notas ?? "";
+    patch.notas = `${notas} ${notaAsignacion}`.trim();
   }
 
   const { data: pago, error } = await sb

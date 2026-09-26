@@ -227,7 +227,7 @@ function Fila({
 
       {p.notas?.includes("EXCEDENTE_SIN_CONCEPTO") && (
         <p className="mt-1.5 text-xs text-ambar">
-          Excedente sin concepto. El sábado hay que preguntar si va al domingo o a la letra siguiente antes de aprobar.
+          Excedente sin destino. Si el cliente no contestó, la recomendación es la letra siguiente. Tú lo atribuyes al comprobar.
         </p>
       )}
 
@@ -272,7 +272,22 @@ function Fila({
               ))}
             </select>
           )}
-          <p className="w-full text-xs text-ambar sm:w-auto">
+          {p.notas?.includes("EXCEDENTE_SIN_CONCEPTO") && (
+            <label className="w-full text-xs text-muted">
+              A dónde va el excedente
+              <select
+                name="rubro_excedente"
+                required
+                defaultValue="cuenta"
+                className="mt-1 block w-full max-w-sm rounded-lg bg-paper px-3 py-2 text-sm text-ink ring-1 ring-line"
+              >
+                <option value="cuenta">Letra siguiente (recomendado)</option>
+                <option value="domingo">Domingo</option>
+                <option value="acuerdo">Acuerdo</option>
+              </select>
+            </label>
+          )}
+          <p className="w-full text-xs text-muted sm:w-auto">
             Ya verificaste el dinero en el banco o en Yappy. Se aplica al saldo sin esperar el extracto.
           </p>
           <button className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:bg-black">
