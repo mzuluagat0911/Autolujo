@@ -5,13 +5,20 @@
 //   MÁS: un SOLO concepto por día. Sin preferencia del carro: el de menor valor.
 //   Con preferencia (prioridad_abono): ese concepto.
 //
-//   DOMINGO no entra al total salvo que el carro lo elija.
+//   DOMINGO (árbol):
+//   - Entrada = N × cuota_domingo. Se cobra de a UNA tajada (= cuota_domingo),
+//     nunca el pot entero de un golpe.
+//   - Sábado (mañana = domingo): solo AVISO. No entra al total todavía.
+//   - Domingo: la tajada ES el cobro del día (reemplaza la letra).
+//   - Lun–vie: si el balde sigue pendiente, la tajada SÍ entra al total como
+//     el concepto del día (letra + domingo), salvo que otro concepto gane el
+//     cupo (preferencia / menor valor / acuerdo abierto).
 //
 // Cuando ese ítem llega a cero, al día siguiente entra el siguiente de la cola.
 // El mensaje puede listar TODO lo debido; el TOTAL A PAGAR HOY solo incluye el
 // ítem elegido.
 
-export type CategoriaExtra = "acuerdo" | "mantenimiento" | "otro";
+export type CategoriaExtra = "acuerdo" | "mantenimiento" | "domingo" | "otro";
 
 export type ItemExtra = {
   categoria: CategoriaExtra;
@@ -42,7 +49,7 @@ export function esCargoBase(etiqueta: string): boolean {
   );
 }
 
-/** Saldo/cuota de domingo: se lista en el mensaje, nunca en el total. */
+/** Saldo/cuota de domingo. */
 export function esEtiquetaDomingo(etiqueta: string): boolean {
   return /\bdomingo\b/i.test(etiqueta);
 }
@@ -51,7 +58,23 @@ export function categoriaDeEtiqueta(etiqueta: string): CategoriaExtra {
   const t = etiqueta.toLowerCase();
   if (t.startsWith("acuerdo") || t.includes("abono inicial")) return "acuerdo";
   if (t.includes("manten")) return "mantenimiento";
+  if (esEtiquetaDomingo(t)) return "domingo";
   return "otro";
+}
+
+/**
+ * Tajada de domingo que puede pedirse HOY (= cuota_domingo, tope el balde).
+ * Nunca el pot entero.
+ */
+export function tajadaDomingo(opts: {
+  balde: number;
+  cuotaDomingo: number;
+}): number {
+  const balde = Math.max(Number(opts.balde) || 0, 0);
+  if (balde <= 0.009) return 0;
+  const cuota = Math.max(Number(opts.cuotaDomingo) || 0, 0);
+  if (cuota > 0.009) return Math.min(cuota, balde);
+  return balde;
 }
 
 /**
@@ -76,16 +99,20 @@ export function elegirExtraDelDia(
 }
 
 /**
- * Arma candidatos desde acuerdo del día + líneas extra (mantenimiento, …).
+ * Arma candidatos desde acuerdo del día + líneas extra (mantenimiento, domingo…).
  * `cierre` y similares NO entran aquí.
- * El domingo NUNCA es candidato al TOTAL (solo se lista en el mensaje).
+ *
+ * Domingo: solo compite lun–vie (y si el caller lo mete). El sábado no lo
+ * manda el caller; el domingo del calendario se cobra aparte como “letra”.
  */
 export function candidatosDesdeExtracto(opts: {
   acuerdoHoy: number;
   acuerdoSaldo?: number;
   extras: { etiqueta: string; monto: number }[];
-  /** @deprecated Ignorado: el domingo nunca entra al total. */
-  hoyEsDomingo?: boolean;
+  /** Tajada de domingo a cobrarse hoy (0 = no compite). */
+  domingoTajada?: number;
+  /** Saldo total del balde DOMINGOS (para mostrar). */
+  domingoBalde?: number;
 }): ItemExtra[] {
   const out: ItemExtra[] = [];
   const acuerdoAbierto = (opts.acuerdoSaldo ?? 0) > 0.009;
@@ -98,13 +125,23 @@ export function candidatosDesdeExtracto(opts: {
     });
   }
   // Con saldo de acuerdo, ese concepto ocupa el cupo hasta quedar en cero.
-  // Mantenimiento y el resto se listan, no entran al total.
+  // Mantenimiento, domingo y el resto se listan, no entran al total.
   if (acuerdoAbierto) return out;
+
+  const tajada = Math.max(Number(opts.domingoTajada) || 0, 0);
+  if (tajada > 0.009) {
+    out.push({
+      categoria: "domingo",
+      etiqueta: "domingo",
+      montoHoy: tajada,
+      saldo: Math.max(Number(opts.domingoBalde) || tajada, tajada),
+    });
+  }
+
   for (const x of opts.extras) {
     if (x.monto <= 0.009) continue;
     if (esCargoBase(x.etiqueta)) continue;
-    // Nunca al total — se muestra aparte como pendiente/aviso.
-    if (esEtiquetaDomingo(x.etiqueta)) continue;
+    if (esEtiquetaDomingo(x.etiqueta)) continue; // ya va como tajada
     const cat = categoriaDeEtiqueta(x.etiqueta);
     out.push({
       categoria: cat,

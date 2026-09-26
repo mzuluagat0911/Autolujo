@@ -120,6 +120,21 @@ check("max(saldo,0) ANTES de sumar la cuota habría cobrado de más", pagoSinRen
 
 check("domingo libre no cobra ni recarga", calcularCifras(base({ hoy: "2026-09-06", corte: true, saldo: 0 })).totalHoy, 0);
 
+// G51-like: pot $90 = 3 × $30. El domingo cobra UNA tajada ($30), no los $90.
+const domConBalde = calcularCifras(base({
+  hoy: "2026-09-27", // domingo
+  terminos: { letra_diaria: 35, descuento_puntual: 0, cobra_domingo: true, cuota_domingo: 30 },
+  saldo: 55,
+  domingoEnSaldo: 90,
+  hoyYaDevengado: false,
+  sinDevengoRenta: true,
+  pagadoHoy: 0,
+}));
+check("domingo con balde: cobra la tajada $30", domConBalde.totalHoy, 30);
+check("y no inventa cuota encima del balde", domConBalde.faltaHoy, 0);
+check("desglose nombra domingo $30", domConBalde.lineas.some((l) => l.concepto === "domingo" && l.monto === 30), true);
+check("resto del balde queda pendiente $60", domConBalde.lineas.some((l) => l.concepto === "domingo (pendiente)" && l.monto === 60), true);
+
 const sabado = calcularCifras(base({
   hoy: "2026-09-05",
   terminos: { letra_diaria: 30, descuento_puntual: 5, cobra_domingo: true, cuota_domingo: 15 },
@@ -127,6 +142,72 @@ const sabado = calcularCifras(base({
 }));
 check("sábado: si no paga, mañana suma el domingo pactado", sabado.totalManana, 50);
 check("y avisa el domingo en el desglose", sabado.domingo, 15);
+
+const sabadoConBalde = calcularCifras(base({
+  hoy: "2026-09-26",
+  terminos: { letra_diaria: 35, descuento_puntual: 0, cobra_domingo: true, cuota_domingo: 30 },
+  saldo: 55,
+  domingoEnSaldo: 90,
+  hoyYaDevengado: false,
+  sinDevengoRenta: true,
+  pagadoHoy: 35,
+}));
+check("sábado: domingo pendiente no suma al total", sabadoConBalde.totalHoy, 0);
+check("sábado: domingoSaldo queda en $90", sabadoConBalde.domingoSaldo, 90);
+
+const lunesTrasBalde = calcularCifras(base({
+  hoy: "2026-09-28",
+  terminos: { letra_diaria: 35, descuento_puntual: 0, cobra_domingo: true, cuota_domingo: 30 },
+  saldo: 55,
+  domingoEnSaldo: 90,
+  hoyYaDevengado: false,
+  sinDevengoRenta: true,
+  pagadoHoy: 0,
+}));
+check("lunes con domingo pendiente: cobra la letra $35", lunesTrasBalde.totalHoy, 35);
+check("lunes: domingo sigue aparte", lunesTrasBalde.domingoSaldo, 90);
+
+// Extracto lun–vie: letra + tajada domingo EN el total (árbol).
+import { armarExtractoDiario } from "@/lib/cartera/extracto-desglose";
+import type { EstadoCuenta } from "@/lib/cartera/estado-cuenta";
+
+const fakeLunes = {
+  ...lunesTrasBalde,
+  cuotaDomingo: 30,
+  faltaAcuerdo: 0,
+  acuerdoHoy: 0,
+  hoyIso: "2026-09-28",
+} as unknown as EstadoCuenta;
+const armLunes = armarExtractoDiario(fakeLunes, {
+  acuerdoSaldo: 0,
+  extras: [{ etiqueta: "domingo", monto: 90 }],
+  hoy: "2026-09-28",
+});
+check("extracto lunes: total letra+domingo $65", armLunes.totalCobrarHoy, 65);
+check(
+  "extracto lunes: domingo con $ en el desglose",
+  armLunes.lineas.some((l) => l.etiqueta === "domingo" && l.monto === 30 && !l.aviso),
+  true,
+);
+
+const fakeSabado = {
+  ...sabadoConBalde,
+  cuotaDomingo: 30,
+  faltaAcuerdo: 0,
+  acuerdoHoy: 0,
+  hoyIso: "2026-09-26",
+} as unknown as EstadoCuenta;
+const armSabado = armarExtractoDiario(fakeSabado, {
+  acuerdoSaldo: 0,
+  extras: [{ etiqueta: "domingo", monto: 90 }],
+  hoy: "2026-09-26",
+});
+check("extracto sábado: domingo NO suma (solo aviso)", armSabado.totalCobrarHoy, 0);
+check(
+  "extracto sábado: aviso del balde $90",
+  armSabado.lineas.some((l) => l.aviso && /domingo pendiente: \$90/.test(l.etiqueta)),
+  true,
+);
 
 const sabadoLibre = calcularCifras(base({ hoy: "2026-09-05", saldo: 30 }));
 check("sábado con domingo libre: mañana no suma cuota", sabadoLibre.totalManana, sabadoLibre.totalHoyTarde);

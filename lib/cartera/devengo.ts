@@ -20,7 +20,7 @@
 // Determinista e idempotente: uq_cargo_renta_dia (0008) + chequeo de multa.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama, sumarDias, pasoCorte, diasEntre } from "./fecha";
+import { hoyPanama, sumarDias, pasoCorte, diasEntre, esDomingo } from "./fecha";
 import { cuotaDeFecha, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
 import {
   contratosQueCubrieronElDia,
@@ -139,6 +139,68 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
   }
   const nacMap = await nacimientosPorCliente();
 
+  // Domingos pendientes (cargo DOMINGOS − abonos a ese rubro).
+  const domingoPendiente = new Map<string, number>();
+  if (esDomingo(fecha)) {
+    const [{ data: cargosDom }, { data: pagosDom }] = await Promise.all([
+      sb
+        .from("cargos")
+        .select("contrato_id, monto, concepto_codigo, concepto")
+        .in(
+          "contrato_id",
+          ((contratos ?? []) as { id: string }[]).map((c) => c.id),
+        ),
+      sb
+        .from("pagos")
+        .select("contrato_id, monto, rubro, asignaciones")
+        .in(
+          "contrato_id",
+          ((contratos ?? []) as { id: string }[]).map((c) => c.id),
+        )
+        .in("estado_conciliacion", ["conciliado", "manual"]),
+    ]);
+    for (const g of (cargosDom ?? []) as {
+      contrato_id: string;
+      monto: number;
+      concepto_codigo: string | null;
+      concepto: string | null;
+    }[]) {
+      const codigo = (g.concepto_codigo ?? "").toUpperCase();
+      const texto = (g.concepto ?? "").toLowerCase();
+      if (codigo !== "DOMINGOS" && !/\bdomingo\b/.test(texto)) continue;
+      domingoPendiente.set(
+        g.contrato_id,
+        (domingoPendiente.get(g.contrato_id) ?? 0) + Number(g.monto || 0),
+      );
+    }
+    for (const p of (pagosDom ?? []) as {
+      contrato_id: string | null;
+      monto: number;
+      rubro?: string | null;
+      asignaciones?: unknown;
+    }[]) {
+      if (!p.contrato_id || !domingoPendiente.has(p.contrato_id)) continue;
+      let abono = 0;
+      if (p.rubro === "domingo") abono = Number(p.monto) || 0;
+      else {
+        const raw = p.asignaciones;
+        const lineas = Array.isArray(raw)
+          ? raw
+          : raw && typeof raw === "object" && Array.isArray((raw as { asignaciones?: unknown }).asignaciones)
+            ? (raw as { asignaciones: { etiqueta?: string; aplicado?: number }[] }).asignaciones
+            : [];
+        for (const a of lineas) {
+          if (/\bdomingo\b/i.test(a.etiqueta ?? "")) abono += Number(a.aplicado) || 0;
+        }
+      }
+      if (abono <= 0.009) continue;
+      domingoPendiente.set(
+        p.contrato_id,
+        Math.max((domingoPendiente.get(p.contrato_id) ?? 0) - abono, 0),
+      );
+    }
+  }
+
   const res: ResultadoDevengo = { fecha, creados: 0, yaEstaban: 0, sinCuota: 0 };
   const filas: Record<string, unknown>[] = [];
 
@@ -147,6 +209,12 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     if (yaTiene.has(c.id)) { res.yaEstaban++; continue; }
     const monto = cuotaDeFecha(c, fecha);
     if (monto <= 0) { res.sinCuota++; continue; }
+    // Domingo con balde DOMINGOS pendiente: ese balde ES el cobro del día.
+    // No postear otra renta (evita $90+$90 en altas como G51).
+    if (esDomingo(fecha) && (domingoPendiente.get(c.id) ?? 0) > 0.009) {
+      res.sinCuota++;
+      continue;
+    }
     // Cumpleaños libre: no se genera cargo si es su cumpleaños, tiene >= 1 mes
     // de permanencia y está al día (sin saldo pendiente al momento del devengo).
     const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;

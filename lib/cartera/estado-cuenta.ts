@@ -113,6 +113,8 @@ export type EstadoCuenta = Cifras & {
   recargosAcumulados: number;
   desglose: string;
   fecha: string;
+  /** Día contable ISO (YYYY-MM-DD) del extracto. */
+  hoyIso: string;
   templateVars: [string, string, string, string, string];
 };
 
@@ -398,6 +400,7 @@ function armar(
     recargosAcumulados: recargosAcc,
     desglose: desgloseOut,
     fecha,
+    hoyIso: extra.hoy,
     templateVars: [nombre, carro, fecha, desgloseOut, money(cifrasOut.totalHoy)],
   };
 }

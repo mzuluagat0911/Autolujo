@@ -37,7 +37,8 @@ export type Cifras = {
   totalManana: number;
   domingo: number | null;
   domingoDia: number | null;
-  /** Domingo ya cargado que sigue en el saldo. Se lista; no entra a totalHoy. */
+/** Domingo ya cargado que sigue en el saldo. Lun–sáb: se lista, no entra a totalHoy.
+   *  Domingo: si > 0, ESE es el cobro del día. */
   domingoSaldo: number;
   lineas: LineaDesglose[];
 };
@@ -98,15 +99,84 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const pagadoHoy = Math.max(Number(e.pagadoHoy) || 0, 0);
   const saldoVista = Number(e.saldo) || 0;
   const hoyEsDomingo = esDomingo(e.hoy);
-  // Lun–sáb: el domingo se reserva del saldo y no entra a totalHoy.
-  // Domingo: ese compromiso sí se cobra hoy → no se aparta.
   const domingoEnSaldo = Math.max(Number(e.domingoEnSaldo) || 0, 0);
+  const pendiente = Boolean(e.pendiente);
+  // El recargo de las 7:00 p.m. no se calcula solo. Entra únicamente si el
+  // equipo cargó la multa a mano (ese monto ya vive en el saldo).
+  const recargo = 0;
+  const recargoSiTarda = 0;
+  void penalidad;
+
+  const domingo =
+    esDomingo(manana) && e.terminos.cobra_domingo
+      ? Number(e.terminos.cuota_domingo ?? 0) || null
+      : null;
+
+  // ── Domingo CON balde DOMINGOS ──────────────────────────────────────────
+  // Entrada = N × cuota_domingo. El árbol cobra UNA tajada del día
+  // (= cuota_domingo), no el pot entero. El resto queda pendiente (aviso).
+  // No sumar otra renta encima ni dejar que el crédito de letra achique
+  // el cobro (G51: pot $55 = $90−$35).
+  if (hoyEsDomingo && domingoEnSaldo > 0.009) {
+    const tajada = Math.min(
+      cuotaHoy > 0.009 ? cuotaHoy : domingoEnSaldo,
+      domingoEnSaldo,
+    );
+    const bruto = tajada + faltaAcuerdo;
+    const totalHoy = Math.max(bruto + recargo, 0);
+    const totalHoyTarde =
+      e.corte || e.pagoPuntual || pendiente ? totalHoy : Math.max(bruto + recargoSiTarda, 0);
+    const restoDomingo = Math.round((domingoEnSaldo - tajada) * 100) / 100;
+    const lineas = armarLineas({
+      acuerdoHoy: faltaAcuerdo,
+      cuotaHoy: 0,
+      pendienteAnterior: 0,
+      recargo,
+      pagadoHoy: 0,
+      // Lo que aún quedará del balde después de la tajada de hoy.
+      domingoSaldo: restoDomingo > 0.009 ? restoDomingo : 0,
+    });
+    if (tajada > 0.009) lineas.unshift({ concepto: "domingo", monto: tajada });
+    return {
+      letra,
+      penalidad,
+      cuotaHoy,
+      cuotaManana,
+      acuerdoHoy,
+      pagadoHoy,
+      faltaAcuerdo,
+      pendienteAnterior: 0,
+      saldoVista,
+      faltaHoy: 0,
+      cuenta: Math.max(bruto, 0),
+      recargo,
+      recargoSiTarda,
+      totalHoy,
+      totalHoyTarde,
+      totalManana: totalHoyTarde + cuotaManana,
+      domingo,
+      domingoDia: domingo ? Number(manana.slice(8, 10)) : null,
+      // Para el extracto: el balde vivo sigue siendo el total pendiente.
+      domingoSaldo: domingoEnSaldo,
+      lineas,
+    };
+  }
+
+  // Lun–sáb: el domingo se reserva del saldo y no entra a totalHoy.
+  // Domingo sin balde: corre cuota_domingo como cuota del día.
   // Lun–sáb el domingo es un balde aparte. NO se capa contra el saldo:
   // si un pago de más achica el saldo único, eso es crédito de LETRA,
   // no un abono al domingo. El domingo solo baja si el pago viene
   // marcado a ese concepto (rubro), y eso ya viene descontado en domingoEnSaldo.
-  const domingoSaldo = hoyEsDomingo ? 0 : domingoEnSaldo;
-  const saldoLetra = saldoVista - domingoSaldo;
+  const domingoSaldo = domingoEnSaldo; // hoy no es domingo con balde (ramo de arriba)
+  const saldoLetraRaw = saldoVista - (hoyEsDomingo ? 0 : domingoSaldo);
+  // Si reservar el domingo deja la letra en negativo, eso NO es crédito real
+  // (G51: $55 − $90 = −$35). El crédito real (pagó de más, saldo negativo
+  // sin domingo pendiente) sí debe cancelar la cuota.
+  const saldoLetra =
+    !hoyEsDomingo && domingoEnSaldo > 0.009 && saldoLetraRaw < -0.009
+      ? 0
+      : saldoLetraRaw;
   // Letra de hoy aún no posteada como renta:
   // - Con devengo normal: se suma (el pago deja saldo negativo y la cancela).
   // - Sin renta nunca (saldo_inicial): la deuda ya está en el saldo; solo se
@@ -114,33 +184,26 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   let faltaHoy = 0;
   if (!e.hoyYaDevengado && cuotaHoy > 0.009) {
     if (e.sinDevengoRenta) {
-      const yaCubiertoEnSaldo = saldoVista > 0.009 || pagadoHoy > 0.009 || saldoVista < -0.009;
+      // Crédito real (saldo negativo SIN domingo pendiente) sí cubre.
+      // El “crédito” que nace solo de reservar el domingo no cuenta.
+      const creditoReal =
+        domingoEnSaldo <= 0.009 && saldoVista < -0.009;
+      const yaCubiertoEnSaldo =
+        saldoLetra > 0.009 || pagadoHoy > 0.009 || creditoReal;
       faltaHoy = yaCubiertoEnSaldo ? 0 : cuotaHoy;
     } else {
       faltaHoy = cuotaHoy;
     }
   }
   const bruto = saldoLetra + faltaHoy + faltaAcuerdo;
-  const pendiente = Boolean(e.pendiente);
   const letraAbierta = Math.max(saldoLetra + faltaHoy, 0);
-
   const hayLetraAbierta = cuotaHoy > 0.009 && letraAbierta > 0.009;
-  // El recargo de las 7:00 p.m. no se calcula solo. Entra únicamente si el
-  // equipo cargó la multa a mano (ese monto ya vive en el saldo).
-  const recargo = 0;
-  const recargoSiTarda = 0;
   void hayLetraAbierta;
-  void penalidad;
 
   const totalHoy = Math.max(bruto + recargo, 0);
   const totalHoyTarde =
     e.corte || e.pagoPuntual || pendiente ? totalHoy : Math.max(bruto + recargoSiTarda, 0);
   const totalManana = totalHoyTarde + cuotaManana;
-
-  const domingo =
-    esDomingo(manana) && e.terminos.cobra_domingo
-      ? Number(e.terminos.cuota_domingo ?? 0) || null
-      : null;
 
   // Sin renta: la letra del día abierto ya va dentro del saldo (o del abono de hoy).
   const letraHoyEnSaldo =
@@ -165,13 +228,9 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     pendienteAnterior,
     recargo,
     pagadoHoy,
-    // Lun–sáb: línea informativa. Domingo: ya va dentro del total (saldo/cuota).
+    // Lun–sáb: línea informativa. Domingo sin balde: va en cuotaHoy.
     domingoSaldo: hoyEsDomingo ? 0 : domingoSaldo,
   });
-  // Domingo con cargo DOMINGOS y sin cuotaHoy aparte → mostrarlo en el desglose.
-  if (hoyEsDomingo && domingoEnSaldo > 0.009 && cuotaLinea < 0.009) {
-    lineas.unshift({ concepto: "domingo", monto: domingoEnSaldo });
-  }
 
   return {
     letra,
@@ -192,7 +251,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     totalManana,
     domingo,
     domingoDia: domingo ? Number(manana.slice(8, 10)) : null,
-    domingoSaldo: hoyEsDomingo ? domingoEnSaldo : domingoSaldo,
+    domingoSaldo: hoyEsDomingo ? 0 : domingoSaldo,
     lineas,
   };
 }

@@ -30,6 +30,7 @@ export function varsExtractoDetalle(e: EstadoCuenta, ctx?: ExtractoCtx): string[
     acuerdoSaldo: ctx?.acuerdoSaldo ?? 0,
     extras: ctx?.extras ?? [],
     preferencia: ctx?.preferencia,
+    hoy: e.hoyIso,
   });
   return [
     nombre,
@@ -70,5 +71,6 @@ export function totalCobrarHoyExtracto(e: EstadoCuenta, ctx?: ExtractoCtx): numb
     acuerdoSaldo: ctx?.acuerdoSaldo ?? 0,
     extras: ctx?.extras ?? [],
     preferencia: ctx?.preferencia,
+    hoy: e.hoyIso,
   }).totalCobrarHoy;
 }

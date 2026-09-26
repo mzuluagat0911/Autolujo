@@ -19,7 +19,12 @@
 //    el que tenga el carro (prioridad_abono) o, si no, el de menor valor.
 //    Los demás se listan “(pendiente)” y no suman.
 //
-// 4) DOMINGO: no entra al total salvo que el carro lo elija como ese concepto.
+// 4) DOMINGO (árbol — fuente de verdad):
+//    Entrada = N × cuota_domingo. Se cobra de a UNA tajada, nunca el pot entero.
+//    - Sábado (mañana = domingo): solo AVISO. No suma.
+//    - Domingo: la tajada ES el cobro del día (reemplaza la letra).
+//    - Lun–vie: si el balde sigue, la tajada entra al total como el un concepto
+//      (letra + domingo), salvo que otro concepto gane el cupo.
 //
 // Árbol de un pago: recargo → ese concepto → letra de hoy → días siguientes
 // (acuerdo de ese día, luego la letra), hasta donde alcance.
@@ -90,6 +95,7 @@ export function cobroHoyDe(e: EstadoCuenta, ctx: CobroHoyCtx): CobroHoy {
     acuerdoSaldo: ctx.acuerdoSaldo,
     extras: ctx.extras,
     preferencia: ctx.preferencia,
+    hoy: e.hoyIso,
   });
   return {
     ...armado,

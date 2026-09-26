@@ -13,11 +13,13 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
+import { esDomingo, sumarDias } from "./fecha";
 import {
   candidatosDesdeExtracto,
   elegirExtraDelDia,
   esCargoBase,
   esEtiquetaDomingo,
+  tajadaDomingo,
   totalConUnExtra,
   type ItemExtraElegido,
 } from "./prioridad-extras";
@@ -90,12 +92,35 @@ export type ExtractoArmado = {
 /** Líneas + total con la regla de un solo ítem adicional. */
 export function armarExtractoDiario(
   e: EstadoCuenta,
-  opts?: { acuerdoSaldo?: number; extras?: LineaExtracto[]; preferencia?: string | null },
+  opts?: {
+    acuerdoSaldo?: number;
+    extras?: LineaExtracto[];
+    preferencia?: string | null;
+    /** ISO YYYY-MM-DD del día del extracto (para saber si es domingo). */
+    hoy?: string;
+  },
 ): ExtractoArmado {
   const extrasAll = (opts?.extras ?? []).filter((x) => x.monto > 0.009);
-  // Domingo vive en domingoSaldo (aparte): se lista, nunca se resta de la letra.
+  // Domingo vive en domingoSaldo (aparte): no se resta de la letra.
   const extrasDomingo = extrasAll.filter((x) => esEtiquetaDomingo(x.etiqueta));
   const extrasParaSaldo = extrasAll.filter((x) => !esEtiquetaDomingo(x.etiqueta));
+  const hoyIso = opts?.hoy ?? (e as EstadoCuenta & { hoyIso?: string }).hoyIso;
+  const hoyEsDomingo = Boolean(hoyIso && esDomingo(hoyIso));
+  // Sábado = mañana es domingo → solo aviso, no cobra todavía.
+  const sabadoAntesDeDomingo = Boolean(hoyIso && esDomingo(sumarDias(hoyIso, 1)));
+
+  const baldeDomingo = extrasDomingo.reduce((s, x) => s + x.monto, 0);
+  const cuotaDom =
+    Math.max(Number(e.cuotaDomingo) || 0, 0) ||
+    Math.max(Number(e.cuotaHoy) || 0, 0);
+  const tajada = tajadaDomingo({ balde: baldeDomingo, cuotaDomingo: cuotaDom });
+
+  // Árbol domingo:
+  // - Domingo calendario: tajada = cobro del día (base), resto aviso.
+  // - Lun–vie: tajada compite como el un concepto (entra al total si gana).
+  // - Sábado: solo aviso del balde.
+  const domingoComoBase = hoyEsDomingo && tajada > 0.009;
+  const domingoComoExtra = !hoyEsDomingo && !sabadoAntesDeDomingo && tajada > 0.009;
 
   // Un cargo “otros/mant” del ledger solo está dentro de totalHoy si cabe en el
   // saldo arrastrado (pendienteAnterior). Si ya se pagó vía el saldo agregado,
@@ -112,8 +137,16 @@ export function armarExtractoDiario(
   // Solo descontar lo embebido en pendienteAnterior (anti-duplicado real).
   cuenta = Math.max(cuenta - embebidosSum, 0);
 
+  // Domingo calendario: cifras ya trajo la tajada; no etiquetar “cuenta”.
+  if (domingoComoBase) {
+    cuenta = 0;
+  }
+
   const lineasBase: LineaExtracto[] = [];
   if (cuenta > 0.009) lineasBase.push({ etiqueta: "cuenta", monto: cuenta });
+  if (domingoComoBase) {
+    lineasBase.push({ etiqueta: "domingo", monto: tajada });
+  }
 
   // El abono de hoy ya está neto en el saldo / totalHoy: no se re-suma como
   // “abono” (eso duplicaba y, con acuerdo, hacía creer que la letra bajaba).
@@ -130,6 +163,8 @@ export function armarExtractoDiario(
     acuerdoHoy: Math.max(Number(e.faltaAcuerdo) || 0, 0),
     acuerdoSaldo: opts?.acuerdoSaldo,
     extras: extrasCompetidores,
+    domingoTajada: domingoComoExtra ? tajada : 0,
+    domingoBalde: baldeDomingo,
   });
   const extraElegido = elegirExtraDelDia(candidatos, opts?.preferencia);
   const totalCobrarHoy = Math.round(totalConUnExtra(baseMonto, extraElegido) * 100) / 100;
@@ -165,13 +200,11 @@ export function armarExtractoDiario(
     });
   }
 
-  // La cuota del domingo de mañana no se anuncia en el extracto.
-  // Si hay domingos ya debidos, van en la línea de pendiente (aviso, no suma).
-
   for (const x of extrasCompetidores) {
     const esElegido =
       extraElegido != null &&
       extraElegido.categoria !== "acuerdo" &&
+      extraElegido.categoria !== "domingo" &&
       extraElegido.etiqueta === x.etiqueta &&
       Math.abs(extraElegido.montoHoy - x.monto) < 0.05;
     const baseEtiqueta = x.etiqueta.replace(/\s*\(pendiente\)\s*$/i, "");
@@ -181,12 +214,29 @@ export function armarExtractoDiario(
     });
   }
 
-  // Domingo arrastrado: se menciona, no es cobro de hoy (sábado ni entre semana).
-  for (const x of extrasDomingo) {
-    const baseEtiqueta = x.etiqueta.replace(/\s*\(pendiente\)\s*$/i, "");
+  // Domingo en el desglose (árbol):
+  // - Entra al total (domingo calendario o extra lun–vie) → línea con $ + resto aviso.
+  // - No entra (sábado / perdió el cupo) → balde completo como aviso.
+  const domingoGanoExtra =
+    extraElegido?.categoria === "domingo" &&
+    Math.abs((extraElegido.montoHoy ?? 0) - tajada) < 0.05;
+  if (domingoGanoExtra) {
+    // Lun–vie: la tajada no estaba en lineasBase; va aquí con $.
+    out.push({ etiqueta: "domingo", monto: tajada });
+  }
+  if (domingoComoBase || domingoGanoExtra) {
+    const resto = Math.round((baldeDomingo - tajada) * 100) / 100;
+    if (resto > 0.009) {
+      out.push({
+        etiqueta: `domingo pendiente: ${money(resto)}`,
+        monto: resto,
+        aviso: true,
+      });
+    }
+  } else if (baldeDomingo > 0.009) {
     out.push({
-      etiqueta: `${baseEtiqueta} pendiente: ${money(x.monto)}`,
-      monto: x.monto,
+      etiqueta: `domingo pendiente: ${money(baldeDomingo)}`,
+      monto: baldeDomingo,
       aviso: true,
     });
   }
