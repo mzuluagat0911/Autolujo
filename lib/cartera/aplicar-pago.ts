@@ -5,13 +5,18 @@
 // 3) Letra diaria de hoy.
 // 4) Si sobra: días siguientes, cada uno acuerdo y luego letra,
 //    hasta donde alcance (un día, dos, o acuerdo + parte de la letra).
+//    NUNCA al domingo ni a otro concepto reservado, salvo que el pago
+//    traiga ese rubro (el cliente lo pidió). El saldo es un solo número;
+//    cifras.ts aparta el domingo para que este sobrante no lo coma.
+//    Sábado: el sobrante NO se adelanta solo. Queda sin concepto hasta que
+//    digan si es domingo, otro concepto, o la letra siguiente.
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { distribuirPago } from "./rules";
 import { cuotaDeFecha, type TerminosCuota } from "./cuota";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { acuerdoHoyDe, cuotaAcuerdoHoy, type AcuerdoActivo } from "./acuerdo";
-import { fechaContable, hoyPanama, pasoCorte, esPagoPuntual } from "./fecha";
+import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual } from "./fecha";
 import { pagoHoyContrato } from "./pagos-dia";
 import type { AsignacionPago, Obligacion, ResultadoPago, TipoObligacion } from "./types";
 import {
@@ -460,7 +465,19 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     resultado = distribuirPago(monto, obligaciones);
   }
 
-  if (resultado.sobrante > 0.009) {
+  if (resultado.sobrante > 0.009 && pago.rubro === "domingo") {
+    const toma = resultado.sobrante;
+    resultado = {
+      asignaciones: [
+        ...resultado.asignaciones,
+        { tipo: "saldo_anterior", aplicado: toma, etiqueta: "domingo" },
+      ],
+      sobrante: 0,
+      totalAplicado: r2(resultado.totalAplicado + toma),
+    };
+  } else if (resultado.sobrante > 0.009 && diaSemana(fecha) === 6 && pago.rubro !== "cuenta") {
+    // Sábado: no se asume letra del lunes ni domingo. Se pregunta.
+  } else if (resultado.sobrante > 0.009) {
     const adelanto = adelantarDias({
       sobrante: resultado.sobrante,
       acuerdos,

@@ -69,6 +69,10 @@ export function esDomingo(fecha: string): boolean {
   return diaSemana(fecha) === 0;
 }
 
+export function esSabado(fecha: string): boolean {
+  return diaSemana(fecha) === 6;
+}
+
 /** Suma (o resta) días a una fecha "YYYY-MM-DD". */
 export function sumarDias(fecha: string, dias: number): string {
   const d = new Date(`${fecha}T12:00:00Z`);

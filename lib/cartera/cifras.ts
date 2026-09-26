@@ -101,9 +101,11 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   // Lun–sáb: el domingo se reserva del saldo y no entra a totalHoy.
   // Domingo: ese compromiso sí se cobra hoy → no se aparta.
   const domingoEnSaldo = Math.max(Number(e.domingoEnSaldo) || 0, 0);
-  const domingoSaldo = hoyEsDomingo
-    ? 0
-    : Math.min(domingoEnSaldo, Math.max(saldoVista, 0));
+  // Lun–sáb el domingo es un balde aparte. NO se capa contra el saldo:
+  // si un pago de más achica el saldo único, eso es crédito de LETRA,
+  // no un abono al domingo. El domingo solo baja si el pago viene
+  // marcado a ese concepto (rubro), y eso ya viene descontado en domingoEnSaldo.
+  const domingoSaldo = hoyEsDomingo ? 0 : domingoEnSaldo;
   const saldoLetra = saldoVista - domingoSaldo;
   // Letra de hoy aún no posteada como renta:
   // - Con devengo normal: se suma (el pago deja saldo negativo y la cancela).

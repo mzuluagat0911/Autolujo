@@ -22,6 +22,12 @@
 // Árbol de un pago: recargo → ese concepto → letra de hoy → días siguientes
 // (acuerdo de ese día, luego la letra), hasta donde alcance.
 //
+// Excedente: si el cliente NOMBRA el destino (domingo, acuerdo, etc.) y ese
+// concepto existe, el sobrante va ahí. Si no lo nombra, no se inventa.
+// Sábado: pago mayor que la letra diaria → se pregunta a dónde va el
+// excedente (muchos abonan el domingo por adelantado). No se asume letra
+// del lunes ni domingo hasta que lo diga.
+//
 // 5) “Pagado hoy” YA está neto en el saldo / total. NUNCA inventar una
 //    línea “abono” con ese monto (duplicaba el cobro).
 //

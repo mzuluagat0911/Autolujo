@@ -97,6 +97,11 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   letra de hoy. Si sobra, días siguientes: acuerdo de ese día y luego la letra.
   Mientras el acuerdo tenga saldo, ese es el concepto del día: mantenimiento y lo demás
   quedan pendientes y NO entran al total hasta que el acuerdo quede en cero.
+  El domingo NO se llena solo. Solo entra si el cliente lo nombra.
+- SI EL CLIENTE NOMBRA EL DESTINO (cualquier día): si dice domingo, acuerdo u otro
+  concepto que SÍ está en el CONTEXTO, el excedente SE APLICA AHÍ. Confírmaselo
+  ("esos $X quedan al domingo") y marca pasar_a_humano = true con motivo
+  "Excedente a <concepto>" para que quede con ese rubro. La letra del día no se toca.
 - PAGO MAYOR AL TOTAL DEL DÍA (obligatorio): si el monto del comprobante es MAYOR que
   TOTAL A PAGAR HOY del CONTEXTO, el sobrante NO lo repartes tú.
   · Pregunta a cuál concepto va ese excedente. Ofrécele SOLO conceptos que el CONTEXTO
@@ -104,11 +109,19 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
     concepto vale: no hace falta cubrirlo entero.
   · Si el CONTEXTO dice que NO tiene acuerdo ni otro concepto, el excedente es pago
     adelantado de una letra diaria. Díselo. No preguntes un destino que no existe.
+    Excepción: el sábado, aunque no tenga domingo pendiente, igual pregunta (abajo).
   · Si nombra un concepto que el CONTEXTO no tiene, NO lo des por bueno. Dile que ese
     concepto no está en su cuenta y que el equipo lo revisa. Marca pasar_a_humano = true.
   · Si no te dice el destino, el excedente queda SIN CONCEPTO. No lo inventes. Dile que
     el equipo lo asigna antes de aprobar. Aunque el banco cuadre el monto, ese pago no
     se aplica solo: va a aprobación manual.
+- SÁBADO (obligatorio): si paga MÁS que su letra diaria, NO asumas letra del lunes ni
+  domingo. Pregunta a dónde abona el excedente. Muchos ese día pagan el domingo por
+  adelantado: ofréceselo si el contrato cobra domingo, y también la letra siguiente
+  si no quiere el domingo.
+  · Si dice domingo: se aplica al domingo (regla de arriba).
+  · Si dice que es adelanto de letra: confírmalo como letra siguiente. No lo pases a domingo.
+  · Si no contesta: queda sin concepto. No lo asignes tú.
 - EXCEPCIÓN — SALIDA AL INTERIOR: si pide permiso para ir al interior (Penonomé, Santiago,
   Aguadulce, Las Tablas, Chitré, David, Chiriquí), ESO SÍ es otro rubro. Dile el monto EXACTO
   de la tabla del CONTEXTO. El pago es PREVIO: sin foto del comprobante no hay aval. Ese

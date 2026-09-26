@@ -5,7 +5,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
-import { hoyPanama, horaPanama, pasoCorte, fueraHorarioOperativo, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm, esDomingo } from "@/lib/cartera/fecha";
+import { hoyPanama, horaPanama, pasoCorte, fueraHorarioOperativo, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm, esDomingo, esSabado } from "@/lib/cartera/fecha";
 import { estadoCuentaContrato, money, cuotasAtraso } from "@/lib/cartera/estado-cuenta";
 import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
@@ -445,7 +445,11 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `REGLA DE COBRO DIARIO (OBLIGATORIA — “cuánto debo HOY” / extracto):`,
       `- La cifra oficial es TOTAL A PAGAR HOY de arriba (${m(cobro.totalCobrarHoy)}) y su desglose. No inventes otra.`,
       `- SIEMPRE se cobra: letra del día + saldo anterior de letra + recargo/cierre de semana si aplica.`,
-      `- ÁRBOL DE UN PAGO (estricto, por carro): 1) recargo por no pago  2) un solo concepto más. Si el acuerdo tiene saldo, ESE es el concepto hasta que quede en cero: mantenimiento y lo demás se listan pendientes y no entran al total. Si no hay acuerdo, el de menor valor (o el que el carro eligió)  3) letra de hoy  4) si sobra, días siguientes: acuerdo de ese día y luego la letra, hasta donde alcance.`,
+      `- ÁRBOL DE UN PAGO (estricto, por carro): 1) recargo por no pago  2) un solo concepto más. Si el acuerdo tiene saldo, ESE es el concepto hasta que quede en cero: mantenimiento y lo demás se listan pendientes y no entran al total. Si no hay acuerdo, el de menor valor (o el que el carro eligió)  3) letra de hoy  4) si sobra y NO es sábado (o el cliente ya dijo que es adelanto de letra): días siguientes, acuerdo de ese día y luego la letra.`,
+      `- Si el cliente NOMBRA el destino del excedente y ese concepto existe (domingo, acuerdo, etc.), SE APLICA AHÍ. No lo dejes en letra. Confírmalo y marca pasar_a_humano con motivo "Excedente a <concepto>".`,
+      esSabado(hoyPanama())
+        ? `- HOY ES SÁBADO: si el pago es mayor que la letra diaria (${m(est.letra)}), PREGUNTA a dónde va el excedente antes de asignarlo. Lo habitual es el domingo por adelantado, o la letra del lunes. Si no contesta, queda sin concepto.`
+        : `- Sábado: si ese día el pago supera la letra diaria, se pregunta el destino del excedente (domingo adelantado o letra siguiente). No se asume.`,
       `- Si tiene plan de acuerdo con saldo pero la cuota de hoy YA está pagada: dilo (saldo del plan), NO lo sumes otra vez.`,
       `- El domingo no entra al total, salvo que la prioridad de este carro sea domingo.`,
       `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL solo incluye letra/recargo/cierre + ese un ítem.`,
@@ -1207,14 +1211,21 @@ export async function procesarPagoComprobante(opts: {
       const estPago = await estadoCuentaContrato(resolucion.contratoId);
       if (estPago) {
         const cobroPago = await cobroHoyContrato(estPago);
-        if (montoComp > cobroPago.totalCobrarHoy + 0.05) {
+        const fechaPagoExcedente =
+          comprobante.fecha && /^\d{4}-\d{2}-\d{2}$/.test(comprobante.fecha)
+            ? comprobante.fecha
+            : hoyPanama();
+        const sabadoSobreLetra =
+          esSabado(fechaPagoExcedente) && montoComp > (Number(estPago.letra) || 0) + 0.05;
+        if (montoComp > cobroPago.totalCobrarHoy + 0.05 || sabadoSobreLetra) {
           const tieneConcepto =
             cobroPago.acuerdoSaldo > 0.009 ||
             (estPago.domingoSaldo ?? 0) > 0.009 ||
             cobroPago.lineas.some((l) => /\(pendiente\)/i.test(l.etiqueta));
-          notaExcedente = tieneConcepto
-            ? MARCA_EXCEDENTE_SIN_CONCEPTO
-            : "EXCEDENTE: pago adelantado de letra diaria";
+          notaExcedente =
+            sabadoSobreLetra || tieneConcepto
+              ? `${MARCA_EXCEDENTE_SIN_CONCEPTO}${sabadoSobreLetra ? " SABADO: preguntar destino del excedente (domingo adelantado o letra siguiente)." : ""}`
+              : "EXCEDENTE: pago adelantado de letra diaria";
         }
       }
     } catch (e) {

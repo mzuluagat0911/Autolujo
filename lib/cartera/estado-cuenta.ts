@@ -320,8 +320,9 @@ function armar(
   const carro = c.vehiculo?.numero ?? "—";
   const emp = c.vehiculo?.empresa ?? null;
 
-  // Crédito en saldo (neto con la cuota de hoy) → cuotas por delante.
-  const netoConHoy = cifras.saldoVista + cifras.faltaHoy;
+  // Crédito de LETRA (el domingo reservado no cuenta como adelanto).
+  const reservadoDomingo = esDomingo(extra.hoy) ? 0 : cifras.domingoSaldo;
+  const netoConHoy = cifras.saldoVista - reservadoDomingo + cifras.faltaHoy;
   const credito = Math.max(-netoConHoy, 0);
   const diasPorCredito = cifras.letra > 0 ? Math.floor(credito / cifras.letra) : 0;
   const diasPorPagoFuturo = Math.max(0, Math.floor(Number(extra.diasPagoFuturo) || 0));
@@ -763,15 +764,41 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
   return out;
 }
 
-/** Suma de cargos DOMINGOS por contrato. No es letra. */
+function abonoDomingoDePago(p: {
+  monto: number;
+  rubro?: string | null;
+  asignaciones?: unknown;
+}): number {
+  const raw = p.asignaciones as
+    | { asignaciones?: { etiqueta?: string; aplicado?: number }[] }
+    | { etiqueta?: string; aplicado?: number }[]
+    | null
+    | undefined;
+  const lineas = Array.isArray(raw) ? raw : (raw?.asignaciones ?? []);
+  const marcado = lineas
+    .filter((a) => /\bdomingo\b/i.test(a.etiqueta ?? ""))
+    .reduce((s, a) => s + (Number(a.aplicado) || 0), 0);
+  if (marcado > 0.009) return marcado;
+  if (p.rubro === "domingo") return Number(p.monto) || 0;
+  return 0;
+}
+
+/** Domingo que SIGUE debiéndose. Cargos DOMINGOS menos lo que el cliente pidió abonar ahí. */
 async function domingoPorContrato(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
-  const { data } = await sb
-    .from("cargos")
-    .select("contrato_id, monto, concepto_codigo, concepto")
-    .in("contrato_id", ids);
+  const [{ data }, pagosRes] = await Promise.all([
+    sb
+      .from("cargos")
+      .select("contrato_id, monto, concepto_codigo, concepto")
+      .in("contrato_id", ids),
+    sb
+      .from("pagos")
+      .select("contrato_id, monto, rubro, asignaciones")
+      .in("contrato_id", ids)
+      .in("estado_conciliacion", ["conciliado", "manual"]),
+  ]);
   for (const g of (data ?? []) as {
     contrato_id: string;
     monto: number;
@@ -782,6 +809,19 @@ async function domingoPorContrato(ids: string[]): Promise<Map<string, number>> {
     const texto = (g.concepto ?? "").toLowerCase();
     if (codigo !== "DOMINGOS" && !/\bdomingo\b/.test(texto)) continue;
     out.set(g.contrato_id, (out.get(g.contrato_id) ?? 0) + Number(g.monto || 0));
+  }
+  if (!pagosRes.error) {
+    for (const p of (pagosRes.data ?? []) as {
+      contrato_id: string | null;
+      monto: number;
+      rubro?: string | null;
+      asignaciones?: unknown;
+    }[]) {
+      if (!p.contrato_id || !out.has(p.contrato_id)) continue;
+      const abono = abonoDomingoDePago(p);
+      if (abono <= 0.009) continue;
+      out.set(p.contrato_id, Math.max((out.get(p.contrato_id) ?? 0) - abono, 0));
+    }
   }
   return out;
 }
