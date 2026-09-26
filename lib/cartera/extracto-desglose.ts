@@ -309,11 +309,59 @@ export async function cargosExtraPorContrato(
     m.set(et, (m.get(et) ?? 0) + monto);
     maps.set(f.contrato_id, m);
   }
+  // El cargo de recargo queda en el ledger por el monto original. Si un pago
+  // ya lo asignó (tipo recargo), ese monto no se vuelve a discriminar.
+  const abonoRecargo = await abonoRecargoPorContrato(ids);
   for (const [id, m] of maps) {
-    out.set(
-      id,
-      [...m.entries()].map(([etiqueta, monto]) => ({ etiqueta, monto })),
-    );
+    let abono = abonoRecargo.get(id) ?? 0;
+    const lineas: LineaExtracto[] = [];
+    for (const [etiqueta, monto] of m) {
+      let queda = monto;
+      if (abono > 0.009 && esEtiquetaRecargo(etiqueta)) {
+        const toma = Math.min(queda, abono);
+        queda = Math.round((queda - toma) * 100) / 100;
+        abono = Math.round((abono - toma) * 100) / 100;
+      }
+      if (queda > 0.009) lineas.push({ etiqueta, monto: queda });
+    }
+    if (lineas.length > 0) out.set(id, lineas);
+  }
+  return out;
+}
+
+function esEtiquetaRecargo(etiqueta: string): boolean {
+  return /recargo|por no pagar/i.test(etiqueta);
+}
+
+function lineasDeAsignaciones(
+  raw: unknown,
+): { tipo?: string; etiqueta?: string; aplicado?: number }[] {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object" && Array.isArray((raw as { asignaciones?: unknown }).asignaciones)) {
+    return (raw as { asignaciones: { tipo?: string; etiqueta?: string; aplicado?: number }[] }).asignaciones;
+  }
+  return [];
+}
+
+async function abonoRecargoPorContrato(ids: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("pagos")
+    .select("contrato_id, asignaciones")
+    .in("contrato_id", ids)
+    .in("estado_conciliacion", ["conciliado", "manual"]);
+  for (const p of (data ?? []) as { contrato_id: string | null; asignaciones: unknown }[]) {
+    if (!p.contrato_id) continue;
+    let suma = 0;
+    for (const a of lineasDeAsignaciones(p.asignaciones)) {
+      const tipo = (a.tipo ?? "").toLowerCase();
+      if (tipo === "recargo" || esEtiquetaRecargo(a.etiqueta ?? "")) {
+        suma += Math.max(Number(a.aplicado) || 0, 0);
+      }
+    }
+    if (suma > 0.009) out.set(p.contrato_id, (out.get(p.contrato_id) ?? 0) + suma);
   }
   return out;
 }
