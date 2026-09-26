@@ -659,6 +659,12 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     fecha,
     asignaciones: resultado.asignaciones,
   });
+  await asegurarCargoRecargoDelPago({
+    contratoId,
+    pagoId,
+    fecha,
+    asignaciones: resultado.asignaciones,
+  });
 
   if (dest) {
     const interior = resultado.asignaciones
