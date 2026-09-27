@@ -192,7 +192,7 @@ export function armarExtractoDiario(
       etiqueta: cobrando ? etiquetaBase : `${etiquetaBase} (pendiente)`,
       monto: faltaAcuerdo,
     });
-  } else if (acuerdoHoy > 0.009 || saldoAcuerdo > 0.009) {
+  } else if (!hoyEsDomingo && (acuerdoHoy > 0.009 || saldoAcuerdo > 0.009)) {
     out.push({
       etiqueta:
         saldoAcuerdo > 0.009

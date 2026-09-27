@@ -21,8 +21,10 @@
 //
 // 4) DOMINGO:
 //    Lun–sáb: aviso, no suma (salvo la tajada si gana el cupo lun–vie).
-//    Domingo: se cobra el impago (letra atrasada + una tajada del balde
-//    + acuerdo de hoy). Al día → $0, no se abre cuota nueva.
+//    Domingo: tajada del balde + letra atrasada + acuerdo atrasado
+//    (cuota del día anterior sin pagar) + acuerdo de domingo
+//    (frecuencia domingo, o frecuencia día con cuota domingo puesta).
+//    La cuota diaria del acuerdo no se cobra el domingo. Al día → $0.
 //
 // Árbol de un pago: recargo → ese concepto → letra de hoy → días siguientes
 // (acuerdo de ese día, luego la letra), hasta donde alcance.

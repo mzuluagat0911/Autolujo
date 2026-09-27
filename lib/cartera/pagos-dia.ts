@@ -213,6 +213,80 @@ export function abonoAcuerdoQueCubreHoy(opts: {
   return cubreHoy;
 }
 
+/**
+ * Cuota del día anterior que sigue sin pagar.
+ * Un abono de hoy antes de las 9 la cubre primero. Uno después de las 9
+ * no se resta aquí: baja la cuota de hoy por el abono que cubre el día.
+ */
+export function atrasoAcuerdoRestante(opts: {
+  fechaHoy: string;
+  cuotaAyer: number;
+  abonoAyer: number;
+  pagosHoy: { pagadoAt: string; aplicado: number }[];
+}): number {
+  let hueco = Math.max(Math.round((opts.cuotaAyer - opts.abonoAyer) * 100) / 100, 0);
+  const ordered = [...opts.pagosHoy].sort((a, b) => a.pagadoAt.localeCompare(b.pagadoAt));
+  for (const p of ordered) {
+    const queda = Math.max(Number(p.aplicado) || 0, 0);
+    if (queda <= 0.009 || hueco <= 0.009) continue;
+    const cuando = partesPagoPanama(p.pagadoAt);
+    if (cuando.fecha === opts.fechaHoy && cuando.hora < HORA_EXTRACTO) {
+      const toma = Math.min(queda, hueco);
+      hueco = Math.round((hueco - toma) * 100) / 100;
+    }
+  }
+  return hueco;
+}
+
+/** Domingo: atraso de acuerdo por contrato (cuota de ayer aún abierta). */
+export async function atrasoAcuerdoPorContrato(
+  fecha: string,
+  acuerdos: Map<string, AcuerdoActivo[]>,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (acuerdos.size === 0) return out;
+  const ayer = sumarDias(fecha, -1);
+  const sb = createServerSupabase();
+  const { desde } = rangoDiaPanama(ayer);
+  const { hasta } = rangoDiaPanama(fecha);
+  const { data, error } = await sb
+    .from("pagos")
+    .select("contrato_id, pagado_at, asignaciones")
+    .in("contrato_id", [...acuerdos.keys()])
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .gte("pagado_at", desde.toISOString())
+    .lt("pagado_at", hasta.toISOString());
+  if (error) return out;
+  const porId = new Map<string, { ayer: number; hoy: { pagadoAt: string; aplicado: number }[] }>();
+  for (const p of (data ?? []) as {
+    contrato_id: string | null;
+    pagado_at: string;
+    asignaciones: unknown;
+  }[]) {
+    if (!p.contrato_id) continue;
+    const aplicado = aplicadoAcuerdoDe(p.asignaciones);
+    if (aplicado <= 0.009) continue;
+    const slot = porId.get(p.contrato_id) ?? { ayer: 0, hoy: [] };
+    const dia = partesPagoPanama(p.pagado_at).fecha;
+    if (dia === ayer) slot.ayer = Math.round((slot.ayer + aplicado) * 100) / 100;
+    else if (dia === fecha) slot.hoy.push({ pagadoAt: p.pagado_at, aplicado });
+    porId.set(p.contrato_id, slot);
+  }
+  for (const [id, lista] of acuerdos) {
+    const cuotaAyer = acuerdoHoyDe(lista, ayer);
+    if (cuotaAyer <= 0.009) continue;
+    const slot = porId.get(id) ?? { ayer: 0, hoy: [] };
+    const atraso = atrasoAcuerdoRestante({
+      fechaHoy: fecha,
+      cuotaAyer,
+      abonoAyer: slot.ayer,
+      pagosHoy: slot.hoy,
+    });
+    if (atraso > 0.009) out.set(id, atraso);
+  }
+  return out;
+}
+
 function aplicadoAcuerdoDe(raw: unknown): number {
   return parseAsignacionesPago(raw)
     .filter((a) => a.tipo === "acuerdo")

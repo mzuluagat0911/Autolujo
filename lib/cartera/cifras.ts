@@ -113,8 +113,9 @@ export function calcularCifras(e: EntradaCifras): Cifras {
       : null;
 
   // ── Domingo ─────────────────────────────────────────────────────────────
-  // Se cobra el impago: letra atrasada + una tajada del balde DOMINGOS
-  // + acuerdo que toca hoy. Al día (nada de eso) → $0: no se abre cuota
+  // Se cobra: letra atrasada + una tajada del balde DOMINGOS
+  // + acuerdo atrasado o de domingo (ya viene en faltaAcuerdo).
+  // Al día (nada de eso) → $0: no se abre cuota
   // de domingo nueva. El crédito de letra no achica la tajada
   // (G51: pot $55 = $90−$35 → se pide la tajada, no $55).
   if (hoyEsDomingo) {

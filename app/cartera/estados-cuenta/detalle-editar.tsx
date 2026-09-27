@@ -81,7 +81,7 @@ function labelCuota(f: FrecuenciaAcuerdo): string {
 function hintFrecuencia(f: FrecuenciaAcuerdo): string | null {
   switch (f) {
     case "dia":
-      return "Lun–sáb cobra la cuota diaria. Si ponés cuota domingo, ese día cobra esa plata (mismo saldo).";
+      return "Lun–sáb cobra la cuota diaria. El domingo cobra la cuota domingo solo si la ponés. En 0, el domingo entra nada más si la cuota de ayer quedó sin pagar.";
     case "domingo":
       return "Solo se suma al cobro los domingos.";
     case "semana":
@@ -239,7 +239,7 @@ export function EditorLedger({
         descripcion: "Acuerdo de pago",
         saldo: 0,
         cuota_diaria: 5,
-        cuota_domingo: 30,
+        cuota_domingo: 0,
         monto_total: 0,
         activo: true,
         frecuencia: "dia",

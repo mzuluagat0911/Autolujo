@@ -98,9 +98,10 @@ export function tocaAcuerdoHoy(a: AcuerdoActivo, fecha: string): boolean {
 /**
  * Lo que toca pagar HOY de un acuerdo, sin pasarse del saldo que queda.
  *
- * En `dia`: lun–sáb usa cuota_diaria; el domingo usa cuota_domingo si está
- * puesta, si no cae a la diaria (compatibilidad). Así un solo acuerdo cubre
- * “$5 diario + $30 domingo” sobre el mismo saldo.
+ * En `dia`: lun–sáb usa cuota_diaria. El domingo NO cobra esa diaria.
+ * Cobra cuota_domingo solo si está puesta (acuerdo de domingo sobre el
+ * mismo saldo). Si está en 0, el domingo no abre cuota nueva: el atraso
+ * del día anterior lo suma `programadoAcuerdoDe`.
  */
 export function cuotaAcuerdoHoy(a: AcuerdoActivo, fecha: string): number {
   const saldo = Math.max(Number(a.saldo) || 0, 0);
@@ -111,7 +112,7 @@ export function cuotaAcuerdoHoy(a: AcuerdoActivo, fecha: string): number {
 
   if (freq === "dia") {
     const q = esDomingo(fecha)
-      ? Number(a.cuota_domingo) || Number(a.cuota_diaria) || 0
+      ? Number(a.cuota_domingo) || 0
       : Number(a.cuota_diaria) || 0;
     return Math.min(Math.max(q, 0), saldo);
   }
@@ -129,6 +130,22 @@ export function cuotaAcuerdoHoy(a: AcuerdoActivo, fecha: string): number {
 
 export function acuerdoHoyDe(acuerdos: AcuerdoActivo[], fecha: string): number {
   return acuerdos.reduce((s, a) => s + cuotaAcuerdoHoy(a, fecha), 0);
+}
+
+/**
+ * Cuota de acuerdo que entra al cobro.
+ * `atraso` es la cuota del día anterior que sigue sin pagar (domingo).
+ * El total no pasa del saldo del plan.
+ */
+export function programadoAcuerdoDe(
+  acuerdos: AcuerdoActivo[],
+  fecha: string,
+  atraso = 0,
+): number {
+  const fresco = acuerdoHoyDe(acuerdos, fecha);
+  const saldo = acuerdos.reduce((s, a) => s + Math.max(Number(a.saldo) || 0, 0), 0);
+  const bruto = Math.round((fresco + Math.max(atraso, 0)) * 100) / 100;
+  return Math.min(Math.max(bruto, 0), saldo);
 }
 
 /** Texto corto para el panel / hints. */

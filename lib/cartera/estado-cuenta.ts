@@ -20,9 +20,10 @@ import {
   contratosQueCubrieronElDia,
   aplicadoArregloHoyContrato,
   aplicadoArregloHoyPorContrato,
+  atrasoAcuerdoPorContrato,
 } from "./pagos-dia";
 import { ultimoDiaDevengado } from "./devengo";
-import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
+import { programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
 import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
 import { tratamientoCliente } from "./tratamiento";
 import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
@@ -602,7 +603,11 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   }
 
   const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
-  const programadoAcuerdo = acuerdoHoyDe(acuerdosMap.get(contratoId) ?? [], hoy);
+  const listaAcuerdo = acuerdosMap.get(contratoId) ?? [];
+  const atrasoAcuerdo = esDomingo(hoy)
+    ? (await atrasoAcuerdoPorContrato(hoy, new Map([[contratoId, listaAcuerdo]]))).get(contratoId) ?? 0
+    : 0;
+  const programadoAcuerdo = programadoAcuerdoDe(listaAcuerdo, hoy, atrasoAcuerdo);
   const acuerdoHoy = Math.max(programadoAcuerdo, arregloAplicado);
   // Lo que aún falta del arreglo hoy (no lo ya abonado). El arreglo NO vive en la letra.
   const faltaAcuerdo = Math.max(programadoAcuerdo - arregloAplicado, 0);
@@ -1007,6 +1012,10 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     domingoPorContrato(idsAlcance),
   ]);
 
+  const atrasoMap = esDomingo(hoy)
+    ? await atrasoAcuerdoPorContrato(hoy, acuerdosMap)
+    : new Map<string, number>();
+
   const saldoMap = new Map<string, number>();
   for (const s of (saldos.data ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {
     saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
@@ -1018,7 +1027,11 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     if (c.cliente && c.cliente_id) {
       c = { ...c, cliente: { ...c.cliente, genero: genMap.get(c.cliente_id) ?? null } };
     }
-    const programadoAcuerdo = acuerdoHoyDe(acuerdosMap.get(c.id) ?? [], hoy);
+    const programadoAcuerdo = programadoAcuerdoDe(
+      acuerdosMap.get(c.id) ?? [],
+      hoy,
+      atrasoMap.get(c.id) ?? 0,
+    );
     const arregloAplicado = arregloMap.get(c.id) ?? 0;
     const acuerdoHoy = Math.max(programadoAcuerdo, arregloAplicado);
     const faltaAcuerdo = Math.max(programadoAcuerdo - arregloAplicado, 0);
@@ -1120,8 +1133,8 @@ export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
 }
 
 /**
- * Domingo: se cobra si hay impago (letra atrasada, domingo pendiente o
- * acuerdo que aún falta hoy). Al día → no se cobra, aunque el contrato
+ * Domingo: se cobra si hay tajada de domingo, letra atrasada, acuerdo
+ * atrasado o acuerdo de domingo. Al día → no se cobra, aunque el contrato
  * tenga cobra_domingo.
  */
 export function audienciaDomingo(e: EstadoCuenta): boolean {

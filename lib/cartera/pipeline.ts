@@ -314,13 +314,15 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     lineas.push(
       ``,
       `RESUMEN DE LA CUENTA (para "cuánto debo hoy" cobra EXACTAMENTE el total de abajo; no lo recalcules):`,
-      `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${esDomingo(hoyPanama()) ? " HOY ES DOMINGO: cobra solo impagos (letra atrasada, domingo pendiente o acuerdo). Si está al día, el total es $0: no pidas la cuota del domingo." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
+      `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${esDomingo(hoyPanama()) ? " HOY ES DOMINGO: cobra la tajada del domingo, la letra atrasada, un acuerdo atrasado o un acuerdo de domingo. La cuota diaria del acuerdo no entra. Si no hay nada de eso, el total es $0." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
       `- Desglose del extracto: ${cobro.desglose || "(sin líneas)"}.`,
       `- Ítem adicional cobrado hoy: ${extraTxt}.`,
       `- Tarifa de la letra diaria (precio del día, no es el saldo): ${m(est.cuotaHoy)}.`,
       `- Atraso de letra (sin domingo): ${m(est.pendienteAnterior)}.`,
       cobro.acuerdoSaldo > 0.009 || cobro.acuerdoHoy > 0.009
-        ? `- ACUERDO DE PAGO: plan activo, saldo ${m(cobro.acuerdoSaldo)}. Cuota de hoy del acuerdo: ${m(cobro.acuerdoHoy)}. Aún falta hoy: ${m(cobro.faltaAcuerdo)}.${cobro.faltaAcuerdo > 0.009 ? " Eso YA está en el TOTAL si es el ítem del día." : " La cuota de hoy del acuerdo YA está cubierta; el plan sigue (saldo). Mencionalo si pregunta; NO lo vuelvas a sumar al total."}`
+        ? esDomingo(hoyPanama())
+          ? `- ACUERDO DE PAGO: plan activo, saldo ${m(cobro.acuerdoSaldo)}. Lo que entra HOY (atraso o acuerdo de domingo): ${m(cobro.faltaAcuerdo)}.${cobro.faltaAcuerdo > 0.009 ? " Eso YA está dentro del TOTAL. No lo sumes otra vez y no pidas la cuota de lunes a sábado." : " Hoy no se cobra acuerdo: no está atrasado y no es acuerdo de domingo. El saldo del plan se menciona solo si pregunta. NO lo sumes al TOTAL."}`
+          : `- ACUERDO DE PAGO: plan activo, saldo ${m(cobro.acuerdoSaldo)}. Cuota de hoy del acuerdo: ${m(cobro.acuerdoHoy)}. Aún falta hoy: ${m(cobro.faltaAcuerdo)}.${cobro.faltaAcuerdo > 0.009 ? " Eso YA está en el TOTAL si es el ítem del día." : " La cuota de hoy del acuerdo YA está cubierta; el plan sigue (saldo). Mencionalo si pregunta; NO lo vuelvas a sumar al total."}`
         : `- ACUERDO DE PAGO: no tiene plan activo.`,
       est.domingoSaldo > 0.009
         ? esDomingo(hoyPanama())

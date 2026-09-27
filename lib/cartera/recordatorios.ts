@@ -6,8 +6,8 @@
 //
 // - 1:00 p.m.: solo quien debe MÁS DE UNA cuota (no solo la de hoy).
 // - 5:30 p.m.: todos los que aún deben hoy y no han pagado.
-// - Domingo: la cola base (`estadosCuentaHoy`) solo incluye impagos
-//   (letra atrasada, domingo pendiente o acuerdo). Al día no entra.
+// - Domingo: la cola base (`estadosCuentaHoy`) solo incluye tajada de
+//   domingo, letra atrasada, acuerdo atrasado o acuerdo de domingo. Al día no entra.
 // Quien ya pagó o mandó comprobante NO recibe recordatorio: eso lo garantiza
 // `estadosCuentaHoy()`, que ya los excluye.
 //
