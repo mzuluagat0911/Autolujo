@@ -283,13 +283,15 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `- Si paga después del corte se le suman ${m(est.penalidad)} (pierde el descuento de ESE día).`,
     `- Días atrasados sin pagar quedan a tarifa plena (${m(tarifaPlenaDia)} por día, no ${m(est.letra)}).`,
     `- Domingos: ${domingos}.`,
-    est.cuotaHoy > 0
-      ? `- Hoy SÍ corre cuota (${m(est.cuotaHoy)}).`
-      : `- Hoy NO corre cuota (día libre para este contrato).`,
+    esDomingo(hoyPanama())
+      ? `- Hoy es domingo: NO corre letra nueva. La tarifa (${m(est.cuotaHoy)}) es el precio del día, no se suma.`
+      : est.cuotaHoy > 0
+        ? `- Hoy SÍ corre cuota (${m(est.cuotaHoy)}).`
+        : `- Hoy NO corre cuota (día libre para este contrato).`,
     est.pagoHoy
       ? est.pagoPuntual
         ? `- Este cliente YA cubrió lo de hoy PUNTUAL (antes de las 7:00 p.m.), posiblemente en varios abonos. Eso YA está descontado del saldo.`
-        : `- Este cliente abonó hoy ${m(est.pagadoHoy)} pero NO cubrió lo del día (cuota ${m(est.cuotaHoy)}${cobro.faltaAcuerdo > 0.009 ? ` + arreglo ${m(cobro.faltaAcuerdo)}` : ""}). Pierde el descuento de $${est.penalidad} de ESE día. El resto se arrastra.`
+        : `- Este cliente abonó hoy ${m(est.pagadoHoy)} pero NO cubrió el TOTAL A PAGAR HOY. Pierde el descuento de $${est.penalidad} de ESE día. El resto se arrastra. No armes otra cifra.`
       : est.pendiente
         ? `- Este cliente mandó comprobante hoy por ${m(est.pendienteMonto)} y está EN VALIDACIÓN. AÚN NO está descontado del saldo. NO le digas que ya pagó ni que queda al día.`
         : `- Hoy NO tiene ningún pago validado todavía.`,
@@ -437,7 +439,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         ``,
         `CARGOS EN LA CUENTA aparte de las cuotas diarias (para cuando pregunte "¿por qué debo tanto?" o discuta un cobro):`,
         ...extras.map((x) => `- ${m(x.monto)} · ${x.concepto} · ${fechaConDia(x.fecha)}`),
-        `Esos cargos NO son la letra del día. El domingo se lista; solo entra al total si este carro lo tiene como prioridad de abono.`,
+        `Esos cargos NO se suman al TOTAL de arriba. Sirven para explicar si preguntan.`,
         `Si el cliente pregunta qué compone su saldo, explícaselo con este detalle. No lo enumeres si no lo pide.`,
       );
     }
@@ -446,15 +448,23 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       ``,
       `REGLA DE COBRO DIARIO (OBLIGATORIA — “cuánto debo HOY” / extracto):`,
       `- La cifra oficial es TOTAL A PAGAR HOY de arriba (${m(cobro.totalCobrarHoy)}) y su desglose. No inventes otra.`,
-      `- SIEMPRE se cobra: letra del día + saldo anterior de letra + recargo/cierre de semana si aplica.`,
-      `- ÁRBOL DE UN PAGO (estricto, por carro): 1) recargo por no pago  2) un solo concepto más. Si el acuerdo tiene saldo, ESE es el concepto hasta que quede en cero: mantenimiento y lo demás se listan pendientes y no entran al total. Si no hay acuerdo, el de menor valor (o el que el carro eligió)  3) letra de hoy  4) si sobra y NO es sábado (o el cliente ya dijo que es adelanto de letra): días siguientes, acuerdo de ese día y luego la letra.`,
+      esDomingo(hoyPanama())
+        ? `- HOY ES DOMINGO. No se abre letra nueva. El TOTAL solo puede traer tajada del domingo, letra atrasada, acuerdo atrasado o acuerdo de domingo. La cuota diaria del acuerdo no entra. Tener saldo de acuerdo no basta.`
+        : `- Lun–sáb se cobra: letra del día + saldo anterior de letra + recargo/cierre si aplica, más un solo concepto. Si el acuerdo tiene saldo, ese es el concepto hasta que quede en cero.`,
+      esDomingo(hoyPanama())
+        ? `- ÁRBOL DE UN PAGO hoy: recargo, luego lo que ya está en el TOTAL (tajada, letra atrasada, acuerdo atrasado o de domingo). No armes un concepto nuevo.`
+        : `- ÁRBOL DE UN PAGO (estricto, por carro): 1) recargo por no pago  2) un solo concepto más. Si el acuerdo tiene saldo, ESE es el concepto hasta que quede en cero: mantenimiento y lo demás se listan pendientes y no entran al total. Si no hay acuerdo, el de menor valor (o el que el carro eligió)  3) letra de hoy  4) si sobra y NO es sábado (o el cliente ya dijo que es adelanto de letra): días siguientes, acuerdo de ese día y luego la letra.`,
       `- Si el cliente NOMBRA el destino del excedente y ese concepto existe (domingo, acuerdo, etc.), SE APLICA AHÍ. No lo dejes en letra. Confírmalo y marca pasar_a_humano con motivo "Excedente a <concepto>".`,
       esSabado(hoyPanama())
         ? `- HOY ES SÁBADO: si el pago es mayor que la letra diaria (${m(est.letra)}), PREGUNTA a dónde va el excedente antes de asignarlo. Lo habitual es el domingo por adelantado, o la letra del lunes. Si no contesta, queda sin concepto.`
         : `- Sábado: si ese día el pago supera la letra diaria, se pregunta el destino del excedente (domingo adelantado o letra siguiente). No se asume.`,
       `- Si tiene plan de acuerdo con saldo pero la cuota de hoy YA está pagada: dilo (saldo del plan), NO lo sumes otra vez.`,
-      `- El domingo no entra al total, salvo que la prioridad de este carro sea domingo.`,
-      `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL solo incluye letra/recargo/cierre + ese un ítem.`,
+      esDomingo(hoyPanama())
+        ? `- La tajada YA está en el TOTAL si el desglose trae una línea con $ de domingo. El resto del balde es aviso. No lo sumes encima.`
+        : `- Lun–sáb el domingo no entra al total, salvo que el desglose lo traiga con $ como el concepto del día.`,
+      esDomingo(hoyPanama())
+        ? `- Puedes listar lo demás si preguntan. El TOTAL del domingo no se rearma.`
+        : `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL solo incluye letra/recargo/cierre + ese un ítem.`,
       `- NO sumes mantenimiento + acuerdos + domingo el mismo día en el total de hoy.`,
       `- NUNCA inventes una línea “abono” con lo pagado hoy: eso ya está descontado.`,
       `- PAGO MAYOR AL TOTAL: si paga más de ${m(cobro.totalCobrarHoy)}, pregunta a dónde va el excedente.`,
