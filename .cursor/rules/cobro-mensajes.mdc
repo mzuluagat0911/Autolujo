@@ -1,0 +1,13 @@
+---
+description: Antes de responder sobre cobro o mensajes, leer las reglas del agente y no inventar montos
+alwaysApply: true
+---
+
+# Cobro y mensajes
+
+Cuando pregunten cuánto se cobra, cómo queda un mensaje, un domingo, un extracto o el saldo de un carro:
+
+1. Lee primero `lib/cartera/cobro-hoy.ts`, el bloque de reglas de `lib/ai/agente.ts` y el resumen que arma `lib/cartera/pipeline.ts`. Esa es la fuente. No armes el monto desde el saldo crudo ni desde un script.
+2. El único "a pagar hoy" es el TOTAL del extracto (`cobroHoy`). No lo partas en cuota chica + atraso, y no le sumes otra cuota.
+3. Domingo: se cobra el impago que ya está (letra atrasada, una tajada del domingo pendiente, acuerdo que toca). Al día = $0. No se abre cuota de domingo nueva ni se cobra el balde entero.
+4. Si el código dice otra cosa que estas reglas, dilo antes de dar el número. No entregues una proyección que las contradiga.
