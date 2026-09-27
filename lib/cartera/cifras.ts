@@ -112,17 +112,17 @@ export function calcularCifras(e: EntradaCifras): Cifras {
       ? Number(e.terminos.cuota_domingo ?? 0) || null
       : null;
 
-  // ── Domingo CON balde DOMINGOS ──────────────────────────────────────────
-  // Entrada = N × cuota_domingo. El árbol cobra UNA tajada del día
-  // (= cuota_domingo), no el pot entero. El resto queda pendiente (aviso).
-  // No sumar otra renta encima ni dejar que el crédito de letra achique
-  // el cobro (G51: pot $55 = $90−$35).
-  if (hoyEsDomingo && domingoEnSaldo > 0.009) {
-    const tajada = Math.min(
-      cuotaHoy > 0.009 ? cuotaHoy : domingoEnSaldo,
-      domingoEnSaldo,
-    );
-    const bruto = tajada + faltaAcuerdo;
+  // ── Domingo ─────────────────────────────────────────────────────────────
+  // Se cobra el impago: letra atrasada + una tajada del balde DOMINGOS
+  // + acuerdo que toca hoy. Al día (nada de eso) → $0: no se abre cuota
+  // de domingo nueva. El crédito de letra no achica la tajada
+  // (G51: pot $55 = $90−$35 → se pide la tajada, no $55).
+  if (hoyEsDomingo) {
+    const tajada = domingoEnSaldo > 0.009
+      ? Math.min(cuotaHoy > 0.009 ? cuotaHoy : domingoEnSaldo, domingoEnSaldo)
+      : 0;
+    const letraImpaga = Math.max(saldoVista - domingoEnSaldo, 0);
+    const bruto = tajada + letraImpaga + faltaAcuerdo;
     const totalHoy = Math.max(bruto + recargo, 0);
     const totalHoyTarde =
       e.corte || e.pagoPuntual || pendiente ? totalHoy : Math.max(bruto + recargoSiTarda, 0);
@@ -130,7 +130,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     const lineas = armarLineas({
       acuerdoHoy: faltaAcuerdo,
       cuotaHoy: 0,
-      pendienteAnterior: 0,
+      pendienteAnterior: letraImpaga,
       recargo,
       pagadoHoy: 0,
       // Lo que aún quedará del balde después de la tajada de hoy.
@@ -145,7 +145,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
       acuerdoHoy,
       pagadoHoy,
       faltaAcuerdo,
-      pendienteAnterior: 0,
+      pendienteAnterior: letraImpaga,
       saldoVista,
       faltaHoy: 0,
       cuenta: Math.max(bruto, 0),

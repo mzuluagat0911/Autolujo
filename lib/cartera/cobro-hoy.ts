@@ -19,12 +19,10 @@
 //    el que tenga el carro (prioridad_abono) o, si no, el de menor valor.
 //    Los demás se listan “(pendiente)” y no suman.
 //
-// 4) DOMINGO (árbol — fuente de verdad):
-//    Entrada = N × cuota_domingo. Se cobra de a UNA tajada, nunca el pot entero.
-//    - Sábado (mañana = domingo): solo AVISO. No suma.
-//    - Domingo: la tajada ES el cobro del día (reemplaza la letra).
-//    - Lun–vie: si el balde sigue, la tajada entra al total como el un concepto
-//      (letra + domingo), salvo que otro concepto gane el cupo.
+// 4) DOMINGO:
+//    Lun–sáb: aviso, no suma (salvo la tajada si gana el cupo lun–vie).
+//    Domingo: se cobra el impago (letra atrasada + una tajada del balde
+//    + acuerdo de hoy). Al día → $0, no se abre cuota nueva.
 //
 // Árbol de un pago: recargo → ese concepto → letra de hoy → días siguientes
 // (acuerdo de ese día, luego la letra), hasta donde alcance.

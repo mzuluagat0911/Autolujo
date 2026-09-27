@@ -140,9 +140,9 @@ export function armarExtractoDiario(
   // Solo descontar lo embebido en pendienteAnterior (anti-duplicado real).
   cuenta = Math.max(cuenta - embebidosSum, 0);
 
-  // Domingo calendario: cifras ya trajo la tajada; no etiquetar “cuenta”.
+  // Domingo: la tajada va en su línea. “Cuenta” queda solo la letra impaga.
   if (domingoComoBase) {
-    cuenta = 0;
+    cuenta = Math.max(cuenta - tajada, 0);
   }
 
   const lineasBase: LineaExtracto[] = [];

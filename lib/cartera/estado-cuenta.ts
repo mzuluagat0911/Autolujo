@@ -1120,15 +1120,13 @@ export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
 }
 
 /**
- * Domingos solo se escribe a quien:
- * - arrastra deuda del sábado hacia atrás, o
- * - tiene compromiso de domingo (cuota dominical, cargo domingo, o arreglo del día).
- * Quien está al día y sin domingo pactado no recibe mensaje.
+ * Domingo: se cobra si hay impago (letra atrasada, domingo pendiente o
+ * acuerdo que aún falta hoy). Al día → no se cobra, aunque el contrato
+ * tenga cobra_domingo.
  */
 export function audienciaDomingo(e: EstadoCuenta): boolean {
   if ((e.pendienteAnterior ?? 0) > 0.009) return true;
-  if ((e.acuerdoHoy ?? 0) > 0.009) return true;
-  if (e.cobraDomingo && (e.cuotaHoy > 0.009 || (e.cuotaDomingo ?? 0) > 0.009)) return true;
+  if ((e.faltaAcuerdo ?? 0) > 0.009) return true;
   if ((e.domingoSaldo ?? 0) > 0.009) return true;
   if (e.lineas.some((l) => l.monto > 0.009 && /domingo/i.test(l.concepto))) return true;
   return false;

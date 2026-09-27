@@ -215,6 +215,11 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
       res.sinCuota++;
       continue;
     }
+    // Al día el domingo no abre cuota nueva.
+    if (esDomingo(fecha) && (saldoMap.get(c.id) ?? 0) <= 0.009) {
+      res.sinCuota++;
+      continue;
+    }
     // Cumpleaños libre: no se genera cargo si es su cumpleaños, tiene >= 1 mes
     // de permanencia y está al día (sin saldo pendiente al momento del devengo).
     const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;

@@ -314,7 +314,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     lineas.push(
       ``,
       `RESUMEN DE LA CUENTA (para "cuánto debo hoy" cobra EXACTAMENTE el total de abajo; no lo recalcules):`,
-      `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${esDomingo(hoyPanama()) ? " HOY ES DOMINGO: el compromiso de domingo SÍ puede ir en este total si está en el desglose." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
+      `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${esDomingo(hoyPanama()) ? " HOY ES DOMINGO: cobra solo impagos (letra atrasada, domingo pendiente o acuerdo). Si está al día, el total es $0: no pidas la cuota del domingo." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
       `- Desglose del extracto: ${cobro.desglose || "(sin líneas)"}.`,
       `- Ítem adicional cobrado hoy: ${extraTxt}.`,
       `- Tarifa de la letra diaria (precio del día, no es el saldo): ${m(est.cuotaHoy)}.`,
