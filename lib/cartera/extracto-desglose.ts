@@ -14,6 +14,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
 import { esDomingo, hoyPanama, sumarDias } from "./fecha";
+import { tajadaDomingoQueFalta } from "./cifras";
 import {
   candidatosDesdeExtracto,
   elegirExtraDelDia,
@@ -116,7 +117,17 @@ export function armarExtractoDiario(
   const cuotaDom =
     Math.max(Number(e.cuotaDomingo) || 0, 0) ||
     Math.max(Number(e.cuotaHoy) || 0, 0);
-  const tajada = tajadaDomingo({ balde: baldeDomingo, cuotaDomingo: cuotaDom });
+  const pagadoDomingoHoy = Math.max(
+    Number((e as EstadoCuenta & { pagadoDomingoHoy?: number }).pagadoDomingoHoy) || 0,
+    0,
+  );
+  const tajada = hoyEsDomingo
+    ? tajadaDomingoQueFalta({
+        bucketNeto: baldeDomingo,
+        pagadoHoy: pagadoDomingoHoy,
+        cuota: cuotaDom,
+      })
+    : tajadaDomingo({ balde: baldeDomingo, cuotaDomingo: cuotaDom });
 
   // Árbol domingo:
   // - Domingo calendario: tajada = cobro del día (base), resto aviso.

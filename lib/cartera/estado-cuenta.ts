@@ -8,7 +8,7 @@
 // termina dando dos números distintos para lo mismo.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama, pasoCorte, fechaLarga, sumarDias, esDomingo } from "./fecha";
+import { hoyPanama, pasoCorte, fechaLarga, sumarDias, esDomingo, rangoDiaPanama } from "./fecha";
 import type { TerminosCuota } from "./cuota";
 import { calcularCifras, textoDesglose, cubrioCuotaDelDia, type Cifras } from "./cifras";
 import {
@@ -116,6 +116,8 @@ export type EstadoCuenta = Cifras & {
   fecha: string;
   /** Día contable ISO (YYYY-MM-DD) del extracto. */
   hoyIso: string;
+  /** Abono de hoy ya marcado al balde de domingo. */
+  pagadoDomingoHoy?: number;
   templateVars: [string, string, string, string, string];
 };
 
@@ -305,6 +307,7 @@ function armar(
     diasPagoFuturo?: number;
     /** Última fecha futura cubierta por esos pagos. */
     cubiertoHastaPago?: string | null;
+    pagadoDomingoHoy?: number;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -402,6 +405,7 @@ function armar(
     desglose: desgloseOut,
     fecha,
     hoyIso: extra.hoy,
+    pagadoDomingoHoy: extra.pagadoDomingoHoy ?? 0,
     templateVars: [nombre, carro, fecha, desgloseOut, money(cifrasOut.totalHoy)],
   };
 }
@@ -578,7 +582,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   }
   if (!row) return null;
 
-  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos, multasTodas, domingoMap] =
+  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos, multasTodas, domingoMap, pagadoDomingoMap] =
     await Promise.all([
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
     pagoHoyContrato(contratoId, hoy),
@@ -596,6 +600,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     generosDe(row.cliente_id ? [row.cliente_id] : []),
     sb.from("cargos").select("monto, concepto, concepto_codigo").eq("contrato_id", contratoId).eq("tipo", "multa"),
     domingoPorContrato([contratoId]),
+    pagadoDomingoHoyPorContrato([contratoId], hoy),
   ]);
 
   if (row.cliente) {
@@ -633,6 +638,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     sinDevengoRenta: devengadoHasta == null,
     diaLibre: contratoCerrado,
     domingoEnSaldo: domingoMap.get(contratoId) ?? 0,
+    pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
   };
   const cifrasBase = calcularCifras(entrada);
   const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
@@ -698,6 +704,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     cuotasPagadas: cuotas.cuotasPagadas,
     cuotasDebe: cuotas.cuotasDebe,
     recargosAcumulados,
+    pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
   });
 }
 
@@ -863,6 +870,37 @@ function abonoDomingoDePago(p: {
   return 0;
 }
 
+/** Lo abonado hoy al domingo, por contrato. Sirve para no pedir otra tajada el mismo día. */
+async function pagadoDomingoHoyPorContrato(
+  ids: string[],
+  hoy: string,
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const { desde, hasta } = rangoDiaPanama(hoy);
+  const { data, error } = await sb
+    .from("pagos")
+    .select("contrato_id, monto, rubro, asignaciones")
+    .in("contrato_id", ids)
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .gte("pagado_at", desde.toISOString())
+    .lt("pagado_at", hasta.toISOString());
+  if (error) return out;
+  for (const p of (data ?? []) as {
+    contrato_id: string | null;
+    monto: number;
+    rubro?: string | null;
+    asignaciones?: unknown;
+  }[]) {
+    if (!p.contrato_id) continue;
+    const abono = abonoDomingoDePago(p);
+    if (abono <= 0.009) continue;
+    out.set(p.contrato_id, Math.round(((out.get(p.contrato_id) ?? 0) + abono) * 100) / 100);
+  }
+  return out;
+}
+
 /** Domingo que SIGUE debiéndose. Cargos DOMINGOS menos lo que el cliente pidió abonar ahí. */
 async function domingoPorContrato(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
@@ -989,6 +1027,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     genMap,
     cuotasDb,
     domingoMap,
+    pagadoDomingoMap,
   ] = await Promise.all([
     sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual").in("contrato_id", idsAlcance),
     sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE"),
@@ -1010,6 +1049,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     generosDe(clienteIds),
     cuotasPagadasOpcional(idsAlcance),
     domingoPorContrato(idsAlcance),
+    pagadoDomingoHoyPorContrato(idsAlcance, hoy),
   ]);
 
   const atrasoMap = esDomingo(hoy)
@@ -1055,6 +1095,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       hoyYaDevengado,
       sinDevengoRenta: devengadoHasta == null,
       domingoEnSaldo: domingoMap.get(c.id) ?? 0,
+      pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
     };
     const cifrasBase = calcularCifras(entrada);
     const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;
@@ -1097,6 +1138,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       recargosAcumulados,
       diasPagoFuturo: adel?.dias ?? 0,
       cubiertoHastaPago: adel?.hasta ?? null,
+      pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
     });
   });
 }

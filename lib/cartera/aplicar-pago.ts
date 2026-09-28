@@ -5,8 +5,10 @@
 // 3) Letra diaria de hoy.
 // 4) Si sobra: días siguientes, cada uno acuerdo y luego letra,
 //    hasta donde alcance (un día, dos, o acuerdo + parte de la letra).
-//    NUNCA al domingo ni a otro concepto reservado, salvo que el pago
-//    traiga ese rubro (el cliente lo pidió). El saldo es un solo número;
+//    NUNCA al resto del balde de domingo ni a otro concepto reservado, salvo
+//    que el pago traiga ese rubro (el cliente lo pidió). El domingo, la tajada
+//    que el extracto cobró SÍ se aplica al balde, antes que la letra.
+//    El saldo es un solo número;
 //    cifras.ts aparta el domingo para que este sobrante no lo coma.
 //    Sábado: el sobrante NO se adelanta solo. Queda sin concepto hasta que
 //    digan si es domingo, otro concepto, o la letra siguiente.
@@ -16,7 +18,8 @@ import { distribuirPago } from "./rules";
 import { cuotaDeFecha, type TerminosCuota } from "./cuota";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { acuerdoHoyDe, cuotaAcuerdoHoy, type AcuerdoActivo } from "./acuerdo";
-import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual } from "./fecha";
+import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual, esDomingo, rangoDiaPanama } from "./fecha";
+import { tajadaDomingoQueFalta } from "./cifras";
 import { pagoHoyContrato } from "./pagos-dia";
 import type { AsignacionPago, Obligacion, ResultadoPago, TipoObligacion } from "./types";
 import {
@@ -119,6 +122,7 @@ export function obligacionesRestantes(
     pendienteAnterior: number;
     recargoHoy: number;
     cuotaHoy: number;
+    domingoHoy?: number;
   },
   ya: AsignacionPago[],
 ): Obligacion[] {
@@ -146,6 +150,15 @@ export function obligacionesRestantes(
   const cuota = r2(Math.max(base.cuotaHoy - yaAplicado(ya, "cuenta_diaria"), 0));
   if (cuota > 0.009) {
     out.push({ tipo: "cuenta_diaria", prioridad: PRIORIDAD.cuenta_diaria, monto: cuota, etiqueta: ETIQUETA.cuenta_diaria });
+  }
+  const dom = r2(Math.max((base.domingoHoy ?? 0) - yaAplicado(ya, "domingo"), 0));
+  if (dom > 0.009) {
+    out.push({
+      tipo: "domingo",
+      prioridad: 15,
+      monto: dom,
+      etiqueta: ETIQUETA.domingo,
+    });
   }
   return out;
 }
@@ -503,6 +516,71 @@ async function asignacionesDeHoy(
   return out;
 }
 
+function abonoDomingoMarcado(p: {
+  monto: number;
+  rubro?: string | null;
+  asignaciones?: unknown;
+}): number {
+  const raw = p.asignaciones as
+    | { asignaciones?: { etiqueta?: string; tipo?: string; aplicado?: number }[] }
+    | { etiqueta?: string; tipo?: string; aplicado?: number }[]
+    | null
+    | undefined;
+  const lineas = Array.isArray(raw) ? raw : (raw?.asignaciones ?? []);
+  const marcado = lineas
+    .filter((a) => a.tipo === "domingo" || /\bdomingo\b/i.test(a.etiqueta ?? ""))
+    .reduce((s, a) => s + (Number(a.aplicado) || 0), 0);
+  if (marcado > 0.009) return Math.round(marcado * 100) / 100;
+  if (p.rubro === "domingo") return Math.max(Number(p.monto) || 0, 0);
+  return 0;
+}
+
+/** Tajada de domingo que este pago todavía puede cubrir. */
+async function tajadaDomingoAbierta(
+  contratoId: string,
+  fecha: string,
+  excluirPagoId: string,
+  cuota: number,
+): Promise<number> {
+  const sb = createServerSupabase();
+  const { desde, hasta } = rangoDiaPanama(fecha);
+  const [{ data: cargos }, { data: pagos }] = await Promise.all([
+    sb.from("cargos").select("monto, concepto, concepto_codigo").eq("contrato_id", contratoId),
+    sb
+      .from("pagos")
+      .select("id, monto, rubro, asignaciones, pagado_at")
+      .eq("contrato_id", contratoId)
+      .in("estado_conciliacion", ["conciliado", "manual"]),
+  ]);
+  let bucket = 0;
+  for (const c of (cargos ?? []) as { monto: number; concepto: string | null; concepto_codigo: string | null }[]) {
+    const codigo = (c.concepto_codigo ?? "").toUpperCase();
+    if (codigo === "DOMINGOS" || /\bdomingo\b/i.test(c.concepto ?? "")) bucket += Number(c.monto) || 0;
+  }
+  let pagadoHoy = 0;
+  let pagadoTotal = 0;
+  for (const p of (pagos ?? []) as {
+    id: string;
+    monto: number;
+    rubro?: string | null;
+    asignaciones?: unknown;
+    pagado_at: string;
+  }[]) {
+    if (p.id === excluirPagoId) continue;
+    const abono = abonoDomingoMarcado(p);
+    if (abono <= 0.009) continue;
+    pagadoTotal += abono;
+    const t = new Date(p.pagado_at).getTime();
+    if (t >= desde.getTime() && t < hasta.getTime()) pagadoHoy += abono;
+  }
+  const neto = Math.max(Math.round((bucket - pagadoTotal) * 100) / 100, 0);
+  return tajadaDomingoQueFalta({
+    bucketNeto: neto,
+    pagadoHoy: Math.round(pagadoHoy * 100) / 100,
+    cuota,
+  });
+}
+
 /**
  * Parte un pago que YA cuenta (conciliado o manual) y baja el saldo del arreglo.
  * Idempotente: si ya tiene `asignaciones`, no vuelve a tocar los acuerdos.
@@ -625,6 +703,11 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     }
   }
   const cobraAcuerdoHoy = !preferencia || preferencia === "acuerdo";
+  const hoyEsDomingo = esDomingo(fecha);
+  const letraDiaria = Math.max(Number(terminos.letra_diaria) || 0, 0);
+  const domingoHoy = hoyEsDomingo
+    ? await tajadaDomingoAbierta(contratoId, fecha, pagoId, Number(terminos.cuota_domingo) || 0)
+    : 0;
   // Multa de “no pago” = solo letra; el acuerdo no entra a la meta puntual.
   const meta = cuotaHoy;
   const pagoPuntualAntes = cubrioCuotaDelDia(pagadoPuntualAntes, meta);
@@ -662,7 +745,8 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       acuerdos: acuerdosBase,
       pendienteAnterior: cifras.pendienteAnterior,
       recargoHoy: cifras.recargo,
-      cuotaHoy,
+      cuotaHoy: hoyEsDomingo ? 0 : cuotaHoy,
+      domingoHoy,
     },
     otras,
   );
@@ -722,7 +806,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
         a.id === plan.id ? { ...a, saldo: r2(Number(a.saldo) - ya - toma) } : a,
       );
       const cola = resto > 0.009
-        ? adelantarDias({ sobrante: resto, acuerdos: restantes, letra: cuotaHoy, desde: fecha })
+        ? adelantarDias({ sobrante: resto, acuerdos: restantes, letra: letraDiaria, desde: fecha })
         : { asignaciones: [] as AsignacionPago[], sobrante: 0, aplicado: 0 };
       resultado = {
         asignaciones: [
@@ -751,7 +835,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     const adelanto = adelantarDias({
       sobrante: resultado.sobrante,
       acuerdos,
-      letra: cuotaHoy,
+      letra: letraDiaria,
       desde: fecha,
     });
     if (adelanto.aplicado > 0.009) {

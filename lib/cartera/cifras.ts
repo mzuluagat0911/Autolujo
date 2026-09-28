@@ -63,6 +63,8 @@ export type EntradaCifras = {
    * No es letra: se aparta del total y solo se lista como pendiente.
    */
   domingoEnSaldo?: number;
+  /** Lo ya abonado HOY al balde de domingo (pagos marcados a ese concepto). */
+  pagadoDomingoHoy?: number;
   /**
    * Nunca hubo cargo `renta` (piloto Gold / saldo_inicial).
    * La deuda vive en el saldo: no sumar otra letra “en el aire”.
@@ -71,6 +73,26 @@ export type EntradaCifras = {
   /** Hoy no corre cuota (ej. cumpleaños libre): la cuota del día es 0. */
   diaLibre?: boolean;
 };
+
+/**
+ * Tajada de domingo que TODAVÍA falta hoy.
+ * `bucketNeto` ya restó los abonos al domingo. `pagadoHoy` es la tajada de
+ * este domingo ya pagada: no se vuelve a pedir otra el mismo día.
+ */
+export function tajadaDomingoQueFalta(opts: {
+  bucketNeto: number;
+  pagadoHoy: number;
+  cuota: number;
+}): number {
+  const neto = Math.max(Number(opts.bucketNeto) || 0, 0);
+  const pagado = Math.max(Number(opts.pagadoHoy) || 0, 0);
+  const antes = neto + pagado;
+  if (antes <= 0.009) return 0;
+  const cuota = Math.max(Number(opts.cuota) || 0, 0);
+  const tajadaDia = Math.min(cuota > 0.009 ? cuota : antes, antes);
+  const falta = Math.max(Math.round((tajadaDia - pagado) * 100) / 100, 0);
+  return Math.min(falta, neto);
+}
 
 /** ¿La suma de abonos de hoy (antes de las 7) cubre lo que tocaba hoy? */
 export function cubrioCuotaDelDia(pagadoPuntual: number, meta: number): boolean {
@@ -100,6 +122,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const saldoVista = Number(e.saldo) || 0;
   const hoyEsDomingo = esDomingo(e.hoy);
   const domingoEnSaldo = Math.max(Number(e.domingoEnSaldo) || 0, 0);
+  const pagadoDomingoHoy = Math.max(Number(e.pagadoDomingoHoy) || 0, 0);
   const pendiente = Boolean(e.pendiente);
   // El recargo de las 7:00 p.m. no se calcula solo. Entra únicamente si el
   // equipo cargó la multa a mano (ese monto ya vive en el saldo).
@@ -119,9 +142,12 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   // de domingo nueva. El crédito de letra no achica la tajada
   // (G51: pot $55 = $90−$35 → se pide la tajada, no $55).
   if (hoyEsDomingo) {
-    const tajada = domingoEnSaldo > 0.009
-      ? Math.min(cuotaHoy > 0.009 ? cuotaHoy : domingoEnSaldo, domingoEnSaldo)
-      : 0;
+    // Una sola tajada por domingo. Lo ya pagado hoy a ese concepto no abre otra.
+    const tajada = tajadaDomingoQueFalta({
+      bucketNeto: domingoEnSaldo,
+      pagadoHoy: pagadoDomingoHoy,
+      cuota: cuotaHoy,
+    });
     const letraImpaga = Math.max(saldoVista - domingoEnSaldo, 0);
     const bruto = tajada + letraImpaga + faltaAcuerdo;
     const totalHoy = Math.max(bruto + recargo, 0);
