@@ -452,7 +452,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         ? `- HOY ES DOMINGO. No se abre letra nueva. El TOTAL solo puede traer tajada del domingo, letra atrasada, acuerdo atrasado o acuerdo de domingo. La cuota diaria del acuerdo no entra. Tener saldo de acuerdo no basta.`
         : `- Lun–sáb se cobra: letra del día + saldo anterior de letra + recargo/cierre si aplica, más un solo concepto. Si el acuerdo tiene saldo, ese es el concepto hasta que quede en cero.`,
       esDomingo(hoyPanama())
-        ? `- ÁRBOL DE UN PAGO hoy: recargo, luego lo que ya está en el TOTAL (tajada, letra atrasada, acuerdo atrasado o de domingo). No armes un concepto nuevo.`
+        ? `- ÁRBOL DE UN PAGO hoy: primero la tajada de domingo, antes que la letra atrasada y que otro concepto. Después recargo, acuerdo que toque hoy y letra atrasada. El excedente va a la letra siguiente, salvo acuerdo (baja el saldo del plan), salvo atraso (ya va en la letra atrasada) o salvo que el cliente pida adelantar el próximo domingo (baja el balde, solo hasta lo que queda). No armes un concepto nuevo.`
         : `- ÁRBOL DE UN PAGO (estricto, por carro): 1) recargo por no pago  2) un solo concepto más. Si el acuerdo tiene saldo, ESE es el concepto hasta que quede en cero: mantenimiento y lo demás se listan pendientes y no entran al total. Si no hay acuerdo, el de menor valor (o el que el carro eligió)  3) letra de hoy  4) si sobra y NO es sábado (o el cliente ya dijo que es adelanto de letra): días siguientes, acuerdo de ese día y luego la letra.`,
       `- Si el cliente NOMBRA el destino del excedente y ese concepto existe (domingo, acuerdo, etc.), SE APLICA AHÍ. No lo dejes en letra. Confírmalo y marca pasar_a_humano con motivo "Excedente a <concepto>".`,
       esSabado(hoyPanama())
@@ -467,12 +467,16 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         : `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL solo incluye letra/recargo/cierre + ese un ítem.`,
       `- NO sumes mantenimiento + acuerdos + domingo el mismo día en el total de hoy.`,
       `- NUNCA inventes una línea “abono” con lo pagado hoy: eso ya está descontado.`,
-      `- PAGO MAYOR AL TOTAL: si paga más de ${m(cobro.totalCobrarHoy)}, pregunta a dónde va el excedente.`,
+      esDomingo(hoyPanama())
+        ? `- PAGO MAYOR AL TOTAL: si paga más de ${m(cobro.totalCobrarHoy)}, no preguntes el destino. El excedente va a la letra siguiente, salvo acuerdo o letra atrasada. Si pide adelantar el próximo domingo, confírmalo y marca pasar_a_humano con motivo "Excedente a domingo".`
+        : `- PAGO MAYOR AL TOTAL: si paga más de ${m(cobro.totalCobrarHoy)}, pregunta a dónde va el excedente.`,
       cobro.acuerdoSaldo > 0.009 || (est.domingoSaldo ?? 0) > 0.009
         ? `- Conceptos a los que SÍ puede abonar el excedente (parcial vale):${cobro.acuerdoSaldo > 0.009 ? ` acuerdo (saldo ${m(cobro.acuerdoSaldo)})` : ""}${(est.domingoSaldo ?? 0) > 0.009 ? ` domingo (${m(est.domingoSaldo)})` : ""}.`
         : `- NO tiene acuerdo ni domingo ni otro concepto: el excedente es pago adelantado de una letra diaria. No le ofrezcas otro destino.`,
       `- Si nombra un concepto que no está en esta lista, no lo aceptes: el comprobante queda para revisión manual del equipo.`,
-      `- Si no dice el destino y SÍ tiene conceptos, el excedente queda sin concepto y solo lo aprueba el equipo asignándolo.`,
+      esDomingo(hoyPanama())
+        ? `- Si no pide el próximo domingo, no dejes el excedente sin concepto: va a la letra siguiente, o al acuerdo si tiene saldo.`
+        : `- Si no dice el destino y SÍ tiene conceptos, el excedente queda sin concepto y solo lo aprueba el equipo asignándolo.`,
       `- Clientes nuevos: pueden deber panapass/domingos de entrada y abono inicial; respeta las cifras del sistema.`,
     );
   }

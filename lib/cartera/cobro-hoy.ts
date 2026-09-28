@@ -26,11 +26,15 @@
 //    (frecuencia domingo, o frecuencia día con cuota domingo puesta).
 //    La cuota diaria del acuerdo no se cobra el domingo. Al día → $0.
 //
-// Árbol de un pago: recargo → ese concepto → letra de hoy → días siguientes
+// Árbol lun–sáb: recargo → ese concepto → letra de hoy → días siguientes
 // (acuerdo de ese día, luego la letra), hasta donde alcance.
+// Domingo: primero la tajada. Después recargo, acuerdo del día y letra
+// atrasada. El excedente va a la letra siguiente, salvo que quede saldo de
+// acuerdo (baja el plan) o el pago traiga rubro domingo (adelanta el próximo
+// domingo, solo hasta el balde que queda). El atraso ya se comió antes.
 //
-// Excedente: si el cliente NOMBRA el destino (domingo, acuerdo, etc.) y ese
-// concepto existe, el sobrante va ahí. Si no lo nombra, no se inventa.
+// Excedente lun–vie: si el cliente NOMBRA el destino y ese concepto existe,
+// el sobrante va ahí. Si no lo nombra, no se inventa.
 // Sábado: pago mayor que la letra diaria → se pregunta a dónde va el
 // excedente (muchos abonan el domingo por adelantado). No se asume letra
 // del lunes ni domingo hasta que lo diga.
