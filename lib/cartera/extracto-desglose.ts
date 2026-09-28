@@ -125,10 +125,15 @@ export function armarExtractoDiario(
     0,
   );
   // El domingo se cobra el domingo. Lun–vie solo reaparece la tajada si
-  // ese domingo quedó sin pagar. Si ya la pagaron, el resto es el próximo
-  // domingo: aviso, no se suma a la letra de hoy.
+  // ese domingo quedó sin pagar. Si ya la pagaron, o el balde está fechado
+  // para el próximo domingo, el resto es aviso y no se suma a la letra.
+  const alCorteRaw = (e as EstadoCuenta & { domingoAlCorte?: number }).domingoAlCorte;
+  const bucketTajada =
+    typeof alCorteRaw === "number"
+      ? Math.min(Math.max(alCorteRaw, 0), baldeDomingo)
+      : baldeDomingo;
   const tajada = tajadaDomingoQueFalta({
-    bucketNeto: baldeDomingo,
+    bucketNeto: bucketTajada,
     pagadoHoy: hoyEsDomingo ? pagadoDomingoHoy : pagadoDomingoCiclo,
     cuota: cuotaDom,
   });

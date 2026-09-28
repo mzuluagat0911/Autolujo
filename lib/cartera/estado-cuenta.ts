@@ -120,6 +120,11 @@ export type EstadoCuenta = Cifras & {
   pagadoDomingoHoy?: number;
   /** Abono al domingo del domingo de esta semana (ayer, si hoy es lunes). */
   pagadoDomingoCiclo?: number;
+  /**
+   * Balde DOMINGOS con fecha hasta el domingo de esta semana.
+   * Lo fechado después es el próximo domingo: se menciona y no se cobra hoy.
+   */
+  domingoAlCorte?: number;
   templateVars: [string, string, string, string, string];
 };
 
@@ -311,6 +316,7 @@ function armar(
     cubiertoHastaPago?: string | null;
     pagadoDomingoHoy?: number;
     pagadoDomingoCiclo?: number;
+    domingoAlCorte?: number;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -410,6 +416,7 @@ function armar(
     hoyIso: extra.hoy,
     pagadoDomingoHoy: extra.pagadoDomingoHoy ?? 0,
     pagadoDomingoCiclo: extra.pagadoDomingoCiclo ?? extra.pagadoDomingoHoy ?? 0,
+    domingoAlCorte: extra.domingoAlCorte,
     templateVars: [nombre, carro, fecha, desgloseOut, money(cifrasOut.totalHoy)],
   };
 }
@@ -604,7 +611,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     ),
     generosDe(row.cliente_id ? [row.cliente_id] : []),
     sb.from("cargos").select("monto, concepto, concepto_codigo").eq("contrato_id", contratoId).eq("tipo", "multa"),
-    domingoPorContrato([contratoId]),
+    domingoPorContrato([contratoId], domingoCiclo),
     pagadoDomingoHoyPorContrato([contratoId], hoy),
     domingoCiclo === hoy
       ? Promise.resolve(null)
@@ -644,7 +651,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     hoyYaDevengado,
     sinDevengoRenta: devengadoHasta == null,
     diaLibre: contratoCerrado,
-    domingoEnSaldo: domingoMap.get(contratoId) ?? 0,
+    domingoEnSaldo: domingoMap.get(contratoId)?.total ?? 0,
     pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
   };
   const cifrasBase = calcularCifras(entrada);
@@ -713,6 +720,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     recargosAcumulados,
     pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
     pagadoDomingoCiclo: (pagadoCicloMap ?? pagadoDomingoMap).get(contratoId) ?? 0,
+    domingoAlCorte: domingoMap.get(contratoId)?.alCorte ?? 0,
   });
 }
 
@@ -909,15 +917,23 @@ async function pagadoDomingoHoyPorContrato(
   return out;
 }
 
-/** Domingo que SIGUE debiéndose. Cargos DOMINGOS menos lo que el cliente pidió abonar ahí. */
-async function domingoPorContrato(ids: string[]): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
-  if (ids.length === 0) return out;
+/**
+ * Domingo que sigue debiéndose. `total` es el balde neto.
+ * `alCorte` es solo lo fechado hasta el domingo de esta semana: eso puede
+ * entrar al cobro si quedó sin pagar. Lo fechado después es el próximo
+ * domingo y no se cobra entre semana.
+ */
+async function domingoPorContrato(
+  ids: string[],
+  corte: string,
+): Promise<Map<string, { total: number; alCorte: number }>> {
+  const bruto = new Map<string, { total: number; alCorte: number }>();
+  if (ids.length === 0) return bruto;
   const sb = createServerSupabase();
   const [{ data }, pagosRes] = await Promise.all([
     sb
       .from("cargos")
-      .select("contrato_id, monto, concepto_codigo, concepto")
+      .select("contrato_id, monto, fecha, concepto_codigo, concepto")
       .in("contrato_id", ids),
     sb
       .from("pagos")
@@ -928,13 +944,25 @@ async function domingoPorContrato(ids: string[]): Promise<Map<string, number>> {
   for (const g of (data ?? []) as {
     contrato_id: string;
     monto: number;
+    fecha: string | null;
     concepto_codigo: string | null;
     concepto: string | null;
   }[]) {
     const codigo = (g.concepto_codigo ?? "").toUpperCase();
     const texto = (g.concepto ?? "").toLowerCase();
     if (codigo !== "DOMINGOS" && !/\bdomingo\b/.test(texto)) continue;
-    out.set(g.contrato_id, (out.get(g.contrato_id) ?? 0) + Number(g.monto || 0));
+    const monto = Number(g.monto) || 0;
+    const cur = bruto.get(g.contrato_id) ?? { total: 0, alCorte: 0 };
+    cur.total += monto;
+    if (!g.fecha || g.fecha <= corte) cur.alCorte += monto;
+    bruto.set(g.contrato_id, cur);
+  }
+  const out = new Map<string, { total: number; alCorte: number }>();
+  for (const [id, cur] of bruto) {
+    out.set(id, {
+      total: Math.round(cur.total * 100) / 100,
+      alCorte: Math.round(cur.alCorte * 100) / 100,
+    });
   }
   if (!pagosRes.error) {
     for (const p of (pagosRes.data ?? []) as {
@@ -946,7 +974,12 @@ async function domingoPorContrato(ids: string[]): Promise<Map<string, number>> {
       if (!p.contrato_id || !out.has(p.contrato_id)) continue;
       const abono = abonoDomingoDePago(p);
       if (abono <= 0.009) continue;
-      out.set(p.contrato_id, Math.max((out.get(p.contrato_id) ?? 0) - abono, 0));
+      const cur = out.get(p.contrato_id)!;
+      const tomaCorte = Math.min(cur.alCorte, abono);
+      out.set(p.contrato_id, {
+        alCorte: Math.round((cur.alCorte - tomaCorte) * 100) / 100,
+        total: Math.round(Math.max(cur.total - abono, 0) * 100) / 100,
+      });
     }
   }
   return out;
@@ -1057,7 +1090,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     nacimientosDe(clienteIds),
     generosDe(clienteIds),
     cuotasPagadasOpcional(idsAlcance),
-    domingoPorContrato(idsAlcance),
+    domingoPorContrato(idsAlcance, domingoDelCiclo(hoy)),
     pagadoDomingoHoyPorContrato(idsAlcance, hoy),
     domingoDelCiclo(hoy) === hoy
       ? Promise.resolve(null)
@@ -1104,7 +1137,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       multaHoyRegistrada: multaHoy.has(c.id),
       hoyYaDevengado,
       sinDevengoRenta: devengadoHasta == null,
-      domingoEnSaldo: domingoMap.get(c.id) ?? 0,
+      domingoEnSaldo: domingoMap.get(c.id)?.total ?? 0,
       pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
     };
     const cifrasBase = calcularCifras(entrada);
@@ -1150,6 +1183,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       cubiertoHastaPago: adel?.hasta ?? null,
       pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
       pagadoDomingoCiclo: (pagadoCicloMap ?? pagadoDomingoMap).get(c.id) ?? 0,
+      domingoAlCorte: domingoMap.get(c.id)?.alCorte ?? 0,
     });
   });
 }
