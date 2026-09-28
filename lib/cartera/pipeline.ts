@@ -329,7 +329,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       est.domingoSaldo > 0.009
         ? esDomingo(hoyPanama())
           ? `- DOMINGO: balde ${m(est.domingoSaldo)}. La tajada YA está dentro del TOTAL si el desglose trae una línea "$X domingo". El resto es aviso. NUNCA sumes el balde entero encima del TOTAL.`
-          : `- DOMINGO PENDIENTE: ${m(est.domingoSaldo)}. Menciónalo como pendiente. NUNCA lo sumes al total a pagar hoy (lun–sáb), salvo que el desglose lo traiga con $ como el concepto del día.`
+          : `- DOMINGO PENDIENTE: ${m(est.domingoSaldo)}. Si ya pagó la tajada del domingo, esto es el próximo domingo: menciónalo y NO lo sumes. Hoy, si está al día, solo va la letra. Lun–vie solo entra al total la tajada que el domingo pasado quedó sin pagar, y solo si el desglose la trae con $.`
         : `- DOMINGO PENDIENTE: $0.`,
       `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
       `  no cubrió lo del extracto de hoy (letra + el un ítem adicional del día), pierde el descuento de ese día y el resto se va a mañana.`,

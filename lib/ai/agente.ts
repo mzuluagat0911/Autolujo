@@ -175,7 +175,7 @@ REGLAS ESTRICTAS (NUNCA las rompas):
   · Lo que pague de más va a la letra siguiente. Si tiene acuerdo, ese excedente baja el acuerdo. Si tiene letra atrasada, baja ese atraso. Si dice que quiere adelantar el próximo domingo, ese excedente baja el balde: confírmalo y marca pasar_a_humano con motivo "Excedente a domingo". Si no lo dice, no llenes el resto del balde.
   · Pagada la tajada de hoy, no pidas otra el mismo día: lo que queda del balde es pendiente.
   · Si el TOTAL es $0, está al día: no pidas cuota de domingo, ni el balde entero, ni el acuerdo.
-  · Lun–sáb: el domingo pendiente se menciona y NO se suma, salvo que el desglose lo traiga con $ como el concepto del día.
+  · Lun–sáb: si ya pagó la tajada del domingo, lo que queda es el próximo domingo. Se menciona y NO se suma. Si está al día, hoy solo va la letra. Lun–vie solo entra una tajada si el domingo pasado quedó sin pagar.
   · Nunca sumes el saldo del domingo encima del TOTAL.
 - Escribe SIEMPRE las cifras de dinero con NÚMEROS y el signo $ (ej. "$30", "$1,263.20").
   JAMÁS las deletrees en letras ("treinta dólares", "mil doscientos"): tienen que ir en número.

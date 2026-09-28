@@ -183,10 +183,27 @@ const armLunes = armarExtractoDiario(fakeLunes, {
   extras: [{ etiqueta: "domingo", monto: 90 }],
   hoy: "2026-09-28",
 });
-check("extracto lunes: total letra+domingo $65", armLunes.totalCobrarHoy, 65);
+check("extracto lunes sin pago de domingo: total letra+tajada $65", armLunes.totalCobrarHoy, 65);
 check(
-  "extracto lunes: domingo con $ en el desglose",
+  "extracto lunes sin pago de domingo: domingo con $ en el desglose",
   armLunes.lineas.some((l) => l.etiqueta === "domingo" && l.monto === 30 && !l.aviso),
+  true,
+);
+
+const fakeLunesPagado = {
+  ...fakeLunes,
+  pagadoDomingoCiclo: 30,
+} as unknown as EstadoCuenta;
+const armLunesPagado = armarExtractoDiario(fakeLunesPagado, {
+  acuerdoSaldo: 0,
+  extras: [{ etiqueta: "domingo", monto: 60 }],
+  hoy: "2026-09-28",
+});
+check("extracto lunes ya pagó domingo: solo la letra $35", armLunesPagado.totalCobrarHoy, 35);
+check(
+  "extracto lunes ya pagó domingo: el resto es aviso",
+  armLunesPagado.lineas.some((l) => l.aviso && /domingo pendiente/.test(l.etiqueta)) &&
+    !armLunesPagado.lineas.some((l) => l.etiqueta === "domingo" && !l.aviso),
   true,
 );
 

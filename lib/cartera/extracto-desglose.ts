@@ -20,7 +20,6 @@ import {
   elegirExtraDelDia,
   esCargoBase,
   esEtiquetaDomingo,
-  tajadaDomingo,
   totalConUnExtra,
   type ItemExtraElegido,
 } from "./prioridad-extras";
@@ -121,18 +120,23 @@ export function armarExtractoDiario(
     Number((e as EstadoCuenta & { pagadoDomingoHoy?: number }).pagadoDomingoHoy) || 0,
     0,
   );
-  const tajada = hoyEsDomingo
-    ? tajadaDomingoQueFalta({
-        bucketNeto: baldeDomingo,
-        pagadoHoy: pagadoDomingoHoy,
-        cuota: cuotaDom,
-      })
-    : tajadaDomingo({ balde: baldeDomingo, cuotaDomingo: cuotaDom });
+  const pagadoDomingoCiclo = Math.max(
+    Number((e as EstadoCuenta & { pagadoDomingoCiclo?: number }).pagadoDomingoCiclo) || 0,
+    0,
+  );
+  // El domingo se cobra el domingo. Lun–vie solo reaparece la tajada si
+  // ese domingo quedó sin pagar. Si ya la pagaron, el resto es el próximo
+  // domingo: aviso, no se suma a la letra de hoy.
+  const tajada = tajadaDomingoQueFalta({
+    bucketNeto: baldeDomingo,
+    pagadoHoy: hoyEsDomingo ? pagadoDomingoHoy : pagadoDomingoCiclo,
+    cuota: cuotaDom,
+  });
 
   // Árbol domingo:
   // - Domingo calendario: tajada = cobro del día (base), resto aviso.
-  // - Lun–vie: tajada compite como el un concepto (entra al total si gana).
-  // - Sábado: solo aviso del balde.
+  // - Lun–vie: solo la tajada que el domingo pasó sin pagar.
+  // - Sábado, o tajada ya pagada: solo aviso del balde.
   const domingoComoBase = hoyEsDomingo && tajada > 0.009;
   const domingoComoExtra = !hoyEsDomingo && !sabadoAntesDeDomingo && tajada > 0.009;
 

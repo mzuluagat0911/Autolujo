@@ -79,6 +79,12 @@ export function esDomingo(fecha: string): boolean {
   return diaSemana(fecha) === 0;
 }
 
+/** Domingo que abre la tajada de esta semana. Si hoy es domingo, es hoy. */
+export function domingoDelCiclo(fecha: string): string {
+  const dow = diaSemana(fecha);
+  return dow === 0 ? fecha : sumarDias(fecha, -dow);
+}
+
 export function esSabado(fecha: string): boolean {
   return diaSemana(fecha) === 6;
 }

@@ -20,7 +20,9 @@
 //    Los demás se listan “(pendiente)” y no suman.
 //
 // 4) DOMINGO:
-//    Lun–sáb: aviso, no suma (salvo la tajada si gana el cupo lun–vie).
+//    Lun–sáb: aviso, no suma. Lun–vie solo entra la tajada si el domingo
+//    pasado quedó sin pagar. Si ya la pagaron, el resto es el próximo
+//    domingo y no se cobra hoy.
 //    Domingo: tajada del balde + letra atrasada + acuerdo atrasado
 //    (cuota del día anterior sin pagar) + acuerdo de domingo
 //    (frecuencia domingo, o frecuencia día con cuota domingo puesta).
