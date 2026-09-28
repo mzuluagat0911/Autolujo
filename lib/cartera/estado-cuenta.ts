@@ -617,9 +617,8 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
 
   const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
   const listaAcuerdo = acuerdosMap.get(contratoId) ?? [];
-  const atrasoAcuerdo = esDomingo(hoy)
-    ? (await atrasoAcuerdoPorContrato(hoy, new Map([[contratoId, listaAcuerdo]]))).get(contratoId) ?? 0
-    : 0;
+  const atrasoAcuerdo =
+    (await atrasoAcuerdoPorContrato(hoy, new Map([[contratoId, listaAcuerdo]]))).get(contratoId) ?? 0;
   const programadoAcuerdo = programadoAcuerdoDe(listaAcuerdo, hoy, atrasoAcuerdo);
   const acuerdoHoy = Math.max(programadoAcuerdo, arregloAplicado);
   // Lo que aún falta del arreglo hoy (no lo ya abonado). El arreglo NO vive en la letra.
@@ -1065,9 +1064,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       : pagadoDomingoHoyPorContrato(idsAlcance, domingoDelCiclo(hoy)),
   ]);
 
-  const atrasoMap = esDomingo(hoy)
-    ? await atrasoAcuerdoPorContrato(hoy, acuerdosMap)
-    : new Map<string, number>();
+  const atrasoMap = await atrasoAcuerdoPorContrato(hoy, acuerdosMap);
 
   const saldoMap = new Map<string, number>();
   for (const s of (saldos.data ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {

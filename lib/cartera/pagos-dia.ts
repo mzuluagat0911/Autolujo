@@ -238,7 +238,7 @@ export function atrasoAcuerdoRestante(opts: {
   return hueco;
 }
 
-/** Domingo: atraso de acuerdo por contrato (cuota de ayer aún abierta). */
+/** Cuota de acuerdo de ayer que sigue sin pagar, cualquier día. */
 export async function atrasoAcuerdoPorContrato(
   fecha: string,
   acuerdos: Map<string, AcuerdoActivo[]>,

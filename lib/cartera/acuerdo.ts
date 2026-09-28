@@ -134,7 +134,7 @@ export function acuerdoHoyDe(acuerdos: AcuerdoActivo[], fecha: string): number {
 
 /**
  * Cuota de acuerdo que entra al cobro.
- * `atraso` es la cuota del día anterior que sigue sin pagar (domingo).
+ * `atraso` es la cuota del día anterior que sigue sin pagar.
  * El total no pasa del saldo del plan.
  */
 export function programadoAcuerdoDe(
