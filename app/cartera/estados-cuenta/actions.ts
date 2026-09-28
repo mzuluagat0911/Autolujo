@@ -59,6 +59,7 @@ export type CargoEditable = {
   concepto: string;
   concepto_codigo: string | null;
   monto: number;
+  pago_id?: string | null;
 };
 
 export type AcuerdoEditable = {
@@ -195,6 +196,10 @@ function cargosPendientesActivos(
   const hidden = new Set<string>();
   const ordered = [...cargos].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
   for (const c of ordered) {
+    if (c.pago_id) {
+      hidden.add(c.id);
+      continue;
+    }
     if (c.tipo === "acuerdo") {
       hidden.add(c.id);
       continue;
@@ -246,7 +251,7 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
 
   const { data: cargosData, error: carErr } = await sb
     .from("cargos")
-    .select("id, fecha, tipo, concepto, concepto_codigo, monto")
+    .select("id, fecha, tipo, concepto, concepto_codigo, monto, pago_id")
     .eq("contrato_id", contratoId)
     .not("tipo", "in", "(renta,cuenta_diaria)")
     .order("fecha", { ascending: false })

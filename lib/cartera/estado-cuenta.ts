@@ -610,7 +610,11 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
       () => row.num_cuotas_total ?? null,
     ),
     generosDe(row.cliente_id ? [row.cliente_id] : []),
-    sb.from("cargos").select("monto, concepto, concepto_codigo").eq("contrato_id", contratoId).eq("tipo", "multa"),
+    sb
+      .from("cargos")
+      .select("monto, concepto, concepto_codigo, pago_id")
+      .eq("contrato_id", contratoId)
+      .eq("tipo", "multa"),
     domingoPorContrato([contratoId], domingoCiclo),
     pagadoDomingoHoyPorContrato([contratoId], hoy),
     domingoCiclo === hoy
@@ -677,7 +681,9 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     monto: number;
     concepto: string | null;
     concepto_codigo: string | null;
+    pago_id: string | null;
   }[])
+    .filter((g) => !g.pago_id)
     .filter((g) => {
       const codigo = (g.concepto_codigo ?? "").toUpperCase();
       return codigo === "PAGO_TARDE" || /recargo|por no pagar|pago despu[eé]s/i.test(g.concepto ?? "");
@@ -827,7 +833,7 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
   const [{ data }, { data: pagos }] = await Promise.all([
     sb
       .from("cargos")
-      .select("contrato_id, monto, tipo, concepto, concepto_codigo")
+      .select("contrato_id, monto, tipo, concepto, concepto_codigo, pago_id")
       .eq("tipo", "multa")
       .in("contrato_id", ids),
     sb
@@ -842,7 +848,9 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
     tipo: string;
     concepto: string | null;
     concepto_codigo: string | null;
+    pago_id: string | null;
   }[]) {
+    if (g.pago_id) continue;
     const codigo = (g.concepto_codigo ?? "").toUpperCase();
     const esRecargo =
       codigo === "PAGO_TARDE" ||

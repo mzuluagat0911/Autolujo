@@ -4,6 +4,7 @@
 import { distribuirPago } from "@/lib/cartera/rules";
 import {
   obligacionesRestantes,
+  partirRecargoDeLaLetra,
   PRIORIDAD,
   textoComoSeAplico,
 } from "@/lib/cartera/aplicar-pago";
@@ -57,6 +58,47 @@ const r3 = distribuirPago(12, todo);
 check("primero el recargo", r3.asignaciones[0]?.tipo, "recargo");
 check("luego el acuerdo", r3.asignaciones[1]?.tipo, "acuerdo");
 check("el resto al saldo", r3.asignaciones[2]?.tipo, "saldo_anterior");
+
+console.log("\n· Recargo cargado dentro de la letra: sale primero y no se paga dos veces");
+const g26 = partirRecargoDeLaLetra({
+  pendienteAnterior: 42,
+  cuotaHoy: 0,
+  recargoAbierto: 5,
+});
+check("el domingo deja $5 de recargo", g26.recargoHoy, 5);
+check("y $37 de letra atrasada", g26.pendienteAnterior, 37);
+const pagoG26 = distribuirPago(
+  37,
+  obligacionesRestantes(
+    {
+      acuerdos: [],
+      pendienteAnterior: g26.pendienteAnterior,
+      recargoHoy: g26.recargoHoy,
+      cuotaHoy: g26.cuotaHoy,
+    },
+    [],
+  ),
+);
+check("de los $37, $5 van al recargo", pagoG26.asignaciones.find((a) => a.tipo === "recargo")?.aplicado, 5);
+check("y $32 a la letra atrasada", pagoG26.asignaciones.find((a) => a.tipo === "saldo_anterior")?.aplicado, 32);
+check("no sobra nada", pagoG26.sobrante, 0);
+
+const entreSemana = partirRecargoDeLaLetra({
+  pendienteAnterior: 5,
+  cuotaHoy: 37,
+  recargoAbierto: 5,
+});
+check("entre semana el recargo sale del atraso", entreSemana.pendienteAnterior, 0);
+check("la letra del día sigue en $37", entreSemana.cuotaHoy, 37);
+
+const yaPelado = partirRecargoDeLaLetra({
+  pendienteAnterior: 0,
+  cuotaHoy: 37,
+  recargoAbierto: 5,
+  yaFueraDeLaLetra: 5,
+});
+check("si la multa de hoy ya estaba fuera, la letra no se achica", yaPelado.cuotaHoy, 37);
+check("y el recargo igual entra primero", yaPelado.recargoHoy, 5);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

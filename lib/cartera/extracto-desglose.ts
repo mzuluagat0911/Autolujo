@@ -340,7 +340,7 @@ export async function cargosExtraPorContrato(
   const sb = createServerSupabase();
   const { data } = await sb
     .from("cargos")
-    .select("contrato_id, tipo, concepto, concepto_codigo, monto")
+    .select("contrato_id, tipo, concepto, concepto_codigo, monto, pago_id")
     .in("contrato_id", ids)
     .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)")
     .order("fecha", { ascending: false });
@@ -352,6 +352,7 @@ export async function cargosExtraPorContrato(
     concepto: string | null;
     concepto_codigo: string | null;
     monto: number;
+    pago_id: string | null;
   }[]) {
     const codigo = (f.concepto_codigo ?? "").toUpperCase();
     const monto = Number(f.monto) || 0;
@@ -361,6 +362,7 @@ export async function cargosExtraPorContrato(
       codigo === "PAGO_TARDE" ||
       esEtiquetaRecargo(crudo) ||
       (f.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(f.concepto ?? ""));
+    if (esRecargo && f.pago_id) continue;
     if (!esRecargo && SKIP_CODIGOS.has(codigo)) continue;
     // Un solo balde: el pago ya cruzado se resta aquí, y lo que queda
     // sale como “por no pagar”, no metido en la letra.

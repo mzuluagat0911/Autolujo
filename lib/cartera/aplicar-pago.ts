@@ -1,5 +1,5 @@
 // Árbol de un abono, lun–sáb:
-// 1) Recargo por no pago.
+// 1) Recargo por no pago (la multa ya cargada, no un $5 inventado).
 // 2) Un solo concepto más (acuerdo vencido y, si alcanza, el de hoy).
 // 3) Letra diaria de hoy.
 // 4) Si sobra: días siguientes, cada uno acuerdo y luego letra.
@@ -15,7 +15,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { distribuirPago } from "./rules";
-import { cuotaDeFecha, type TerminosCuota } from "./cuota";
+import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { acuerdoHoyDe, cuotaAcuerdoHoy, type AcuerdoActivo } from "./acuerdo";
 import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual, esDomingo, rangoDiaPanama } from "./fecha";
@@ -166,6 +166,30 @@ export function partirSobranteDomingo(opts: {
   }
 
   return { asignaciones: extra, sobrante: queda, aplicado };
+}
+
+/**
+ * El recargo cargado vive dentro del saldo de la letra. Al partir el pago se
+ * saca de ahí: la línea de recargo va primero y la letra no se paga dos veces.
+ * `yaFueraDeLaLetra` es la multa de hoy que el estado de cuenta ya restó.
+ */
+export function partirRecargoDeLaLetra(opts: {
+  pendienteAnterior: number;
+  cuotaHoy: number;
+  recargoAbierto: number;
+  yaFueraDeLaLetra?: number;
+}): { pendienteAnterior: number; cuotaHoy: number; recargoHoy: number } {
+  const recargoHoy = r2(Math.max(Number(opts.recargoAbierto) || 0, 0));
+  const yaFuera = r2(Math.min(Math.max(Number(opts.yaFueraDeLaLetra) || 0, 0), recargoHoy));
+  let dentro = r2(recargoHoy - yaFuera);
+  let pendiente = r2(Math.max(Number(opts.pendienteAnterior) || 0, 0));
+  let cuota = r2(Math.max(Number(opts.cuotaHoy) || 0, 0));
+  const tomaPend = r2(Math.min(pendiente, dentro));
+  pendiente = r2(pendiente - tomaPend);
+  dentro = r2(dentro - tomaPend);
+  const tomaCuota = r2(Math.min(cuota, dentro));
+  cuota = r2(cuota - tomaCuota);
+  return { pendienteAnterior: pendiente, cuotaHoy: cuota, recargoHoy };
 }
 
 function yaAplicado(ya: AsignacionPago[], tipo: TipoObligacion, ref?: string): number {
@@ -349,6 +373,51 @@ function esCargoRecargo(c: {
   const codigo = (c.concepto_codigo ?? "").toUpperCase();
   if (codigo === "PAGO_TARDE") return true;
   return c.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(c.concepto ?? "");
+}
+
+/** Multas de recargo que ningún pago marcó todavía como recargo. */
+async function recargoAbiertoDelContrato(contratoId: string, excluirPagoId: string): Promise<number> {
+  const sb = createServerSupabase();
+  const [{ data: cargos }, { data: pagos }] = await Promise.all([
+    sb
+      .from("cargos")
+      .select("monto, tipo, concepto, concepto_codigo, pago_id")
+      .eq("contrato_id", contratoId)
+      .eq("tipo", "multa"),
+    sb
+      .from("pagos")
+      .select("id, monto, rubro, asignaciones")
+      .eq("contrato_id", contratoId)
+      .in("estado_conciliacion", ["conciliado", "manual"])
+      .neq("id", excluirPagoId),
+  ]);
+  let abierto = 0;
+  for (const c of (cargos ?? []) as {
+    monto: number;
+    tipo: string;
+    concepto: string | null;
+    concepto_codigo: string | null;
+    pago_id: string | null;
+  }[]) {
+    if (c.pago_id) continue;
+    if (!esCargoRecargo(c)) continue;
+    abierto = r2(abierto + (Number(c.monto) || 0));
+  }
+  if (abierto <= 0.009) return 0;
+  for (const p of (pagos ?? []) as {
+    monto: number;
+    rubro: string | null;
+    asignaciones: unknown;
+  }[]) {
+    const parsed = parseAsignaciones(p.asignaciones);
+    const marcado = parsed
+      ? r2(parsed.asignaciones.filter(esAsignacionRecargo).reduce((s, a) => s + (Number(a.aplicado) || 0), 0))
+      : 0;
+    const abono = marcado > 0.009 ? marcado : (p.rubro ?? "").toLowerCase() === "recargo" ? Number(p.monto) || 0 : 0;
+    if (abono <= 0.009) continue;
+    abierto = r2(Math.max(abierto - abono, 0));
+  }
+  return abierto;
 }
 
 /**
@@ -793,8 +862,16 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     pendiente: false,
   });
 
-  // Lun–sáb: recargo, luego la cuota de acuerdo. Domingo: la tajada va
-  // primero (prioridad 6). El saldo completo del plan no se cobra de un golpe.
+  // Lun–sáb: recargo cargado, luego la cuota de acuerdo. Domingo: la tajada va
+  // primero (prioridad 6). El recargo no sale de cifras (ahí está en $0): es
+  // la multa que sigue abierta, sacada del saldo de la letra.
+  const recargoAbierto = await recargoAbiertoDelContrato(contratoId, pagoId);
+  const letraSinRecargo = partirRecargoDeLaLetra({
+    pendienteAnterior: cifras.pendienteAnterior,
+    cuotaHoy: hoyEsDomingo ? 0 : cuotaHoy,
+    recargoAbierto,
+    yaFueraDeLaLetra: multaHoy ? Math.min(penalidadDe(terminos), recargoAbierto) : 0,
+  });
   const acuerdosBase = cobraAcuerdoHoy
     ? acuerdos
         .map((a) => ({
@@ -808,9 +885,9 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const obligaciones = obligacionesRestantes(
     {
       acuerdos: acuerdosBase,
-      pendienteAnterior: cifras.pendienteAnterior,
-      recargoHoy: cifras.recargo,
-      cuotaHoy: hoyEsDomingo ? 0 : cuotaHoy,
+      pendienteAnterior: letraSinRecargo.pendienteAnterior,
+      recargoHoy: letraSinRecargo.recargoHoy,
+      cuotaHoy: letraSinRecargo.cuotaHoy,
       domingoHoy,
     },
     otras,
