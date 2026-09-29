@@ -24,6 +24,11 @@ export type FilaVehiculo = {
   gps_id: string | null;
   panapass: string | null;
   estado: string;
+  /** Chapistería, mantenimiento o colisión, si la pausa está abierta. */
+  pausaEstado: string | null;
+  pausaDesde: string | null;
+  /** Día en que vuelve a productivo. Vacío si todavía no tiene fecha. */
+  pausaHasta: string | null;
   empresa: string | null;
   cliente: string | null;
   clienteId: string | null;
@@ -51,16 +56,41 @@ const ESTADOS: Record<string, string> = {
   activo: "Activo",
   mantenimiento: "Mantenimiento",
   chapisteria: "Chapistería",
+  colision: "Colisión",
   por_entregar: "Por entregar",
   improductivo: "Improductivo",
   entregado: "Entregado",
 };
 
+const OPCIONES_ESTADO = [
+  "activo",
+  "mantenimiento",
+  "chapisteria",
+  "colision",
+  "por_entregar",
+  "improductivo",
+  "entregado",
+];
+
+function estadoMostrado(v: { estado: string; pausaEstado: string | null }): string {
+  return v.pausaEstado ?? v.estado;
+}
+
 function estadoTone(e: string): "good" | "warn" | "crit" | "neutral" {
   if (e === "activo") return "good";
   if (e === "mantenimiento" || e === "chapisteria") return "warn";
-  if (e === "improductivo") return "crit";
+  if (e === "improductivo" || e === "colision") return "crit";
   return "neutral";
+}
+
+function fechaCorta(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+}
+
+function hoyInput(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Panama" }).format(new Date());
 }
 
 function money(n: number): string {
@@ -546,7 +576,14 @@ export function ListaVehiculos({
                     )}
                   </td>
                   <td className="px-5 py-3">
-                    <StatusChip tone={estadoTone(v.estado)}>{ESTADOS[v.estado] ?? v.estado}</StatusChip>
+                    <StatusChip tone={estadoTone(estadoMostrado(v))}>
+                      {ESTADOS[estadoMostrado(v)] ?? estadoMostrado(v)}
+                      {v.pausaDesde
+                        ? v.pausaHasta
+                          ? ` · ${fechaCorta(v.pausaDesde)} → ${fechaCorta(v.pausaHasta)}`
+                          : ` · ${fechaCorta(v.pausaDesde)}`
+                        : ""}
+                    </StatusChip>
                   </td>
                   <td className="px-5 py-3">
                     <HoyChip v={v} />
@@ -563,7 +600,7 @@ export function ListaVehiculos({
         <Link href="/cartera/rastreo" className="underline-offset-2 hover:underline">
           Rastreo
         </Link>
-        . El número abre la ficha para corregir número del carro, nombre o celular del arrendatario. La hoja de vida sigue en Operaciones.
+        . El número abre la ficha: número, arrendatario, y el estado si entra a chapistería, mantenimiento o colisión. La hoja de vida sigue en Operaciones.
       </p>
     </div>
   );
@@ -583,7 +620,11 @@ function PanelEditarCarro({
   const [celular, setCelular] = useState(carro.celular ?? "");
   const [genero, setGenero] = useState("");
   const [letra, setLetra] = useState(carro.letra != null ? String(carro.letra) : "");
+  const [estado, setEstado] = useState(carro.pausaEstado ?? carro.estado);
+  const [ingreso, setIngreso] = useState(carro.pausaDesde ?? "");
+  const [activacion, setActivacion] = useState(carro.pausaHasta ?? "");
   const [err, setErr] = useState<string | null>(null);
+  const enTaller = estado === "mantenimiento" || estado === "chapisteria" || estado === "colision";
   const [pending, start] = useTransition();
   const titulo = `${carro.empresa ? `${siglaEmpresa(carro.empresa)} · ` : ""}${carro.numero}`;
 
@@ -600,6 +641,9 @@ function PanelEditarCarro({
           celular: celular.trim() || null,
           genero: genero || null,
           letra: Number(String(letra).replace(",", ".")) || null,
+          estado,
+          fechaIngreso: enTaller ? ingreso : null,
+          fechaActivacion: enTaller ? activacion || null : null,
         });
         if (!r.ok) {
           setErr(r.msg);
@@ -622,7 +666,7 @@ function PanelEditarCarro({
       />
       <form
         onSubmit={guardar}
-        className="relative z-10 m-4 w-full max-w-md rounded-xl bg-surface p-5 ring-1 ring-line"
+        className="relative z-10 m-4 max-h-[90vh] w-full max-w-md overflow-y-auto rounded-xl bg-surface p-5 ring-1 ring-line"
       >
         <h2 className="text-lg font-semibold tracking-tight">Editar {titulo}</h2>
         <p className="mt-1 text-sm text-muted">
@@ -642,6 +686,61 @@ function PanelEditarCarro({
               className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
             />
           </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              Estado del carro
+            </span>
+            <select
+              value={estado}
+              onChange={(e) => {
+                const next = e.target.value;
+                setEstado(next);
+                const pausa = next === "mantenimiento" || next === "chapisteria" || next === "colision";
+                if (pausa && !ingreso) setIngreso(hoyInput());
+              }}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+            >
+              {OPCIONES_ESTADO.map((op) => (
+                <option key={op} value={op}>
+                  {ESTADOS[op]}
+                </option>
+              ))}
+            </select>
+          </label>
+          {enTaller && (
+            <>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Fecha de ingreso
+              </span>
+              <input
+                required
+                type="date"
+                value={ingreso}
+                onChange={(e) => setIngreso(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+              <span className="text-xs text-muted">
+                Puede ser hoy, un día pasado o mañana. Hasta esa fecha se cobra normal.
+              </span>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Fecha de activación
+              </span>
+              <input
+                type="date"
+                value={activacion}
+                min={ingreso || undefined}
+                onChange={(e) => setActivacion(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+              <span className="text-xs text-muted">
+                El día que vuelve a productivo. Ese día corre otra vez la letra y el acuerdo. Si aún no se sabe, dejala vacía.
+              </span>
+            </label>
+            </>
+          )}
           {carro.clienteId ? (
             <>
               <label className="flex flex-col gap-1.5">

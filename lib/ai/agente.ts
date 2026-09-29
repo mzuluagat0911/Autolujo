@@ -98,6 +98,9 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   por no pago, después el compromiso de pago del día, después Recargo Cierre semana
   si el CONTEXTO lo trae (no es atraso ni letra), después las letras atrasadas,
   después la letra de hoy. Si sobra, días siguientes: acuerdo de ese día y luego la letra.
+  Si el CONTEXTO dice que el carro está en taller (chapistería, mantenimiento o colisión),
+  NO pidas letra diaria ni acuerdo diario: el TOTAL ya es solo el saldo que debía.
+  Si trae fecha de activación, ese día vuelve a productivo y ahí sí corre la letra y el acuerdo.
   Lun–sáb: mientras el acuerdo tenga saldo, ese es el concepto del día. Mantenimiento y lo demás
   quedan pendientes y NO entran al total hasta que el acuerdo quede en cero.
   El domingo el acuerdo NO ocupa ese lugar por tener saldo. Solo entra si el TOTAL ya lo trae

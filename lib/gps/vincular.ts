@@ -10,7 +10,7 @@ export type VehiculoGps = {
   estado?: string | null;
 };
 
-const EN_TALLER = new Set(["mantenimiento", "chapisteria", "improductivo", "por_entregar"]);
+const EN_TALLER = new Set(["mantenimiento", "chapisteria", "colision", "improductivo", "por_entregar"]);
 
 export function vehiculoEnTaller(v: VehiculoGps | null | undefined): boolean {
   return Boolean(v?.estado && EN_TALLER.has(v.estado));

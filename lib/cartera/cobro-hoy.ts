@@ -29,6 +29,11 @@
 //    (frecuencia domingo, o frecuencia día con cuota domingo puesta).
 //    La cuota diaria del acuerdo no se cobra el domingo. Al día → $0.
 //
+// Taller (chapistería, mantenimiento, colisión) desde la fecha de ingreso
+// hasta el día anterior a la activación: no corre letra diaria ni acuerdo
+// diario. El día de activación vuelve a productivo. Sin esa fecha, sigue
+// en pausa. El TOTAL mientras tanto es el saldo que ya debía.
+//
 // Árbol lun–sáb: tajada del domingo pasado si sigue abierta → recargo →
 // acuerdo del día → Recargo Cierre semana → letras atrasadas → letra de hoy
 // → días siguientes (acuerdo de ese día, luego la letra).

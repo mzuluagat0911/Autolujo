@@ -22,6 +22,7 @@ import { distribuirPago } from "./rules";
 import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { acuerdoHoyDe, cuotaAcuerdoHoy, type AcuerdoActivo } from "./acuerdo";
+import { pausaDeVehiculo, pausaVigente } from "./pausa-productiva";
 import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual, esDomingo, domingoDelCiclo, rangoDiaPanama } from "./fecha";
 import { tajadaDomingoQueFalta } from "./cifras";
 import { pagoHoyContrato } from "./pagos-dia";
@@ -900,7 +901,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
 
   const [contratoRes, saldoRes, multaRes, rentaRes, otras, pagado] = await Promise.all([
     sb.from("contratos")
-      .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+      .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo_id")
       .eq("id", contratoId)
       .maybeSingle(),
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
@@ -912,10 +913,13 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     pagoHoyContrato(contratoId, fecha),
   ]);
 
-  const terminos = contratoRes.data as TerminosCuota | null;
+  const contratoRow = contratoRes.data as (TerminosCuota & { vehiculo_id?: string | null }) | null;
+  const terminos = contratoRow;
   if (!terminos) return null;
+  const pausa = await pausaDeVehiculo(contratoRow?.vehiculo_id);
+  const enPausa = pausaVigente(pausa, fecha);
   const acuerdos = (acuerdosData ?? []) as AcuerdoActivo[];
-  const cuotaHoy = cuotaDeFecha(terminos, fecha);
+  const cuotaHoy = enPausa && !esDomingo(fecha) ? 0 : cuotaDeFecha(terminos, fecha);
   const multaHoy = (multaRes.data?.length ?? 0) > 0;
   const hoyYaDevengado = (rentaRes.data?.length ?? 0) > 0;
   const saldoVista = Number((saldoRes.data as { saldo_actual: number } | null)?.saldo_actual ?? 0);
@@ -923,7 +927,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const pagadoHoyAntes = Math.max((pagado.pagado ?? 0) - monto, 0);
   const estePuntual = esPagoPuntual(pago.pagado_at, fecha);
   const pagadoPuntualAntes = Math.max((pagado.pagadoPuntual ?? 0) - (estePuntual ? monto : 0), 0);
-  const acuerdoHoy = acuerdoHoyDe(acuerdos, fecha);
+  const acuerdoHoy = enPausa ? 0 : acuerdoHoyDe(acuerdos, fecha);
   let preferencia: string | null = null;
   {
     const pref = await sb.from("contratos").select("prioridad_abono").eq("id", contratoId).maybeSingle();
@@ -960,6 +964,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     multaHoyRegistrada: multaHoy,
     hoyYaDevengado,
     pendiente: false,
+    diaLibre: enPausa && !hoyEsDomingo,
   });
 
   // Lun–sáb: recargo cargado, luego la cuota de acuerdo. Domingo: la tajada va
@@ -977,7 +982,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     pendienteAnterior: letraSinRecargo.pendienteAnterior,
     cierreAbierto,
   });
-  const acuerdosBase = cobraAcuerdoHoy
+  const acuerdosBase = cobraAcuerdoHoy && !enPausa
     ? acuerdos
         .map((a) => ({
           id: a.id,
@@ -1071,9 +1076,9 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       const restantes = acuerdos.map((a) =>
         a.id === plan.id ? { ...a, saldo: r2(Number(a.saldo) - ya - toma) } : a,
       );
-      const cola = resto > 0.009
+      const cola = resto > 0.009 && !enPausa
         ? adelantarDias({ sobrante: resto, acuerdos: restantes, letra: letraDiaria, desde: fecha })
-        : { asignaciones: [] as AsignacionPago[], sobrante: 0, aplicado: 0 };
+        : { asignaciones: [] as AsignacionPago[], sobrante: enPausa ? resto : 0, aplicado: 0 };
       resultado = {
         asignaciones: [
           ...resultado.asignaciones,
@@ -1097,7 +1102,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     pago.rubro !== "cuenta"
   ) {
     // Sábado sin decisión del equipo: no se asume letra ni domingo.
-  } else if (resultado.sobrante > 0.009) {
+  } else if (resultado.sobrante > 0.009 && !enPausa) {
     const adelanto = adelantarDias({
       sobrante: resultado.sobrante,
       acuerdos,

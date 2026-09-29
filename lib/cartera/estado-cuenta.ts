@@ -24,6 +24,7 @@ import {
 } from "./pagos-dia";
 import { ultimoDiaDevengado } from "./devengo";
 import { programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
+import { ajustarCobroPausa, etiquetaPausa, pausaDeVehiculo, pausaVigente, pausasAbiertas } from "./pausa-productiva";
 import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
 import { tratamientoCliente } from "./tratamiento";
 import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
@@ -126,6 +127,12 @@ export type EstadoCuenta = Cifras & {
    */
   domingoAlCorte?: number;
   templateVars: [string, string, string, string, string];
+  /** Chapistería, mantenimiento o colisión desde la fecha de ingreso. */
+  enTaller: boolean;
+  tallerDesde: string | null;
+  /** Día en que vuelve a productivo. Vacío si la pausa no tiene fecha de activación. */
+  tallerHasta: string | null;
+  tallerEtiqueta: string | null;
 };
 
 type ContratoRow = TerminosCuota & {
@@ -137,7 +144,9 @@ type ContratoRow = TerminosCuota & {
   /** Migrado del Excel (CUOTAS PAGAS). Null si aún no hay columna / dato. */
   cuotas_pagadas?: number | null;
   vehiculo: {
+    id?: string;
     numero: string;
+    estado?: string | null;
     empresa: { id: string; codigo: string; nombre: string } | null;
   } | null;
   cliente: { nombre: string; whatsapp: string | null; genero?: string | null } | null;
@@ -317,6 +326,10 @@ function armar(
     pagadoDomingoHoy?: number;
     pagadoDomingoCiclo?: number;
     domingoAlCorte?: number;
+    enTaller?: boolean;
+    tallerDesde?: string | null;
+    tallerHasta?: string | null;
+    tallerEtiqueta?: string | null;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -417,6 +430,10 @@ function armar(
     pagadoDomingoHoy: extra.pagadoDomingoHoy ?? 0,
     pagadoDomingoCiclo: extra.pagadoDomingoCiclo ?? extra.pagadoDomingoHoy ?? 0,
     domingoAlCorte: extra.domingoAlCorte,
+    enTaller: Boolean(extra.enTaller),
+    tallerDesde: extra.tallerDesde ?? null,
+    tallerHasta: extra.tallerHasta ?? null,
+    tallerEtiqueta: extra.tallerEtiqueta ?? null,
     templateVars: [nombre, carro, fecha, desgloseOut, money(cifrasOut.totalHoy)],
   };
 }
@@ -460,9 +477,9 @@ function terminosDe(c: ContratoRow): TerminosCuota {
 }
 
 const SEL =
-  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, cuotas_pagadas, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, cuotas_pagadas, vehiculo:vehiculos(id, numero, estado, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
 const SEL_SIN_CUOTAS_PAGADAS =
-  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, vehiculo:vehiculos(id, numero, estado, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
 
 /** Pagos a renta vs cargos extras, por contrato → resumen de cuotas. */
 async function cuotasPorContrato(
@@ -643,7 +660,8 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   // Contrato cerrado (devuelto/finalizado/abandonado…): ya NO corre cuota diaria;
   // solo queda la deuda pendiente. Se trata como "día libre" permanente.
   const contratoCerrado = row.estado !== "activo";
-  const entrada = {
+  const pausa = await pausaDeVehiculo(row.vehiculo?.id);
+  const entrada = ajustarCobroPausa({
     terminos: terminosDe(row),
     saldo: Number((s.data as { saldo_actual: number } | null)?.saldo_actual ?? 0),
     pagoHoy: pago.pagoHoy,
@@ -660,7 +678,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     diaLibre: contratoCerrado,
     domingoEnSaldo: domingoMap.get(contratoId)?.total ?? 0,
     pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
-  };
+  }, pausa);
   const cifrasBase = calcularCifras(entrada);
   const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
   const cumple = evaluarCumple(row, nac, hoy, cifrasBase, entrada);
@@ -730,6 +748,10 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
     pagadoDomingoCiclo: (pagadoCicloMap ?? pagadoDomingoMap).get(contratoId) ?? 0,
     domingoAlCorte: domingoMap.get(contratoId)?.alCorte ?? 0,
+    enTaller: Boolean(pausa && pausaVigente(pausa, hoy)),
+    tallerDesde: pausa && pausaVigente(pausa, hoy) ? pausa.desde : null,
+    tallerHasta: pausa && pausaVigente(pausa, hoy) ? pausa.hasta : null,
+    tallerEtiqueta: pausa && pausaVigente(pausa, hoy) ? etiquetaPausa(pausa.estado) : null,
   });
 }
 
@@ -791,7 +813,7 @@ async function filasContratosActivos(): Promise<ContratoRow[]> {
     const retry = await sb
       .from("contratos")
       .select(
-        "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(numero, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)",
+        "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo:vehiculos(id, numero, estado, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)",
       )
       .eq("estado", "activo");
     return ((retry.data ?? []) as unknown as ContratoRow[]).map((c) => ({
@@ -1088,6 +1110,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     domingoMap,
     pagadoDomingoMap,
     pagadoCicloMap,
+    pausasMap,
   ] = await Promise.all([
     sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual").in("contrato_id", idsAlcance),
     sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE"),
@@ -1113,6 +1136,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     domingoDelCiclo(hoy) === hoy
       ? Promise.resolve(null)
       : pagadoDomingoRangoPorContrato(idsAlcance, domingoDelCiclo(hoy), hoy),
+    pausasAbiertas(),
   ]);
 
   const atrasoMap = await atrasoAcuerdoPorContrato(hoy, acuerdosMap);
@@ -1141,7 +1165,9 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     const pendiente = pendientes.has(c.id);
     const devengadoHasta = lastRenta.get(c.id) ?? null;
     const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
-    const entrada = {
+    const pausa = pausasMap.get(c.vehiculo?.id ?? "");
+    const enTaller = pausaVigente(pausa, hoy);
+    const entrada = ajustarCobroPausa({
       terminos: terminosDe(c),
       saldo: saldoMap.get(c.id) ?? 0,
       pagoHoy,
@@ -1157,7 +1183,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       sinDevengoRenta: devengadoHasta == null,
       domingoEnSaldo: domingoMap.get(c.id)?.total ?? 0,
       pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
-    };
+    }, pausa);
     const cifrasBase = calcularCifras(entrada);
     const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;
     const cumple = evaluarCumple(c, nac, hoy, cifrasBase, entrada);
@@ -1202,6 +1228,10 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
       pagadoDomingoCiclo: (pagadoCicloMap ?? pagadoDomingoMap).get(c.id) ?? 0,
       domingoAlCorte: domingoMap.get(c.id)?.alCorte ?? 0,
+      enTaller,
+      tallerDesde: enTaller ? pausa!.desde : null,
+      tallerHasta: enTaller ? pausa!.hasta : null,
+      tallerEtiqueta: enTaller ? etiquetaPausa(pausa!.estado) : null,
     });
   });
 }

@@ -22,6 +22,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, sumarDias, pasoCorte, diasEntre, esDomingo } from "./fecha";
 import { cuotaDeFecha, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
+import { pausasAbiertas, pausaVigente } from "./pausa-productiva";
 import {
   contratosQueCubrieronElDia,
   contratosConComprobantePendienteEnDia,
@@ -51,6 +52,7 @@ function graciaVigente(fecha: string, hoy = hoyPanama()): boolean {
 type ContratoDevengo = TerminosCuota & {
   id: string;
   cliente_id: string | null;
+  vehiculo_id: string | null;
   fecha_inicio: string;
   /** Si existe, la letra diaria empieza aquí (no en fecha_inicio). */
   fecha_inicio_letra: string | null;
@@ -121,7 +123,7 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
 
   const { data: contratos, error } = await sb
     .from("contratos")
-    .select("id, cliente_id, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+    .select("id, cliente_id, vehiculo_id, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
     .eq("estado", "activo");
   if (error) throw error;
 
@@ -138,6 +140,7 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
   }
   const nacMap = await nacimientosPorCliente();
+  const pausas = await pausasAbiertas();
 
   const res: ResultadoDevengo = { fecha, creados: 0, yaEstaban: 0, sinCuota: 0 };
   const filas: Record<string, unknown>[] = [];
@@ -151,6 +154,11 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     // saldo y, si hay balde DOMINGOS, una tajada. Al día queda en $0
     // (G14: saldo $163; sumarle la cuota domingo daba $193 de más).
     if (esDomingo(fecha)) {
+      res.sinCuota++;
+      continue;
+    }
+    // En taller desde la fecha de ingreso: no se abre letra nueva.
+    if (pausaVigente(pausas.get(c.vehiculo_id ?? ""), fecha)) {
       res.sinCuota++;
       continue;
     }

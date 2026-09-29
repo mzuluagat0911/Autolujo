@@ -7,6 +7,7 @@ import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { crearArrendatarioEnCarro, generoDeAlta } from "@/lib/cartera/enlazar-alta";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
+import { aplicarEstadoProductivo } from "@/lib/cartera/pausa-productiva";
 
 function str(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
@@ -118,6 +119,9 @@ export async function guardarIdentidadCarro(input: {
   celular: string | null;
   genero?: string | null;
   letra?: number | null;
+  estado?: string | null;
+  fechaIngreso?: string | null;
+  fechaActivacion?: string | null;
 }): Promise<ResultadoFicha> {
   const id = String(input.vehiculoId ?? "").trim();
   const numero = String(input.numero ?? "").trim();
@@ -128,6 +132,25 @@ export async function guardarIdentidadCarro(input: {
 
   try {
     const sb = createServerSupabase();
+    const conEstado = async (base: ResultadoFicha): Promise<ResultadoFicha> => {
+      if (!base.ok || !input.estado) return base;
+      const p = await aplicarEstadoProductivo({
+        vehiculoId: id,
+        estado: input.estado,
+        fechaIngreso: input.fechaIngreso ?? null,
+        fechaActivacion: input.fechaActivacion ?? null,
+      });
+      if (!p.ok) return p;
+      try {
+        invalidarLecturaEstados();
+      } catch (e) {
+        console.error("[guardarIdentidadCarro] cache pausa", e);
+      }
+      revalidatePath("/cartera/vehiculos");
+      revalidatePath("/cartera/estados-cuenta");
+      revalidatePath("/cartera");
+      return { ok: true, msg: p.msg ? `${base.msg} ${p.msg}` : base.msg };
+    };
     const { data: contrato, error: cErr } = await sb
       .from("contratos")
       .select("id, cliente_id")
@@ -207,10 +230,10 @@ export async function guardarIdentidadCarro(input: {
       revalidatePath("/cartera/clientes");
       revalidatePath("/cartera/conversaciones");
       revalidatePath("/cartera");
-      return {
+      return conEstado({
         ok: true,
         msg: enlace.aviso ?? `${nombre} quedó en el carro ${numero}: contrato, letra y chat enlazados.`,
-      };
+      });
     }
 
     const { error: vErr } = await sb.from("vehiculos").update({ numero }).eq("id", id);
@@ -314,7 +337,7 @@ export async function guardarIdentidadCarro(input: {
     revalidatePath("/cartera");
     revalidatePath("/operaciones/hoja-vida");
     revalidatePath(`/operaciones/hoja-vida/${id}`);
-    return { ok: true, msg: "Ficha actualizada. Los próximos envíos usan este nombre y celular." };
+    return conEstado({ ok: true, msg: "Ficha actualizada. Los próximos envíos usan este nombre y celular." });
   } catch (e) {
     console.error("[guardarIdentidadCarro]", e);
     return { ok: false, msg: e instanceof Error ? e.message : "No pude guardar la ficha." };
