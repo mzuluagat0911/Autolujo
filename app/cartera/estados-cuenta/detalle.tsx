@@ -10,7 +10,8 @@ import {
   esAlDiaHoy,
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
-import { partesSaldoAnterior } from "@/lib/cartera/extracto-desglose";
+import { partesSaldoAnterior, type PlanAcuerdoVista } from "@/lib/cartera/extracto-desglose";
+import { resumenFrecuencia, type FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
 import { filaEstadoEnVivo } from "./actions";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { fechaConDia, fechaLarga } from "@/lib/cartera/fecha";
@@ -51,6 +52,17 @@ function pctCuotas(e: EstadoCuenta): number | null {
 function capEtiqueta(s: string): string {
   if (!s) return s;
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function textoCuotaPlan(p: PlanAcuerdoVista): string {
+  const raw = resumenFrecuencia({
+    frecuencia: p.frecuencia as FrecuenciaAcuerdo,
+    fecha_especifica: p.fecha,
+    cuota_diaria: p.cuotaDiaria,
+    cuota_domingo: p.cuotaDomingo,
+  });
+  const larga = fechaLargaUi(p.fecha);
+  return p.fecha && larga ? raw.replace(p.fecha, larga) : raw;
 }
 
 function Fila({
@@ -389,7 +401,7 @@ export function DetalleEstadoModal({
                 )}
               </Seccion>
 
-              {vivo.acuerdoSaldo > 0.009 && (
+              {(vivo.planesAcuerdo.length > 0 || vivo.acuerdoSaldo > 0.009) && (
                 <Seccion
                   title="Acuerdos"
                   action={
@@ -402,9 +414,33 @@ export function DetalleEstadoModal({
                     </button>
                   }
                 >
-                  <Fila label="Saldo del plan" tone="crit">
-                    {money(vivo.acuerdoSaldo)}
-                  </Fila>
+                  {vivo.planesAcuerdo.length > 0 ? (
+                    vivo.planesAcuerdo.map((p, i) => (
+                      <div key={`${p.etiqueta}-${p.fecha ?? ""}-${i}`} className="py-3">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <p className="text-sm font-medium text-ink">{p.etiqueta}</p>
+                          <span className={`text-[11px] font-medium ${p.cobra ? "text-rojo" : "text-muted"}`}>
+                            {p.cobra ? "Se cobra" : "En espera"}
+                          </span>
+                        </div>
+                        <div className="divide-y divide-line">
+                          <Fila label="Saldo" tone={p.cobra ? "crit" : "default"}>
+                            {money(p.saldo)}
+                          </Fila>
+                          <Fila label="Cuota">{textoCuotaPlan(p)}</Fila>
+                          {p.montoTotal > p.saldo + 0.009 && (
+                            <Fila label="Acordado" tone="muted">
+                              {money(p.montoTotal)}
+                            </Fila>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <Fila label="Saldo del plan" tone="crit">
+                      {money(vivo.acuerdoSaldo)}
+                    </Fila>
+                  )}
                   {vivo.acuerdoHoy > 0.009 && (
                     <Fila label="Cuota de hoy" tone="crit">
                       {money(vivo.acuerdoHoy)}

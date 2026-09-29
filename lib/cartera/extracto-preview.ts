@@ -6,6 +6,7 @@ import {
   armarExtractoDiario,
   textoDesgloseExtracto,
   type LineaExtracto,
+  type PlanAcuerdoVista,
 } from "./extracto-desglose";
 
 export type ExtractoCtx = {
@@ -13,6 +14,7 @@ export type ExtractoCtx = {
   extras: LineaExtracto[];
   preferencia?: string | null;
   enEspera?: { etiqueta: string; saldo: number }[];
+  planes?: PlanAcuerdoVista[];
 };
 
 /** Sin saldo de días anteriores: solo le toca la cuota de hoy. */

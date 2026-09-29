@@ -66,6 +66,7 @@ import {
   textoDesgloseExtracto,
   type ExtractoArmado,
   type LineaExtracto,
+  type PlanAcuerdoVista,
 } from "./extracto-desglose";
 
 export const MARCA_EXCEDENTE_SIN_CONCEPTO = "EXCEDENTE_SIN_CONCEPTO";
@@ -82,6 +83,8 @@ export type CobroHoyCtx = {
   preferencia?: string | null;
   /** Planes que esperan detrás del que se cobra. No suman al total. */
   enEspera?: { etiqueta: string; saldo: number }[];
+  /** Todos los planes con saldo, el que se cobra primero. Solo para el resumen. */
+  planes?: PlanAcuerdoVista[];
 };
 
 export type CobroHoy = ExtractoArmado & {
@@ -106,6 +109,7 @@ export async function ctxCobroHoy(contratoId: string): Promise<CobroHoyCtx> {
     extras,
     preferencia,
     enEspera: acuerdos.espera,
+    planes: acuerdos.planes,
   };
 }
 

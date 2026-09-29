@@ -960,6 +960,7 @@ export async function filaEstadoEnVivo(
     const fila: EstadoCuentaFila = {
       ...e,
       acuerdoSaldo: ctx.acuerdoSaldo,
+      planesAcuerdo: ctx.planes ?? [],
       extras: ctx.extras,
       totalCobrarHoy: cobro.totalCobrarHoy,
       lineasCobro: cobro.lineas,

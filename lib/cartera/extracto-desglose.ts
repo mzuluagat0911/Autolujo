@@ -290,11 +290,23 @@ export async function acuerdoSaldoContrato(contratoId: string): Promise<number> 
   return det.saldo;
 }
 
+export type PlanAcuerdoVista = {
+  etiqueta: string;
+  saldo: number;
+  montoTotal: number;
+  cuotaDiaria: number;
+  cuotaDomingo: number;
+  frecuencia: string;
+  fecha: string | null;
+  /** El que se cobra. Los demás esperan a que este quede en cero. */
+  cobra: boolean;
+};
+
 export async function detalleAcuerdosContrato(
   contratoId: string,
-): Promise<{ saldo: number; espera: { etiqueta: string; saldo: number }[] }> {
+): Promise<{ saldo: number; espera: { etiqueta: string; saldo: number }[]; planes: PlanAcuerdoVista[] }> {
   const map = await partirAcuerdosPorContrato([contratoId]);
-  return map.get(contratoId) ?? { saldo: 0, espera: [] };
+  return map.get(contratoId) ?? { saldo: 0, espera: [], planes: [] };
 }
 
 export async function preferenciaAbonoContrato(contratoId: string): Promise<string | null> {
@@ -335,29 +347,56 @@ export async function acuerdosEnEsperaPorContrato(
   return out;
 }
 
+export async function vistaAcuerdosPorContrato(
+  contratoIds: string[],
+): Promise<Map<string, { saldo: number; espera: { etiqueta: string; saldo: number }[]; planes: PlanAcuerdoVista[] }>> {
+  return partirAcuerdosPorContrato(contratoIds);
+}
+
 /** El saldo que se cobra es el del plan más antiguo que aún debe.
  *  Los demás quedan en espera y no entran al total. */
 async function partirAcuerdosPorContrato(
   contratoIds: string[],
-): Promise<Map<string, { saldo: number; espera: { etiqueta: string; saldo: number }[] }>> {
-  const out = new Map<string, { saldo: number; espera: { etiqueta: string; saldo: number }[] }>();
+): Promise<Map<string, { saldo: number; espera: { etiqueta: string; saldo: number }[]; planes: PlanAcuerdoVista[] }>> {
+  const out = new Map<string, { saldo: number; espera: { etiqueta: string; saldo: number }[]; planes: PlanAcuerdoVista[] }>();
   const ids = contratoIds.filter(Boolean);
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
   const { data } = await sb
     .from("acuerdos")
-    .select("contrato_id, saldo, descripcion, created_at")
+    .select("contrato_id, saldo, monto_total, descripcion, cuota_diaria, cuota_domingo, frecuencia, fecha_especifica, created_at")
     .in("contrato_id", ids)
     .eq("activo", true)
     .order("created_at", { ascending: true });
-  const porId = new Map<string, { saldo: number; descripcion: string | null }[]>();
+  const porId = new Map<string, {
+    saldo: number;
+    montoTotal: number;
+    descripcion: string | null;
+    cuotaDiaria: number;
+    cuotaDomingo: number;
+    frecuencia: string;
+    fecha: string | null;
+  }[]>();
   for (const a of (data ?? []) as {
     contrato_id: string;
     saldo: number;
+    monto_total: number | null;
     descripcion: string | null;
+    cuota_diaria: number | null;
+    cuota_domingo: number | null;
+    frecuencia: string | null;
+    fecha_especifica: string | null;
   }[]) {
     const lista = porId.get(a.contrato_id) ?? [];
-    lista.push({ saldo: Math.max(Number(a.saldo) || 0, 0), descripcion: a.descripcion });
+    lista.push({
+      saldo: Math.max(Number(a.saldo) || 0, 0),
+      montoTotal: Math.max(Number(a.monto_total) || 0, 0),
+      descripcion: a.descripcion,
+      cuotaDiaria: Math.max(Number(a.cuota_diaria) || 0, 0),
+      cuotaDomingo: Math.max(Number(a.cuota_domingo) || 0, 0),
+      frecuencia: a.frecuencia || "dia",
+      fecha: a.fecha_especifica?.slice(0, 10) ?? null,
+    });
     porId.set(a.contrato_id, lista);
   }
   for (const [id, lista] of porId) {
@@ -368,6 +407,16 @@ async function partirAcuerdosPorContrato(
       espera: vivos.slice(1).map((a) => ({
         etiqueta: (a.descripcion ?? "acuerdo en espera").trim() || "acuerdo en espera",
         saldo: a.saldo,
+      })),
+      planes: vivos.map((a, i) => ({
+        etiqueta: (a.descripcion ?? "Acuerdo de pago").trim() || "Acuerdo de pago",
+        saldo: a.saldo,
+        montoTotal: a.montoTotal,
+        cuotaDiaria: a.cuotaDiaria,
+        cuotaDomingo: a.cuotaDomingo,
+        frecuencia: a.frecuencia,
+        fecha: a.fecha,
+        cobra: i === 0,
       })),
     });
   }
