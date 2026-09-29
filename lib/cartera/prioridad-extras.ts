@@ -42,7 +42,7 @@ export function esCargoBase(etiqueta: string): boolean {
     t === "cuenta" ||
     t.startsWith("saldo anterior") ||
     t === "por no pagar" ||
-    t.includes("cierre de semana") ||
+    /cierre(\s+de)?\s+semana/.test(t) ||
     t === "abono" ||
     t.startsWith("abono (") ||
     t.includes("abono adelantado")

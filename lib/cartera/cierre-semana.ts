@@ -9,26 +9,37 @@
 //   - mantenimiento u otros recargos
 // Solo por demora o saldo de la CUOTA DIARIA (letra).
 //
-// Corre el martes a primera hora, junto con el cobro de las 9am, para que el
-// recargo salga en el estado de cuenta de la mañana.
+// Corre el martes a las 7:45. El mensaje sale a las 9.
 //
-// "No cerró la semana" = atraso de letra de días anteriores (pendienteAnterior
-// atribuible a renta diaria). La cuota nueva del martes NO cuenta.
+// Un pago ya cruzado esa mañana, o un comprobante que se valida antes de las 9
+// y deja la letra atrasada cubierta, no lleva el $10. Si a las 9 el comprobante
+// sigue en validación, el cargo entra en el mensaje.
+//
+// "No cerró la semana" = atraso de letra de días anteriores, ya neto de lo
+// pagado hoy. La cuota nueva del martes NO cuenta.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama, diaSemana } from "./fecha";
-import { estadosCuentaHoy } from "./estado-cuenta";
+import { hoyPanama, diaSemana, horaPanama, HORA_EXTRACTO } from "./fecha";
+import { estadoCuentaContrato, estadosCuentaHoy } from "./estado-cuenta";
 
 const MONTO_CIERRE = 10;
 
+function antesDelExtracto(): boolean {
+  return Number(horaPanama().slice(0, 2)) < HORA_EXTRACTO;
+}
+
 /**
- * Atraso que dispara el $10: solo demora de LETRA DIARIA.
- * Acuerdos, domingos y otros recargos NO cuentan (ver comentario de archivo).
- * Hoy usamos pendienteAnterior del motor; el piloto Gold / Excel usa la columna
- * `atrasado` o la falta de letra del lunes — nunca DEBE OTROS ni acuerdos.
+ * Atraso de letra que dispara el $10, sin devolver el pago de hoy.
+ * Si el cargo de $10 ya está en el saldo, no cuenta como atraso de letra.
  */
-function atrasoLetraDiaria(e: { pendienteAnterior: number }): boolean {
-  return e.pendienteAnterior > 0.009;
+function atrasoLetraNeta(
+  e: { pendienteAnterior: number; pagadoHoy?: number },
+  yaTieneCierre: boolean,
+): number {
+  const pagado = Math.max(Number(e.pagadoHoy) || 0, 0);
+  let neto = Math.max(0, (Number(e.pendienteAnterior) || 0) - pagado);
+  if (yaTieneCierre) neto = Math.max(0, Math.round((neto - MONTO_CIERRE) * 100) / 100);
+  return neto;
 }
 
 export type ResultadoCierreSemana = {
@@ -51,23 +62,44 @@ export async function aplicarCierreSemana(fecha = hoyPanama()): Promise<Resultad
 
   const sb = createServerSupabase();
 
-  // Quién NO cerró la semana: tiene atraso del lunes o antes (pendienteAnterior).
-  // La cuota nueva del martes no cuenta (es del día de hoy).
-  // Quién NO cerró la letra diaria de la semana (lunes o antes).
-  // No contar acuerdos / domingos / otros como motivo del $10.
-  const deudores = (await estadosCuentaHoy()).filter((e) => atrasoLetraDiaria(e));
+  const estados = await estadosCuentaHoy();
+  const ids = estados.map((e) => e.contratoId);
+  const [{ data: ya }, { data: pend }] = await Promise.all([
+    ids.length
+      ? sb
+          .from("cargos")
+          .select("contrato_id")
+          .eq("fecha", fecha)
+          .eq("concepto_codigo", "CIERRE_SEMANA")
+          .in("contrato_id", ids)
+      : Promise.resolve({ data: [] as { contrato_id: string }[] }),
+    ids.length
+      ? sb
+          .from("pagos")
+          .select("contrato_id")
+          .eq("estado_conciliacion", "pendiente")
+          .in("contrato_id", ids)
+      : Promise.resolve({ data: [] as { contrato_id: string }[] }),
+  ]);
+  const yaSet = new Set(((ya ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id));
+  const pendientes = new Set(
+    ((pend ?? []) as { contrato_id: string | null }[])
+      .map((p) => p.contrato_id)
+      .filter((id): id is string => Boolean(id)),
+  );
+  const esperaExtracto = antesDelExtracto();
+  // Letra del lunes o antes, ya descontando lo cruzado hoy.
+  // Antes de las 9, un comprobante todavía en validación no dispara el $10:
+  // si lo cruzan a tiempo, no se cobra; si a las 9 sigue pendiente, sí.
+  const deudores = estados.filter((e) => {
+    if (atrasoLetraNeta(e, yaSet.has(e.contratoId)) <= 0.009) return false;
+    if (esperaExtracto && pendientes.has(e.contratoId)) return false;
+    return true;
+  });
   res.deudores = deudores.length;
   if (deudores.length === 0) return res;
 
-  const ids = deudores.map((d) => d.contratoId);
-  const { data: ya } = await sb
-    .from("cargos")
-    .select("contrato_id")
-    .eq("fecha", fecha)
-    .eq("concepto_codigo", "CIERRE_SEMANA")
-    .in("contrato_id", ids);
-  const yaSet = new Set(((ya ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id));
-  res.yaTenian = yaSet.size;
+  res.yaTenian = deudores.filter((d) => yaSet.has(d.contratoId)).length;
 
   const filas = deudores
     .filter((d) => !yaSet.has(d.contratoId))
@@ -76,7 +108,7 @@ export async function aplicarCierreSemana(fecha = hoyPanama()): Promise<Resultad
       fecha,
       tipo: "multa",
       concepto_codigo: "CIERRE_SEMANA",
-      concepto: "No cerrar semana al día (lunes)",
+      concepto: "Recargo Cierre semana",
       monto: MONTO_CIERRE,
     }));
   if (filas.length === 0) return res;
@@ -93,4 +125,24 @@ export async function aplicarCierreSemana(fecha = hoyPanama()): Promise<Resultad
     else res.creados++;
   }
   return res;
+}
+
+/** Si antes de las 9 la letra atrasada quedó cubierta, saca el $10 de hoy. */
+export async function quitarCierreSiLaLetraQuedoCubierta(contratoId: string): Promise<boolean> {
+  const fecha = hoyPanama();
+  if (diaSemana(fecha) !== 2 || !antesDelExtracto()) return false;
+  const est = await estadoCuentaContrato(contratoId);
+  if (!est) return false;
+  const sb = createServerSupabase();
+  const { data: cargos } = await sb
+    .from("cargos")
+    .select("id")
+    .eq("contrato_id", contratoId)
+    .eq("fecha", fecha)
+    .eq("concepto_codigo", "CIERRE_SEMANA");
+  const ids = ((cargos ?? []) as { id: string }[]).map((c) => c.id);
+  if (ids.length === 0) return false;
+  if (atrasoLetraNeta(est, true) > 0.009) return false;
+  const { error } = await sb.from("cargos").delete().in("id", ids);
+  return !error;
 }

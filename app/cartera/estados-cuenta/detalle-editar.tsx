@@ -114,7 +114,7 @@ const PRESETS: { label: string; tipo: string; concepto: string; codigo: string |
   { label: "Panapass", tipo: "panapass", concepto: "Panapass", codigo: "PANAPASS" },
   { label: "Domingo", tipo: "otras", concepto: "Domingo", codigo: "DOMINGOS" },
   { label: "Multa no pago", tipo: "multa", concepto: "Pago después de las 7 PM", codigo: "PAGO_TARDE" },
-  { label: "Cierre de semana", tipo: "multa", concepto: "No cerrar semana al día", codigo: "CIERRE_SEMANA" },
+  { label: "Recargo Cierre semana", tipo: "multa", concepto: "Recargo Cierre semana", codigo: "CIERRE_SEMANA" },
   { label: "Negociación / ajuste", tipo: "ajuste", concepto: "Ajuste / negociación", codigo: null },
   { label: "Exceso de km", tipo: "exceso_km", concepto: "Exceso de kilometraje", codigo: "122" },
   { label: "Recogida de vehículo", tipo: "otras", concepto: "Recogida de vehículo", codigo: "RECOGIDA" },

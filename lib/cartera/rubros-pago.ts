@@ -19,7 +19,7 @@ export const RUBROS_PAGO: { value: RubroPago; label: string }[] = [
   { value: "acuerdo", label: "Acuerdo / arreglo" },
   { value: "panapass", label: "Panapass" },
   { value: "domingo", label: "Domingo" },
-  { value: "cierre_semana", label: "Cierre de semana" },
+  { value: "cierre_semana", label: "Recargo Cierre semana" },
   { value: "exceso_km", label: "Exceso de km" },
   { value: "ajuste", label: "Negociación / ajuste" },
   { value: "recogida", label: "Recogida de vehículo" },
@@ -49,7 +49,7 @@ export const CONCEPTOS_PAGO = [
   { value: "domingo", label: "Domingo", cubeta: "domingo" },
   { value: "mantenimiento", label: "Mantenimiento", cubeta: "mantenimiento" },
   { value: "panapass", label: "Panapass", cubeta: "panapass" },
-  { value: "cierre_semana", label: "Cierre de semana", cubeta: "cierre de semana" },
+  { value: "cierre_semana", label: "Recargo Cierre semana", cubeta: "cierre de semana" },
   { value: "exceso_km", label: "Exceso de km", cubeta: "exceso de kilometraje" },
   { value: "ajuste", label: "Negociación / ajuste", cubeta: "ajuste" },
   { value: "recogida", label: "Recogida de vehículo", cubeta: "recogida de vehículo" },
@@ -67,7 +67,7 @@ export const CARGO_DE_CONCEPTO: Record<
   domingo: { tipo: "otras", codigo: "DOMINGOS", concepto: "Domingo" },
   mantenimiento: { tipo: "otras", codigo: "124", concepto: "Mantenimiento" },
   panapass: { tipo: "panapass", codigo: "PANAPASS", concepto: "Panapass" },
-  cierre_semana: { tipo: "multa", codigo: "CIERRE_SEMANA", concepto: "No cerrar semana al día" },
+  cierre_semana: { tipo: "multa", codigo: "CIERRE_SEMANA", concepto: "Recargo Cierre semana" },
   exceso_km: { tipo: "exceso_km", codigo: "122", concepto: "Exceso de kilometraje" },
   ajuste: { tipo: "ajuste", codigo: null, concepto: "Ajuste / negociación" },
   recogida: { tipo: "otras", codigo: "RECOGIDA", concepto: "Recogida de vehículo" },
@@ -82,12 +82,12 @@ export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string
   const hit = CONCEPTOS_PAGO.find((c) => c.value === t);
   if (hit?.cubeta) return hit.cubeta;
   const et = (etiqueta ?? "").trim().toLowerCase();
+  if (/cierre(\s+de)?\s+semana/.test(et)) return "cierre de semana";
   if (/recargo|por no pagar/.test(et)) return "por no pagar";
   if (/abono\s*inicial|afiliaci[oó]n/.test(et)) return "abono inicial";
   if (/\bdomingo\b/.test(et)) return "domingo";
   if (/manten/.test(et)) return "mantenimiento";
   if (/panapass/.test(et)) return "panapass";
-  if (/cierre\s+de\s+semana/.test(et)) return "cierre de semana";
   if (/exceso/.test(et) && /km|kilom/.test(et)) return "exceso de kilometraje";
   if (/negociaci[oó]n|^ajuste\b/.test(et)) return "ajuste";
   if (/recogida/.test(et)) return "recogida de vehículo";

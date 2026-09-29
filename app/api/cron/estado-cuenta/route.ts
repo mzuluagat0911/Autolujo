@@ -1,4 +1,6 @@
 import { enviarEstadosCuentaHoy } from "@/lib/cartera/envios";
+import { aplicarCierreSemana } from "@/lib/cartera/cierre-semana";
+import { hoyPanama } from "@/lib/cartera/fecha";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // hasta 5 min (envío a toda la flota)
@@ -13,6 +15,14 @@ export async function GET(req: Request) {
     if (auth !== `Bearer ${secret}`) {
       return new Response("Unauthorized", { status: 401 });
     }
+  }
+
+  // El martes, a las 9, cobra el $10 a quien sigue con la letra atrasada
+  // (el comprobante que se validó antes ya no lo trae).
+  try {
+    await aplicarCierreSemana(hoyPanama());
+  } catch (e) {
+    console.error("[cron/estado-cuenta] cierre de semana:", e);
   }
 
   // Interruptor de seguridad: NO envía masivamente hasta activarlo en producción.

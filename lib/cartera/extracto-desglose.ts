@@ -32,7 +32,7 @@ const SKIP_CODIGOS = new Set(["PAGO_TARDE"]);
 /** Etiquetas cortas para el WhatsApp, según código o texto del cargo. */
 export function etiquetaCargo(concepto: string | null, codigo: string | null, tipo: string): string {
   const c = (codigo ?? "").toUpperCase();
-  if (c === "CIERRE_SEMANA") return "cierre de semana";
+  if (c === "CIERRE_SEMANA") return "Recargo Cierre semana";
   if (c === "122") return "exceso de kilometraje";
   if (c === "123") return "gastos administrativos";
   if (c === "124") return "mantenimiento";
@@ -50,7 +50,7 @@ export function etiquetaCargo(concepto: string | null, codigo: string | null, ti
   if (/panapass/.test(t)) return "panapass";
   if (/abono\s*inicial|afiliaci[oó]n/.test(t)) return "abono inicial";
   if (/mantenimiento/.test(t)) return "mantenimiento";
-  if (/cierre\s+de\s+semana/.test(t)) return "cierre de semana";
+  if (/cierre(\s+de)?\s+semana/.test(t)) return "Recargo Cierre semana";
   if (/exceso/.test(t) && /km|kilom/.test(t)) return "exceso de kilometraje";
   if (/recogida|domicilio/.test(t)) return "recogida del vehículo";
   if (/domingo/.test(t)) return "domingo";

@@ -1,8 +1,10 @@
 // Árbol de un abono, lun–sáb:
 // 1) Recargo por no pago (la multa ya cargada, no un $5 inventado).
-// 2) Un solo concepto más (acuerdo vencido y, si alcanza, el de hoy).
-// 3) Letra diaria de hoy.
-// 4) Si sobra: días siguientes, cada uno acuerdo y luego letra.
+// 2) Compromiso de pago del día (acuerdo).
+// 3) Recargo Cierre semana ($10), si está cargado. No es atraso ni letra.
+// 4) Letras atrasadas.
+// 5) Letra del día.
+// 6) Si sobra: días siguientes, cada uno acuerdo y luego letra.
 //    El balde de domingo no se llena, salvo que el pago traiga ese rubro.
 //    Sábado: el sobrante no se adelanta solo.
 //
@@ -31,17 +33,18 @@ import {
 } from "./salidas-aplicar";
 import { destinoLibre, destinoPorNombre, partirMontoInterior, type DestinoInterior } from "./salidas-interior";
 import { CARGO_DE_CONCEPTO, cubetaDeConcepto } from "./rubros-pago";
+import { quitarCierreSiLaLetraQuedoCubierta } from "./cierre-semana";
 
 export const PRIORIDAD: Record<TipoObligacion, number> = {
   salida_interior: 5,
   recargo: 8,
   acuerdo: 12,
+  cierre_semana: 15,
   saldo_anterior: 20,
   cuenta_diaria: 30,
   domingo: 6,
   mantenimiento: 41,
   panapass: 42,
-  cierre_semana: 43,
   exceso_km: 44,
   ajuste: 45,
   recogida: 46,
@@ -56,7 +59,7 @@ const ETIQUETA: Record<TipoObligacion, string> = {
   domingo: "domingo",
   mantenimiento: "mantenimiento",
   panapass: "panapass",
-  cierre_semana: "cierre de semana",
+  cierre_semana: "Recargo Cierre semana",
   exceso_km: "exceso de kilometraje",
   ajuste: "ajuste",
   recogida: "recogida de vehículo",
@@ -197,6 +200,21 @@ export function partirRecargoDeLaLetra(opts: {
   return { pendienteAnterior: pendiente, cuotaHoy: cuota, recargoHoy };
 }
 
+/**
+ * El Recargo Cierre semana vive dentro del saldo, pero no es letra atrasada.
+ * Se saca de ahí y se cobra después del acuerdo y antes de las letras atrasadas.
+ * Solo entra lo que todavía cabe en el saldo: un cargo ya cubierto no se vuelve a pedir.
+ */
+export function partirCierreDeLaLetra(opts: {
+  pendienteAnterior: number;
+  cierreAbierto: number;
+}): { pendienteAnterior: number; cierreHoy: number } {
+  const abierto = r2(Math.max(Number(opts.cierreAbierto) || 0, 0));
+  const pendiente = r2(Math.max(Number(opts.pendienteAnterior) || 0, 0));
+  const cierreHoy = r2(Math.min(pendiente, abierto));
+  return { pendienteAnterior: r2(pendiente - cierreHoy), cierreHoy };
+}
+
 function yaAplicado(ya: AsignacionPago[], tipo: TipoObligacion, ref?: string): number {
   return r2(
     ya
@@ -211,6 +229,7 @@ export function obligacionesRestantes(
     acuerdos: { id: string; monto: number; etiqueta?: string }[];
     pendienteAnterior: number;
     recargoHoy: number;
+    cierreHoy?: number;
     cuotaHoy: number;
     domingoHoy?: number;
   },
@@ -228,6 +247,15 @@ export function obligacionesRestantes(
         etiqueta: a.etiqueta ?? ETIQUETA.acuerdo,
       });
     }
+  }
+  const cierre = r2(Math.max((base.cierreHoy ?? 0) - yaAplicado(ya, "cierre_semana"), 0));
+  if (cierre > 0.009) {
+    out.push({
+      tipo: "cierre_semana",
+      prioridad: PRIORIDAD.cierre_semana,
+      monto: cierre,
+      etiqueta: ETIQUETA.cierre_semana,
+    });
   }
   const pend = r2(Math.max(base.pendienteAnterior - yaAplicado(ya, "saldo_anterior"), 0));
   if (pend > 0.009) {
@@ -365,7 +393,13 @@ export async function asegurarCargosAcuerdoDelPago(opts: {
   }
 }
 
+function esAsignacionCierre(a: AsignacionPago): boolean {
+  if (a.tipo === "cierre_semana") return true;
+  return /cierre(\s+de)?\s+semana/i.test(a.etiqueta ?? "");
+}
+
 function esAsignacionRecargo(a: AsignacionPago): boolean {
+  if (esAsignacionCierre(a)) return false;
   if (a.tipo === "recargo") return true;
   return /recargo|por no pagar/i.test(a.etiqueta ?? "");
 }
@@ -376,6 +410,7 @@ function esCargoRecargo(c: {
   concepto_codigo: string | null;
 }): boolean {
   const codigo = (c.concepto_codigo ?? "").toUpperCase();
+  if (codigo === "CIERRE_SEMANA" || /cierre(\s+de)?\s+semana/i.test(c.concepto ?? "")) return false;
   if (codigo === "PAGO_TARDE") return true;
   return c.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(c.concepto ?? "");
 }
@@ -419,6 +454,40 @@ async function recargoAbiertoDelContrato(contratoId: string, excluirPagoId: stri
       ? r2(parsed.asignaciones.filter(esAsignacionRecargo).reduce((s, a) => s + (Number(a.aplicado) || 0), 0))
       : 0;
     const abono = marcado > 0.009 ? marcado : (p.rubro ?? "").toLowerCase() === "recargo" ? Number(p.monto) || 0 : 0;
+    if (abono <= 0.009) continue;
+    abierto = r2(Math.max(abierto - abono, 0));
+  }
+  return abierto;
+}
+
+/** Recargo Cierre semana que ningún pago marcó todavía como ese concepto. */
+async function cierreAbiertoDelContrato(contratoId: string, excluirPagoId: string): Promise<number> {
+  const sb = createServerSupabase();
+  const [{ data: cargos }, { data: pagos }] = await Promise.all([
+    sb
+      .from("cargos")
+      .select("monto, concepto_codigo, pago_id")
+      .eq("contrato_id", contratoId)
+      .eq("concepto_codigo", "CIERRE_SEMANA"),
+    sb
+      .from("pagos")
+      .select("id, monto, rubro, asignaciones")
+      .eq("contrato_id", contratoId)
+      .in("estado_conciliacion", ["conciliado", "manual"])
+      .neq("id", excluirPagoId),
+  ]);
+  let abierto = 0;
+  for (const c of (cargos ?? []) as { monto: number; pago_id: string | null }[]) {
+    if (c.pago_id) continue;
+    abierto = r2(abierto + (Number(c.monto) || 0));
+  }
+  if (abierto <= 0.009) return 0;
+  for (const p of (pagos ?? []) as { monto: number; rubro: string | null; asignaciones: unknown }[]) {
+    const parsed = parseAsignaciones(p.asignaciones);
+    const marcado = parsed
+      ? r2(parsed.asignaciones.filter(esAsignacionCierre).reduce((s, a) => s + (Number(a.aplicado) || 0), 0))
+      : 0;
+    const abono = marcado > 0.009 ? marcado : (p.rubro ?? "") === "cierre_semana" ? Number(p.monto) || 0 : 0;
     if (abono <= 0.009) continue;
     abierto = r2(Math.max(abierto - abono, 0));
   }
@@ -615,7 +684,7 @@ function cubetaDeCargoFila(c: {
   if (codigo === "DOMINGOS" || /\bdomingo\b/i.test(c.concepto ?? "")) return "domingo";
   if (codigo === "124" || /manten/i.test(c.concepto ?? "")) return "mantenimiento";
   if (codigo === "PANAPASS" || c.tipo === "panapass" || /panapass/i.test(c.concepto ?? "")) return "panapass";
-  if (codigo === "CIERRE_SEMANA" || /cierre\s+de\s+semana/i.test(c.concepto ?? "")) return "cierre de semana";
+  if (codigo === "CIERRE_SEMANA" || /cierre(\s+de)?\s+semana/i.test(c.concepto ?? "")) return "cierre de semana";
   if (codigo === "122" || (/exceso/i.test(c.concepto ?? "") && /km|kilom/i.test(c.concepto ?? ""))) {
     return "exceso de kilometraje";
   }
@@ -781,6 +850,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
         });
       }
     }
+    await quitarCierreSiLaLetraQuedoCubierta(pago.contrato_id);
     return ya;
   }
 
@@ -879,6 +949,11 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     recargoAbierto,
     yaFueraDeLaLetra: multaHoy ? Math.min(penalidadDe(terminos), recargoAbierto) : 0,
   });
+  const cierreAbierto = await cierreAbiertoDelContrato(contratoId, pagoId);
+  const letraSinCierre = partirCierreDeLaLetra({
+    pendienteAnterior: letraSinRecargo.pendienteAnterior,
+    cierreAbierto,
+  });
   const acuerdosBase = cobraAcuerdoHoy
     ? acuerdos
         .map((a) => ({
@@ -892,8 +967,9 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const obligaciones = obligacionesRestantes(
     {
       acuerdos: acuerdosBase,
-      pendienteAnterior: letraSinRecargo.pendienteAnterior,
+      pendienteAnterior: letraSinCierre.pendienteAnterior,
       recargoHoy: letraSinRecargo.recargoHoy,
+      cierreHoy: letraSinCierre.cierreHoy,
       cuotaHoy: letraSinRecargo.cuotaHoy,
       domingoHoy,
     },
@@ -1087,6 +1163,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     });
   }
 
+  await quitarCierreSiLaLetraQuedoCubierta(contratoId);
   return resultado;
 }
 

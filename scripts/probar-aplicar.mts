@@ -4,6 +4,7 @@
 import { distribuirPago } from "@/lib/cartera/rules";
 import {
   obligacionesRestantes,
+  partirCierreDeLaLetra,
   partirRecargoDeLaLetra,
   PRIORIDAD,
   textoComoSeAplico,
@@ -99,6 +100,34 @@ const yaPelado = partirRecargoDeLaLetra({
 });
 check("si la multa de hoy ya estaba fuera, la letra no se achica", yaPelado.cuotaHoy, 37);
 check("y el recargo igual entra primero", yaPelado.recargoHoy, 5);
+
+console.log("\n· Recargo Cierre semana: después del acuerdo, antes del atraso y de la letra");
+const pelado = partirCierreDeLaLetra({ pendienteAnterior: 45, cierreAbierto: 10 });
+check("saca los $10 del atraso", pelado.cierreHoy, 10);
+check("la letra atrasada queda en $35", pelado.pendienteAnterior, 35);
+const sinCargo = partirCierreDeLaLetra({ pendienteAnterior: 35, cierreAbierto: 0 });
+check("sin cargo no inventa los $10", sinCargo.cierreHoy, 0);
+const yaPagado = partirCierreDeLaLetra({ pendienteAnterior: 0, cierreAbierto: 10 });
+check("si el saldo ya no lo trae, no se vuelve a cobrar", yaPagado.cierreHoy, 0);
+
+const martes: Obligacion[] = [
+  { tipo: "cuenta_diaria", prioridad: PRIORIDAD.cuenta_diaria, monto: 35, etiqueta: "cuota de hoy" },
+  { tipo: "saldo_anterior", prioridad: PRIORIDAD.saldo_anterior, monto: 35, etiqueta: "saldo anterior" },
+  { tipo: "cierre_semana", prioridad: PRIORIDAD.cierre_semana, monto: 10, etiqueta: "Recargo Cierre semana" },
+  { tipo: "acuerdo", prioridad: PRIORIDAD.acuerdo, monto: 5, ref: "a1", etiqueta: "arreglo" },
+];
+const pagoTodo = distribuirPago(85, martes);
+check("primero el acuerdo", pagoTodo.asignaciones[0]?.tipo, "acuerdo");
+check("luego el Recargo Cierre semana", pagoTodo.asignaciones[1]?.tipo, "cierre_semana");
+check("luego la letra atrasada", pagoTodo.asignaciones[2]?.tipo, "saldo_anterior");
+check("al final la letra del día", pagoTodo.asignaciones[3]?.tipo, "cuenta_diaria");
+check("el pago completo no sobra", pagoTodo.sobrante, 0);
+
+const pagoCorto = distribuirPago(40, martes);
+check("el corto cubre los $5 del acuerdo", pagoCorto.asignaciones.find((a) => a.tipo === "acuerdo")?.aplicado, 5);
+check("el corto cubre los $10 del cierre", pagoCorto.asignaciones.find((a) => a.tipo === "cierre_semana")?.aplicado, 10);
+check("el corto deja $25 en la letra atrasada", pagoCorto.asignaciones.find((a) => a.tipo === "saldo_anterior")?.aplicado, 25);
+check("la letra del día no entra", pagoCorto.asignaciones.some((a) => a.tipo === "cuenta_diaria"), false);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);
