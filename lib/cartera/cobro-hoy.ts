@@ -20,16 +20,18 @@
 //    Los demás se listan “(pendiente)” y no suman.
 //
 // 4) DOMINGO:
-//    Lun–sáb: aviso, no suma. Lun–vie solo entra la tajada si el domingo
-//    pasado quedó sin pagar. Si ya la pagaron, el resto es el próximo
-//    domingo y no se cobra hoy.
+//    Una tajada (la cuota), nunca el balde. Lun–sáb entra al total si el
+//    domingo pasado sigue sin pagar, aunque el pago haya caído lunes o martes.
+//    Si esa tajada ya se cubrió, el resto es el próximo domingo: aviso, no suma.
+//    El sábado no abre el domingo que viene.
 //    Domingo: tajada del balde + letra atrasada + acuerdo atrasado
 //    (cuota del día anterior sin pagar) + acuerdo de domingo
 //    (frecuencia domingo, o frecuencia día con cuota domingo puesta).
 //    La cuota diaria del acuerdo no se cobra el domingo. Al día → $0.
 //
-// Árbol lun–sáb: recargo → ese concepto → letra de hoy → días siguientes
-// (acuerdo de ese día, luego la letra), hasta donde alcance.
+// Árbol lun–sáb: tajada del domingo pasado si sigue abierta → recargo →
+// acuerdo del día → Recargo Cierre semana → letras atrasadas → letra de hoy
+// → días siguientes (acuerdo de ese día, luego la letra).
 // Domingo: primero la tajada. Después recargo, acuerdo del día y letra
 // atrasada. El excedente va a la letra siguiente, salvo que quede saldo de
 // acuerdo (baja el plan) o el pago traiga rubro domingo (adelanta el próximo

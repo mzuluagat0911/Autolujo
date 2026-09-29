@@ -1,11 +1,13 @@
 // Árbol de un abono, lun–sáb:
-// 1) Recargo por no pago (la multa ya cargada, no un $5 inventado).
-// 2) Compromiso de pago del día (acuerdo).
-// 3) Recargo Cierre semana ($10), si está cargado. No es atraso ni letra.
-// 4) Letras atrasadas.
-// 5) Letra del día.
-// 6) Si sobra: días siguientes, cada uno acuerdo y luego letra.
-//    El balde de domingo no se llena, salvo que el pago traiga ese rubro.
+// 1) Tajada del domingo pasado, si sigue sin pagar. Una sola, no el balde.
+//    El próximo domingo no se abre. El sábado tampoco.
+// 2) Recargo por no pago (la multa ya cargada, no un $5 inventado).
+// 3) Compromiso de pago del día (acuerdo).
+// 4) Recargo Cierre semana ($10), si está cargado. No es atraso ni letra.
+// 5) Letras atrasadas.
+// 6) Letra del día.
+// 7) Si sobra: días siguientes, cada uno acuerdo y luego letra.
+//    El próximo domingo no se llena, salvo que el pago traiga ese rubro.
 //    Sábado: el sobrante no se adelanta solo.
 //
 // Domingo:
@@ -20,7 +22,7 @@ import { distribuirPago } from "./rules";
 import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { acuerdoHoyDe, cuotaAcuerdoHoy, type AcuerdoActivo } from "./acuerdo";
-import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual, esDomingo, rangoDiaPanama } from "./fecha";
+import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual, esDomingo, domingoDelCiclo, rangoDiaPanama } from "./fecha";
 import { tajadaDomingoQueFalta } from "./cifras";
 import { pagoHoyContrato } from "./pagos-dia";
 import type { AsignacionPago, Obligacion, ResultadoPago, TipoObligacion } from "./types";
@@ -740,7 +742,10 @@ function abonoDomingoMarcado(p: {
   return 0;
 }
 
-/** Tajada de hoy y el balde que todavía cabe, antes de este pago. */
+/** Tajada que todavía falta, antes de este pago.
+ *  Domingo: la del día, tope una cuota, sobre el balde.
+ *  Lun–sáb: la del domingo pasado, si sigue sin pagar. El resto del balde
+ *  es el próximo domingo y no entra. */
 async function tajadaDomingoAbierta(
   contratoId: string,
   fecha: string,
@@ -748,9 +753,12 @@ async function tajadaDomingoAbierta(
   cuota: number,
 ): Promise<{ tajada: number; bucketNeto: number }> {
   const sb = createServerSupabase();
-  const { desde, hasta } = rangoDiaPanama(fecha);
+  const hoyEsDom = esDomingo(fecha);
+  const ciclo = domingoDelCiclo(fecha);
+  const { desde: desdeHoy, hasta: hastaHoy } = rangoDiaPanama(fecha);
+  const { desde: desdeCiclo } = rangoDiaPanama(ciclo);
   const [{ data: cargos }, { data: pagos }] = await Promise.all([
-    sb.from("cargos").select("monto, concepto, concepto_codigo").eq("contrato_id", contratoId),
+    sb.from("cargos").select("monto, fecha, concepto, concepto_codigo").eq("contrato_id", contratoId),
     sb
       .from("pagos")
       .select("id, monto, rubro, asignaciones, pagado_at")
@@ -758,11 +766,21 @@ async function tajadaDomingoAbierta(
       .in("estado_conciliacion", ["conciliado", "manual"]),
   ]);
   let bucket = 0;
-  for (const c of (cargos ?? []) as { monto: number; concepto: string | null; concepto_codigo: string | null }[]) {
+  let alCorte = 0;
+  for (const c of (cargos ?? []) as {
+    monto: number;
+    fecha: string | null;
+    concepto: string | null;
+    concepto_codigo: string | null;
+  }[]) {
     const codigo = (c.concepto_codigo ?? "").toUpperCase();
-    if (codigo === "DOMINGOS" || /\bdomingo\b/i.test(c.concepto ?? "")) bucket += Number(c.monto) || 0;
+    if (codigo !== "DOMINGOS" && !/\bdomingo\b/i.test(c.concepto ?? "")) continue;
+    const monto = Number(c.monto) || 0;
+    bucket += monto;
+    if (!c.fecha || c.fecha <= ciclo) alCorte += monto;
   }
   let pagadoHoy = 0;
+  let pagadoCiclo = 0;
   let pagadoTotal = 0;
   for (const p of (pagos ?? []) as {
     id: string;
@@ -776,14 +794,16 @@ async function tajadaDomingoAbierta(
     if (abono <= 0.009) continue;
     pagadoTotal += abono;
     const t = new Date(p.pagado_at).getTime();
-    if (t >= desde.getTime() && t < hasta.getTime()) pagadoHoy += abono;
+    if (t >= desdeHoy.getTime() && t < hastaHoy.getTime()) pagadoHoy += abono;
+    if (t >= desdeCiclo.getTime() && t < hastaHoy.getTime()) pagadoCiclo += abono;
   }
   const neto = Math.max(Math.round((bucket - pagadoTotal) * 100) / 100, 0);
+  const netoCorte = Math.max(Math.round((alCorte - pagadoTotal) * 100) / 100, 0);
   return {
     bucketNeto: neto,
     tajada: tajadaDomingoQueFalta({
-      bucketNeto: neto,
-      pagadoHoy: Math.round(pagadoHoy * 100) / 100,
+      bucketNeto: hoyEsDom ? neto : netoCorte,
+      pagadoHoy: Math.round((hoyEsDom ? pagadoHoy : pagadoCiclo) * 100) / 100,
       cuota,
     }),
   };
@@ -915,9 +935,12 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const cobraAcuerdoHoy = !preferencia || preferencia === "acuerdo";
   const hoyEsDomingo = esDomingo(fecha);
   const letraDiaria = Math.max(Number(terminos.letra_diaria) || 0, 0);
-  const domingoAbierto = hoyEsDomingo
-    ? await tajadaDomingoAbierta(contratoId, fecha, pagoId, Number(terminos.cuota_domingo) || 0)
-    : { tajada: 0, bucketNeto: 0 };
+  const domingoAbierto = await tajadaDomingoAbierta(
+    contratoId,
+    fecha,
+    pagoId,
+    Number(terminos.cuota_domingo) || 0,
+  );
   const domingoHoy = domingoAbierto.tajada;
   // Multa de “no pago” = solo letra; el acuerdo no entra a la meta puntual.
   const meta = cuotaHoy;

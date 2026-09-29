@@ -13,7 +13,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
-import { esDomingo, hoyPanama, sumarDias } from "./fecha";
+import { esDomingo, hoyPanama } from "./fecha";
 import { tajadaDomingoQueFalta } from "./cifras";
 import {
   candidatosDesdeExtracto,
@@ -111,8 +111,6 @@ export function armarExtractoDiario(
     (e as EstadoCuenta & { hoyIso?: string }).hoyIso ??
     hoyPanama();
   const hoyEsDomingo = esDomingo(hoyIso);
-  // Sábado = mañana es domingo → solo aviso, no cobra todavía.
-  const sabadoAntesDeDomingo = esDomingo(sumarDias(hoyIso, 1));
 
   const baldeDomingo = extrasDomingo.reduce((s, x) => s + x.monto, 0);
   const cuotaDom =
@@ -142,10 +140,10 @@ export function armarExtractoDiario(
 
   // Árbol domingo:
   // - Domingo calendario: tajada = cobro del día (base), resto aviso.
-  // - Lun–vie: solo la tajada que el domingo pasó sin pagar.
-  // - Sábado, o tajada ya pagada: solo aviso del balde.
+  // - Lun–sáb: la tajada del domingo pasado entra al total si sigue sin pagar.
+  //   El sábado no abre el domingo que viene. Tajada ya pagada: solo aviso.
   const domingoComoBase = hoyEsDomingo && tajada > 0.009;
-  const domingoComoExtra = !hoyEsDomingo && !sabadoAntesDeDomingo && tajada > 0.009;
+  const tajadaEntreSemana = !hoyEsDomingo && tajada > 0.009;
 
   // Un cargo “otros/mant” del ledger solo está dentro de totalHoy si cabe en el
   // saldo arrastrado (pendienteAnterior). Si ya se pagó vía el saldo agregado,
@@ -169,7 +167,7 @@ export function armarExtractoDiario(
 
   const lineasBase: LineaExtracto[] = [];
   if (cuenta > 0.009) lineasBase.push({ etiqueta: "cuenta", monto: cuenta });
-  if (domingoComoBase) {
+  if (domingoComoBase || tajadaEntreSemana) {
     lineasBase.push({ etiqueta: "domingo", monto: tajada });
   }
 
@@ -188,7 +186,7 @@ export function armarExtractoDiario(
     acuerdoHoy: Math.max(Number(e.faltaAcuerdo) || 0, 0),
     acuerdoSaldo: opts?.acuerdoSaldo,
     extras: extrasCompetidores,
-    domingoTajada: domingoComoExtra ? tajada : 0,
+    domingoTajada: 0,
     domingoBalde: baldeDomingo,
   });
   const extraElegido = elegirExtraDelDia(candidatos, opts?.preferencia);
@@ -248,17 +246,8 @@ export function armarExtractoDiario(
     });
   }
 
-  // Domingo en el desglose (árbol):
-  // - Entra al total (domingo calendario o extra lun–vie) → línea con $ + resto aviso.
-  // - No entra (sábado / perdió el cupo) → balde completo como aviso.
-  const domingoGanoExtra =
-    extraElegido?.categoria === "domingo" &&
-    Math.abs((extraElegido.montoHoy ?? 0) - tajada) < 0.05;
-  if (domingoGanoExtra) {
-    // Lun–vie: la tajada no estaba en lineasBase; va aquí con $.
-    out.push({ etiqueta: "domingo", monto: tajada });
-  }
-  if (domingoComoBase || domingoGanoExtra) {
+  // La tajada ya está en la base. Lo que sobra del balde es el próximo domingo.
+  if (domingoComoBase || tajadaEntreSemana) {
     const resto = Math.round((baldeDomingo - tajada) * 100) / 100;
     if (resto > 0.009) {
       out.push({
@@ -412,10 +401,13 @@ export async function cargosExtraPorContrato(
     const monto = Number(f.monto) || 0;
     if (monto <= 0.009) continue;
     const crudo = etiquetaCargo(f.concepto, f.concepto_codigo, f.tipo);
+    const esCierre =
+      codigo === "CIERRE_SEMANA" || /cierre(\s+de)?\s+semana/i.test(`${crudo} ${f.concepto ?? ""}`);
     const esRecargo =
-      codigo === "PAGO_TARDE" ||
-      esEtiquetaRecargo(crudo) ||
-      (f.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(f.concepto ?? ""));
+      !esCierre &&
+      (codigo === "PAGO_TARDE" ||
+        esEtiquetaRecargo(crudo) ||
+        (f.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(f.concepto ?? "")));
     if (esRecargo && f.pago_id) continue;
     if (!esRecargo && SKIP_CODIGOS.has(codigo)) continue;
     // Un solo balde: el pago ya cruzado se resta aquí, y lo que queda
@@ -448,6 +440,7 @@ export async function cargosExtraPorContrato(
 }
 
 function esEtiquetaRecargo(etiqueta: string): boolean {
+  if (/cierre(\s+de)?\s+semana/i.test(etiqueta)) return false;
   return /recargo|por no pagar/i.test(etiqueta);
 }
 

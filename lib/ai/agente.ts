@@ -93,10 +93,11 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   · Si ya lo pediste y esta captura tampoco lo trae: hora distinta a la del primer pago → dile que el equipo lo revisa antes de aplicarlo. Marca pasar_a_humano = true. No lo des por aplicado.
   · Si no se lee la hora, o es la misma hora del primer pago → es el mismo comprobante. No registres un segundo pago.
   · Si el número de confirmación es distinto al del primer pago, sí son dos pagos. No pidas nada más por eso.
-- Un pago se parte así, sin que lo recalcules: primero recargo por no pago, después
-  el compromiso de pago del día, después Recargo Cierre semana si el CONTEXTO lo trae
-  (no es atraso ni letra), después las letras atrasadas, después la letra de hoy.
-  Si sobra, días siguientes: acuerdo de ese día y luego la letra.
+- Un pago se parte así, sin que lo recalcules: primero la tajada del domingo pasado
+  si sigue sin pagar (una sola, no el balde; el próximo domingo no), después recargo
+  por no pago, después el compromiso de pago del día, después Recargo Cierre semana
+  si el CONTEXTO lo trae (no es atraso ni letra), después las letras atrasadas,
+  después la letra de hoy. Si sobra, días siguientes: acuerdo de ese día y luego la letra.
   Lun–sáb: mientras el acuerdo tenga saldo, ese es el concepto del día. Mantenimiento y lo demás
   quedan pendientes y NO entran al total hasta que el acuerdo quede en cero.
   El domingo el acuerdo NO ocupa ese lugar por tener saldo. Solo entra si el TOTAL ya lo trae

@@ -129,5 +129,19 @@ check("el corto cubre los $10 del cierre", pagoCorto.asignaciones.find((a) => a.
 check("el corto deja $25 en la letra atrasada", pagoCorto.asignaciones.find((a) => a.tipo === "saldo_anterior")?.aplicado, 25);
 check("la letra del día no entra", pagoCorto.asignaciones.some((a) => a.tipo === "cuenta_diaria"), false);
 
+console.log("\n· Entre semana la tajada del domingo pasado va antes del acuerdo y del atraso");
+const semana: Obligacion[] = [
+  { tipo: "cuenta_diaria", prioridad: PRIORIDAD.cuenta_diaria, monto: 35, etiqueta: "cuota de hoy" },
+  { tipo: "saldo_anterior", prioridad: PRIORIDAD.saldo_anterior, monto: 70, etiqueta: "saldo anterior" },
+  { tipo: "cierre_semana", prioridad: PRIORIDAD.cierre_semana, monto: 10, etiqueta: "Recargo Cierre semana" },
+  { tipo: "acuerdo", prioridad: PRIORIDAD.acuerdo, monto: 5, ref: "a1", etiqueta: "arreglo" },
+  { tipo: "domingo", prioridad: PRIORIDAD.domingo, monto: 30, etiqueta: "domingo" },
+];
+const pagoDom = distribuirPago(35, semana);
+check("primero el domingo", pagoDom.asignaciones[0]?.tipo, "domingo");
+check("el domingo se lleva $30", pagoDom.asignaciones[0]?.aplicado, 30);
+check("los $5 que sobran van al acuerdo, no al atraso", pagoDom.asignaciones[1]?.tipo, "acuerdo");
+check("el atraso no entra en esos $35", pagoDom.asignaciones.some((a) => a.tipo === "saldo_anterior"), false);
+
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

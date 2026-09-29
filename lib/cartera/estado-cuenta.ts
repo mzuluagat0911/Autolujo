@@ -622,7 +622,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     pagadoDomingoHoyPorContrato([contratoId], hoy),
     domingoCiclo === hoy
       ? Promise.resolve(null)
-      : pagadoDomingoHoyPorContrato([contratoId], domingoCiclo),
+      : pagadoDomingoRangoPorContrato([contratoId], domingoCiclo, hoy),
   ]);
 
   if (row.cliente) {
@@ -897,15 +897,17 @@ function abonoDomingoDePago(p: {
   return 0;
 }
 
-/** Lo abonado hoy al domingo, por contrato. Sirve para no pedir otra tajada el mismo día. */
-async function pagadoDomingoHoyPorContrato(
+/** Lo abonado al domingo entre dos fechas inclusive, por contrato. */
+async function pagadoDomingoRangoPorContrato(
   ids: string[],
-  hoy: string,
+  desdeFecha: string,
+  hastaFecha: string,
 ): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
-  const { desde, hasta } = rangoDiaPanama(hoy);
+  const { desde } = rangoDiaPanama(desdeFecha);
+  const { hasta } = rangoDiaPanama(hastaFecha);
   const { data, error } = await sb
     .from("pagos")
     .select("contrato_id, monto, rubro, asignaciones")
@@ -926,6 +928,11 @@ async function pagadoDomingoHoyPorContrato(
     out.set(p.contrato_id, Math.round(((out.get(p.contrato_id) ?? 0) + abono) * 100) / 100);
   }
   return out;
+}
+
+/** Lo abonado hoy al domingo, por contrato. Sirve para no pedir otra tajada el mismo día. */
+function pagadoDomingoHoyPorContrato(ids: string[], hoy: string): Promise<Map<string, number>> {
+  return pagadoDomingoRangoPorContrato(ids, hoy, hoy);
 }
 
 /**
@@ -1105,7 +1112,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     pagadoDomingoHoyPorContrato(idsAlcance, hoy),
     domingoDelCiclo(hoy) === hoy
       ? Promise.resolve(null)
-      : pagadoDomingoHoyPorContrato(idsAlcance, domingoDelCiclo(hoy)),
+      : pagadoDomingoRangoPorContrato(idsAlcance, domingoDelCiclo(hoy), hoy),
   ]);
 
   const atrasoMap = await atrasoAcuerdoPorContrato(hoy, acuerdosMap);
