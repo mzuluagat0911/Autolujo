@@ -17,7 +17,7 @@ export type AcuerdoActivo = {
   descripcion: string | null;
   /** Cada cuánto se cobra. Default dia. */
   frecuencia?: FrecuenciaAcuerdo | null;
-  /** Ancla: día de semana/mes, o la única fecha si frecuencia = fecha. */
+  /** Ancla: día de semana/mes, la única fecha, o el primer día de cobro si es diario. */
   fecha_especifica?: string | null;
 };
 
@@ -64,6 +64,8 @@ export function tocaAcuerdoHoy(a: AcuerdoActivo, fecha: string): boolean {
     ? a.fecha_especifica.slice(0, 10)
     : null;
 
+  // En diario (y domingo): la fecha es el primer día que se cobra. Vacía = desde ya.
+  if ((freq === "dia" || freq === "domingo") && ancla && fecha < ancla) return false;
   if (freq === "dia") return true;
   if (freq === "domingo") return esDomingo(fecha);
 
@@ -102,6 +104,7 @@ export function tocaAcuerdoHoy(a: AcuerdoActivo, fecha: string): boolean {
  * Cobra cuota_domingo solo si está puesta (acuerdo de domingo sobre el
  * mismo saldo). Si está en 0, el domingo no abre cuota nueva: el atraso
  * del día anterior lo suma `programadoAcuerdoDe`.
+ * Si `fecha_especifica` está puesta, antes de ese día la cuota es $0.
  */
 export function cuotaAcuerdoHoy(a: AcuerdoActivo, fecha: string): number {
   const saldo = Math.max(Number(a.saldo) || 0, 0);
@@ -167,10 +170,14 @@ export function resumenFrecuencia(a: {
   const q = Number(a.cuota_diaria) || 0;
   const qDom = Number(a.cuota_domingo) || 0;
   if (freq === "dia") {
-    if (qDom > 0.009) return `$${q}/día + $${qDom} domingo`;
-    return `$${q}/día`;
+    const base = qDom > 0.009 ? `$${q}/día + $${qDom} domingo` : `$${q}/día`;
+    const desde = a.fecha_especifica?.slice(0, 10);
+    return desde ? `${base} desde ${desde}` : base;
   }
-  if (freq === "domingo") return `$${q} los domingos`;
+  if (freq === "domingo") {
+    const desde = a.fecha_especifica?.slice(0, 10);
+    return desde ? `$${q} los domingos desde ${desde}` : `$${q} los domingos`;
+  }
   if (freq === "semana") {
     const dia = DIAS_SEMANA.find((d) => d.value === diaSemanaDeAncla(a.fecha_especifica));
     return `$${q} cada ${dia?.label.toLowerCase() ?? "semana"}`;

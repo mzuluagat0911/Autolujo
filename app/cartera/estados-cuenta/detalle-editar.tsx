@@ -81,7 +81,7 @@ function labelCuota(f: FrecuenciaAcuerdo): string {
 function hintFrecuencia(f: FrecuenciaAcuerdo): string | null {
   switch (f) {
     case "dia":
-      return "Lun–sáb cobra la cuota diaria. El domingo cobra la cuota domingo solo si la ponés. En 0, el domingo entra nada más si la cuota de ayer quedó sin pagar.";
+      return "Lun–sáb cobra la cuota diaria. El domingo cobra la cuota domingo solo si la ponés. En 0, el domingo entra nada más si la cuota de ayer quedó sin pagar. Empieza vacío = desde hoy; con fecha, antes de ese día no se cobra.";
     case "domingo":
       return "Solo se suma al cobro los domingos.";
     case "semana":
@@ -580,14 +580,16 @@ export function EditorLedger({
                             prev.map((x) => {
                               if (x.key !== a.key) return x;
                               let fecha_especifica = x.fecha_especifica;
-                              if (frecuencia === "dia" || frecuencia === "domingo") {
-                                fecha_especifica = null;
-                              } else if (frecuencia === "semana") {
+                              if (frecuencia === "semana") {
                                 fecha_especifica =
                                   x.frecuencia === "semana" && x.fecha_especifica
                                     ? x.fecha_especifica
                                     : anclaPorDefecto("semana");
-                              } else if (!fecha_especifica) {
+                              } else if (
+                                frecuencia !== "dia" &&
+                                frecuencia !== "domingo" &&
+                                !fecha_especifica
+                              ) {
                                 fecha_especifica = hoyPanama();
                               }
                               return { ...x, frecuencia, fecha_especifica };
@@ -622,6 +624,25 @@ export function EditorLedger({
                         }
                       />
                     </label>
+                    {((a.frecuencia ?? "dia") === "dia" || (a.frecuencia ?? "dia") === "domingo") && (
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[11px] text-muted">Empieza</span>
+                        <input
+                          type="date"
+                          className={INPUT}
+                          value={(a.fecha_especifica ?? "").slice(0, 10)}
+                          onChange={(e) =>
+                            setAcuerdos((prev) =>
+                              prev.map((x) =>
+                                x.key === a.key
+                                  ? { ...x, fecha_especifica: e.target.value || null }
+                                  : x,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                    )}
                     {(a.frecuencia ?? "dia") === "dia" && (
                       <label className="flex flex-col gap-1">
                         <span className="text-[11px] text-muted">Los domingos</span>
