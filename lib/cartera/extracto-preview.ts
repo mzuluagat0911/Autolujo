@@ -12,6 +12,7 @@ export type ExtractoCtx = {
   acuerdoSaldo: number;
   extras: LineaExtracto[];
   preferencia?: string | null;
+  enEspera?: { etiqueta: string; saldo: number }[];
 };
 
 /** Sin saldo de días anteriores: solo le toca la cuota de hoy. */
@@ -30,6 +31,7 @@ export function varsExtractoDetalle(e: EstadoCuenta, ctx?: ExtractoCtx): string[
     acuerdoSaldo: ctx?.acuerdoSaldo ?? 0,
     extras: ctx?.extras ?? [],
     preferencia: ctx?.preferencia,
+    enEspera: ctx?.enEspera,
     hoy: e.hoyIso,
   });
   return [
@@ -71,6 +73,7 @@ export function totalCobrarHoyExtracto(e: EstadoCuenta, ctx?: ExtractoCtx): numb
     acuerdoSaldo: ctx?.acuerdoSaldo ?? 0,
     extras: ctx?.extras ?? [],
     preferencia: ctx?.preferencia,
+    enEspera: ctx?.enEspera,
     hoy: e.hoyIso,
   }).totalCobrarHoy;
 }

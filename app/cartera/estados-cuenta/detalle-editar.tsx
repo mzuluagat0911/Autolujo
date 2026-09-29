@@ -117,6 +117,7 @@ const PRESETS: { label: string; tipo: string; concepto: string; codigo: string |
   { label: "Cierre de semana", tipo: "multa", concepto: "No cerrar semana al día", codigo: "CIERRE_SEMANA" },
   { label: "Negociación / ajuste", tipo: "ajuste", concepto: "Ajuste / negociación", codigo: null },
   { label: "Exceso de km", tipo: "exceso_km", concepto: "Exceso de kilometraje", codigo: "122" },
+  { label: "Recogida de vehículo", tipo: "otras", concepto: "Recogida de vehículo", codigo: "RECOGIDA" },
 ];
 
 export function EditorLedger({

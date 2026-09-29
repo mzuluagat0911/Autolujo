@@ -44,6 +44,7 @@ export const PRIORIDAD: Record<TipoObligacion, number> = {
   cierre_semana: 43,
   exceso_km: 44,
   ajuste: 45,
+  recogida: 46,
 };
 
 const ETIQUETA: Record<TipoObligacion, string> = {
@@ -58,6 +59,7 @@ const ETIQUETA: Record<TipoObligacion, string> = {
   cierre_semana: "cierre de semana",
   exceso_km: "exceso de kilometraje",
   ajuste: "ajuste",
+  recogida: "recogida de vehículo",
 };
 
 function r2(n: number): number {
@@ -83,19 +85,22 @@ function adelantarDias(opts: {
   let aplicado = 0;
   for (let i = 1; i <= 14 && queda > 0.009; i++) {
     const fecha = diaSiguiente(opts.desde, i);
-    for (const a of opts.acuerdos) {
+    const vivo = opts.acuerdos.find((a) => (saldos.get(a.id) ?? 0) > 0.009);
+    if (vivo) {
+      const a = vivo;
       const cupo = Math.min(cuotaAcuerdoHoy(a, fecha), saldos.get(a.id) ?? 0, queda);
-      if (cupo <= 0.009) continue;
-      const toma = r2(cupo);
-      asignaciones.push({
-        tipo: "acuerdo",
-        aplicado: toma,
-        ref: a.id,
-        etiqueta: `acuerdo ${fecha}`,
-      });
-      saldos.set(a.id, r2((saldos.get(a.id) ?? 0) - toma));
-      queda = r2(queda - toma);
-      aplicado = r2(aplicado + toma);
+      if (cupo > 0.009) {
+        const toma = r2(cupo);
+        asignaciones.push({
+          tipo: "acuerdo",
+          aplicado: toma,
+          ref: a.id,
+          etiqueta: `acuerdo ${fecha}`,
+        });
+        saldos.set(a.id, r2((saldos.get(a.id) ?? 0) - toma));
+        queda = r2(queda - toma);
+        aplicado = r2(aplicado + toma);
+      }
     }
     if (opts.letra > 0.009 && queda > 0.009) {
       const toma = r2(Math.min(opts.letra, queda));
@@ -615,6 +620,7 @@ function cubetaDeCargoFila(c: {
     return "exceso de kilometraje";
   }
   if (c.tipo === "ajuste" || /negociaci[oó]n|^ajuste\b/i.test(c.concepto ?? "")) return "ajuste";
+  if (codigo === "RECOGIDA" || /recogida/i.test(c.concepto ?? "")) return "recogida de vehículo";
   return null;
 }
 
@@ -788,7 +794,8 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       .from("acuerdos")
       .select("id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica")
       .eq("contrato_id", contratoId)
-      .eq("activo", true);
+      .eq("activo", true)
+      .order("created_at", { ascending: true });
     if (full.error && /frecuencia|fecha_especifica/i.test(full.error.message)) {
       const retry = await sb
         .from("acuerdos")

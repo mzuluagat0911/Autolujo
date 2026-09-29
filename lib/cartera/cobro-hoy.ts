@@ -52,10 +52,10 @@
 
 import type { EstadoCuenta } from "./estado-cuenta";
 import {
-  acuerdoSaldoContrato,
   armarExtractoDiario,
   cargosExtraAgrupados,
   preferenciaAbonoContrato,
+  detalleAcuerdosContrato,
   textoDesgloseExtracto,
   type ExtractoArmado,
   type LineaExtracto,
@@ -73,6 +73,8 @@ export type CobroHoyCtx = {
   extras: LineaExtracto[];
   /** null = menor valor. */
   preferencia?: string | null;
+  /** Planes que esperan detrás del que se cobra. No suman al total. */
+  enEspera?: { etiqueta: string; saldo: number }[];
 };
 
 export type CobroHoy = ExtractoArmado & {
@@ -87,12 +89,17 @@ export type CobroHoy = ExtractoArmado & {
 
 /** Carga saldo de acuerdos + cargos extra del contrato. */
 export async function ctxCobroHoy(contratoId: string): Promise<CobroHoyCtx> {
-  const [acuerdoSaldo, extras, preferencia] = await Promise.all([
-    acuerdoSaldoContrato(contratoId),
+  const [acuerdos, extras, preferencia] = await Promise.all([
+    detalleAcuerdosContrato(contratoId),
     cargosExtraAgrupados(contratoId),
     preferenciaAbonoContrato(contratoId),
   ]);
-  return { acuerdoSaldo, extras, preferencia };
+  return {
+    acuerdoSaldo: acuerdos.saldo,
+    extras,
+    preferencia,
+    enEspera: acuerdos.espera,
+  };
 }
 
 /** Cálculo canónico de cobro del día a partir del estado de cuenta. */
@@ -101,6 +108,7 @@ export function cobroHoyDe(e: EstadoCuenta, ctx: CobroHoyCtx): CobroHoy {
     acuerdoSaldo: ctx.acuerdoSaldo,
     extras: ctx.extras,
     preferencia: ctx.preferencia,
+    enEspera: ctx.enEspera,
     hoy: e.hoyIso,
   });
   return {

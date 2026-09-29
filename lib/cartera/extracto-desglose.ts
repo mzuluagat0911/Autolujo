@@ -96,6 +96,8 @@ export function armarExtractoDiario(
     acuerdoSaldo?: number;
     extras?: LineaExtracto[];
     preferencia?: string | null;
+    /** Planes que esperan detrás del que se está cobrando. No suman. */
+    enEspera?: { etiqueta: string; saldo: number }[];
     /** ISO YYYY-MM-DD del día del extracto (para saber si es domingo). */
     hoy?: string;
   },
@@ -223,6 +225,15 @@ export function armarExtractoDiario(
     });
   }
 
+  for (const espera of opts?.enEspera ?? []) {
+    if (espera.saldo <= 0.009) continue;
+    out.push({
+      etiqueta: `${espera.etiqueta} (saldo ${money(espera.saldo)})`,
+      monto: 0,
+      aviso: true,
+    });
+  }
+
   for (const x of extrasCompetidores) {
     const esElegido =
       extraElegido != null &&
@@ -286,13 +297,15 @@ export function textoDesgloseExtracto(lineas: LineaExtracto[]): string {
 }
 
 export async function acuerdoSaldoContrato(contratoId: string): Promise<number> {
-  const sb = createServerSupabase();
-  const { data } = await sb
-    .from("acuerdos")
-    .select("saldo")
-    .eq("contrato_id", contratoId)
-    .eq("activo", true);
-  return ((data ?? []) as { saldo: number }[]).reduce((s, a) => s + Math.max(Number(a.saldo) || 0, 0), 0);
+  const det = await detalleAcuerdosContrato(contratoId);
+  return det.saldo;
+}
+
+export async function detalleAcuerdosContrato(
+  contratoId: string,
+): Promise<{ saldo: number; espera: { etiqueta: string; saldo: number }[] }> {
+  const map = await partirAcuerdosPorContrato([contratoId]);
+  return map.get(contratoId) ?? { saldo: 0, espera: [] };
 }
 
 export async function preferenciaAbonoContrato(contratoId: string): Promise<string | null> {
@@ -316,17 +329,58 @@ export async function cargosExtraAgrupados(contratoId: string): Promise<LineaExt
 export async function acuerdosSaldoPorContrato(
   contratoIds: string[],
 ): Promise<Map<string, number>> {
+  const partidos = await partirAcuerdosPorContrato(contratoIds);
   const out = new Map<string, number>();
+  for (const [id, p] of partidos) out.set(id, p.saldo);
+  return out;
+}
+
+export async function acuerdosEnEsperaPorContrato(
+  contratoIds: string[],
+): Promise<Map<string, { etiqueta: string; saldo: number }[]>> {
+  const partidos = await partirAcuerdosPorContrato(contratoIds);
+  const out = new Map<string, { etiqueta: string; saldo: number }[]>();
+  for (const [id, p] of partidos) {
+    if (p.espera.length) out.set(id, p.espera);
+  }
+  return out;
+}
+
+/** El saldo que se cobra es el del plan más antiguo que aún debe.
+ *  Los demás quedan en espera y no entran al total. */
+async function partirAcuerdosPorContrato(
+  contratoIds: string[],
+): Promise<Map<string, { saldo: number; espera: { etiqueta: string; saldo: number }[] }>> {
+  const out = new Map<string, { saldo: number; espera: { etiqueta: string; saldo: number }[] }>();
   const ids = contratoIds.filter(Boolean);
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
   const { data } = await sb
     .from("acuerdos")
-    .select("contrato_id, saldo")
+    .select("contrato_id, saldo, descripcion, created_at")
     .in("contrato_id", ids)
-    .eq("activo", true);
-  for (const a of (data ?? []) as { contrato_id: string; saldo: number }[]) {
-    out.set(a.contrato_id, (out.get(a.contrato_id) ?? 0) + Math.max(Number(a.saldo) || 0, 0));
+    .eq("activo", true)
+    .order("created_at", { ascending: true });
+  const porId = new Map<string, { saldo: number; descripcion: string | null }[]>();
+  for (const a of (data ?? []) as {
+    contrato_id: string;
+    saldo: number;
+    descripcion: string | null;
+  }[]) {
+    const lista = porId.get(a.contrato_id) ?? [];
+    lista.push({ saldo: Math.max(Number(a.saldo) || 0, 0), descripcion: a.descripcion });
+    porId.set(a.contrato_id, lista);
+  }
+  for (const [id, lista] of porId) {
+    const vivos = lista.filter((a) => a.saldo > 0.009);
+    const primero = vivos[0];
+    out.set(id, {
+      saldo: primero?.saldo ?? 0,
+      espera: vivos.slice(1).map((a) => ({
+        etiqueta: (a.descripcion ?? "acuerdo en espera").trim() || "acuerdo en espera",
+        saldo: a.saldo,
+      })),
+    });
   }
   return out;
 }

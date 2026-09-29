@@ -33,7 +33,8 @@ export type TipoObligacion =
   | "panapass"
   | "cierre_semana"
   | "exceso_km"
-  | "ajuste";
+  | "ajuste"
+  | "recogida";
 
 export type Obligacion = {
   tipo: TipoObligacion;

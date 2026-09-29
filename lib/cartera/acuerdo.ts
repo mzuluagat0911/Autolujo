@@ -128,8 +128,15 @@ export function cuotaAcuerdoHoy(a: AcuerdoActivo, fecha: string): number {
   return Math.min(Math.max(q, 0), saldo);
 }
 
+/** El plan que se cobra: el primero que aún tiene saldo.
+ *  El que sigue espera hasta que ese quede en cero. */
+export function planQueCobra(acuerdos: AcuerdoActivo[]): AcuerdoActivo | null {
+  return acuerdos.find((a) => Math.max(Number(a.saldo) || 0, 0) > 0.009) ?? null;
+}
+
 export function acuerdoHoyDe(acuerdos: AcuerdoActivo[], fecha: string): number {
-  return acuerdos.reduce((s, a) => s + cuotaAcuerdoHoy(a, fecha), 0);
+  const plan = planQueCobra(acuerdos);
+  return plan ? cuotaAcuerdoHoy(plan, fecha) : 0;
 }
 
 /**
@@ -142,8 +149,9 @@ export function programadoAcuerdoDe(
   fecha: string,
   atraso = 0,
 ): number {
-  const fresco = acuerdoHoyDe(acuerdos, fecha);
-  const saldo = acuerdos.reduce((s, a) => s + Math.max(Number(a.saldo) || 0, 0), 0);
+  const plan = planQueCobra(acuerdos);
+  const fresco = plan ? cuotaAcuerdoHoy(plan, fecha) : 0;
+  const saldo = plan ? Math.max(Number(plan.saldo) || 0, 0) : 0;
   const bruto = Math.round((fresco + Math.max(atraso, 0)) * 100) / 100;
   return Math.min(Math.max(bruto, 0), saldo);
 }

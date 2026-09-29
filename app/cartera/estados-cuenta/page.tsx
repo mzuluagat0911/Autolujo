@@ -6,6 +6,7 @@ import { cobroHoyDe } from "@/lib/cartera/cobro-hoy";
 import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
 import {
   acuerdosSaldoPorContrato,
+  acuerdosEnEsperaPorContrato,
   cargosExtraPorContrato,
 } from "@/lib/cartera/extracto-desglose";
 import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas";
@@ -43,14 +44,19 @@ async function EstadosCuerpo() {
   try {
     const base = await estadosCuentaPanel();
     const ids = base.map((e) => e.contratoId);
-    const [acuerdoMap, extrasMap] = await Promise.all([
+    const [acuerdoMap, extrasMap, esperaMap] = await Promise.all([
       acuerdosSaldoPorContrato(ids),
       cargosExtraPorContrato(ids),
+      acuerdosEnEsperaPorContrato(ids),
     ]);
     estados = base.map((e) => {
       const acuerdoSaldo = acuerdoMap.get(e.contratoId) ?? 0;
       const extras = extrasMap.get(e.contratoId) ?? [];
-      const cobro = cobroHoyDe(e, { acuerdoSaldo, extras });
+      const cobro = cobroHoyDe(e, {
+        acuerdoSaldo,
+        extras,
+        enEspera: esperaMap.get(e.contratoId) ?? [],
+      });
       return {
         ...e,
         acuerdoSaldo,

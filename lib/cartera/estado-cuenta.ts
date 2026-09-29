@@ -544,7 +544,7 @@ async function generosDe(clienteIds: string[]): Promise<Map<string, string | nul
 async function acuerdosActivos(): Promise<Map<string, AcuerdoActivo[]>> {
   const sb = createServerSupabase();
   const sel =
-    "id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica";
+    "id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica, created_at";
   let data: unknown[] | null = null;
   let error: { message: string } | null = null;
   {
@@ -562,7 +562,10 @@ async function acuerdosActivos(): Promise<Map<string, AcuerdoActivo[]>> {
   }
   if (error) return new Map();
   const out = new Map<string, AcuerdoActivo[]>();
-  for (const a of (data ?? []) as (AcuerdoActivo & { contrato_id: string })[]) {
+  const filas = ((data ?? []) as (AcuerdoActivo & { contrato_id: string; created_at?: string })[])
+    .slice()
+    .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
+  for (const a of filas) {
     const list = out.get(a.contrato_id) ?? [];
     list.push({
       id: a.id,

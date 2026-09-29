@@ -10,6 +10,7 @@ import { esAdelantado, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
 import { cobroHoyDe } from "@/lib/cartera/cobro-hoy";
 import {
   acuerdosSaldoPorContrato,
+  acuerdosEnEsperaPorContrato,
   cargosExtraPorContrato,
 } from "@/lib/cartera/extracto-desglose";
 
@@ -114,9 +115,10 @@ async function getDatos(contratoIds: string[] | null): Promise<Datos> {
 
     const vivos = estados.filter((e) => enAlcance(e, contratoIds));
     const ids = vivos.map((e) => e.contratoId);
-    const [acuerdoMap, extrasMap] = await Promise.all([
+    const [acuerdoMap, extrasMap, esperaMap] = await Promise.all([
       acuerdosSaldoPorContrato(ids),
       cargosExtraPorContrato(ids),
+      acuerdosEnEsperaPorContrato(ids),
     ]);
 
     let aCobrarHoy = 0;
@@ -132,6 +134,7 @@ async function getDatos(contratoIds: string[] | null): Promise<Datos> {
       const cobro = cobroHoyDe(e, {
         acuerdoSaldo: acuerdoMap.get(e.contratoId) ?? 0,
         extras: extrasMap.get(e.contratoId) ?? [],
+        enEspera: esperaMap.get(e.contratoId) ?? [],
       });
       const t = cobro.totalCobrarHoy;
       if (t > 0.009) {

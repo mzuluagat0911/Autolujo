@@ -9,6 +9,7 @@ export type RubroPago =
   | "acuerdo"
   | "exceso_km"
   | "ajuste"
+  | "recogida"
   | "salida_interior";
 
 export const RUBROS_PAGO: { value: RubroPago; label: string }[] = [
@@ -21,6 +22,7 @@ export const RUBROS_PAGO: { value: RubroPago; label: string }[] = [
   { value: "cierre_semana", label: "Cierre de semana" },
   { value: "exceso_km", label: "Exceso de km" },
   { value: "ajuste", label: "Negociación / ajuste" },
+  { value: "recogida", label: "Recogida de vehículo" },
 ];
 
 export function etiquetaRubro(rubro: string | null | undefined): string {
@@ -50,6 +52,7 @@ export const CONCEPTOS_PAGO = [
   { value: "cierre_semana", label: "Cierre de semana", cubeta: "cierre de semana" },
   { value: "exceso_km", label: "Exceso de km", cubeta: "exceso de kilometraje" },
   { value: "ajuste", label: "Negociación / ajuste", cubeta: "ajuste" },
+  { value: "recogida", label: "Recogida de vehículo", cubeta: "recogida de vehículo" },
   { value: "salida_interior", label: "Salida al interior", cubeta: null },
 ] as const;
 
@@ -67,6 +70,7 @@ export const CARGO_DE_CONCEPTO: Record<
   cierre_semana: { tipo: "multa", codigo: "CIERRE_SEMANA", concepto: "No cerrar semana al día" },
   exceso_km: { tipo: "exceso_km", codigo: "122", concepto: "Exceso de kilometraje" },
   ajuste: { tipo: "ajuste", codigo: null, concepto: "Ajuste / negociación" },
+  recogida: { tipo: "otras", codigo: "RECOGIDA", concepto: "Recogida de vehículo" },
 };
 
 export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string | null {
@@ -86,5 +90,6 @@ export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string
   if (/cierre\s+de\s+semana/.test(et)) return "cierre de semana";
   if (/exceso/.test(et) && /km|kilom/.test(et)) return "exceso de kilometraje";
   if (/negociaci[oó]n|^ajuste\b/.test(et)) return "ajuste";
+  if (/recogida/.test(et)) return "recogida de vehículo";
   return null;
 }

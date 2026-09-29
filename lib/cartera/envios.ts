@@ -16,6 +16,7 @@ import {
 } from "./estado-cuenta";
 import {
   acuerdosSaldoPorContrato,
+  acuerdosEnEsperaPorContrato,
   armarExtractoDiario,
   cargosExtraPorContrato,
   lineasExtractoBase,
@@ -271,9 +272,10 @@ export async function enviarEstadosCuentaHoy(): Promise<{
 }> {
   const estados = await estadosCuentaHoy(); // ya filtra por alcance
   const ids = estados.map((e) => e.contratoId);
-  const [saldos, extras] = await Promise.all([
+  const [saldos, extras, espera] = await Promise.all([
     acuerdosSaldoPorContrato(ids),
     cargosExtraPorContrato(ids),
+    acuerdosEnEsperaPorContrato(ids),
   ]);
 
   let enviados = 0, fallidos = 0, sinNumero = 0;
@@ -286,6 +288,7 @@ export async function enviarEstadosCuentaHoy(): Promise<{
           ctx: {
             acuerdoSaldo: saldos.get(e.contratoId) ?? 0,
             extras: extras.get(e.contratoId) ?? [],
+            enEspera: espera.get(e.contratoId) ?? [],
           },
         }),
       ),
