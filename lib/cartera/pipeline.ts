@@ -530,11 +530,12 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `  IMPORTANTE: dale SOLO la cuenta de su empresa; jamás la de otra empresa.`,
     pagoEnOficinaTexto(),
     ``,
-    `CÓMO SE APLICA UN ABONO (orden fijo; el cliente NO elige, EXCEPTO la salida al interior):`,
-    `- Primero arreglo, luego saldo anterior, luego recargo, al final la cuota de hoy.`,
-    `- Si el pago es de una SALIDA AL INTERIOR, va a ese rubro y NO cubre la cuota del día.`,
-    `- NUNCA preguntes a qué lo quiere aplicar (salvo para confirmar el destino de una salida). Si el CONTEXTO dice cómo se partió un pago, INFORMALO.`,
-    `- Si discute esa asignación: explícaselo una vez. Solo si insiste, marca pasar_a_humano = true.`,
+    `CÓMO SE APLICA UN ABONO (árbol fijo; tú no lo reasignas):`,
+    `- Tajada del domingo pasado si sigue abierta, recargo, acuerdo del plan de adelante, Recargo Cierre semana, letras atrasadas, letra de hoy que siga abierta. Si sobra: día siguiente, acuerdo de ese día y luego la letra.`,
+    `- La recogida y los planes de atrás NO entran mientras el de adelante tenga saldo.`,
+    `- Si el CONTEXTO dice cómo se partió un pago, repítelo tal cual. No armes otro reparto.`,
+    `- Si el cliente pide otro destino, no lo cambies. Marca pasar_a_humano = true para que el equipo lo reasigne.`,
+    `- Salida al interior: la confirma el equipo y NO cubre la cuota del día.`,
     ``,
     textoTarifasInterior(),
   );
@@ -1237,14 +1238,12 @@ export async function procesarPagoComprobante(opts: {
         const sabadoSobreLetra =
           esSabado(fechaPagoExcedente) && montoComp > (Number(estPago.letra) || 0) + 0.05;
         if (montoComp > cobroPago.totalCobrarHoy + 0.05 || sabadoSobreLetra) {
-          const tieneConcepto =
-            cobroPago.acuerdoSaldo > 0.009 ||
-            (estPago.domingoSaldo ?? 0) > 0.009 ||
-            cobroPago.lineas.some((l) => /\(pendiente\)/i.test(l.etiqueta));
-          notaExcedente =
-            sabadoSobreLetra || tieneConcepto
-              ? `${MARCA_EXCEDENTE_SIN_CONCEPTO}${sabadoSobreLetra ? " SABADO: preguntar destino del excedente (domingo adelantado o letra siguiente)." : ""}`
-              : "EXCEDENTE: pago adelantado de letra diaria";
+          if (sabadoSobreLetra) {
+            notaExcedente = `${MARCA_EXCEDENTE_SIN_CONCEPTO} SABADO: preguntar destino del excedente (domingo adelantado o letra siguiente). El agente no lo asigna; lo reasigna el equipo.`;
+          } else {
+            notaExcedente =
+              "EXCEDENTE: el árbol lo parte (lo de hoy y, si sobra, acuerdo del día siguiente y luego la letra). Otro destino solo si el equipo lo reasigna.";
+          }
         }
       }
     } catch (e) {

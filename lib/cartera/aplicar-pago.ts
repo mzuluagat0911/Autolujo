@@ -2,7 +2,9 @@
 // 1) Tajada del domingo pasado, si sigue sin pagar. Una sola, no el balde.
 //    El próximo domingo no se abre. El sábado tampoco.
 // 2) Recargo por no pago (la multa ya cargada, no un $5 inventado).
-// 3) Compromiso de pago del día (acuerdo).
+// 3) Compromiso de pago del día: solo el plan de adelante. El que sigue
+//    (recogida u otro) espera a que ese saldo quede en cero. Excepción solo
+//    si el equipo asigna el rubro a mano.
 // 4) Recargo Cierre semana ($10), si está cargado. No es atraso ni letra.
 // 5) Letras atrasadas.
 // 6) Letra del día.
@@ -21,11 +23,11 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { distribuirPago } from "./rules";
 import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
-import { acuerdoHoyDe, cuotaAcuerdoHoy, type AcuerdoActivo } from "./acuerdo";
+import { cuotaAcuerdoHoy, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
 import { pausaDeVehiculo, pausaVigente } from "./pausa-productiva";
 import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual, esDomingo, domingoDelCiclo, rangoDiaPanama } from "./fecha";
 import { tajadaDomingoQueFalta } from "./cifras";
-import { pagoHoyContrato } from "./pagos-dia";
+import { atrasoAcuerdoPorContrato, pagoHoyContrato } from "./pagos-dia";
 import type { AsignacionPago, Obligacion, ResultadoPago, TipoObligacion } from "./types";
 import {
   asegurarCargoSalida,
@@ -927,7 +929,14 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const pagadoHoyAntes = Math.max((pagado.pagado ?? 0) - monto, 0);
   const estePuntual = esPagoPuntual(pago.pagado_at, fecha);
   const pagadoPuntualAntes = Math.max((pagado.pagadoPuntual ?? 0) - (estePuntual ? monto : 0), 0);
-  const acuerdoHoy = enPausa ? 0 : acuerdoHoyDe(acuerdos, fecha);
+  let atrasoAcuerdo = 0;
+  if (!enPausa && acuerdos.length > 0) {
+    const mapaAtraso = await atrasoAcuerdoPorContrato(fecha, new Map([[contratoId, acuerdos]]));
+    atrasoAcuerdo = mapaAtraso.get(contratoId) ?? 0;
+  }
+  // Solo el plan de adelante. Recogida y los que siguen esperan a que ese saldo llegue a cero.
+  const planCobro = enPausa ? null : planQueCobra(acuerdos);
+  const acuerdoHoy = planCobro ? programadoAcuerdoDe(acuerdos, fecha, atrasoAcuerdo) : 0;
   let preferencia: string | null = null;
   {
     const pref = await sb.from("contratos").select("prioridad_abono").eq("id", contratoId).maybeSingle();
@@ -971,9 +980,16 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   // primero (prioridad 6). El recargo no sale de cifras (ahí está en $0): es
   // la multa que sigue abierta, sacada del saldo de la letra.
   const recargoAbierto = await recargoAbiertoDelContrato(contratoId, pagoId);
+  // La letra del árbol es la que sigue abierta, no la tarifa entera.
+  // Si ayer ya adelantaron parte, eso ya está en el saldo y no se vuelve a cobrar.
+  const letraHoyNeta = r2(Math.max(
+    cifras.cuenta - cifras.faltaAcuerdo - cifras.pendienteAnterior - cifras.recargo,
+    0,
+  ));
+  const cuotaArbol = hoyEsDomingo ? 0 : Math.min(cuotaHoy, letraHoyNeta);
   const letraSinRecargo = partirRecargoDeLaLetra({
     pendienteAnterior: cifras.pendienteAnterior,
-    cuotaHoy: hoyEsDomingo ? 0 : cuotaHoy,
+    cuotaHoy: cuotaArbol,
     recargoAbierto,
     yaFueraDeLaLetra: multaHoy ? Math.min(penalidadDe(terminos), recargoAbierto) : 0,
   });
@@ -982,14 +998,12 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     pendienteAnterior: letraSinRecargo.pendienteAnterior,
     cierreAbierto,
   });
-  const acuerdosBase = cobraAcuerdoHoy && !enPausa
-    ? acuerdos
-        .map((a) => ({
-          id: a.id,
-          monto: cuotaAcuerdoHoy(a, fecha),
-          etiqueta: a.descripcion?.trim() || "arreglo",
-        }))
-        .filter((a) => a.monto > 0.009)
+  const acuerdosBase = cobraAcuerdoHoy && planCobro && acuerdoHoy > 0.009
+    ? [{
+        id: planCobro.id,
+        monto: acuerdoHoy,
+        etiqueta: planCobro.descripcion?.trim() || "arreglo",
+      }]
     : [];
 
   const obligaciones = obligacionesRestantes(
@@ -1139,12 +1153,16 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     return resultado;
   }
 
+  const abonoPorPlan = new Map<string, number>();
   for (const a of resultado.asignaciones) {
     if (a.tipo !== "acuerdo" || !a.ref) continue;
-    const actual = acuerdos.find((x) => x.id === a.ref);
+    abonoPorPlan.set(a.ref, r2((abonoPorPlan.get(a.ref) ?? 0) + a.aplicado));
+  }
+  for (const [ref, aplicado] of abonoPorPlan) {
+    const actual = acuerdos.find((x) => x.id === ref);
     if (!actual) continue;
-    const nuevo = r2(Math.max(Number(actual.saldo) - a.aplicado, 0));
-    await sb.from("acuerdos").update({ saldo: nuevo, activo: nuevo > 0.009 }).eq("id", a.ref);
+    const nuevo = r2(Math.max(Number(actual.saldo) - aplicado, 0));
+    await sb.from("acuerdos").update({ saldo: nuevo, activo: nuevo > 0.009 }).eq("id", ref);
   }
 
   await asegurarCargosAcuerdoDelPago({

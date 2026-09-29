@@ -247,7 +247,7 @@ export async function atrasoAcuerdoPorContrato(
   if (acuerdos.size === 0) return out;
   const ayer = sumarDias(fecha, -1);
   const sb = createServerSupabase();
-  const { desde } = rangoDiaPanama(ayer);
+  const { desde } = rangoDiaPanama(sumarDias(fecha, -DIAS_ATRAS_ACUERDO));
   const { hasta } = rangoDiaPanama(fecha);
   const { data, error } = await sb
     .from("pagos")
@@ -264,12 +264,8 @@ export async function atrasoAcuerdoPorContrato(
     asignaciones: unknown;
   }[]) {
     if (!p.contrato_id) continue;
-    const aplicado = aplicadoAcuerdoDe(p.asignaciones);
-    if (aplicado <= 0.009) continue;
     const slot = porId.get(p.contrato_id) ?? { ayer: 0, hoy: [] };
-    const dia = partesPagoPanama(p.pagado_at).fecha;
-    if (dia === ayer) slot.ayer = Math.round((slot.ayer + aplicado) * 100) / 100;
-    else if (dia === fecha) slot.hoy.push({ pagadoAt: p.pagado_at, aplicado });
+    acumularAcuerdo(slot, p.pagado_at, p.asignaciones, ayer, fecha);
     porId.set(p.contrato_id, slot);
   }
   for (const [id, lista] of acuerdos) {
@@ -287,10 +283,48 @@ export async function atrasoAcuerdoPorContrato(
   return out;
 }
 
-function aplicadoAcuerdoDe(raw: unknown): number {
-  return parseAsignacionesPago(raw)
-    .filter((a) => a.tipo === "acuerdo")
-    .reduce((s, a) => s + Number(a.aplicado || 0), 0);
+const ETIQUETA_ACUERDO_DIA = /^acuerdo (\d{4}-\d{2}-\d{2})$/;
+const DIAS_ATRAS_ACUERDO = 14;
+
+/** Acuerdo genérico (sin fecha en la etiqueta) contra líneas ya puestas a un día. */
+function partirAcuerdo(raw: unknown): { generico: number; porFecha: Map<string, number> } {
+  const porFecha = new Map<string, number>();
+  let generico = 0;
+  for (const a of parseAsignacionesPago(raw)) {
+    if (a.tipo !== "acuerdo") continue;
+    const n = Number(a.aplicado) || 0;
+    if (n <= 0.009) continue;
+    const fecha = ETIQUETA_ACUERDO_DIA.exec((a.etiqueta ?? "").trim())?.[1];
+    if (fecha) porFecha.set(fecha, Math.round(((porFecha.get(fecha) ?? 0) + n) * 100) / 100);
+    else generico = Math.round((generico + n) * 100) / 100;
+  }
+  return { generico, porFecha };
+}
+
+function medioDiaPanama(fecha: string): string {
+  return `${fecha}T17:00:00.000Z`;
+}
+
+/** El genérico cuenta el día del pago. La etiqueta `acuerdo YYYY-MM-DD` cuenta ese día, aunque el pago sea anterior. */
+function acumularAcuerdo(
+  slot: { ayer: number; hoy: { pagadoAt: string; aplicado: number }[] },
+  pagadoAt: string,
+  raw: unknown,
+  ayer: string,
+  fecha: string,
+): void {
+  const parte = partirAcuerdo(raw);
+  if (parte.generico <= 0.009 && parte.porFecha.size === 0) return;
+  const dia = partesPagoPanama(pagadoAt).fecha;
+  if (dia === ayer && parte.generico > 0.009) {
+    slot.ayer = Math.round((slot.ayer + parte.generico) * 100) / 100;
+  } else if (dia === fecha && parte.generico > 0.009) {
+    slot.hoy.push({ pagadoAt, aplicado: parte.generico });
+  }
+  const tagAyer = parte.porFecha.get(ayer) ?? 0;
+  if (tagAyer > 0.009) slot.ayer = Math.round((slot.ayer + tagAyer) * 100) / 100;
+  const tagHoy = parte.porFecha.get(fecha) ?? 0;
+  if (tagHoy > 0.009) slot.hoy.push({ pagadoAt: medioDiaPanama(fecha), aplicado: tagHoy });
 }
 
 /** Cuánto de los abonos validados de hoy ya se fue al arreglo de HOY. */
@@ -299,7 +333,7 @@ export async function aplicadoArregloHoyPorContrato(
 ): Promise<Map<string, number>> {
   const sb = createServerSupabase();
   const ayer = sumarDias(fecha, -1);
-  const { desde } = rangoDiaPanama(ayer);
+  const { desde } = rangoDiaPanama(sumarDias(fecha, -DIAS_ATRAS_ACUERDO));
   const { hasta } = rangoDiaPanama(fecha);
   const { data, error } = await sb
     .from("pagos")
@@ -332,12 +366,8 @@ export async function aplicadoArregloHoyPorContrato(
   const porId = new Map<string, { ayer: number; hoy: { pagadoAt: string; aplicado: number }[] }>();
   for (const p of pagos) {
     if (!p.contrato_id) continue;
-    const aplicado = aplicadoAcuerdoDe(p.asignaciones);
-    if (aplicado <= 0.009) continue;
     const slot = porId.get(p.contrato_id) ?? { ayer: 0, hoy: [] };
-    const dia = partesPagoPanama(p.pagado_at).fecha;
-    if (dia === ayer) slot.ayer = Math.round((slot.ayer + aplicado) * 100) / 100;
-    else if (dia === fecha) slot.hoy.push({ pagadoAt: p.pagado_at, aplicado });
+    acumularAcuerdo(slot, p.pagado_at, p.asignaciones, ayer, fecha);
     porId.set(p.contrato_id, slot);
   }
   const out = new Map<string, number>();
@@ -359,7 +389,7 @@ export async function aplicadoArregloHoyContrato(
 ): Promise<number> {
   const sb = createServerSupabase();
   const ayer = sumarDias(fecha, -1);
-  const { desde } = rangoDiaPanama(ayer);
+  const { desde } = rangoDiaPanama(sumarDias(fecha, -DIAS_ATRAS_ACUERDO));
   const { hasta } = rangoDiaPanama(fecha);
   const { data, error } = await sb
     .from("pagos")
@@ -374,20 +404,15 @@ export async function aplicadoArregloHoyContrato(
     .select("id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica")
     .eq("contrato_id", contratoId)
     .eq("activo", true);
-  let abonoAyer = 0;
-  const pagosHoy: { pagadoAt: string; aplicado: number }[] = [];
+  const slot = { ayer: 0, hoy: [] as { pagadoAt: string; aplicado: number }[] };
   for (const p of data as { pagado_at: string; asignaciones: unknown }[]) {
-    const aplicado = aplicadoAcuerdoDe(p.asignaciones);
-    if (aplicado <= 0.009) continue;
-    const dia = partesPagoPanama(p.pagado_at).fecha;
-    if (dia === ayer) abonoAyer = Math.round((abonoAyer + aplicado) * 100) / 100;
-    else if (dia === fecha) pagosHoy.push({ pagadoAt: p.pagado_at, aplicado });
+    acumularAcuerdo(slot, p.pagado_at, p.asignaciones, ayer, fecha);
   }
   return abonoAcuerdoQueCubreHoy({
     fechaHoy: fecha,
     cuotaAyer: acuerdoHoyDe((planes ?? []) as AcuerdoActivo[], ayer),
-    abonoAyer,
-    pagosHoy,
+    abonoAyer: slot.ayer,
+    pagosHoy: slot.hoy,
   });
 }
 
