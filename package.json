@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "probar": "npm run probar:fechas && npm run probar:guard && npm run probar:cruce && npm run probar:vacios && npm run probar:aplicar && npm run probar:aviso && npm run probar:charla && npm run probar:gps && npm run probar:salidas",
+    "probar": "npm run probar:fechas && npm run probar:guard && npm run probar:cruce && npm run probar:vacios && npm run probar:aplicar && npm run probar:aviso && npm run probar:charla && npm run probar:gps && npm run probar:salidas && npm run probar:nota",
     "probar:salidas": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-salidas.mts",
     "probar:gps": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-gps.mts",
     "cargar:km-mes": "node --experimental-strip-types --env-file=.env.local --import ./scripts/resolver.mjs scripts/cargar-km-mes.mts",
@@ -17,7 +17,8 @@
     "probar:guard": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-guard.mts",
     "probar:cruce": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-cruce.mts",
     "probar:vacios": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-vacios-agente.mts",
-    "probar:aplicar": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-aplicar.mts"
+    "probar:aplicar": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-aplicar.mts",
+    "probar:nota": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-nota-voz.mts"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",
@@ -27,6 +28,7 @@
     "fflate": "^0.8.3",
     "leaflet": "^1.9.4",
     "next": "^15.1.0",
+    "opusscript": "^0.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "unpdf": "^1.8.1",

@@ -17,6 +17,7 @@ import {
   cargarBandeja,
   cargarDetalle,
   enviarAudioHumano,
+  enviarPlantillaMora,
   enviarRespuestaHumana,
 } from "./actions";
 import type { ConversacionDetalle, ConversacionLista, FiltroBandeja, Mensaje } from "./types";
@@ -41,6 +42,14 @@ const RESPUESTAS_RAPIDAS = [
   "Su pago ya quedó registrado. Gracias.",
   "¿A qué número de carro corresponde el pago?",
 ];
+
+const PLANTILLAS_MORA = [
+  { id: "mora_sin_respuesta", label: "Sin respuesta" },
+  { id: "mora_contacto_referencias", label: "Contactar referencias" },
+  { id: "mora_alerta_bloqueo", label: "Alerta de bloqueo" },
+  { id: "mora_pago_pendiente", label: "Pago pendiente" },
+  { id: "mora_pago_inmediato", label: "Pago inmediato" },
+] as const;
 
 /** Lista: cada 6s. Chat abierto: cada 2.5s. Pausa si la pestaña está oculta. */
 const POLL_LISTA_MS = 6_000;
@@ -1238,8 +1247,37 @@ function Composer({
       )}
       {esHumano && !ventanaAbierta && (
         <p className="mb-2 rounded-md bg-ambar-wash px-3 py-2 text-xs text-ambar ring-1 ring-ambar/25">
-          Ventana de 24h cerrada. El cliente debe escribir primero para poder responder.
+          Ventana de 24h cerrada. El texto libre espera a que el cliente escriba. Las plantillas de mora sí se pueden enviar.
         </p>
+      )}
+
+      {esHumano && (
+        <div className="mb-2">
+          <p className="mb-1 text-[10px] font-medium uppercase tracking-[0.12em] text-muted">Mora</p>
+          <div className="flex gap-1.5 overflow-x-auto pb-1">
+            {PLANTILLAS_MORA.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                disabled={pending || demo || grabando}
+                onClick={() => {
+                  onError(null);
+                  startTransition(async () => {
+                    const r = await enviarPlantillaMora(conversacionId, p.id);
+                    if (!r.ok || !r.texto) {
+                      onError(r.error ?? "No se pudo enviar la plantilla.");
+                      return;
+                    }
+                    await onSent(r.texto);
+                  });
+                }}
+                className="shrink-0 rounded-md bg-paper px-2.5 py-1.5 text-[11px] text-ink ring-1 ring-line transition hover:bg-surface-2 disabled:opacity-40"
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {esHumano && ventanaAbierta && (
@@ -1265,13 +1303,24 @@ function Composer({
           onClick={grabando ? detenerGrabacion : iniciarGrabacion}
           title={grabando ? "Detener y enviar" : "Grabar nota de voz"}
           aria-label={grabando ? "Detener grabación" : "Grabar audio"}
-          className={`shrink-0 rounded-lg px-3 py-2.5 text-sm font-medium ring-1 transition disabled:opacity-40 ${
+          className={`inline-flex shrink-0 items-center rounded-lg px-3 py-2.5 text-sm font-medium ring-1 transition disabled:opacity-40 ${
             grabando
               ? "bg-rojo text-white ring-rojo"
               : "bg-paper text-ink ring-line hover:bg-surface-2"
           }`}
         >
-          {grabando ? `■ ${secs}s` : "🎤"}
+          {grabando ? (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <rect x="4" y="4" width="8" height="8" rx="1" />
+            </svg>
+          ) : (
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
+              <rect x="6" y="1.5" width="4" height="8" rx="2" />
+              <path d="M4.5 7.5a3.5 3.5 0 0 0 7 0" strokeLinecap="round" />
+              <path d="M8 11v2.5M6 13.5h4" strokeLinecap="round" />
+            </svg>
+          )}
+          {grabando ? <span className="ml-1.5 tabular-nums">{secs}s</span> : null}
         </button>
         <textarea
           value={texto}
@@ -1302,7 +1351,7 @@ function Composer({
   );
 }
 
-/** Convierte la grabación del navegador a WAV PCM (aceptado por WhatsApp). */
+/** Convierte la grabación del navegador a WAV PCM 16 kHz. El servidor lo pasa a nota de voz. */
 async function blobAWav(blob: Blob): Promise<File> {
   const ctx = new AudioContext();
   try {
@@ -1316,10 +1365,10 @@ async function blobAWav(blob: Blob): Promise<File> {
 }
 
 function encodeWav(buffer: AudioBuffer): ArrayBuffer {
-  const numCh = 1;
-  const sampleRate = buffer.sampleRate;
-  const samples = buffer.length;
-  const dataSize = samples * numCh * 2;
+  const sampleRate = 16000;
+  const srcRate = buffer.sampleRate;
+  const samples = Math.max(1, Math.round((buffer.length * sampleRate) / srcRate));
+  const dataSize = samples * 2;
   const out = new ArrayBuffer(44 + dataSize);
   const view = new DataView(out);
   const writeStr = (off: number, s: string) => {
@@ -1331,20 +1380,31 @@ function encodeWav(buffer: AudioBuffer): ArrayBuffer {
   writeStr(12, "fmt ");
   view.setUint32(16, 16, true);
   view.setUint16(20, 1, true);
-  view.setUint16(22, numCh, true);
+  view.setUint16(22, 1, true);
   view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * numCh * 2, true);
-  view.setUint16(32, numCh * 2, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
   view.setUint16(34, 16, true);
   writeStr(36, "data");
   view.setUint32(40, dataSize, true);
 
   const ch0 = buffer.getChannelData(0);
   const ch1 = buffer.numberOfChannels > 1 ? buffer.getChannelData(1) : null;
+  const last = buffer.length - 1;
   let offset = 44;
   for (let i = 0; i < samples; i++) {
-    let s = ch0[i] ?? 0;
-    if (ch1) s = (s + (ch1[i] ?? 0)) / 2;
+    const x = (i * srcRate) / sampleRate;
+    const i0 = Math.min(last, Math.floor(x));
+    const i1 = Math.min(last, i0 + 1);
+    const t = x - i0;
+    const a0 = ch0[i0] ?? 0;
+    const a1 = ch0[i1] ?? 0;
+    let s = a0 * (1 - t) + a1 * t;
+    if (ch1) {
+      const b0 = ch1[i0] ?? 0;
+      const b1 = ch1[i1] ?? 0;
+      s = (s + b0 * (1 - t) + b1 * t) / 2;
+    }
     const n = Math.max(-1, Math.min(1, s));
     view.setInt16(offset, n < 0 ? n * 0x8000 : n * 0x7fff, true);
     offset += 2;

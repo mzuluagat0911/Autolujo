@@ -24,6 +24,7 @@ import {
 } from "./pagos-dia";
 import { ultimoDiaDevengado } from "./devengo";
 import { programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
+import { ajustarCobroDevolucion, devolucionDeVehiculo, devolucionVigente, devolucionesAbiertas } from "./devolucion";
 import { ajustarCobroPausa, etiquetaPausa, pausaDeVehiculo, pausaVigente, pausasAbiertas } from "./pausa-productiva";
 import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
 import { tratamientoCliente } from "./tratamiento";
@@ -133,6 +134,9 @@ export type EstadoCuenta = Cifras & {
   /** Día en que vuelve a productivo. Vacío si la pausa no tiene fecha de activación. */
   tallerHasta: string | null;
   tallerEtiqueta: string | null;
+  /** Devuelto desde esta fecha: no corre letra diaria. El saldo pendiente sí. */
+  devuelto: boolean;
+  devueltoDesde: string | null;
 };
 
 type ContratoRow = TerminosCuota & {
@@ -330,6 +334,8 @@ function armar(
     tallerDesde?: string | null;
     tallerHasta?: string | null;
     tallerEtiqueta?: string | null;
+    devuelto?: boolean;
+    devueltoDesde?: string | null;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -434,6 +440,8 @@ function armar(
     tallerDesde: extra.tallerDesde ?? null,
     tallerHasta: extra.tallerHasta ?? null,
     tallerEtiqueta: extra.tallerEtiqueta ?? null,
+    devuelto: Boolean(extra.devuelto),
+    devueltoDesde: extra.devueltoDesde ?? null,
     templateVars: [nombre, carro, fecha, desgloseOut, money(cifrasOut.totalHoy)],
   };
 }
@@ -660,8 +668,12 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   // Contrato cerrado (devuelto/finalizado/abandonado…): ya NO corre cuota diaria;
   // solo queda la deuda pendiente. Se trata como "día libre" permanente.
   const contratoCerrado = row.estado !== "activo";
-  const pausa = await pausaDeVehiculo(row.vehiculo?.id);
-  const entrada = ajustarCobroPausa({
+  const [pausa, devolucion] = await Promise.all([
+    pausaDeVehiculo(row.vehiculo?.id),
+    devolucionDeVehiculo(row.vehiculo?.id),
+  ]);
+  const devuelto = devolucionVigente(devolucion, hoy);
+  const entrada = ajustarCobroDevolucion(ajustarCobroPausa({
     terminos: terminosDe(row),
     saldo: Number((s.data as { saldo_actual: number } | null)?.saldo_actual ?? 0),
     pagoHoy: pago.pagoHoy,
@@ -678,7 +690,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     diaLibre: contratoCerrado,
     domingoEnSaldo: domingoMap.get(contratoId)?.total ?? 0,
     pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
-  }, pausa);
+  }, pausa), devolucion);
   const cifrasBase = calcularCifras(entrada);
   const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
   const cumple = evaluarCumple(row, nac, hoy, cifrasBase, entrada);
@@ -752,6 +764,8 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     tallerDesde: pausa && pausaVigente(pausa, hoy) ? pausa.desde : null,
     tallerHasta: pausa && pausaVigente(pausa, hoy) ? pausa.hasta : null,
     tallerEtiqueta: pausa && pausaVigente(pausa, hoy) ? etiquetaPausa(pausa.estado) : null,
+    devuelto,
+    devueltoDesde: devuelto ? devolucion!.desde : null,
   });
 }
 
@@ -1111,6 +1125,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     pagadoDomingoMap,
     pagadoCicloMap,
     pausasMap,
+    devolucionesMap,
   ] = await Promise.all([
     sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual").in("contrato_id", idsAlcance),
     sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE"),
@@ -1137,6 +1152,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       ? Promise.resolve(null)
       : pagadoDomingoRangoPorContrato(idsAlcance, domingoDelCiclo(hoy), hoy),
     pausasAbiertas(),
+    devolucionesAbiertas(),
   ]);
 
   const atrasoMap = await atrasoAcuerdoPorContrato(hoy, acuerdosMap);
@@ -1166,8 +1182,10 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     const devengadoHasta = lastRenta.get(c.id) ?? null;
     const hoyYaDevengado = devengadoHasta != null && devengadoHasta >= hoy;
     const pausa = pausasMap.get(c.vehiculo?.id ?? "");
+    const devolucion = devolucionesMap.get(c.vehiculo?.id ?? "");
     const enTaller = pausaVigente(pausa, hoy);
-    const entrada = ajustarCobroPausa({
+    const devuelto = devolucionVigente(devolucion, hoy);
+    const entrada = ajustarCobroDevolucion(ajustarCobroPausa({
       terminos: terminosDe(c),
       saldo: saldoMap.get(c.id) ?? 0,
       pagoHoy,
@@ -1183,7 +1201,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       sinDevengoRenta: devengadoHasta == null,
       domingoEnSaldo: domingoMap.get(c.id)?.total ?? 0,
       pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
-    }, pausa);
+    }, pausa), devolucion);
     const cifrasBase = calcularCifras(entrada);
     const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;
     const cumple = evaluarCumple(c, nac, hoy, cifrasBase, entrada);
@@ -1232,6 +1250,8 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       tallerDesde: enTaller ? pausa!.desde : null,
       tallerHasta: enTaller ? pausa!.hasta : null,
       tallerEtiqueta: enTaller ? etiquetaPausa(pausa!.estado) : null,
+      devuelto,
+      devueltoDesde: devuelto ? devolucion!.desde : null,
     });
   });
 }

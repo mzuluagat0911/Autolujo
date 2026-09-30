@@ -68,20 +68,26 @@ export async function uploadWhatsAppMedia(
   return json.id;
 }
 
-/** Nota de voz / audio (ventana de 24h). Preferir ogg/opus o mp4/aac. */
-export async function sendAudio(to: string, mediaId: string) {
+/** Audio dentro de la ventana de 24h. `voz` lo muestra como nota de voz (OGG Opus). */
+export async function sendAudio(to: string, mediaId: string, voz = false) {
   return post({
     messaging_product: "whatsapp",
     to,
     type: "audio",
-    audio: { id: mediaId },
+    audio: voz ? { id: mediaId, voice: true } : { id: mediaId },
   });
 }
 
 /** Sube bytes y envía el audio en un solo paso. */
-export async function sendAudioBytes(to: string, bytes: Buffer, mime: string, filename = "nota.ogg") {
+export async function sendAudioBytes(
+  to: string,
+  bytes: Buffer,
+  mime: string,
+  filename = "nota.ogg",
+  voz = false,
+) {
   const id = await uploadWhatsAppMedia(bytes, mime, filename);
-  return sendAudio(to, id);
+  return sendAudio(to, id, voz);
 }
 
 /** Mensaje de plantilla (para iniciar conversación, ej. estado de cuenta 8am). */

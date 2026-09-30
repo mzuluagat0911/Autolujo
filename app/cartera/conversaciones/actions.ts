@@ -1,6 +1,7 @@
 "use server";
 
-import { sendText, sendAudioBytes } from "@/lib/whatsapp/client";
+import { sendAudioBytes, sendTemplate, sendText } from "@/lib/whatsapp/client";
+import { wavANotaOpus } from "@/lib/whatsapp/nota-voz";
 import {
   tomarChat,
   devolverAlAgente,
@@ -106,6 +107,61 @@ export async function enviarRespuestaHumana(
   }
 }
 
+const PLANTILLAS_MORA = {
+  mora_sin_respuesta:
+    "📌 Apreciado cliente: hemos intentado comunicarnos con usted sin obtener respuesta. Por favor, comuníquese con nosotros a la brevedad para regularizar sus pagos.",
+  mora_contacto_referencias:
+    "📌 Apreciado cliente: al no recibir respuesta de su parte, procederemos a establecer contacto con las referencias registradas en su contrato.",
+  mora_alerta_bloqueo:
+    "⚠️ Apreciado cliente: el sistema registra una alerta por posible bloqueo de su carro debido al atraso en sus pagos. Le solicitamos realizar su pago a la brevedad para evitar esta situación.",
+  mora_pago_pendiente:
+    "⚠️ Apreciado cliente: aún no hemos recibido su pago. Por favor, regularice su cuenta a la brevedad y evite recargos innecesarios.",
+  mora_pago_inmediato:
+    "🚨 Apreciado cliente: Solicitamos realizar el pago de inmediato para evitar la aplicación de recargos y las acciones correspondientes según su contrato.",
+} as const;
+
+export type PlantillaMora = keyof typeof PLANTILLAS_MORA;
+
+/** Plantilla de mora. Sale aunque la ventana de 24h esté cerrada. */
+export async function enviarPlantillaMora(
+  conversacionId: string,
+  nombre: string,
+): Promise<{ ok: boolean; error?: string; texto?: string }> {
+  const id = String(conversacionId ?? "").trim();
+  const plantilla = PLANTILLAS_MORA[nombre as PlantillaMora];
+  if (!id) return { ok: false, error: "Falta la conversación." };
+  if (!plantilla) return { ok: false, error: "Esa plantilla no está habilitada." };
+
+  try {
+    const sb = createServerSupabase();
+    const { data: conv, error } = await sb
+      .from("conversaciones")
+      .select("wa_numero, modo")
+      .eq("id", id)
+      .single();
+    if (error || !conv) return { ok: false, error: "No se encontró la conversación." };
+    if ((conv.modo as string) !== "humano") {
+      return { ok: false, error: "Primero toma el chat para poder enviar la plantilla." };
+    }
+
+    await sendTemplate(conv.wa_numero as string, nombre, "es");
+    await registrarMensaje({
+      conversacionId: id,
+      direccion: "out",
+      texto: plantilla,
+      enviadoPor: "Equipo",
+    });
+    await sb
+      .from("conversaciones")
+      .update({ necesita_humano: false, no_leidos: 0, escalada_at: null })
+      .eq("id", id);
+    revalidar(id);
+    return { ok: true, texto: plantilla };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "No se pudo enviar la plantilla." };
+  }
+}
+
 /** Envía una nota de voz desde el inbox (mismo hilo de WhatsApp). */
 export async function enviarAudioHumano(
   formData: FormData,
@@ -141,21 +197,20 @@ export async function enviarAudioHumano(
       };
     }
 
-    const mimeRaw = (file.type || "audio/wav").split(";")[0]!.trim().toLowerCase();
-    const mime =
-      mimeRaw.includes("wav") ? "audio/wav"
-      : mimeRaw.includes("mpeg") || mimeRaw.includes("mp3") ? "audio/mpeg"
-      : mimeRaw.includes("mp4") || mimeRaw.includes("m4a") || mimeRaw.includes("aac") ? "audio/mp4"
-      : mimeRaw.includes("ogg") ? "audio/ogg"
-      : "audio/wav";
-    const ext = mime.includes("mpeg") ? "mp3" : mime.includes("mp4") ? "m4a" : mime.includes("ogg") ? "ogg" : "wav";
     const bytes = Buffer.from(await file.arrayBuffer());
+    let ogg: Buffer;
+    try {
+      ogg = wavANotaOpus(bytes);
+    } catch (e) {
+      console.error("[enviarAudioHumano] opus", e);
+      return { ok: false, error: e instanceof Error ? e.message : "No pude preparar la nota de voz." };
+    }
 
-    await sendAudioBytes(conv.wa_numero as string, bytes, mime, `nota.${ext}`);
+    await sendAudioBytes(conv.wa_numero as string, ogg, "audio/ogg", "nota.ogg", true);
 
-    const path = `chat-audio/${id}/${Date.now()}.${ext}`;
+    const path = `chat-audio/${id}/${Date.now()}.wav`;
     const { error: upErr } = await sb.storage.from("comprobantes").upload(path, bytes, {
-      contentType: mime,
+      contentType: "audio/wav",
       upsert: false,
     });
     if (upErr) {

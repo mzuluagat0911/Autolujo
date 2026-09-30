@@ -142,7 +142,7 @@ async function guardarEstadoVehiculo(
   return { ok: false, msg: primero.error.message };
 }
 
-async function quitarLetrasDeLaPausa(vehiculoId: string, desde: string, hasta: string): Promise<number> {
+export async function quitarLetrasDeLaPausa(vehiculoId: string, desde: string, hasta: string): Promise<number> {
   if (desde > hasta) return 0;
   const sb = createServerSupabase();
   const { data: contrato } = await sb
@@ -167,7 +167,7 @@ async function quitarLetrasDeLaPausa(vehiculoId: string, desde: string, hasta: s
   return ids.length;
 }
 
-async function reponerLetras(vehiculoId: string, desde: string, hasta: string): Promise<void> {
+export async function reponerLetras(vehiculoId: string, desde: string, hasta: string): Promise<void> {
   if (desde > hasta) return;
   const sb = createServerSupabase();
   const { data: contrato } = await sb
@@ -251,10 +251,19 @@ export async function aplicarEstadoProductivo(input: {
   estado: string;
   fechaIngreso: string | null;
   fechaActivacion?: string | null;
+  fechaDevolucion?: string | null;
 }): Promise<{ ok: boolean; msg: string }> {
   const estado = String(input.estado ?? "").trim();
   const hoy = hoyPanama();
   const sb = createServerSupabase();
+
+  if (estado === "entregado") {
+    const { aplicarDevolucion } = await import("./devolucion");
+    return aplicarDevolucion({
+      vehiculoId: input.vehiculoId,
+      fecha: input.fechaDevolucion ?? null,
+    });
+  }
 
   if (esEstadoPausa(estado)) {
     const desde = String(input.fechaIngreso ?? "").trim();

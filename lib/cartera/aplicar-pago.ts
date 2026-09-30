@@ -24,6 +24,7 @@ import { distribuirPago } from "./rules";
 import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { cuotaAcuerdoHoy, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
+import { devolucionDeVehiculo, devolucionVigente } from "./devolucion";
 import { pausaDeVehiculo, pausaVigente } from "./pausa-productiva";
 import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual, esDomingo, domingoDelCiclo, rangoDiaPanama } from "./fecha";
 import { tajadaDomingoQueFalta } from "./cifras";
@@ -918,10 +919,14 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const contratoRow = contratoRes.data as (TerminosCuota & { vehiculo_id?: string | null }) | null;
   const terminos = contratoRow;
   if (!terminos) return null;
-  const pausa = await pausaDeVehiculo(contratoRow?.vehiculo_id);
+  const [pausa, devolucion] = await Promise.all([
+    pausaDeVehiculo(contratoRow?.vehiculo_id),
+    devolucionDeVehiculo(contratoRow?.vehiculo_id),
+  ]);
   const enPausa = pausaVigente(pausa, fecha);
+  const devuelto = devolucionVigente(devolucion, fecha);
   const acuerdos = (acuerdosData ?? []) as AcuerdoActivo[];
-  const cuotaHoy = enPausa && !esDomingo(fecha) ? 0 : cuotaDeFecha(terminos, fecha);
+  const cuotaHoy = (enPausa || devuelto) && !esDomingo(fecha) ? 0 : cuotaDeFecha(terminos, fecha);
   const multaHoy = (multaRes.data?.length ?? 0) > 0;
   const hoyYaDevengado = (rentaRes.data?.length ?? 0) > 0;
   const saldoVista = Number((saldoRes.data as { saldo_actual: number } | null)?.saldo_actual ?? 0);
@@ -973,7 +978,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     multaHoyRegistrada: multaHoy,
     hoyYaDevengado,
     pendiente: false,
-    diaLibre: enPausa && !hoyEsDomingo,
+    diaLibre: (enPausa || devuelto) && !hoyEsDomingo,
   });
 
   // Lun–sáb: recargo cargado, luego la cuota de acuerdo. Domingo: la tajada va

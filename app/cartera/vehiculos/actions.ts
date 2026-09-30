@@ -122,6 +122,7 @@ export async function guardarIdentidadCarro(input: {
   estado?: string | null;
   fechaIngreso?: string | null;
   fechaActivacion?: string | null;
+  fechaDevolucion?: string | null;
 }): Promise<ResultadoFicha> {
   const id = String(input.vehiculoId ?? "").trim();
   const numero = String(input.numero ?? "").trim();
@@ -139,6 +140,7 @@ export async function guardarIdentidadCarro(input: {
         estado: input.estado,
         fechaIngreso: input.fechaIngreso ?? null,
         fechaActivacion: input.fechaActivacion ?? null,
+        fechaDevolucion: input.fechaDevolucion ?? null,
       });
       if (!p.ok) return p;
       try {

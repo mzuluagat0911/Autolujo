@@ -29,6 +29,8 @@ export type FilaVehiculo = {
   pausaDesde: string | null;
   /** Día en que vuelve a productivo. Vacío si todavía no tiene fecha. */
   pausaHasta: string | null;
+  /** Primer día sin letra diaria, si el carro está entregado. */
+  devueltoDesde: string | null;
   empresa: string | null;
   cliente: string | null;
   clienteId: string | null;
@@ -578,11 +580,13 @@ export function ListaVehiculos({
                   <td className="px-5 py-3">
                     <StatusChip tone={estadoTone(estadoMostrado(v))}>
                       {ESTADOS[estadoMostrado(v)] ?? estadoMostrado(v)}
-                      {v.pausaDesde
-                        ? v.pausaHasta
-                          ? ` · ${fechaCorta(v.pausaDesde)} → ${fechaCorta(v.pausaHasta)}`
-                          : ` · ${fechaCorta(v.pausaDesde)}`
-                        : ""}
+                      {v.devueltoDesde
+                        ? ` · ${fechaCorta(v.devueltoDesde)}`
+                        : v.pausaDesde
+                          ? v.pausaHasta
+                            ? ` · ${fechaCorta(v.pausaDesde)} → ${fechaCorta(v.pausaHasta)}`
+                            : ` · ${fechaCorta(v.pausaDesde)}`
+                          : ""}
                     </StatusChip>
                   </td>
                   <td className="px-5 py-3">
@@ -600,7 +604,7 @@ export function ListaVehiculos({
         <Link href="/cartera/rastreo" className="underline-offset-2 hover:underline">
           Rastreo
         </Link>
-        . El número abre la ficha: número, arrendatario, y el estado si entra a chapistería, mantenimiento o colisión. La hoja de vida sigue en Operaciones.
+        . El número abre la ficha: número, arrendatario, el estado si entra a chapistería, mantenimiento o colisión, y la fecha si el carro se devolvió. La hoja de vida sigue en Operaciones.
       </p>
     </div>
   );
@@ -623,8 +627,10 @@ function PanelEditarCarro({
   const [estado, setEstado] = useState(carro.pausaEstado ?? carro.estado);
   const [ingreso, setIngreso] = useState(carro.pausaDesde ?? "");
   const [activacion, setActivacion] = useState(carro.pausaHasta ?? "");
+  const [devolucion, setDevolucion] = useState(carro.devueltoDesde ?? "");
   const [err, setErr] = useState<string | null>(null);
   const enTaller = estado === "mantenimiento" || estado === "chapisteria" || estado === "colision";
+  const entregado = estado === "entregado";
   const [pending, start] = useTransition();
   const titulo = `${carro.empresa ? `${siglaEmpresa(carro.empresa)} · ` : ""}${carro.numero}`;
 
@@ -644,6 +650,7 @@ function PanelEditarCarro({
           estado,
           fechaIngreso: enTaller ? ingreso : null,
           fechaActivacion: enTaller ? activacion || null : null,
+          fechaDevolucion: entregado ? devolucion : null,
         });
         if (!r.ok) {
           setErr(r.msg);
@@ -697,6 +704,7 @@ function PanelEditarCarro({
                 setEstado(next);
                 const pausa = next === "mantenimiento" || next === "chapisteria" || next === "colision";
                 if (pausa && !ingreso) setIngreso(hoyInput());
+                if (next === "entregado" && !devolucion) setDevolucion(hoyInput());
               }}
               className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
             >
@@ -740,6 +748,23 @@ function PanelEditarCarro({
               </span>
             </label>
             </>
+          )}
+          {entregado && (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Fecha de devolución
+              </span>
+              <input
+                required
+                type="date"
+                value={devolucion}
+                onChange={(e) => setDevolucion(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+              <span className="text-xs text-muted">
+                Desde ese día no se calcula letra diaria. El saldo que ya debía sigue en el cobro.
+              </span>
+            </label>
           )}
           {carro.clienteId ? (
             <>
