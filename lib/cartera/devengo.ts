@@ -23,6 +23,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, sumarDias, pasoCorte, diasEntre, esDomingo } from "./fecha";
 import { cuotaDeFecha, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
 import { devolucionesAbiertas, devolucionVigente } from "./devolucion";
+import { inactivacionesAbiertas, inactivacionVigente } from "./inactivo";
 import { pausasAbiertas, pausaVigente } from "./pausa-productiva";
 import {
   contratosQueCubrieronElDia,
@@ -141,7 +142,11 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
   }
   const nacMap = await nacimientosPorCliente();
-  const [pausas, devoluciones] = await Promise.all([pausasAbiertas(), devolucionesAbiertas()]);
+  const [pausas, devoluciones, inactivaciones] = await Promise.all([
+    pausasAbiertas(),
+    devolucionesAbiertas(),
+    inactivacionesAbiertas(),
+  ]);
 
   const res: ResultadoDevengo = { fecha, creados: 0, yaEstaban: 0, sinCuota: 0 };
   const filas: Record<string, unknown>[] = [];
@@ -160,7 +165,11 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     }
     // En taller, o devuelto desde la fecha: no se abre letra nueva.
     const vehiculoId = c.vehiculo_id ?? "";
-    if (pausaVigente(pausas.get(vehiculoId), fecha) || devolucionVigente(devoluciones.get(vehiculoId), fecha)) {
+    if (
+      pausaVigente(pausas.get(vehiculoId), fecha) ||
+      devolucionVigente(devoluciones.get(vehiculoId), fecha) ||
+      inactivacionVigente(inactivaciones.get(vehiculoId), fecha)
+    ) {
       res.sinCuota++;
       continue;
     }

@@ -101,8 +101,8 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   Si el CONTEXTO dice que el carro está en taller (chapistería, mantenimiento o colisión),
   NO pidas letra diaria ni acuerdo diario: el TOTAL ya es solo el saldo que debía.
   Si trae fecha de activación, ese día vuelve a productivo y ahí sí corre la letra y el acuerdo.
-  Si el CONTEXTO dice que el carro está devuelto, NO pidas letra diaria ni hables de la cuota
-  de hoy: el TOTAL ya es el saldo que debía.
+  Si el CONTEXTO dice que el carro está devuelto o inactivo, NO pidas letra diaria ni hables de la cuota
+  de hoy: el TOTAL ya es la deuda que debía. Se cobra hasta que pague o hasta que el equipo archive el caso.
   Lun–sáb: mientras el acuerdo de adelante tenga saldo, ese es el único plan que se cobra.
   La recogida y cualquier plan de atrás esperan a que ese saldo quede en cero. No los cobres
   ni los ofrezcas. Mantenimiento y lo demás quedan pendientes y NO entran al total.

@@ -319,6 +319,8 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${esDomingo(hoyPanama()) ? " HOY ES DOMINGO: cobra la tajada del domingo, la letra atrasada, un acuerdo atrasado o un acuerdo de domingo. La cuota diaria del acuerdo no entra. Si no hay nada de eso, el total es $0." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
       ...(est.devuelto
         ? [`- CARRO DEVUELTO desde ${est.devueltoDesde ?? "la fecha de devolución"}. NO cobres letra diaria ni hables de la cuota de hoy. El TOTAL de arriba es el saldo que ya debía.`]
+        : est.inactivo
+          ? [`- CARRO INACTIVO desde ${est.inactivoDesde ?? "la fecha"}. NO cobres letra diaria ni hables de la cuota de hoy. El TOTAL de arriba es la deuda que ya tenía. Se sigue cobrando hasta que pague o hasta que el equipo archive el caso.`]
         : est.enTaller
           ? [`- CARRO EN TALLER: ${est.tallerEtiqueta ?? "taller"} desde ${est.tallerDesde ?? "el ingreso"}.${est.tallerHasta ? ` Vuelve a productivo el ${est.tallerHasta}: ese día sí corre letra y acuerdo.` : " Sin fecha de activación: sigue así hasta que la pongan o lo pasen a Activo."} NO cobres letra diaria ni acuerdo diario. El TOTAL de arriba es solo el saldo que ya debía. No hables de la cuota de hoy.`]
           : []),

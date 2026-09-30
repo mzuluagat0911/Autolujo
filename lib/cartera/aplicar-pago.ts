@@ -26,6 +26,7 @@ import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { cargosExtraPorContrato, partirCargosNoLetra } from "./extracto-desglose";
 import { cuotaAcuerdoHoy, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
 import { devolucionDeVehiculo, devolucionVigente } from "./devolucion";
+import { inactivacionDeVehiculo, inactivacionVigente } from "./inactivo";
 import { pausaDeVehiculo, pausaVigente } from "./pausa-productiva";
 import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual, esDomingo, domingoDelCiclo, rangoDiaPanama } from "./fecha";
 import { tajadaDomingoQueFalta } from "./cifras";
@@ -921,14 +922,16 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const contratoRow = contratoRes.data as (TerminosCuota & { vehiculo_id?: string | null }) | null;
   const terminos = contratoRow;
   if (!terminos) return null;
-  const [pausa, devolucion] = await Promise.all([
+  const [pausa, devolucion, inactivacion] = await Promise.all([
     pausaDeVehiculo(contratoRow?.vehiculo_id),
     devolucionDeVehiculo(contratoRow?.vehiculo_id),
+    inactivacionDeVehiculo(contratoRow?.vehiculo_id),
   ]);
   const enPausa = pausaVigente(pausa, fecha);
   const devuelto = devolucionVigente(devolucion, fecha);
+  const inactivo = inactivacionVigente(inactivacion, fecha);
   const acuerdos = (acuerdosData ?? []) as AcuerdoActivo[];
-  const cuotaHoy = (enPausa || devuelto) && !esDomingo(fecha) ? 0 : cuotaDeFecha(terminos, fecha);
+  const cuotaHoy = (enPausa || devuelto || inactivo) && !esDomingo(fecha) ? 0 : cuotaDeFecha(terminos, fecha);
   const multaHoy = (multaRes.data?.length ?? 0) > 0;
   const hoyYaDevengado = (rentaRes.data?.length ?? 0) > 0;
   const saldoVista = Number((saldoRes.data as { saldo_actual: number } | null)?.saldo_actual ?? 0);
@@ -980,7 +983,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     multaHoyRegistrada: multaHoy,
     hoyYaDevengado,
     pendiente: false,
-    diaLibre: (enPausa || devuelto) && !hoyEsDomingo,
+    diaLibre: (enPausa || devuelto || inactivo) && !hoyEsDomingo,
     cargosFuturos: extrasNoLetra.futuro,
     cargosExtraEnSaldo: extrasNoLetra.debido,
   });

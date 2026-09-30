@@ -116,7 +116,7 @@ async function EstadosCuerpo() {
           <div className="mt-10">
             <h2 className="text-lg font-semibold tracking-tight">Ex-clientes con deuda</h2>
             <p className="mt-1 text-sm text-muted">
-              Entregaron el carro debiendo. No corre cuota diaria; se cobra el saldo pendiente.
+              Un carro inactivo o devuelto con deuda sigue en el cobro del día, sin letra nueva, hasta que pague o hasta que archives el caso. Acá quedan los archivados y los cerrados: no entra el extracto diario.
             </p>
             <div className="mt-4">
               <DeudoresCerrados deudas={cerradas} />

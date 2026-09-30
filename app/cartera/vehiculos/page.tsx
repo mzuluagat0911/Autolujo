@@ -8,6 +8,7 @@ import { etiquetaZona } from "@/lib/cartera/salidas-geo";
 import { lineaSalidaHoy, salidasDelDia } from "@/lib/cartera/salidas-aplicar";
 import { ListaVehiculos, type FilaVehiculo } from "./lista";
 import { devolucionesAbiertas } from "@/lib/cartera/devolucion";
+import { inactivacionesAbiertas } from "@/lib/cartera/inactivo";
 import { pausasAbiertas } from "@/lib/cartera/pausa-productiva";
 
 export const dynamic = "force-dynamic";
@@ -38,7 +39,7 @@ async function getData() {
     const hoy = hoyPanama();
     const mesIni = `${hoy.slice(0, 7)}-01`;
 
-    const [emp, veh, contratos, kmMesRes, kmHoyRes, salidas, diasHoy, posRec, pausas, devoluciones] = await Promise.all([
+    const [emp, veh, contratos, kmMesRes, kmHoyRes, salidas, diasHoy, posRec, pausas, devoluciones, inactivaciones] = await Promise.all([
       sb.from("empresas").select("id, codigo, nombre").order("codigo"),
       sb
         .from("vehiculos")
@@ -70,6 +71,7 @@ async function getData() {
         .limit(800),
       pausasAbiertas(),
       devolucionesAbiertas(),
+      inactivacionesAbiertas(),
     ]);
 
     if (emp.error) throw emp.error;
@@ -218,6 +220,7 @@ async function getData() {
         pausaDesde: pausas.get(v.id)?.desde ?? null,
         pausaHasta: pausas.get(v.id)?.hasta ?? null,
         devueltoDesde: devoluciones.get(v.id)?.desde ?? null,
+        inactivoDesde: inactivaciones.get(v.id)?.desde ?? null,
         empresa: v.empresa?.codigo ?? null,
         cliente: c?.cliente ?? null,
         clienteId: c?.clienteId ?? null,

@@ -252,6 +252,8 @@ export async function aplicarEstadoProductivo(input: {
   fechaIngreso: string | null;
   fechaActivacion?: string | null;
   fechaDevolucion?: string | null;
+  /** Misma fecha: desde cuándo el carro queda improductivo. */
+  fechaInactivacion?: string | null;
 }): Promise<{ ok: boolean; msg: string }> {
   const estado = String(input.estado ?? "").trim();
   const hoy = hoyPanama();
@@ -262,6 +264,14 @@ export async function aplicarEstadoProductivo(input: {
     return aplicarDevolucion({
       vehiculoId: input.vehiculoId,
       fecha: input.fechaDevolucion ?? null,
+    });
+  }
+
+  if (estado === "improductivo") {
+    const { aplicarInactivacion } = await import("./inactivo");
+    return aplicarInactivacion({
+      vehiculoId: input.vehiculoId,
+      fecha: input.fechaInactivacion ?? input.fechaDevolucion ?? null,
     });
   }
 

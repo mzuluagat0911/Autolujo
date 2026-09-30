@@ -8,6 +8,7 @@ import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { crearArrendatarioEnCarro, generoDeAlta } from "@/lib/cartera/enlazar-alta";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { aplicarEstadoProductivo } from "@/lib/cartera/pausa-productiva";
+import { hoyPanama } from "@/lib/cartera/fecha";
 
 function str(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
@@ -123,6 +124,7 @@ export async function guardarIdentidadCarro(input: {
   fechaIngreso?: string | null;
   fechaActivacion?: string | null;
   fechaDevolucion?: string | null;
+  fechaInactivacion?: string | null;
 }): Promise<ResultadoFicha> {
   const id = String(input.vehiculoId ?? "").trim();
   const numero = String(input.numero ?? "").trim();
@@ -141,6 +143,7 @@ export async function guardarIdentidadCarro(input: {
         fechaIngreso: input.fechaIngreso ?? null,
         fechaActivacion: input.fechaActivacion ?? null,
         fechaDevolucion: input.fechaDevolucion ?? null,
+        fechaInactivacion: input.fechaInactivacion ?? null,
       });
       if (!p.ok) return p;
       try {
@@ -344,6 +347,41 @@ export async function guardarIdentidadCarro(input: {
     console.error("[guardarIdentidadCarro]", e);
     return { ok: false, msg: e instanceof Error ? e.message : "No pude guardar la ficha." };
   }
+}
+
+/** Saca el contrato activo del cobro diario. La deuda queda en ex-clientes. */
+export async function archivarCasoCarro(vehiculoId: string): Promise<ResultadoFicha> {
+  const id = String(vehiculoId ?? "").trim();
+  if (!id) return { ok: false, msg: "Falta el carro." };
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("contratos")
+    .update({ estado: "suspendido" })
+    .eq("vehiculo_id", id)
+    .eq("estado", "activo")
+    .select("id");
+  if (error) return { ok: false, msg: error.message };
+  if (!data || data.length === 0) return { ok: false, msg: "Este carro no tiene un contrato activo para archivar." };
+  await sb.from("vehiculo_eventos").insert({
+    vehiculo_id: id,
+    fecha: hoyPanama(),
+    tipo: "otro",
+    titulo: "Caso archivado",
+    detalle: "caso-archivado",
+    origen: "manual",
+  });
+  try {
+    invalidarLecturaEstados();
+  } catch (e) {
+    console.error("[archivarCasoCarro] cache", e);
+  }
+  revalidatePath("/cartera/vehiculos");
+  revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/cartera");
+  return {
+    ok: true,
+    msg: "Caso archivado. Deja de entrar al cobro del día. La deuda, si queda, sigue en ex-clientes.",
+  };
 }
 
 export type ResultadoMasivo = { ok: boolean; msg: string; actualizados: number };

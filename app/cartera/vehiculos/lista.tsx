@@ -8,6 +8,7 @@ import { siglaEmpresa } from "@/lib/cartera/empresa";
 import {
   guardarEdicionMasiva,
   guardarIdentidadCarro,
+  archivarCasoCarro,
   completarPlacasDesdeDiacor,
   actualizarKmHoy,
   rellenarKmDelMes,
@@ -31,6 +32,8 @@ export type FilaVehiculo = {
   pausaHasta: string | null;
   /** Primer día sin letra diaria, si el carro está entregado. */
   devueltoDesde: string | null;
+  /** Primer día sin letra diaria, si el carro está improductivo. */
+  inactivoDesde: string | null;
   empresa: string | null;
   cliente: string | null;
   clienteId: string | null;
@@ -582,7 +585,9 @@ export function ListaVehiculos({
                       {ESTADOS[estadoMostrado(v)] ?? estadoMostrado(v)}
                       {v.devueltoDesde
                         ? ` · ${fechaCorta(v.devueltoDesde)}`
-                        : v.pausaDesde
+                        : v.inactivoDesde
+                          ? ` · ${fechaCorta(v.inactivoDesde)}`
+                          : v.pausaDesde
                           ? v.pausaHasta
                             ? ` · ${fechaCorta(v.pausaDesde)} → ${fechaCorta(v.pausaHasta)}`
                             : ` · ${fechaCorta(v.pausaDesde)}`
@@ -628,9 +633,11 @@ function PanelEditarCarro({
   const [ingreso, setIngreso] = useState(carro.pausaDesde ?? "");
   const [activacion, setActivacion] = useState(carro.pausaHasta ?? "");
   const [devolucion, setDevolucion] = useState(carro.devueltoDesde ?? "");
+  const [inactivoDesde, setInactivoDesde] = useState(carro.inactivoDesde ?? "");
   const [err, setErr] = useState<string | null>(null);
   const enTaller = estado === "mantenimiento" || estado === "chapisteria" || estado === "colision";
   const entregado = estado === "entregado";
+  const inactivo = estado === "improductivo";
   const [pending, start] = useTransition();
   const titulo = `${carro.empresa ? `${siglaEmpresa(carro.empresa)} · ` : ""}${carro.numero}`;
 
@@ -651,6 +658,7 @@ function PanelEditarCarro({
           fechaIngreso: enTaller ? ingreso : null,
           fechaActivacion: enTaller ? activacion || null : null,
           fechaDevolucion: entregado ? devolucion : null,
+          fechaInactivacion: inactivo ? inactivoDesde : null,
         });
         if (!r.ok) {
           setErr(r.msg);
@@ -705,6 +713,7 @@ function PanelEditarCarro({
                 const pausa = next === "mantenimiento" || next === "chapisteria" || next === "colision";
                 if (pausa && !ingreso) setIngreso(hoyInput());
                 if (next === "entregado" && !devolucion) setDevolucion(hoyInput());
+                if (next === "improductivo" && !inactivoDesde) setInactivoDesde(hoyInput());
               }}
               className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
             >
@@ -762,7 +771,24 @@ function PanelEditarCarro({
                 className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
               />
               <span className="text-xs text-muted">
-                Desde ese día no se calcula letra diaria. El saldo que ya debía sigue en el cobro.
+                Desde ese día no se calcula letra diaria. Si queda deuda, se sigue cobrando hasta que pague o hasta que archives el caso.
+              </span>
+            </label>
+          )}
+          {inactivo && (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Desde que se inactiva
+              </span>
+              <input
+                required
+                type="date"
+                value={inactivoDesde}
+                onChange={(e) => setInactivoDesde(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+              <span className="text-xs text-muted">
+                Desde ese día no corre letra nueva. La deuda sigue en el cobro diario hasta que pague el total o archives el caso.
               </span>
             </label>
           )}
@@ -863,6 +889,26 @@ function PanelEditarCarro({
           >
             Cancelar
           </button>
+          {(entregado || inactivo) && carro.contratoId && (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setErr(null);
+                start(async () => {
+                  const r = await archivarCasoCarro(carro.id);
+                  if (!r.ok) {
+                    setErr(r.msg);
+                    return;
+                  }
+                  onSaved(r.msg);
+                });
+              }}
+              className="rounded-lg px-4 py-2.5 text-sm font-medium text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash disabled:opacity-50"
+            >
+              Archivar caso
+            </button>
+          )}
           <Link
             href={`/operaciones/hoja-vida/${carro.id}`}
             className="ml-auto text-sm text-muted underline-offset-2 hover:text-ink hover:underline"

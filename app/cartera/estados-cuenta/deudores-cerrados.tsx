@@ -68,7 +68,9 @@ export function DeudoresCerrados({ deudas }: { deudas: DeudaCerrada[] }) {
                   {etiquetaCarroUi(d.empresa, d.vehiculoNumero)}
                 </td>
                 <td className="px-4 py-2.5">{d.clienteNombre}</td>
-                <td className="px-4 py-2.5 text-xs text-muted">{d.estado}</td>
+                <td className="px-4 py-2.5 text-xs text-muted">
+                  {d.estado === "suspendido" ? "Archivado" : d.estado}
+                </td>
                 <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-rojo">
                   <Money amount={d.saldo} />
                 </td>
