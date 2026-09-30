@@ -11,6 +11,7 @@ import {
   type FrecuenciaAcuerdo,
 } from "@/lib/cartera/acuerdo";
 import { hoyPanama } from "@/lib/cartera/fecha";
+import { esCargoConCuota } from "@/lib/cartera/recargo-montos";
 import {
   TARIFAS_SALIDA_INTERIOR,
   type DestinoInterior,
@@ -166,6 +167,8 @@ export function EditorLedger({
         concepto: c.concepto,
         concepto_codigo: c.concepto_codigo,
         monto: c.monto,
+        monto_diario: c.monto_diario ?? null,
+        monto_domingo: c.monto_domingo ?? null,
         borrar: false,
       })),
     );
@@ -202,6 +205,16 @@ export function EditorLedger({
         concepto: preset?.concepto ?? "",
         concepto_codigo: preset?.codigo ?? null,
         monto: 0,
+        monto_diario:
+          preset &&
+          esCargoConCuota({ tipo: preset.tipo, concepto: preset.concepto, concepto_codigo: preset.codigo })
+            ? 0
+            : null,
+        monto_domingo:
+          preset &&
+          esCargoConCuota({ tipo: preset.tipo, concepto: preset.concepto, concepto_codigo: preset.codigo })
+            ? 0
+            : null,
         borrar: false,
       },
       ...prev,
@@ -423,7 +436,9 @@ export function EditorLedger({
                       </label>
                     )}
                     <label className="flex flex-col gap-1">
-                      <span className="text-[11px] text-muted">Monto</span>
+                      <span className="text-[11px] text-muted">
+                        {esCargoConCuota(c) ? "Saldo" : "Monto"}
+                      </span>
                       <input
                         type="number"
                         step="0.01"
@@ -440,6 +455,42 @@ export function EditorLedger({
                         }
                       />
                     </label>
+                    {esCargoConCuota(c) && (
+                      <>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted">Diario</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className={INPUT}
+                            value={c.monto_diario ?? 0}
+                            onChange={(e) => {
+                              const diario = Number(e.target.value) || 0;
+                              setCargos((prev) =>
+                                prev.map((x) => (x.key === c.key ? { ...x, monto_diario: diario } : x)),
+                              );
+                            }}
+                          />
+                        </label>
+                        <label className="flex flex-col gap-1">
+                          <span className="text-[11px] text-muted">Domingo</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            className={INPUT}
+                            value={c.monto_domingo ?? 0}
+                            onChange={(e) => {
+                              const domingo = Number(e.target.value) || 0;
+                              setCargos((prev) =>
+                                prev.map((x) => (x.key === c.key ? { ...x, monto_domingo: domingo } : x)),
+                              );
+                            }}
+                          />
+                        </label>
+                      </>
+                    )}
                     <label className="flex flex-col gap-1">
                       <span className="text-[11px] text-muted">Fecha</span>
                       <input
@@ -448,9 +499,7 @@ export function EditorLedger({
                         value={c.fecha}
                         onChange={(e) =>
                           setCargos((prev) =>
-                            prev.map((x) =>
-                              x.key === c.key ? { ...x, fecha: e.target.value } : x,
-                            ),
+                            prev.map((x) => (x.key === c.key ? { ...x, fecha: e.target.value } : x)),
                           )
                         }
                       />
@@ -461,13 +510,23 @@ export function EditorLedger({
                         <select
                           className={INPUT}
                           value={c.tipo}
-                          onChange={(e) =>
+                          onChange={(e) => {
+                            const tipo = e.target.value;
                             setCargos((prev) =>
-                              prev.map((x) =>
-                                x.key === c.key ? { ...x, tipo: e.target.value } : x,
-                              ),
-                            )
-                          }
+                              prev.map((x) => {
+                                if (x.key !== c.key) return x;
+                                const next = { ...x, tipo };
+                                if (!esCargoConCuota(next)) {
+                                  return { ...next, monto_diario: null, monto_domingo: null };
+                                }
+                                return {
+                                  ...next,
+                                  monto_diario: x.monto_diario ?? 0,
+                                  monto_domingo: x.monto_domingo ?? 0,
+                                };
+                              }),
+                            );
+                          }}
                         >
                           {TIPOS_CARGO.map((t) => (
                             <option key={t.value} value={t.value}>
@@ -480,6 +539,12 @@ export function EditorLedger({
                     {c.concepto_codigo === CODIGO_SALIDA && (
                       <p className="col-span-2 text-[11px] text-muted sm:col-span-4">
                         Tarifa de permiso para salir al interior. Se suma a lo debido del día.
+                      </p>
+                    )}
+                    {esCargoConCuota(c) && (
+                      <p className="col-span-2 text-[11px] text-muted sm:col-span-4">
+                        Quedan registradas en el cargo, como en un acuerdo. El cobro del día sigue
+                        usando el saldo.
                       </p>
                     )}
                     <div className="flex items-end sm:col-span-2">
