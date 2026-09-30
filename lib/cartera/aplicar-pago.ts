@@ -23,6 +23,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { distribuirPago } from "./rules";
 import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
+import { cargosExtraPorContrato, partirCargosNoLetra } from "./extracto-desglose";
 import { cuotaAcuerdoHoy, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
 import { devolucionDeVehiculo, devolucionVigente } from "./devolucion";
 import { pausaDeVehiculo, pausaVigente } from "./pausa-productiva";
@@ -902,7 +903,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     }
   }
 
-  const [contratoRes, saldoRes, multaRes, rentaRes, otras, pagado] = await Promise.all([
+  const [contratoRes, saldoRes, multaRes, rentaRes, otras, pagado, extrasNoLetra] = await Promise.all([
     sb.from("contratos")
       .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo_id")
       .eq("id", contratoId)
@@ -914,6 +915,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       .eq("tipo", "renta").limit(1),
     asignacionesDeHoy(contratoId, fecha, pagoId),
     pagoHoyContrato(contratoId, fecha),
+    cargosExtraPorContrato([contratoId], fecha).then((m) => partirCargosNoLetra(m.get(contratoId) ?? [])),
   ]);
 
   const contratoRow = contratoRes.data as (TerminosCuota & { vehiculo_id?: string | null }) | null;
@@ -979,6 +981,8 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     hoyYaDevengado,
     pendiente: false,
     diaLibre: (enPausa || devuelto) && !hoyEsDomingo,
+    cargosFuturos: extrasNoLetra.futuro,
+    cargosExtraEnSaldo: extrasNoLetra.debido,
   });
 
   // Lun–sáb: recargo cargado, luego la cuota de acuerdo. Domingo: la tajada va

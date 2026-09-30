@@ -169,6 +169,7 @@ export function EditorLedger({
         monto: c.monto,
         monto_diario: c.monto_diario ?? null,
         monto_domingo: c.monto_domingo ?? null,
+        modo_cobro: c.modo_cobro ?? null,
         borrar: false,
       })),
     );
@@ -214,6 +215,11 @@ export function EditorLedger({
           preset &&
           esCargoConCuota({ tipo: preset.tipo, concepto: preset.concepto, concepto_codigo: preset.codigo })
             ? 0
+            : null,
+        modo_cobro:
+          preset &&
+          esCargoConCuota({ tipo: preset.tipo, concepto: preset.concepto, concepto_codigo: preset.codigo })
+            ? "diario"
             : null,
         borrar: false,
       },
@@ -456,6 +462,33 @@ export function EditorLedger({
                       />
                     </label>
                     {esCargoConCuota(c) && (
+                      <label className="flex flex-col gap-1 sm:col-span-2">
+                        <span className="text-[11px] text-muted">Cómo se cobra</span>
+                        <select
+                          className={SELECT}
+                          value={c.modo_cobro === "fecha" ? "fecha" : "diario"}
+                          onChange={(e) => {
+                            const modo = e.target.value === "fecha" ? "fecha" : "diario";
+                            setCargos((prev) =>
+                              prev.map((x) =>
+                                x.key === c.key
+                                  ? {
+                                      ...x,
+                                      modo_cobro: modo,
+                                      monto_diario: modo === "fecha" ? null : (x.monto_diario ?? 0),
+                                      monto_domingo: modo === "fecha" ? null : (x.monto_domingo ?? 0),
+                                    }
+                                  : x,
+                              ),
+                            );
+                          }}
+                        >
+                          <option value="diario">Diario y domingo</option>
+                          <option value="fecha">En una fecha</option>
+                        </select>
+                      </label>
+                    )}
+                    {esCargoConCuota(c) && c.modo_cobro !== "fecha" && (
                       <>
                         <label className="flex flex-col gap-1">
                           <span className="text-[11px] text-muted">Diario</span>
@@ -492,7 +525,13 @@ export function EditorLedger({
                       </>
                     )}
                     <label className="flex flex-col gap-1">
-                      <span className="text-[11px] text-muted">Fecha</span>
+                      <span className="text-[11px] text-muted">
+                        {esCargoConCuota(c)
+                          ? c.modo_cobro === "fecha"
+                            ? "Se cobra el"
+                            : "Empieza"
+                          : "Fecha"}
+                      </span>
                       <input
                         type="date"
                         className={INPUT}
@@ -517,12 +556,13 @@ export function EditorLedger({
                                 if (x.key !== c.key) return x;
                                 const next = { ...x, tipo };
                                 if (!esCargoConCuota(next)) {
-                                  return { ...next, monto_diario: null, monto_domingo: null };
+                                  return { ...next, monto_diario: null, monto_domingo: null, modo_cobro: null };
                                 }
                                 return {
                                   ...next,
-                                  monto_diario: x.monto_diario ?? 0,
-                                  monto_domingo: x.monto_domingo ?? 0,
+                                  monto_diario: x.modo_cobro === "fecha" ? null : (x.monto_diario ?? 0),
+                                  monto_domingo: x.modo_cobro === "fecha" ? null : (x.monto_domingo ?? 0),
+                                  modo_cobro: x.modo_cobro === "fecha" ? "fecha" : "diario",
                                 };
                               }),
                             );
@@ -543,8 +583,9 @@ export function EditorLedger({
                     )}
                     {esCargoConCuota(c) && (
                       <p className="col-span-2 text-[11px] text-muted sm:col-span-4">
-                        Quedan registradas en el cargo, como en un acuerdo. El cobro del día sigue
-                        usando el saldo.
+                        {c.modo_cobro === "fecha"
+                          ? "Ese día entra el saldo completo. Antes no se cobra y no abre la letra de hoy."
+                          : "Antes de Empieza no entra al cobro y no abre la letra de hoy. Desde ese día el cobro usa el saldo completo."}
                       </p>
                     )}
                     <div className="flex items-end sm:col-span-2">

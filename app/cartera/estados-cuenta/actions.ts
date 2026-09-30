@@ -21,8 +21,9 @@ import { etiquetaCargo } from "@/lib/cartera/extracto-desglose";
 import {
   conceptoSinMarca,
   esCargoConCuota,
-  leerMontosRecargo,
+  leerPlanCargo,
   marcarConceptoRecargo,
+  marcarFechaEspecifica,
 } from "@/lib/cartera/recargo-montos";
 import { CONCEPTOS_PAGO, cubetaDeConcepto } from "@/lib/cartera/rubros-pago";
 import type { TipoObligacion } from "@/lib/cartera/types";
@@ -67,6 +68,8 @@ export type CargoEditable = {
   monto: number;
   monto_diario?: number | null;
   monto_domingo?: number | null;
+  /** diario = lun–sáb y domingo registrados. fecha = el saldo completo ese día. */
+  modo_cobro?: "diario" | "fecha" | null;
   pago_id?: string | null;
 };
 
@@ -106,6 +109,8 @@ export type CargoDraft = {
   monto_diario?: number | null;
   /** Recargo: cuota del domingo. */
   monto_domingo?: number | null;
+  /** fecha = el saldo completo ese día. diario = cuotas registradas, el débito sigue siendo el saldo. */
+  modo_cobro?: "diario" | "fecha" | null;
   borrar?: boolean;
 };
 
@@ -316,17 +321,19 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
       numCuotasTotal: row.num_cuotas_total != null ? Number(row.num_cuotas_total) : null,
       cuotasPagadas: row.cuotas_pagadas != null ? Number(row.cuotas_pagadas) : null,
       cargos: cargosPendientes.map((c) => {
-        const marca = leerMontosRecargo(c.concepto);
+        const plan = leerPlanCargo(c.concepto);
         const conCuota = esCargoConCuota(c);
+        const modo = plan.modo === "fecha" ? "fecha" : conCuota ? "diario" : null;
         return {
           id: c.id,
-          fecha: String(c.fecha).slice(0, 10),
+          fecha: plan.fecha ?? String(c.fecha).slice(0, 10),
           tipo: c.tipo,
           concepto: conceptoSinMarca(c.concepto ?? ""),
           concepto_codigo: c.concepto_codigo ?? null,
           monto: Number(c.monto) || 0,
-          monto_diario: conCuota ? (marca.diario ?? 0) : null,
-          monto_domingo: conCuota ? (marca.domingo ?? 0) : null,
+          monto_diario: modo === "diario" ? (plan.diario ?? 0) : null,
+          monto_domingo: modo === "diario" ? (plan.domingo ?? 0) : null,
+          modo_cobro: modo,
         };
       }),
       acuerdos: ((acuData ?? []) as AcuerdoEditable[])
@@ -405,8 +412,10 @@ export async function guardarLedgerEditable(
     const domingo = n(c.monto_domingo);
     const monto = n(c.monto);
     const conceptoBase = conceptoSinMarca(String(c.concepto || "").trim() || tipo);
-    const concepto =
-      conCuota && (diario > 0.009 || domingo > 0.009)
+    const enFecha = conCuota && c.modo_cobro === "fecha";
+    const concepto = enFecha
+      ? marcarFechaEspecifica(conceptoBase, fecha)
+      : conCuota && (diario > 0.009 || domingo > 0.009)
         ? marcarConceptoRecargo(conceptoBase, diario, domingo)
         : conceptoBase;
 

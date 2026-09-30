@@ -72,6 +72,16 @@ export type EntradaCifras = {
   sinDevengoRenta?: boolean;
   /** Hoy no corre cuota (ej. cumpleaños libre): la cuota del día es 0. */
   diaLibre?: boolean;
+  /**
+   * Cargos que no son letra y todavía no vencen. Están en el saldo,
+   * pero no se cobran hoy y no se usan para armar la letra del día.
+   */
+  cargosFuturos?: number;
+  /**
+   * Cargos que no son letra y ya vencieron (mantenimiento, exceso, …)
+   * dentro del saldo. La letra de hoy no se reserva dentro de ese monto.
+   */
+  cargosExtraEnSaldo?: number;
 };
 
 /**
@@ -134,6 +144,8 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     esDomingo(manana) && e.terminos.cobra_domingo
       ? Number(e.terminos.cuota_domingo ?? 0) || null
       : null;
+  const futuros = Math.max(Number(e.cargosFuturos) || 0, 0);
+  const extrasDue = Math.max(Number(e.cargosExtraEnSaldo) || 0, 0);
 
   // ── Domingo ─────────────────────────────────────────────────────────────
   // Se cobra: letra atrasada + una tajada del balde DOMINGOS
@@ -148,7 +160,8 @@ export function calcularCifras(e: EntradaCifras): Cifras {
       pagadoHoy: pagadoDomingoHoy,
       cuota: cuotaHoy,
     });
-    const letraImpaga = Math.max(saldoVista - domingoEnSaldo, 0);
+    // Un cargo con fecha futura no es letra atrasada.
+    const letraImpaga = Math.max(saldoVista - domingoEnSaldo - futuros, 0);
     const bruto = tajada + letraImpaga + faltaAcuerdo;
     const totalHoy = Math.max(bruto + recargo, 0);
     const totalHoyTarde =
@@ -204,6 +217,9 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     !hoyEsDomingo && domingoEnSaldo > 0.009 && saldoLetraRaw < -0.009
       ? 0
       : saldoLetraRaw;
+  // Lo que todavía no vence sale del saldo de la letra. Si no, un exceso
+  // fechado para el 1 se lee como “cuota de hoy”.
+  const saldoSinFuturo = Math.round((saldoLetra - futuros) * 100) / 100;
   // Letra de hoy aún no posteada como renta:
   // - Con devengo normal: se suma (el pago deja saldo negativo y la cancela).
   // - Sin renta nunca (saldo_inicial): la deuda ya está en el saldo; solo se
@@ -216,13 +232,13 @@ export function calcularCifras(e: EntradaCifras): Cifras {
       const creditoReal =
         domingoEnSaldo <= 0.009 && saldoVista < -0.009;
       const yaCubiertoEnSaldo =
-        saldoLetra > 0.009 || pagadoHoy > 0.009 || creditoReal;
+        saldoSinFuturo > 0.009 || pagadoHoy > 0.009 || creditoReal;
       faltaHoy = yaCubiertoEnSaldo ? 0 : cuotaHoy;
     } else {
       faltaHoy = cuotaHoy;
     }
   }
-  const bruto = saldoLetra + faltaHoy + faltaAcuerdo;
+  const bruto = saldoSinFuturo + faltaHoy + faltaAcuerdo;
   const letraAbierta = Math.max(saldoLetra + faltaHoy, 0);
   const hayLetraAbierta = cuotaHoy > 0.009 && letraAbierta > 0.009;
   void hayLetraAbierta;
@@ -236,12 +252,15 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const letraHoyEnSaldo =
     e.hoyYaDevengado ||
     (Boolean(e.sinDevengoRenta) && cuotaHoy > 0.009 && (saldoVista > 0.009 || pagadoHoy > 0.009));
+  // La letra de hoy sale de lo que queda después de los otros conceptos.
+  // Un mantenimiento o un exceso no se parte para inventar la cuota del día.
+  const baseLetra = Math.max(Math.round((saldoSinFuturo - extrasDue) * 100) / 100, 0);
   const rentaEnSaldo = letraHoyEnSaldo
-    ? Math.min(cuotaHoy, Math.max(saldoLetra, 0) + pagadoHoy)
+    ? Math.min(cuotaHoy, baseLetra + pagadoHoy)
     : 0;
   const recargoEnSaldo = e.multaHoyRegistrada ? penalidad : 0;
   const acuerdoEnSaldo = Math.max(acuerdoHoy - faltaAcuerdo, 0);
-  const saldoAntesPagos = saldoLetra + pagadoHoy;
+  const saldoAntesPagos = saldoSinFuturo + pagadoHoy;
   const pendienteAnterior = Math.max(
     saldoAntesPagos - rentaEnSaldo - recargoEnSaldo - acuerdoEnSaldo,
     0,

@@ -6,6 +6,7 @@
 //
 // Anti-duplicado: un cargo extra (mant/otros/cierre) solo se resta de “cuenta”
 // hasta donde quepa en pendienteAnterior. La letra/cuota de hoy no se toca.
+// Un cargo con fecha posterior a hoy es aviso: no entra al total y no abre la letra.
 // Cargos históricos ya absorbidos por pagos (saldo arrastrado = 0) no vacían
 // el extracto ni se listan como pendientes fantasmas.
 //
@@ -13,7 +14,8 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
-import { esDomingo, hoyPanama } from "./fecha";
+import { esDomingo, fechaLarga, hoyPanama } from "./fecha";
+import { conceptoSinMarca, leerPlanCargo } from "./recargo-montos";
 import { tajadaDomingoQueFalta } from "./cifras";
 import {
   candidatosDesdeExtracto,
@@ -25,13 +27,20 @@ import {
 } from "./prioridad-extras";
 import { cubetaDeConcepto } from "./rubros-pago";
 
-export type LineaExtracto = { etiqueta: string; monto: number; /** Solo aviso: no lleva $ delante ni suma al total. */ aviso?: boolean };
+export type LineaExtracto = {
+  etiqueta: string;
+  monto: number;
+  /** Solo aviso: no lleva $ delante ni suma al total. */
+  aviso?: boolean;
+  /** Está en el saldo, pero se cobra en una fecha posterior. No entra al total de hoy. */
+  reserva?: number;
+};
 
 const SKIP_CODIGOS = new Set(["PAGO_TARDE"]);
 
 /** Etiquetas cortas para el WhatsApp, según código o texto del cargo. */
 export function etiquetaCargo(concepto: string | null, codigo: string | null, tipo: string): string {
-  const limpio = (concepto ?? "").replace(/ \[\[r:[\d.]+\|[\d.]+\]\]$/, "").trim();
+  const limpio = conceptoSinMarca(concepto);
   concepto = limpio || null;
   const c = (codigo ?? "").toUpperCase();
   if (c === "CIERRE_SEMANA") return "Recargo Cierre semana";
@@ -266,6 +275,11 @@ export function armarExtractoDiario(
     });
   }
 
+  for (const x of opts?.extras ?? []) {
+    if ((x.reserva ?? 0) <= 0.009) continue;
+    out.push({ etiqueta: x.etiqueta, monto: 0, aviso: true, reserva: x.reserva });
+  }
+
   if (out.length === 0 && totalCobrarHoy > 0.009) {
     out.push({ etiqueta: "cuenta", monto: totalCobrarHoy });
   }
@@ -425,8 +439,39 @@ async function partirAcuerdosPorContrato(
   return out;
 }
 
+type AcumExtra = { debido: number; futuro: number; vence: string | null };
+
+function centavos(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/** Fecha en la que el cargo entra al cobro. La marca [[f:]] manda; si no, la fecha del cargo. */
+function venceCargo(concepto: string | null, fecha: string | null, hoy: string): string {
+  const plan = leerPlanCargo(concepto);
+  const marca = plan.fecha ?? "";
+  const fila = String(fecha ?? "").slice(0, 10);
+  const v = /^\d{4}-\d{2}-\d{2}$/.test(marca) ? marca : fila;
+  return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : hoy;
+}
+
+/**
+ * Separa lo que ya se cobra de lo que está fechado para después.
+ * `debido` sigue dentro del saldo de hoy. `futuro` no abre la letra.
+ */
+export function partirCargosNoLetra(lineas: LineaExtracto[]): { debido: number; futuro: number } {
+  let debido = 0;
+  let futuro = 0;
+  for (const l of lineas) {
+    if (esEtiquetaDomingo(l.etiqueta)) continue;
+    if ((l.reserva ?? 0) > 0.009) futuro += l.reserva ?? 0;
+    else debido += l.monto;
+  }
+  return { debido: centavos(debido), futuro: centavos(futuro) };
+}
+
 export async function cargosExtraPorContrato(
   contratoIds: string[],
+  hoy = hoyPanama(),
 ): Promise<Map<string, LineaExtracto[]>> {
   const out = new Map<string, LineaExtracto[]>();
   const ids = contratoIds.filter(Boolean);
@@ -434,12 +479,12 @@ export async function cargosExtraPorContrato(
   const sb = createServerSupabase();
   const { data } = await sb
     .from("cargos")
-    .select("contrato_id, tipo, concepto, concepto_codigo, monto, pago_id")
+    .select("contrato_id, tipo, concepto, concepto_codigo, monto, pago_id, fecha")
     .in("contrato_id", ids)
     .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)")
     .order("fecha", { ascending: false });
 
-  const maps = new Map<string, Map<string, number>>();
+  const maps = new Map<string, Map<string, AcumExtra>>();
   for (const f of (data ?? []) as {
     contrato_id: string;
     tipo: string;
@@ -447,6 +492,7 @@ export async function cargosExtraPorContrato(
     concepto_codigo: string | null;
     monto: number;
     pago_id: string | null;
+    fecha: string | null;
   }[]) {
     const codigo = (f.concepto_codigo ?? "").toUpperCase();
     const monto = Number(f.monto) || 0;
@@ -464,26 +510,50 @@ export async function cargosExtraPorContrato(
     // Un solo balde: el pago ya cruzado se resta aquí, y lo que queda
     // sale como “por no pagar”, no metido en la letra.
     const et = esRecargo ? "por no pagar" : crudo;
-    const m = maps.get(f.contrato_id) ?? new Map<string, number>();
-    m.set(et, (m.get(et) ?? 0) + monto);
+    const vence = venceCargo(f.concepto, f.fecha, hoy);
+    const futuro = !esEtiquetaDomingo(crudo) && vence > hoy;
+    const m = maps.get(f.contrato_id) ?? new Map<string, AcumExtra>();
+    const prev = m.get(et) ?? { debido: 0, futuro: 0, vence: null };
+    if (futuro) {
+      prev.futuro = centavos(prev.futuro + monto);
+      if (!prev.vence || vence < prev.vence) prev.vence = vence;
+    } else {
+      prev.debido = centavos(prev.debido + monto);
+    }
+    m.set(et, prev);
     maps.set(f.contrato_id, m);
   }
   // Si un pago ya cubrió el concepto (recargo, domingo, mantenimiento, …),
-  // ese monto no se vuelve a discriminar.
+  // ese monto no se vuelve a discriminar. Primero lo vencido, luego lo futuro.
   const abonos = await abonosExtraPorContrato(ids);
   for (const [id, m] of maps) {
     const porCubeta = new Map(abonos.get(id) ?? []);
     const lineas: LineaExtracto[] = [];
-    for (const [etiqueta, monto] of m) {
+    for (const [etiqueta, acum] of m) {
       const cubeta = cubetaDeConcepto("", etiqueta);
-      let queda = monto;
-      const abono = cubeta ? (porCubeta.get(cubeta) ?? 0) : 0;
-      if (abono > 0.009) {
-        const toma = Math.min(queda, abono);
-        queda = Math.round((queda - toma) * 100) / 100;
-        porCubeta.set(cubeta!, Math.round((abono - toma) * 100) / 100);
+      let debido = acum.debido;
+      let futuro = acum.futuro;
+      let abono = cubeta ? (porCubeta.get(cubeta) ?? 0) : 0;
+      if (abono > 0.009 && debido > 0.009) {
+        const toma = Math.min(debido, abono);
+        debido = centavos(debido - toma);
+        abono = centavos(abono - toma);
       }
-      if (queda > 0.009) lineas.push({ etiqueta, monto: queda });
+      if (abono > 0.009 && futuro > 0.009) {
+        const toma = Math.min(futuro, abono);
+        futuro = centavos(futuro - toma);
+        abono = centavos(abono - toma);
+      }
+      if (cubeta) porCubeta.set(cubeta, abono);
+      if (debido > 0.009) lineas.push({ etiqueta, monto: debido });
+      if (futuro > 0.009 && acum.vence) {
+        lineas.push({
+          etiqueta: `${etiqueta} (se cobra el ${fechaLarga(acum.vence)}, saldo ${money(futuro)})`,
+          monto: 0,
+          aviso: true,
+          reserva: futuro,
+        });
+      }
     }
     if (lineas.length > 0) out.set(id, lineas);
   }

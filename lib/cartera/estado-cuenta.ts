@@ -31,6 +31,17 @@ import { tratamientoCliente } from "./tratamiento";
 import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
 import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
 
+async function cargosNoLetraPorContrato(
+  ids: string[],
+  hoy: string,
+): Promise<Map<string, { debido: number; futuro: number }>> {
+  const { cargosExtraPorContrato, partirCargosNoLetra } = await import("./extracto-desglose");
+  const map = await cargosExtraPorContrato(ids, hoy);
+  const out = new Map<string, { debido: number; futuro: number }>();
+  for (const id of ids) out.set(id, partirCargosNoLetra(map.get(id) ?? []));
+  return out;
+}
+
 /** Preferir plan del Excel/DB sobre el cálculo desde ledger (piloto Gold). */
 function aplicarPlanCuotas(
   computed: { numCuotasTotal: number | null; cuotasPagadas: number | null; cuotasDebe: number | null },
@@ -622,7 +633,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   if (!row) return null;
 
   const domingoCiclo = domingoDelCiclo(hoy);
-  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos, multasTodas, domingoMap, pagadoDomingoMap, pagadoCicloMap] =
+  const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos, multasTodas, domingoMap, pagadoDomingoMap, pagadoCicloMap, noLetraMap] =
     await Promise.all([
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
     pagoHoyContrato(contratoId, hoy),
@@ -648,6 +659,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     domingoCiclo === hoy
       ? Promise.resolve(null)
       : pagadoDomingoRangoPorContrato([contratoId], domingoCiclo, hoy),
+    cargosNoLetraPorContrato([contratoId], hoy),
   ]);
 
   if (row.cliente) {
@@ -690,6 +702,8 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     diaLibre: contratoCerrado,
     domingoEnSaldo: domingoMap.get(contratoId)?.total ?? 0,
     pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
+    cargosFuturos: noLetraMap.get(contratoId)?.futuro ?? 0,
+    cargosExtraEnSaldo: noLetraMap.get(contratoId)?.debido ?? 0,
   }, pausa), devolucion);
   const cifrasBase = calcularCifras(entrada);
   const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
@@ -1126,6 +1140,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
     pagadoCicloMap,
     pausasMap,
     devolucionesMap,
+    noLetraMap,
   ] = await Promise.all([
     sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual").in("contrato_id", idsAlcance),
     sb.from("cargos").select("contrato_id").eq("fecha", hoy).eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE"),
@@ -1153,6 +1168,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       : pagadoDomingoRangoPorContrato(idsAlcance, domingoDelCiclo(hoy), hoy),
     pausasAbiertas(),
     devolucionesAbiertas(),
+    cargosNoLetraPorContrato(idsAlcance, hoy),
   ]);
 
   const atrasoMap = await atrasoAcuerdoPorContrato(hoy, acuerdosMap);
@@ -1201,6 +1217,8 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       sinDevengoRenta: devengadoHasta == null,
       domingoEnSaldo: domingoMap.get(c.id)?.total ?? 0,
       pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
+      cargosFuturos: noLetraMap.get(c.id)?.futuro ?? 0,
+      cargosExtraEnSaldo: noLetraMap.get(c.id)?.debido ?? 0,
     }, pausa), devolucion);
     const cifrasBase = calcularCifras(entrada);
     const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;

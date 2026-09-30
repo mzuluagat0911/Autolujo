@@ -323,6 +323,9 @@ export async function resumenContrato(contratoId: string): Promise<string | null
           ? [`- CARRO EN TALLER: ${est.tallerEtiqueta ?? "taller"} desde ${est.tallerDesde ?? "el ingreso"}.${est.tallerHasta ? ` Vuelve a productivo el ${est.tallerHasta}: ese día sí corre letra y acuerdo.` : " Sin fecha de activación: sigue así hasta que la pongan o lo pasen a Activo."} NO cobres letra diaria ni acuerdo diario. El TOTAL de arriba es solo el saldo que ya debía. No hables de la cuota de hoy.`]
           : []),
       `- Desglose del extracto: ${cobro.desglose || "(sin líneas)"}.`,
+      ...(cobro.lineas.some((l) => (l.reserva ?? 0) > 0.009)
+        ? [`- Lo que dice "se cobra el …" está fechado para más adelante. No entra en el TOTAL de hoy y no es la letra de hoy.`]
+        : []),
       `- Ítem adicional cobrado hoy: ${extraTxt}.`,
       `- Tarifa de la letra diaria (precio del día, no es el saldo): ${m(est.cuotaHoy)}.`,
       `- Atraso de letra (sin domingo): ${m(est.pendienteAnterior)}.`,

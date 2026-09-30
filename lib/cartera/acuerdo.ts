@@ -70,7 +70,8 @@ export function tocaAcuerdoHoy(a: AcuerdoActivo, fecha: string): boolean {
   if (freq === "domingo") return esDomingo(fecha);
 
   if (freq === "fecha") {
-    return Boolean(ancla && ancla === fecha);
+    // Desde ese día entra el saldo. Antes, no. Si no pagan ese día, sigue debido.
+    return Boolean(ancla && fecha >= ancla);
   }
 
   if (freq === "semana") {
@@ -105,6 +106,7 @@ export function tocaAcuerdoHoy(a: AcuerdoActivo, fecha: string): boolean {
  * mismo saldo). Si está en 0, el domingo no abre cuota nueva: el atraso
  * del día anterior lo suma `programadoAcuerdoDe`.
  * Si `fecha_especifica` está puesta, antes de ese día la cuota es $0.
+ * En frecuencia fecha, desde ese día se cobra el saldo hasta que lo paguen.
  */
 export function cuotaAcuerdoHoy(a: AcuerdoActivo, fecha: string): number {
   const saldo = Math.max(Number(a.saldo) || 0, 0);

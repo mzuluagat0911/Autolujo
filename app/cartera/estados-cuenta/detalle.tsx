@@ -360,7 +360,11 @@ export function DetalleEstadoModal({
                       label={capEtiqueta(l.etiqueta)}
                       tone={l.aviso || l.monto <= 0.009 ? "muted" : "crit"}
                     >
-                      {l.aviso || l.monto <= 0.009 ? "—" : money(l.monto)}
+                      {l.aviso || l.monto <= 0.009
+                        ? l.reserva && l.reserva > 0.009
+                          ? money(l.reserva)
+                          : "—"
+                        : money(l.monto)}
                     </Fila>
                   ))
                 ) : lineasHoy.length === 0 ? (
