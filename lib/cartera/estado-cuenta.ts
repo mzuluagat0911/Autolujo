@@ -159,6 +159,8 @@ type ContratoRow = TerminosCuota & {
   cliente_id: string | null;
   estado: string;
   fecha_inicio: string | null;
+  /** Primer día en que corre la letra. Antes de esto no se cobra cuota. */
+  fecha_inicio_letra?: string | null;
   num_cuotas_total: number | null;
   /** Migrado del Excel (CUOTAS PAGAS). Null si aún no hay columna / dato. */
   cuotas_pagadas?: number | null;
@@ -494,6 +496,12 @@ function evaluarCumple(
   return { esCumpleanos: true, aplica: true, motivo: null, cifras: calcularCifras({ ...entrada, diaLibre: true }) };
 }
 
+/** La letra aún no arranca: el extracto no puede abrir la cuota de hoy. */
+function letraNoEmpieza(c: { fecha_inicio_letra?: string | null }, hoy: string): boolean {
+  const ini = c.fecha_inicio_letra?.trim();
+  return Boolean(ini && hoy < ini);
+}
+
 function terminosDe(c: ContratoRow): TerminosCuota {
   return {
     letra_diaria: Number(c.letra_diaria),
@@ -504,9 +512,9 @@ function terminosDe(c: ContratoRow): TerminosCuota {
 }
 
 const SEL =
-  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, cuotas_pagadas, vehiculo:vehiculos(id, numero, estado, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+  "id, cliente_id, estado, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, cuotas_pagadas, vehiculo:vehiculos(id, numero, estado, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
 const SEL_SIN_CUOTAS_PAGADAS =
-  "id, cliente_id, estado, fecha_inicio, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, vehiculo:vehiculos(id, numero, estado, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
+  "id, cliente_id, estado, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, num_cuotas_total, vehiculo:vehiculos(id, numero, estado, empresa:empresas(id, codigo, nombre)), cliente:clientes(nombre, whatsapp)";
 
 /** Pagos a renta vs cargos extras, por contrato → resumen de cuotas. */
 async function cuotasPorContrato(
@@ -709,7 +717,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     multaHoyRegistrada: (multa.data?.length ?? 0) > 0,
     hoyYaDevengado,
     sinDevengoRenta: devengadoHasta == null,
-    diaLibre: contratoCerrado,
+    diaLibre: contratoCerrado || (letraNoEmpieza(row, hoy) && !esDomingo(hoy)),
     domingoEnSaldo: domingoMap.get(contratoId)?.total ?? 0,
     pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
     cargosFuturos: noLetraMap.get(contratoId)?.futuro ?? 0,
@@ -952,7 +960,7 @@ function abonoDomingoDePago(p: {
     | undefined;
   const lineas = Array.isArray(raw) ? raw : (raw?.asignaciones ?? []);
   const marcado = lineas
-    .filter((a) => /\bdomingo\b/i.test(a.etiqueta ?? ""))
+    .filter((a) => /domingo/i.test(a.etiqueta ?? ""))
     .reduce((s, a) => s + (Number(a.aplicado) || 0), 0);
   if (marcado > 0.009) return marcado;
   if (p.rubro === "domingo") return Number(p.monto) || 0;
@@ -1231,6 +1239,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       multaHoyRegistrada: multaHoy.has(c.id),
       hoyYaDevengado,
       sinDevengoRenta: devengadoHasta == null,
+      diaLibre: c.estado !== "activo" || (letraNoEmpieza(c, hoy) && !esDomingo(hoy)),
       domingoEnSaldo: domingoMap.get(c.id)?.total ?? 0,
       pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
       cargosFuturos: noLetraMap.get(c.id)?.futuro ?? 0,

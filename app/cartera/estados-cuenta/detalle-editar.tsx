@@ -99,7 +99,7 @@ function hintFrecuencia(f: FrecuenciaAcuerdo): string | null {
 }
 
 const TIPOS_CARGO = [
-  { value: "otras", label: "Otro / mantenimiento" },
+  { value: "otras", label: "Otro" },
   { value: "multa", label: "Multa / recargo" },
   { value: "panapass", label: "Panapass" },
   { value: "afiliacion", label: "Abono inicial" },

@@ -5,8 +5,8 @@ import { Field, Select } from "@/components/form";
 import type { CarroLibre } from "./actions";
 
 const PANAPASS = 20;
-const DOMINGOS_ENTRADA = 90;
 const CUOTA_DOMINGO = 30;
+const DIAS_DOMINGO = 3;
 
 function money(n: number) {
   const v = Math.round(n * 100) / 100;
@@ -28,11 +28,13 @@ export function AltaContratoForm({
 
   const [cobraDomingo, setCobraDomingo] = useState(true);
   const [cuotaDomingo, setCuotaDomingo] = useState(String(CUOTA_DOMINGO));
+  const [diasDomingos, setDiasDomingos] = useState(String(DIAS_DOMINGO));
+  const [fechaInicioDomingo, setFechaInicioDomingo] = useState(fechaHoy);
   const [abonoPactado, setAbonoPactado] = useState("");
   const [abonoPagado, setAbonoPagado] = useState("");
   const [abonoCuota, setAbonoCuota] = useState("5");
   const [panapassPagado, setPanapassPagado] = useState(String(PANAPASS));
-  const [domingosPagado, setDomingosPagado] = useState(String(DOMINGOS_ENTRADA));
+  const [domingosPagado, setDomingosPagado] = useState(String(DIAS_DOMINGO * CUOTA_DOMINGO));
   const [prepagoLetras, setPrepagoLetras] = useState("0");
   const [prepagoDomingos, setPrepagoDomingos] = useState("0");
   const [letra, setLetra] = useState("");
@@ -45,6 +47,9 @@ export function AltaContratoForm({
   const preL = Math.max(Number(String(prepagoLetras).replace(",", ".")) || 0, 0);
   const preD = Math.max(Number(String(prepagoDomingos).replace(",", ".")) || 0, 0);
   const letraN = Math.max(Number(String(letra).replace(",", ".")) || 0, 0);
+  const diasN = Math.max(Math.round(Number(diasDomingos) || 0), 0);
+  const cuotaN = Math.max(Number(String(cuotaDomingo).replace(",", ".")) || 0, 0);
+  const totalDom = cobraDomingo ? Math.round(diasN * cuotaN * 100) / 100 : 0;
 
   const totalPago = Math.round((panPay + domPay + abonoPay + preL + preD) * 100) / 100;
 
@@ -73,11 +78,13 @@ export function AltaContratoForm({
       e.currentTarget.reset();
       setCobraDomingo(true);
       setCuotaDomingo(String(CUOTA_DOMINGO));
+      setDiasDomingos(String(DIAS_DOMINGO));
+      setFechaInicioDomingo(fechaHoy);
       setAbonoPactado("");
       setAbonoPagado("");
       setAbonoCuota("5");
       setPanapassPagado(String(PANAPASS));
-      setDomingosPagado(String(DOMINGOS_ENTRADA));
+      setDomingosPagado(String(DIAS_DOMINGO * CUOTA_DOMINGO));
       setPrepagoLetras("0");
       setPrepagoDomingos("0");
       setLetra("");
@@ -173,20 +180,55 @@ export function AltaContratoForm({
           Cobra domingo
         </label>
         {cobraDomingo && (
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-              Cuota domingo
-            </span>
-            <input
-              name="cuota_domingo"
-              type="number"
-              step="0.01"
-              min="0"
-              value={cuotaDomingo}
-              onChange={(e) => setCuotaDomingo(e.target.value)}
-              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
-            />
-          </label>
+          <>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Cuántos domingos
+              </span>
+              <input
+                name="dias_domingos"
+                type="number"
+                step="1"
+                min="1"
+                value={diasDomingos}
+                onChange={(e) => setDiasDomingos(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Cuota domingo
+              </span>
+              <input
+                name="cuota_domingo"
+                type="number"
+                step="0.01"
+                min="0"
+                value={cuotaDomingo}
+                onChange={(e) => setCuotaDomingo(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+              <span className="text-xs text-muted">
+                {diasN} × {money(cuotaN)} = {money(totalDom)}
+              </span>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Empieza a cobrarse el
+              </span>
+              <input
+                name="fecha_inicio_domingo"
+                type="date"
+                required
+                value={fechaInicioDomingo}
+                onChange={(e) => setFechaInicioDomingo(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+              <span className="text-xs text-muted">
+                Desde esa fecha el paquete entra al saldo. El domingo siguiente cobra una tajada.
+              </span>
+            </label>
+          </>
         )}
       </section>
 
@@ -260,14 +302,14 @@ export function AltaContratoForm({
           Entrada y prepago
         </h3>
         <p className="text-sm text-muted sm:col-span-2 lg:col-span-3">
-          De entrada debe <strong className="text-ink">Panapass {money(PANAPASS)}</strong> +{" "}
-          <strong className="text-ink">
-            Domingos {money(DOMINGOS_ENTRADA)}
-          </strong>{" "}
-          (3 × {money(CUOTA_DOMINGO)}). Indicá cuánto paga hoy de cada rubro; puede adelantar letras o
-          domingos.
+          De entrada debe <strong className="text-ink">Panapass {money(PANAPASS)}</strong>
+          {cobraDomingo && (
+            <>
+              {" "}+ <strong className="text-ink">Domingos {money(totalDom)}</strong> ({diasN} × {money(cuotaN)})
+            </>
+          )}
+          . Indicá cuánto paga hoy de cada rubro; puede adelantar letras o domingos.
         </p>
-        <input type="hidden" name="domingos_entrada" value={DOMINGOS_ENTRADA} />
 
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
@@ -294,7 +336,7 @@ export function AltaContratoForm({
             type="number"
             step="0.01"
             min="0"
-            max={DOMINGOS_ENTRADA}
+            max={totalDom}
             value={domingosPagado}
             onChange={(e) => setDomingosPagado(e.target.value)}
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"

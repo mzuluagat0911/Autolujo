@@ -741,7 +741,7 @@ function abonoDomingoMarcado(p: {
     | undefined;
   const lineas = Array.isArray(raw) ? raw : (raw?.asignaciones ?? []);
   const marcado = lineas
-    .filter((a) => a.tipo === "domingo" || /\bdomingo\b/i.test(a.etiqueta ?? ""))
+    .filter((a) => a.tipo === "domingo" || /domingo/i.test(a.etiqueta ?? ""))
     .reduce((s, a) => s + (Number(a.aplicado) || 0), 0);
   if (marcado > 0.009) return Math.round(marcado * 100) / 100;
   if (p.rubro === "domingo") return Math.max(Number(p.monto) || 0, 0);
@@ -906,7 +906,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
 
   const [contratoRes, saldoRes, multaRes, rentaRes, otras, pagado, extrasNoLetra] = await Promise.all([
     sb.from("contratos")
-      .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo_id")
+      .select("letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, vehiculo_id, fecha_inicio_letra")
       .eq("id", contratoId)
       .maybeSingle(),
     sb.from("vw_saldo_contrato").select("saldo_actual").eq("contrato_id", contratoId).maybeSingle(),
@@ -919,7 +919,10 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     cargosExtraPorContrato([contratoId], fecha).then((m) => partirCargosNoLetra(m.get(contratoId) ?? [])),
   ]);
 
-  const contratoRow = contratoRes.data as (TerminosCuota & { vehiculo_id?: string | null }) | null;
+  const contratoRow = contratoRes.data as (TerminosCuota & {
+    vehiculo_id?: string | null;
+    fecha_inicio_letra?: string | null;
+  }) | null;
   const terminos = contratoRow;
   if (!terminos) return null;
   const [pausa, devolucion, inactivacion] = await Promise.all([
@@ -930,8 +933,12 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const enPausa = pausaVigente(pausa, fecha);
   const devuelto = devolucionVigente(devolucion, fecha);
   const inactivo = inactivacionVigente(inactivacion, fecha);
+  const iniLetra = contratoRow?.fecha_inicio_letra?.trim() ?? "";
+  const letraNoEmpieza = Boolean(iniLetra && fecha < iniLetra);
   const acuerdos = (acuerdosData ?? []) as AcuerdoActivo[];
-  const cuotaHoy = (enPausa || devuelto || inactivo) && !esDomingo(fecha) ? 0 : cuotaDeFecha(terminos, fecha);
+  const cuotaHoy = (enPausa || devuelto || inactivo || letraNoEmpieza) && !esDomingo(fecha)
+    ? 0
+    : cuotaDeFecha(terminos, fecha);
   const multaHoy = (multaRes.data?.length ?? 0) > 0;
   const hoyYaDevengado = (rentaRes.data?.length ?? 0) > 0;
   const saldoVista = Number((saldoRes.data as { saldo_actual: number } | null)?.saldo_actual ?? 0);
@@ -983,7 +990,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     multaHoyRegistrada: multaHoy,
     hoyYaDevengado,
     pendiente: false,
-    diaLibre: (enPausa || devuelto || inactivo) && !hoyEsDomingo,
+    diaLibre: (enPausa || devuelto || inactivo || letraNoEmpieza) && !hoyEsDomingo,
     cargosFuturos: extrasNoLetra.futuro,
     cargosExtraEnSaldo: extrasNoLetra.debido,
   });

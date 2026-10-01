@@ -85,7 +85,7 @@ export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string
   if (/cierre(\s+de)?\s+semana/.test(et)) return "cierre de semana";
   if (/recargo|por no pagar/.test(et)) return "por no pagar";
   if (/abono\s*inicial|afiliaci[oó]n/.test(et)) return "abono inicial";
-  if (/\bdomingo\b/.test(et)) return "domingo";
+  if (/domingo/.test(et)) return "domingo";
   if (/manten/.test(et)) return "mantenimiento";
   if (/panapass/.test(et)) return "panapass";
   if (/exceso/.test(et) && /km|kilom/.test(et)) return "exceso de kilometraje";

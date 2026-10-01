@@ -9,7 +9,6 @@ import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { enlazarChatDelContrato, telefonosDeAlta } from "@/lib/cartera/enlazar-alta";
 
 const PANAPASS_ENTRADA = 20;
-const DOMINGOS_ENTRADA_DEFAULT = 90; // 3 × $30
 const CUOTA_DOMINGO_DEFAULT = 30;
 
 function str(v: FormDataEntryValue | null): string | null {
@@ -126,10 +125,14 @@ export async function createClienteConContrato(
   const fechaInicioLetra = str(formData.get("fecha_inicio_letra")) ?? fechaInicio;
 
   const panapassCargo = PANAPASS_ENTRADA;
-  const domingosCargo = Math.max(
-    num(formData.get("domingos_entrada")) ?? DOMINGOS_ENTRADA_DEFAULT,
-    0,
-  );
+  const diasForm = num(formData.get("dias_domingos"));
+  const fechaInicioDomingo = str(formData.get("fecha_inicio_domingo")) ?? fechaInicio;
+  const diasDomingos = cobraDomingo
+    ? Math.max(Math.round(diasForm ?? 3), 0)
+    : 0;
+  const domingosCargo = cobraDomingo && cuotaDomingo > 0
+    ? r2(diasDomingos * cuotaDomingo)
+    : 0;
   const panapassPagado = Math.min(
     Math.max(num(formData.get("panapass_pagado")) ?? panapassCargo, 0),
     panapassCargo,
@@ -211,7 +214,7 @@ export async function createClienteConContrato(
     return { ok: false, error: cErr?.message ?? "No pude crear el cliente." };
   }
 
-  const diasPrimeros = cobraDomingo && cuotaDomingo > 0 ? Math.round(domingosCargo / cuotaDomingo) : 0;
+  const diasPrimeros = diasDomingos;
 
   const contratoBase = {
     cliente_id: cliente.id,
@@ -269,10 +272,10 @@ export async function createClienteConContrato(
   if (domingosCargo > 0.009) {
     cargos.push({
       contrato_id: contratoId,
-      fecha: fechaInicio,
+      fecha: fechaInicioDomingo,
       tipo: "otras",
       concepto_codigo: "DOMINGOS",
-      concepto: `Domingos (${diasPrimeros || 3} × $${cuotaDomingo || CUOTA_DOMINGO_DEFAULT})`,
+      concepto: `Domingos (${diasPrimeros} × $${cuotaDomingo})`,
       monto: domingosCargo,
     });
   }
@@ -324,7 +327,7 @@ export async function createClienteConContrato(
     partes.push({ tipo: "panapass", aplicado: panapassPagado, etiqueta: "panapass" });
   }
   if (domingosPagado > 0.009) {
-    partes.push({ tipo: "otro", aplicado: domingosPagado, etiqueta: "domingos" });
+    partes.push({ tipo: "domingo", aplicado: domingosPagado, etiqueta: "domingo" });
   }
   if (abonoPagado > 0.009) {
     partes.push({ tipo: "abono", aplicado: abonoPagado, etiqueta: "abono inicial" });
