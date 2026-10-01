@@ -634,6 +634,7 @@ function PanelEditarCarro({
   const [activacion, setActivacion] = useState(carro.pausaHasta ?? "");
   const [devolucion, setDevolucion] = useState(carro.devueltoDesde ?? "");
   const [inactivoDesde, setInactivoDesde] = useState(carro.inactivoDesde ?? "");
+  const [ultimaLetra, setUltimaLetra] = useState(hoyInput());
   const [err, setErr] = useState<string | null>(null);
   const enTaller = estado === "mantenimiento" || estado === "chapisteria" || estado === "colision";
   const entregado = estado === "entregado";
@@ -871,6 +872,23 @@ function PanelEditarCarro({
               </label>
             </>
           )}
+          {carro.contratoId && (
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Última letra
+              </span>
+              <input
+                type="date"
+                required
+                value={ultimaLetra}
+                onChange={(e) => setUltimaLetra(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+              <span className="text-xs text-muted">
+                Ese día entra la última cuota a la deuda. Después no se abre letra y el agente cobra ese saldo.
+              </span>
+            </label>
+          )}
         </div>
         {err && <p className="mt-3 text-sm text-rojo">{err}</p>}
         <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -895,13 +913,18 @@ function PanelEditarCarro({
               disabled={pending}
               onClick={() => {
                 const quien = (carro.cliente ?? nombre).trim() || "este cliente";
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(ultimaLetra)) {
+                  setErr("Indicá la fecha de la última letra.");
+                  return;
+                }
+                const [anio, mes, dia] = ultimaLetra.split("-");
                 const ok = window.confirm(
-                  `Archivar el caso de ${quien}. La deuda queda pendiente y el agente se la sigue cobrando en su chat, sin letra nueva. Este carro queda libre para otro cliente.`,
+                  `Archivar el caso de ${quien}. La última letra es el ${dia}/${mes}/${anio}. Ese día queda en la deuda y después el agente cobra ese saldo, sin letra nueva. Este carro queda libre para otro cliente.`,
                 );
                 if (!ok) return;
                 setErr(null);
                 start(async () => {
-                  const r = await archivarCasoCarro(carro.id);
+                  const r = await archivarCasoCarro(carro.id, ultimaLetra);
                   if (!r.ok) {
                     setErr(r.msg);
                     return;

@@ -9,6 +9,7 @@ import { crearArrendatarioEnCarro, generoDeAlta } from "@/lib/cartera/enlazar-al
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { aplicarEstadoProductivo } from "@/lib/cartera/pausa-productiva";
 import { hoyPanama } from "@/lib/cartera/fecha";
+import { dejarUltimaLetra, detalleCasoArchivado } from "@/lib/cartera/archivo-caso";
 
 function str(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
@@ -354,15 +355,34 @@ export async function guardarIdentidadCarro(input: {
  * letra nueva, la deuda sigue, y el chat de ese cliente queda amarrado para
  * que el agente le cobre ese saldo.
  */
-export async function archivarCasoCarro(vehiculoId: string): Promise<ResultadoFicha> {
+export async function archivarCasoCarro(
+  vehiculoId: string,
+  fechaUltimaLetra: string,
+): Promise<ResultadoFicha> {
   const id = String(vehiculoId ?? "").trim();
+  const ultima = String(fechaUltimaLetra ?? "").trim();
   if (!id) return { ok: false, msg: "Falta el carro." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ultima)) {
+    return { ok: false, msg: "Indicá la fecha de la última letra." };
+  }
   const sb = createServerSupabase();
   const { data: veh } = await sb.from("vehiculos").select("estado, numero").eq("id", id).maybeSingle();
+  const { data: vigentes, error: vigErr } = await sb
+    .from("contratos")
+    .select("id")
+    .eq("vehiculo_id", id)
+    .eq("estado", "activo");
+  if (vigErr) return { ok: false, msg: vigErr.message };
+  const porCortar = ((vigentes ?? []) as { id: string }[]).map((c) => c.id);
+  if (porCortar.length === 0) return { ok: false, msg: "Este carro no tiene un contrato activo para archivar." };
+  for (const contratoId of porCortar) {
+    const corte = await dejarUltimaLetra(contratoId, ultima);
+    if (corte) return { ok: false, msg: corte };
+  }
   const { data, error } = await sb
     .from("contratos")
     .update({ estado: "suspendido" })
-    .eq("vehiculo_id", id)
+    .in("id", porCortar)
     .eq("estado", "activo")
     .select("id");
   if (error) return { ok: false, msg: error.message };
@@ -389,7 +409,7 @@ export async function archivarCasoCarro(vehiculoId: string): Promise<ResultadoFi
     fecha: hoyPanama(),
     tipo: "otro",
     titulo: "Caso archivado",
-    detalle: "caso-archivado",
+    detalle: detalleCasoArchivado(ultima, contratoIds[0] ?? ""),
     origen: "manual",
   });
   try {

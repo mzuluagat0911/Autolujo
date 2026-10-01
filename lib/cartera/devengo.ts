@@ -24,6 +24,7 @@ import { hoyPanama, sumarDias, pasoCorte, diasEntre, esDomingo } from "./fecha";
 import { cuotaDeFecha, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
 import { devolucionesAbiertas, devolucionVigente } from "./devolucion";
 import { inactivacionesAbiertas, inactivacionVigente } from "./inactivo";
+import { filasUltimaLetra } from "./archivo-caso";
 import { pausasAbiertas, pausaVigente } from "./pausa-productiva";
 import {
   contratosQueCubrieronElDia,
@@ -192,6 +193,8 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
       monto,
     });
   }
+
+  filas.push(...(await filasUltimaLetra(fecha, yaTiene)));
 
   if (filas.length === 0) return res;
 
