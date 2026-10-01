@@ -260,17 +260,15 @@ export async function cargarBandeja(): Promise<{
   }
 }
 
-/** Carga el detalle de una conversación (mensajes + saldo). */
-export async function cargarDetalle(
+/** Hilo del chat, sin el cobro del día. Eso es lo que tiene que aparecer al instante. */
+export async function cargarHilo(
   id: string,
 ): Promise<{ detalle: ConversacionDetalle | null; error: string | null }> {
   try {
     const sb = createServerSupabase();
     const { data: conv, error } = await sb
       .from("conversaciones")
-      .select(
-        `${SEL_LISTA}, contrato_id`,
-      )
+      .select(`${SEL_LISTA}, contrato_id`)
       .eq("id", id)
       .maybeSingle();
     if (error) throw error;
@@ -283,37 +281,20 @@ export async function cargarDetalle(
       .order("created_at", { ascending: true });
 
     const mensajesRaw = (msgs as Mensaje[]) ?? [];
-    const contratoId = (conv as { contrato_id: string | null }).contrato_id;
-
-    const [mensajes, estado] = await Promise.all([
-      Promise.all(
-        mensajesRaw.map(async (m) => {
-          if (!m.media_url) return m;
-          const { data: signed } = await sb.storage
-            .from("comprobantes")
-            .createSignedUrl(m.media_url, 3600);
-          return { ...m, signedUrl: signed?.signedUrl ?? null };
-        }),
-      ),
-      contratoId ? estadoCuentaContrato(contratoId) : Promise.resolve(null),
-    ]);
-
-    // En el chat: TOTAL A PAGAR HOY (misma lógica del extracto / cobroHoy).
-    // Baja con pagos del día; no es el saldo acumulado del libro.
-    let saldo: number | null = null;
-    if (estado) {
-      try {
-        const cobro = await cobroHoyContrato(estado);
-        saldo = Math.round(cobro.totalCobrarHoy * 100) / 100;
-      } catch {
-        saldo = Math.max(Number(estado.totalHoy) || 0, 0);
-      }
-    }
+    const mensajes = await Promise.all(
+      mensajesRaw.map(async (m) => {
+        if (!m.media_url) return m;
+        const { data: signed } = await sb.storage
+          .from("comprobantes")
+          .createSignedUrl(m.media_url, 3600);
+        return { ...m, signedUrl: signed?.signedUrl ?? null };
+      }),
+    );
 
     const base = conv as unknown as ConversacionLista & { contrato_id: string | null };
     const detalle: ConversacionDetalle = {
       ...base,
-      saldo,
+      saldo: null,
       mensajes,
       ventana_abierta: ventanaAbierta(base.ultimo_entrante_at),
     };
@@ -321,6 +302,32 @@ export async function cargarDetalle(
   } catch (e) {
     return { detalle: null, error: e instanceof Error ? e.message : "Error" };
   }
+}
+
+/** TOTAL a pagar hoy del contrato. No bloquea la apertura del chat. */
+export async function cargarSaldoChat(contratoId: string): Promise<number | null> {
+  const id = String(contratoId ?? "").trim();
+  if (!id) return null;
+  try {
+    const estado = await estadoCuentaContrato(id);
+    if (!estado) return null;
+    const cobro = await cobroHoyContrato(estado);
+    return Math.round(cobro.totalCobrarHoy * 100) / 100;
+  } catch {
+    return null;
+  }
+}
+
+/** Carga el detalle de una conversación (mensajes + saldo). */
+export async function cargarDetalle(
+  id: string,
+): Promise<{ detalle: ConversacionDetalle | null; error: string | null }> {
+  const hilo = await cargarHilo(id);
+  if (!hilo.detalle) return hilo;
+  const contratoId = hilo.detalle.contrato_id;
+  if (!contratoId) return hilo;
+  hilo.detalle.saldo = await cargarSaldoChat(contratoId);
+  return hilo;
 }
 
 export type AlertaEscalada = {

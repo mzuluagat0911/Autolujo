@@ -15,7 +15,8 @@ import {
   accionMarcarLeida,
   accionTomarChat,
   cargarBandeja,
-  cargarDetalle,
+  cargarHilo,
+  cargarSaldoChat,
   enviarAudioHumano,
   enviarPlantillaMora,
   enviarRespuestaHumana,
@@ -80,6 +81,7 @@ function aplicarDetalle(
   if (!prev || prev.id !== next.id) return next;
   return {
     ...next,
+    saldo: next.saldo ?? prev.saldo,
     mensajes: conservarSignedUrls(prev.mensajes, next.mensajes),
   };
 }
@@ -167,6 +169,22 @@ export function InboxConversaciones({
     });
   }, [selectedId, demo]);
 
+  // El cobro del día es pesado. El hilo ya está en pantalla; el monto de "Hoy" llega después.
+  useEffect(() => {
+    if (demo) return;
+    const sid = detalle?.id;
+    const contratoId = detalle?.contrato_id;
+    if (!sid || !contratoId) return;
+    let cancel = false;
+    void cargarSaldoChat(contratoId).then((saldo) => {
+      if (cancel) return;
+      setDetalle((prev) => (prev && prev.id === sid ? { ...prev, saldo } : prev));
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [demo, detalle?.id, detalle?.contrato_id]);
+
   // Polling: lista cada 6s; chat abierto cada 2.5s. Pausa si la pestaña está oculta.
   useEffect(() => {
     if (demo) return;
@@ -208,7 +226,7 @@ export function InboxConversaciones({
           cur.modo === row.modo &&
           (cur.ultimo_texto ?? "") === (row.ultimo_texto ?? "");
         if (!sinCambio) {
-          const { detalle: d } = await cargarDetalle(sid);
+          const { detalle: d } = await cargarHilo(sid);
           if (!cancelled && d && selectedIdRef.current === sid) {
             setDetalle((prev) => aplicarDetalle(prev, d));
             setConvs((prev) => prev.map((c) => (c.id === sid ? { ...c, no_leidos: 0 } : c)));
@@ -258,7 +276,7 @@ export function InboxConversaciones({
     // No dejes el chat anterior en pantalla: evita el salto/parpadeo al cambiar.
     if (detalle?.id !== id) setDetalle(null);
     setCargandoDetalle(true);
-    const { detalle: d, error: err } = await cargarDetalle(id);
+    const { detalle: d, error: err } = await cargarHilo(id);
     if (selectedIdRef.current !== id) return;
     setCargandoDetalle(false);
     if (err) {
@@ -410,7 +428,7 @@ export function InboxConversaciones({
                   return;
                 }
                 const [{ detalle: d }, { convs: next }] = await Promise.all([
-                  cargarDetalle(detalle.id),
+                  cargarHilo(detalle.id),
                   cargarBandeja(),
                 ]);
                 if (d) setDetalle((prev) => (prev ? aplicarDetalle(prev, d) : d));

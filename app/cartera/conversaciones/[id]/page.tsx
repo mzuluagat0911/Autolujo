@@ -1,5 +1,5 @@
 import { InboxConversaciones } from "../inbox";
-import { accionMarcarLeida, cargarBandeja, cargarDetalle } from "../actions";
+import { accionMarcarLeida, cargarBandeja, cargarHilo } from "../actions";
 import { demoBandeja, demoDetalle } from "../demo-data";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +29,7 @@ export default async function ConversacionDetallePage({
 
   const [{ convs, error }, { detalle }] = await Promise.all([
     cargarBandeja(),
-    cargarDetalle(id),
+    cargarHilo(id),
   ]);
 
   if (detalle) {
