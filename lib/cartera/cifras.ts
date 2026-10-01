@@ -24,6 +24,11 @@ export type Cifras = {
   faltaAcuerdo: number;
   /** Lo que venía de antes (cuotas incompletas + recargos viejos), sin la cuota de hoy. */
   pendienteAnterior: number;
+  /**
+   * Parte de ese saldo que no es letra (exceso, mantenimiento, panapass…).
+   * No se convierte en “cuotas” en la situación.
+   */
+  extrasEnSaldo: number;
   /** Saldo de la vista (puede ser negativo si pagó y la cuota de hoy aún no está). */
   saldoVista: number;
   /** Cuota de hoy si el cargo todavía no se generó. */
@@ -198,6 +203,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
       domingoDia: domingo ? Number(manana.slice(8, 10)) : null,
       // Para el extracto: el balde vivo sigue siendo el total pendiente.
       domingoSaldo: domingoEnSaldo,
+      extrasEnSaldo: Math.max(Number(e.cargosExtraEnSaldo) || 0, 0),
       lineas,
     };
   }
@@ -298,6 +304,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     domingo,
     domingoDia: domingo ? Number(manana.slice(8, 10)) : null,
     domingoSaldo: hoyEsDomingo ? 0 : domingoSaldo,
+    extrasEnSaldo: Math.max(Number(e.cargosExtraEnSaldo) || 0, 0),
     lineas,
   };
 }

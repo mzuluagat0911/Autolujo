@@ -246,15 +246,19 @@ export function cuotasAtraso(e: {
   pagoPuntual: boolean;
   totalHoy: number;
   pagadoHoy?: number;
+  /** Exceso, mantenimiento, panapass: viven en el saldo y no son letras. */
+  extrasEnSaldo?: number;
 }): number {
   const letra = Number(e.letra) || 0;
   if (!(letra > 0)) return 0;
   const pagado = Math.max(Number(e.pagadoHoy) || 0, 0);
-  const anteriorNeto = Math.max(0, (Number(e.pendienteAnterior) || 0) - pagado);
-  const atrasadas = Math.max(0, Math.round(anteriorNeto / letra));
-  const quedaHoy = Math.max(0, (Number(e.totalHoy) || 0) - anteriorNeto);
-  const debeLetraHoy = quedaHoy > 0.009 && (!e.pagoPuntual || anteriorNeto > 0.009);
-  // Si solo debe hoy y no hay saldo anterior → 0 ("Le toca la de hoy").
+  const anteriorBruto = Math.max(0, (Number(e.pendienteAnterior) || 0) - pagado);
+  const extras = Math.min(Math.max(Number(e.extrasEnSaldo) || 0, 0), anteriorBruto);
+  const anteriorLetras = Math.max(0, Math.round((anteriorBruto - extras) * 100) / 100);
+  const atrasadas = Math.max(0, Math.round(anteriorLetras / letra));
+  const quedaHoy = Math.max(0, (Number(e.totalHoy) || 0) - anteriorBruto);
+  const debeLetraHoy = quedaHoy > 0.009 && (!e.pagoPuntual || anteriorLetras > 0.009);
+  // Si solo debe hoy y no hay letras atrasadas → 0 ("Le toca la de hoy").
   if (atrasadas === 0) return 0;
   return atrasadas + (debeLetraHoy ? 1 : 0);
 }
@@ -304,6 +308,9 @@ export function textoSituacionCuotas(e: {
   diasAdelantados?: number;
   acuerdoHoy?: number;
   pagadoHoy?: number;
+  extrasEnSaldo?: number;
+  /** Total del extracto. Si es $0, no hay letra que cobrar hoy. */
+  totalCobrarHoy?: number;
 }): string {
   if (e.pendiente) return "Comprobante en validación";
   const adel = Math.max(0, Math.floor(Number(e.diasAdelantados) || 0));
@@ -312,6 +319,8 @@ export function textoSituacionCuotas(e: {
       ? "Pago adelantado · 1 cuota"
       : `Pago adelantado · ${adel.toLocaleString("es-PA")} cuotas`;
   }
+  const cobrar = e.totalCobrarHoy != null ? Number(e.totalCobrarHoy) : Number(e.totalHoy);
+  if (cobrar <= 0.009) return "Al día";
   if (esAlDiaHoy(e)) return "Al día";
   const atrasadas = cuotasAtraso(e);
   if (atrasadas <= 0) return "Le toca la de hoy";

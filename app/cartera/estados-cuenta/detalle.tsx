@@ -241,8 +241,10 @@ export function DetalleEstadoModal({
               </h2>
               <p className="mt-0.5 truncate text-sm text-muted">{vivo.clienteNombre}</p>
               <div className="mt-2.5">
-                <StatusChip tone={tonoSituacion(estado)}>
-                  {textoSituacionCuotas(vivo)}
+                <StatusChip tone={tonoSituacion(vivo)}>
+                  {vivo.totalCobrarHoy <= 0.009 && !vivo.pendiente && !esAdelantado(vivo)
+                    ? "Al día"
+                    : textoSituacionCuotas(vivo)}
                 </StatusChip>
               </div>
             </div>
