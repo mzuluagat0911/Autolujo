@@ -1,4 +1,5 @@
 import { devengarPendientes } from "@/lib/cartera/devengo";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -16,6 +17,7 @@ export async function GET(req: Request) {
 
   try {
     const res = await devengarPendientes();
+    invalidarLecturaEstados();
     return Response.json({ ok: true, ...res });
   } catch (e) {
     console.error("[cron/devengo] falló:", e);

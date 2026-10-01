@@ -7,6 +7,7 @@ import { hoyPanama, horaPanama } from "@/lib/cartera/fecha";
 import { normalizarGenero } from "@/lib/cartera/tratamiento";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { enlazarChatDelContrato, telefonosDeAlta } from "@/lib/cartera/enlazar-alta";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 
 const PANAPASS_ENTRADA = 20;
 const CUOTA_DOMINGO_DEFAULT = 30;
@@ -427,6 +428,7 @@ export async function createClienteConContrato(
   revalidatePath("/cartera/conversaciones");
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
+  invalidarLecturaEstados();
   return {
     ok: true,
     msg: avisoChat

@@ -529,7 +529,7 @@ export async function guardarLedgerEditable(
 
   revalidatePath("/cartera/estados-cuenta");
   revalidatePath("/cartera");
-  invalidarLecturaEstados();
+  invalidarLecturaEstados(contratoId);
   return { ok: true };
 }
 
@@ -656,7 +656,7 @@ export async function editarPagoHistorial(
   revalidatePath("/cartera/estados-cuenta");
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
-  invalidarLecturaEstados();
+  invalidarLecturaEstados(contratoId);
   return { ok: true, msg: contaraDespues ? "Pago guardado y desglose reaplicado." : "Pago guardado." };
 }
 
@@ -692,7 +692,7 @@ export async function reaplicarPagoHistorial(pagoId: string, contratoId: string)
   revalidatePath("/cartera/estados-cuenta");
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
-  invalidarLecturaEstados();
+  invalidarLecturaEstados(cid);
   return { ok: true, msg: "Desglose reaplicado." };
 }
 
@@ -841,7 +841,7 @@ export async function guardarAsignacionesHistorial(opts: {
   revalidatePath("/cartera/estados-cuenta");
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
-  invalidarLecturaEstados();
+  invalidarLecturaEstados(contratoId);
   return { ok: true, msg: "Conceptos reasignados." };
 }
 
@@ -917,7 +917,7 @@ export async function agregarPagoHistorial(
   revalidatePath("/cartera/estados-cuenta");
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
-  invalidarLecturaEstados();
+  invalidarLecturaEstados(contratoId);
   return { ok: true, msg: "Pago agregado y aplicado." };
 }
 
@@ -973,7 +973,7 @@ export async function eliminarPagoHistorial(
   revalidatePath("/cartera/estados-cuenta");
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
-  invalidarLecturaEstados();
+  invalidarLecturaEstados(cid);
   return { ok: true, msg: "Pago eliminado." };
 }
 

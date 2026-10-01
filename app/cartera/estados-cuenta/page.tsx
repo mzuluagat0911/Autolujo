@@ -2,12 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
 import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta-cache";
-import { cobroHoyDe } from "@/lib/cartera/cobro-hoy";
 import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
-import {
-  vistaAcuerdosPorContrato,
-  cargosExtraPorContrato,
-} from "@/lib/cartera/extracto-desglose";
 import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas";
 import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
 import { PruebaEnvio } from "./prueba";
@@ -41,32 +36,7 @@ async function EstadosCuerpo() {
   const cerradasP = deudasCerradas().catch(() => [] as DeudaCerrada[]);
 
   try {
-    const base = await estadosCuentaPanel();
-    const ids = base.map((e) => e.contratoId);
-    const [vistaMap, extrasMap] = await Promise.all([
-      vistaAcuerdosPorContrato(ids),
-      cargosExtraPorContrato(ids),
-    ]);
-    estados = base.map((e) => {
-      const vista = vistaMap.get(e.contratoId);
-      const acuerdoSaldo = vista?.saldo ?? 0;
-      const extras = extrasMap.get(e.contratoId) ?? [];
-      const cobro = cobroHoyDe(e, {
-        acuerdoSaldo,
-        extras,
-        enEspera: vista?.espera ?? [],
-        planes: vista?.planes ?? [],
-      });
-      return {
-        ...e,
-        acuerdoSaldo,
-        planesAcuerdo: vista?.planes ?? [],
-        extras,
-        totalCobrarHoy: cobro.totalCobrarHoy,
-        lineasCobro: cobro.lineas,
-        desgloseCobro: cobro.desglose,
-      };
-    });
+    estados = await estadosCuentaPanel();
   } catch (e) {
     estados = [];
     error = e instanceof Error ? e.message : "Error";

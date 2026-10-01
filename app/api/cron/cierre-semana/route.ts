@@ -1,4 +1,5 @@
 import { aplicarCierreSemana } from "@/lib/cartera/cierre-semana";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { hoyPanama } from "@/lib/cartera/fecha";
 
 export const runtime = "nodejs";
@@ -15,6 +16,7 @@ export async function GET(req: Request) {
   }
   try {
     const res = await aplicarCierreSemana(hoyPanama());
+    invalidarLecturaEstados();
     return Response.json({ ok: true, ...res });
   } catch (e) {
     console.error("[cron/cierre-semana] falló:", e);

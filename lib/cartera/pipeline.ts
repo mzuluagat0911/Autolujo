@@ -7,6 +7,7 @@ import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
 import { hoyPanama, horaPanama, pasoCorte, fueraHorarioOperativo, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm, esDomingo, esSabado } from "@/lib/cartera/fecha";
 import { estadoCuentaContrato, money, cuotasAtraso } from "@/lib/cartera/estado-cuenta";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
 import { pagosRecientesContrato } from "@/lib/cartera/pagos-dia";
 import { normalizarTelefono, esTelefonoCanonico } from "@/lib/cartera/telefono";
@@ -1357,6 +1358,8 @@ export async function procesarPagoComprobante(opts: {
   } catch (e) {
     console.error("[pipeline] salida interior", e);
   }
+
+  if (resolucion.contratoId) invalidarLecturaEstados(resolucion.contratoId);
 
   return {
     pagoId,
