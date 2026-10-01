@@ -686,7 +686,7 @@ function PanelEditarCarro({
         <h2 className="text-lg font-semibold tracking-tight">Editar {titulo}</h2>
         <p className="mt-1 text-sm text-muted">
           {carro.clienteId
-            ? "Corregí nombre o celular si hay error. El próximo extracto y recordatorio salen con esos datos."
+            ? "Corregí nombre o celular si hay error. Para pasar el carro a otra persona, archivá el caso: la deuda se queda y el agente se la sigue cobrando."
             : "Si es cliente nuevo, dejanos nombre, género, WhatsApp y letra. Quedan el contrato y el chat enlazados."}
         </p>
         <div className="mt-5 space-y-4">
@@ -889,11 +889,16 @@ function PanelEditarCarro({
           >
             Cancelar
           </button>
-          {(entregado || inactivo) && carro.contratoId && (
+          {carro.contratoId && (
             <button
               type="button"
               disabled={pending}
               onClick={() => {
+                const quien = (carro.cliente ?? nombre).trim() || "este cliente";
+                const ok = window.confirm(
+                  `Archivar el caso de ${quien}. La deuda queda pendiente y el agente se la sigue cobrando en su chat, sin letra nueva. Este carro queda libre para otro cliente.`,
+                );
+                if (!ok) return;
                 setErr(null);
                 start(async () => {
                   const r = await archivarCasoCarro(carro.id);
@@ -906,7 +911,7 @@ function PanelEditarCarro({
               }}
               className="rounded-lg px-4 py-2.5 text-sm font-medium text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash disabled:opacity-50"
             >
-              Archivar caso
+              Archivar y liberar el carro
             </button>
           )}
           <Link

@@ -349,11 +349,16 @@ export async function guardarIdentidadCarro(input: {
   }
 }
 
-/** Saca el contrato activo del cobro diario. La deuda queda en ex-clientes. */
+/**
+ * Suelta el carro para otro cliente. El contrato pasa a archivado: no abre
+ * letra nueva, la deuda sigue, y el chat de ese cliente queda amarrado para
+ * que el agente le cobre ese saldo.
+ */
 export async function archivarCasoCarro(vehiculoId: string): Promise<ResultadoFicha> {
   const id = String(vehiculoId ?? "").trim();
   if (!id) return { ok: false, msg: "Falta el carro." };
   const sb = createServerSupabase();
+  const { data: veh } = await sb.from("vehiculos").select("estado, numero").eq("id", id).maybeSingle();
   const { data, error } = await sb
     .from("contratos")
     .update({ estado: "suspendido" })
@@ -362,6 +367,23 @@ export async function archivarCasoCarro(vehiculoId: string): Promise<ResultadoFi
     .select("id");
   if (error) return { ok: false, msg: error.message };
   if (!data || data.length === 0) return { ok: false, msg: "Este carro no tiene un contrato activo para archivar." };
+  const contratoIds = (data as { id: string }[]).map((c) => c.id);
+  const numero = (veh as { numero?: string } | null)?.numero ?? "";
+  await sb
+    .from("conversaciones")
+    .update({
+      vehiculo_id: null,
+      etiqueta: numero ? `Deuda ${numero}` : "Deuda",
+    })
+    .in("contrato_id", contratoIds);
+  // Entregado no sale en el alta de cliente nuevo. Por entregar sí, y el alta lo deja activo.
+  const estadoCarro = (veh as { estado?: string } | null)?.estado ?? "";
+  let liberado = false;
+  if (estadoCarro === "entregado") {
+    const { error: estErr } = await sb.from("vehiculos").update({ estado: "por_entregar" }).eq("id", id);
+    if (estErr) return { ok: false, msg: estErr.message };
+    liberado = true;
+  }
   await sb.from("vehiculo_eventos").insert({
     vehiculo_id: id,
     fecha: hoyPanama(),
@@ -377,10 +399,13 @@ export async function archivarCasoCarro(vehiculoId: string): Promise<ResultadoFi
   }
   revalidatePath("/cartera/vehiculos");
   revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/cartera/conversaciones");
   revalidatePath("/cartera");
   return {
     ok: true,
-    msg: "Caso archivado. Deja de entrar al cobro del día. La deuda, si queda, sigue en ex-clientes.",
+    msg: liberado
+      ? "Caso archivado. La deuda sigue y el agente la cobra en el chat de ese cliente, sin letra nueva. El carro pasó a Por entregar para asignarlo a otro."
+      : "Caso archivado. La deuda sigue y el agente la cobra en el chat de ese cliente, sin letra nueva. El carro ya se puede asignar a otro cliente.",
   };
 }
 
