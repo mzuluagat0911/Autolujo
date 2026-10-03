@@ -31,6 +31,7 @@ import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
 import { tratamientoCliente } from "./tratamiento";
 import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
 import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
+import { atribuirRecargos, lineasAsignadas, type CargoRecargo, type PagoParaRecargo } from "./recargo-cubierto";
 
 async function cargosNoLetraPorContrato(
   ids: string[],
@@ -676,7 +677,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     generosDe(row.cliente_id ? [row.cliente_id] : []),
     sb
       .from("cargos")
-      .select("monto, concepto, concepto_codigo, pago_id")
+      .select("id, fecha, monto, tipo, concepto, concepto_codigo, pago_id")
       .eq("contrato_id", contratoId)
       .eq("tipo", "multa"),
     domingoPorContrato([contratoId], domingoCiclo),
@@ -751,32 +752,17 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     },
   );
   const cifras = cumple.cifras;
-  const recargosLedger = ((multasTodas.data ?? []) as {
-    monto: number;
-    concepto: string | null;
-    concepto_codigo: string | null;
-    pago_id: string | null;
-  }[])
-    .filter((g) => !g.pago_id)
-    .filter((g) => {
-      const codigo = (g.concepto_codigo ?? "").toUpperCase();
-      return codigo === "PAGO_TARDE" || /recargo|por no pagar|pago despu[eé]s/i.test(g.concepto ?? "");
-    })
-    .reduce((s, g) => s + Number(g.monto || 0), 0);
   const { data: pagosRecargo } = await sb
     .from("pagos")
-    .select("monto, rubro, asignaciones")
+    .select("id, fecha, monto, rubro, asignaciones")
     .eq("contrato_id", contratoId)
     .in("estado_conciliacion", ["conciliado", "manual"]);
-  const abonoRecargo = ((pagosRecargo ?? []) as {
-    monto: number;
-    rubro: string | null;
-    asignaciones: unknown;
-  }[]).reduce((s, p) => s + abonoRecargoDePago(p), 0);
+  const recargoCruzado = atribuirRecargos(
+    cargosRecargoDe(multasTodas.data ?? []),
+    pagosRecargoDe(pagosRecargo ?? []),
+  ).abierto;
   const recargosAcumulados = Math.max(
-    recargosLedger -
-      abonoRecargo +
-      (cifras.recargo > 0.009 && !(multa.data?.length ?? 0) ? cifras.recargo : 0),
+    recargoCruzado + (cifras.recargo > 0.009 && !(multa.data?.length ?? 0) ? cifras.recargo : 0),
     0,
   );
 
@@ -885,29 +871,43 @@ async function filasContratosActivos(): Promise<ContratoRow[]> {
   }));
 }
 
-function abonoRecargoDePago(p: {
-  monto: number;
-  rubro?: string | null;
-  asignaciones?: unknown;
-}): number {
-  const raw = p.asignaciones as
-    | { asignaciones?: { tipo?: string; etiqueta?: string; aplicado?: number }[] }
-    | { tipo?: string; etiqueta?: string; aplicado?: number }[]
-    | null
-    | undefined;
-  const lineas = Array.isArray(raw) ? raw : (raw?.asignaciones ?? []);
-  const marcado = lineas
-    .filter((a) => {
-      const tipo = (a.tipo ?? "").toLowerCase();
-      return tipo === "recargo" || /recargo|por no pagar/i.test(a.etiqueta ?? "");
-    })
-    .reduce((s, a) => s + (Number(a.aplicado) || 0), 0);
-  if (marcado > 0.009) return marcado;
-  if ((p.rubro ?? "").toLowerCase() === "recargo") return Number(p.monto) || 0;
-  return 0;
+function cargosRecargoDe(rows: unknown): CargoRecargo[] {
+  return ((rows ?? []) as {
+    id?: string;
+    fecha?: string | null;
+    monto: number;
+    tipo?: string | null;
+    concepto: string | null;
+    concepto_codigo: string | null;
+    pago_id: string | null;
+  }[]).map((g, i) => ({
+    id: g.id || `cargo-${i}`,
+    fecha: g.fecha ?? "",
+    monto: Number(g.monto) || 0,
+    tipo: g.tipo || "multa",
+    concepto: g.concepto,
+    conceptoCodigo: g.concepto_codigo,
+    pagoId: g.pago_id,
+  }));
 }
 
-/** Recargo que SIGUE debiéndose. Cargos PAGO_TARDE menos lo ya cruzado en un pago. */
+function pagosRecargoDe(rows: unknown): PagoParaRecargo[] {
+  return ((rows ?? []) as {
+    id?: string;
+    fecha?: string | null;
+    monto?: number;
+    rubro?: string | null;
+    asignaciones: unknown;
+  }[]).map((p, i) => {
+    const lineas = lineasAsignadas(p.asignaciones);
+    if (lineas.length === 0 && (p.rubro ?? "").toLowerCase() === "recargo") {
+      lineas.push({ tipo: "recargo", etiqueta: "recargo", aplicado: Number(p.monto) || 0 });
+    }
+    return { id: p.id || `pago-${i}`, fecha: p.fecha ?? "", lineas };
+  });
+}
+
+/** Recargo que SIGUE debiéndose. La multa ya cubierta dentro del saldo anterior no se vuelve a mostrar. */
 async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
@@ -915,44 +915,32 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
   const [{ data }, { data: pagos }] = await Promise.all([
     sb
       .from("cargos")
-      .select("contrato_id, monto, tipo, concepto, concepto_codigo, pago_id")
+      .select("id, contrato_id, fecha, monto, tipo, concepto, concepto_codigo, pago_id")
       .eq("tipo", "multa")
       .in("contrato_id", ids),
     sb
       .from("pagos")
-      .select("contrato_id, monto, rubro, asignaciones")
+      .select("id, contrato_id, fecha, monto, rubro, asignaciones")
       .in("contrato_id", ids)
       .in("estado_conciliacion", ["conciliado", "manual"]),
   ]);
-  for (const g of (data ?? []) as {
-    contrato_id: string;
-    monto: number;
-    tipo: string;
-    concepto: string | null;
-    concepto_codigo: string | null;
-    pago_id: string | null;
-  }[]) {
-    if (g.pago_id) continue;
-    const codigo = (g.concepto_codigo ?? "").toUpperCase();
-    const esRecargo =
-      codigo === "PAGO_TARDE" ||
-      /recargo|por no pagar|pago despu[eé]s/i.test(g.concepto ?? "");
-    if (!esRecargo) continue;
-    out.set(g.contrato_id, (out.get(g.contrato_id) ?? 0) + Number(g.monto || 0));
+  const cargosPor = new Map<string, CargoRecargo[]>();
+  for (const g of (data ?? []) as { contrato_id: string }[]) {
+    const lista = cargosPor.get(g.contrato_id) ?? [];
+    lista.push(...cargosRecargoDe([g]));
+    cargosPor.set(g.contrato_id, lista);
   }
-  for (const p of (pagos ?? []) as {
-    contrato_id: string | null;
-    monto: number;
-    rubro: string | null;
-    asignaciones: unknown;
-  }[]) {
-    if (!p.contrato_id || !out.has(p.contrato_id)) continue;
-    const abono = abonoRecargoDePago(p);
-    if (abono <= 0.009) continue;
-    out.set(p.contrato_id, Math.max((out.get(p.contrato_id) ?? 0) - abono, 0));
+  const pagosPor = new Map<string, PagoParaRecargo[]>();
+  for (const p of (pagos ?? []) as { contrato_id: string | null }[]) {
+    if (!p.contrato_id) continue;
+    const lista = pagosPor.get(p.contrato_id) ?? [];
+    lista.push(...pagosRecargoDe([p]));
+    pagosPor.set(p.contrato_id, lista);
   }
-  for (const [id, monto] of out) {
-    if (monto <= 0.009) out.delete(id);
+  const idsConDatos = new Set([...cargosPor.keys(), ...pagosPor.keys()]);
+  for (const id of idsConDatos) {
+    const { abierto } = atribuirRecargos(cargosPor.get(id) ?? [], pagosPor.get(id) ?? []);
+    if (abierto > 0.009) out.set(id, abierto);
   }
   return out;
 }

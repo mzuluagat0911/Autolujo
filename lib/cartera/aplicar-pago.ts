@@ -423,48 +423,55 @@ function esCargoRecargo(c: {
   return c.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(c.concepto ?? "");
 }
 
-/** Multas de recargo que ningún pago marcó todavía como recargo. */
+/** Multa de recargo que sigue abierta: la que ningún pago cubrió, ni nombrada ni dentro del saldo anterior. */
 async function recargoAbiertoDelContrato(contratoId: string, excluirPagoId: string): Promise<number> {
+  const { atribuirRecargos, lineasAsignadas } = await import("./recargo-cubierto");
   const sb = createServerSupabase();
   const [{ data: cargos }, { data: pagos }] = await Promise.all([
     sb
       .from("cargos")
-      .select("monto, tipo, concepto, concepto_codigo, pago_id")
+      .select("id, fecha, monto, tipo, concepto, concepto_codigo, pago_id")
       .eq("contrato_id", contratoId)
       .eq("tipo", "multa"),
     sb
       .from("pagos")
-      .select("id, monto, rubro, asignaciones")
+      .select("id, fecha, monto, rubro, asignaciones")
       .eq("contrato_id", contratoId)
       .in("estado_conciliacion", ["conciliado", "manual"])
       .neq("id", excluirPagoId),
   ]);
-  let abierto = 0;
-  for (const c of (cargos ?? []) as {
-    monto: number;
-    tipo: string;
-    concepto: string | null;
-    concepto_codigo: string | null;
-    pago_id: string | null;
-  }[]) {
-    if (c.pago_id) continue;
-    if (!esCargoRecargo(c)) continue;
-    abierto = r2(abierto + (Number(c.monto) || 0));
-  }
-  if (abierto <= 0.009) return 0;
-  for (const p of (pagos ?? []) as {
-    monto: number;
-    rubro: string | null;
-    asignaciones: unknown;
-  }[]) {
-    const parsed = parseAsignaciones(p.asignaciones);
-    const marcado = parsed
-      ? r2(parsed.asignaciones.filter(esAsignacionRecargo).reduce((s, a) => s + (Number(a.aplicado) || 0), 0))
-      : 0;
-    const abono = marcado > 0.009 ? marcado : (p.rubro ?? "").toLowerCase() === "recargo" ? Number(p.monto) || 0 : 0;
-    if (abono <= 0.009) continue;
-    abierto = r2(Math.max(abierto - abono, 0));
-  }
+  const { abierto } = atribuirRecargos(
+    ((cargos ?? []) as {
+      id: string;
+      fecha: string | null;
+      monto: number;
+      tipo: string;
+      concepto: string | null;
+      concepto_codigo: string | null;
+      pago_id: string | null;
+    }[]).map((c) => ({
+      id: c.id,
+      fecha: c.fecha ?? "",
+      monto: Number(c.monto) || 0,
+      tipo: c.tipo,
+      concepto: c.concepto,
+      conceptoCodigo: c.concepto_codigo,
+      pagoId: c.pago_id,
+    })),
+    ((pagos ?? []) as {
+      id: string;
+      fecha: string | null;
+      monto: number;
+      rubro: string | null;
+      asignaciones: unknown;
+    }[]).map((p) => {
+      const lineas = lineasAsignadas(p.asignaciones);
+      if (lineas.length === 0 && (p.rubro ?? "").toLowerCase() === "recargo") {
+        lineas.push({ tipo: "recargo", etiqueta: "recargo", aplicado: Number(p.monto) || 0 });
+      }
+      return { id: p.id, fecha: p.fecha ?? "", lineas };
+    }),
+  );
   return abierto;
 }
 

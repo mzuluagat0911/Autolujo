@@ -560,7 +560,8 @@ export function HistorialPagosSeccion({
             <ul className="divide-y divide-line rounded-xl ring-1 ring-line">
               {delDia.map((p) => {
                 const abiertoAhora = abierto === p.id;
-                const tieneDisc = (p.asignaciones?.length ?? 0) > 0;
+                const vista = p.lineasVista?.length ? p.lineasVista : p.asignaciones;
+                const tieneDisc = (vista?.length ?? 0) > 0;
                 const editando = abiertoAhora && modo === "editar";
                 const asignando = abiertoAhora && modo === "asignar";
                 return (
@@ -593,7 +594,7 @@ export function HistorialPagosSeccion({
                           {etiquetaMetodo(p.metodo)}
                           {p.referencia ? ` · ref ${p.referencia}` : ""}
                           {tieneDisc
-                            ? ` · ${p.asignaciones!.map((a) => `${money(a.aplicado)} ${a.etiqueta}`).join(" · ")}`
+                            ? ` · ${vista!.map((a) => `${money(a.aplicado)} ${a.etiqueta}`).join(" · ")}`
                             : p.estado === "conciliado" || p.estado === "manual"
                               ? " · sin desglose"
                               : ""}
@@ -610,7 +611,7 @@ export function HistorialPagosSeccion({
                               Cómo lo asignó el agente
                             </p>
                             <ul className="space-y-1.5">
-                              {p.asignaciones!.map((a, i) => (
+                              {vista!.map((a, i) => (
                                 <li
                                   key={`${a.tipo}-${i}`}
                                   className="flex items-baseline justify-between gap-3 text-sm"

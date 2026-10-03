@@ -1,6 +1,7 @@
 // Waterfall de un abono: arreglo → saldo anterior → recargo → cuota.
 //   npm run probar:aplicar
 
+import { abrirSaldoConRecargo, atribuirRecargos } from "@/lib/cartera/recargo-cubierto";
 import { distribuirPago } from "@/lib/cartera/rules";
 import {
   obligacionesRestantes,
@@ -142,6 +143,39 @@ check("primero el domingo", pagoDom.asignaciones[0]?.tipo, "domingo");
 check("el domingo se lleva $30", pagoDom.asignaciones[0]?.aplicado, 30);
 check("los $5 que sobran van al acuerdo, no al atraso", pagoDom.asignaciones[1]?.tipo, "acuerdo");
 check("el atraso no entra en esos $35", pagoDom.asignaciones.some((a) => a.tipo === "saldo_anterior"), false);
+
+console.log("\n· El recargo metido en saldo anterior se ve con su nombre, y uno ya amarrado no tapa al siguiente");
+const cruzado = atribuirRecargos(
+  [
+    { id: "c23", fecha: "2026-09-23", monto: 5, tipo: "multa", concepto: "Recargo", conceptoCodigo: "PAGO_TARDE", pagoId: "p23b" },
+    { id: "c26", fecha: "2026-09-26", monto: 5, tipo: "multa", concepto: "Recargo", conceptoCodigo: null, pagoId: null },
+    { id: "c01", fecha: "2026-10-01", monto: 5, tipo: "multa", concepto: "Pago después de las 7 PM", conceptoCodigo: "PAGO_TARDE", pagoId: null },
+    { id: "cc", fecha: "2026-09-29", monto: 10, tipo: "multa", concepto: "Recargo Cierre semana", conceptoCodigo: "CIERRE_SEMANA", pagoId: null },
+  ],
+  [
+    { id: "p23a", fecha: "2026-09-23", lineas: [{ tipo: "saldo_anterior", etiqueta: "saldo anterior", aplicado: 37 }, { tipo: "cuenta_diaria", etiqueta: "cuota de hoy", aplicado: 37 }] },
+    { id: "p23b", fecha: "2026-09-23", lineas: [{ tipo: "recargo", etiqueta: "Recargo", aplicado: 5 }] },
+    { id: "p27", fecha: "2026-09-27", lineas: [{ tipo: "saldo_anterior", etiqueta: "Saldo anterior", aplicado: 32 }, { tipo: "recargo", etiqueta: "Recargo", aplicado: 5 }] },
+    { id: "p02", fecha: "2026-10-02", lineas: [{ tipo: "saldo_anterior", etiqueta: "saldo anterior", aplicado: 42 }, { tipo: "cuenta_diaria", etiqueta: "cuota de hoy", aplicado: 37 }] },
+  ],
+);
+check("no queda recargo abierto", cruzado.abierto, 0);
+check("el del 1 de octubre quedó cubierto", cruzado.cubiertos.has("c01"), true);
+check("el cierre de semana no se mezcla", cruzado.cubiertos.has("cc"), false);
+const visto = abrirSaldoConRecargo(
+  [
+    { tipo: "saldo_anterior", etiqueta: "saldo anterior", aplicado: 42 },
+    { tipo: "cuenta_diaria", etiqueta: "cuota de hoy", aplicado: 37 },
+  ],
+  cruzado.partesPorPago.get("p02") ?? [],
+);
+check("el pago de $79 muestra el recargo", visto[0], {
+  tipo: "recargo",
+  etiqueta: "recargo (Pago después de las 7 PM)",
+  aplicado: 5,
+});
+check("y el resto del saldo sigue siendo la letra", visto[1]?.aplicado, 37);
+check("la cuota de hoy no se mueve", visto[2]?.aplicado, 37);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

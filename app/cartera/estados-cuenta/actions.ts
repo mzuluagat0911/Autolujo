@@ -26,6 +26,7 @@ import {
   marcarFechaEspecifica,
 } from "@/lib/cartera/recargo-montos";
 import { CONCEPTOS_PAGO, cubetaDeConcepto } from "@/lib/cartera/rubros-pago";
+import { atribuirRecargos, lineasAsignadas } from "@/lib/cartera/recargo-cubierto";
 import type { TipoObligacion } from "@/lib/cartera/types";
 
 const FRECUENCIAS_OK = new Set<FrecuenciaAcuerdo>([
@@ -195,7 +196,7 @@ function cubetaDeCargo(c: { tipo: string; concepto: string | null; concepto_codi
 /** Cargos ya cubiertos por un pago no se editan acá: siguen en el libro, no en la lista. */
 function cargosPendientesActivos(
   cargos: CargoEditable[],
-  pagos: { asignaciones: unknown }[],
+  pagos: { id?: string; fecha?: string | null; asignaciones: unknown }[],
 ): CargoEditable[] {
   const cover = new Map<string, number>();
   for (const p of pagos) {
@@ -210,7 +211,23 @@ function cargosPendientesActivos(
       cover.set(key, (cover.get(key) ?? 0) + Math.max(Number(a.aplicado) || 0, 0));
     }
   }
-  const hidden = new Set<string>();
+  const cruzado = atribuirRecargos(
+    cargos.map((c) => ({
+      id: c.id,
+      fecha: c.fecha ?? "",
+      monto: Number(c.monto) || 0,
+      tipo: c.tipo,
+      concepto: c.concepto,
+      conceptoCodigo: c.concepto_codigo,
+      pagoId: c.pago_id ?? null,
+    })),
+    pagos.map((p, i) => ({
+      id: p.id || `pago-${i}`,
+      fecha: p.fecha ?? "",
+      lineas: lineasAsignadas(p.asignaciones),
+    })),
+  );
+  const hidden = new Set<string>(cruzado.cubiertos);
   const ordered = [...cargos].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
   for (const c of ordered) {
     if (c.pago_id) {
@@ -279,7 +296,7 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
   const cargosCrudos = (cargosData ?? []) as CargoEditable[];
   const { data: pagosCubiertos } = await sb
     .from("pagos")
-    .select("asignaciones")
+    .select("id, fecha, asignaciones")
     .eq("contrato_id", contratoId)
     .in("estado_conciliacion", ["conciliado", "manual"]);
   const cargosPendientes = cargosPendientesActivos(

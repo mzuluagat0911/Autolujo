@@ -5,6 +5,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { money } from "./estado-cuenta";
 import { fechaContable } from "./fecha";
 import { textoComoSeAplico } from "./aplicar-pago";
+import { abrirSaldoConRecargo, atribuirRecargos, lineasAsignadas } from "./recargo-cubierto";
 import type { AsignacionPago, ResultadoPago } from "./types";
 
 export type LineaAplicacion = {
@@ -24,11 +25,13 @@ export type PagoHistorial = {
   estado: string;
   origen: string | null;
   rubro: string | null;
-  /** null = aún no se partió (pendiente / sin waterfall). */
+  /** null = aún no se partió (pendiente / sin waterfall). Tal como quedó guardado. */
   asignaciones: LineaAplicacion[] | null;
+  /** Lo que ve el equipo: el saldo anterior abre el recargo que iba adentro. */
+  lineasVista: LineaAplicacion[] | null;
   sobrante: number;
   totalAplicado: number;
-  /** Frase lista para UI. */
+  /** Frase lista para UI. El saldo anterior ya abre el recargo que iba adentro. */
   resumenAplicacion: string | null;
 };
 
@@ -148,11 +151,26 @@ export async function historialPagosContrato(
     rows = (full.data ?? []) as typeof rows;
   }
 
+  const partesPorPago = await partesRecargoDelContrato(contratoId);
+
   return rows.map((p) => {
     const parsed = parseResultado(p.asignaciones);
     const asignaciones = parsed ? lineasDe(parsed) : null;
+    const partes = partesPorPago.get(p.id) ?? [];
+    const lineasVista = asignaciones ? abrirSaldoConRecargo(asignaciones, partes) : null;
     const sobrante = parsed ? r2(parsed.sobrante) : 0;
     const totalAplicado = parsed ? r2(parsed.totalAplicado) : 0;
+    const vista = lineasVista
+      ? {
+          asignaciones: lineasVista.map((a) => ({
+            tipo: a.tipo as ResultadoPago["asignaciones"][number]["tipo"],
+            aplicado: a.aplicado,
+            etiqueta: a.etiqueta,
+          })),
+          sobrante,
+          totalAplicado,
+        }
+      : null;
     return {
       id: p.id,
       fecha: p.fecha || fechaContable(p.pagado_at),
@@ -165,9 +183,52 @@ export async function historialPagosContrato(
       origen: p.origen ?? null,
       rubro: p.rubro ?? null,
       asignaciones,
+      lineasVista,
       sobrante,
       totalAplicado,
-      resumenAplicacion: parsed ? textoComoSeAplico(parsed, money) : null,
+      resumenAplicacion: vista ? textoComoSeAplico(vista, money) : null,
     };
   });
+}
+
+/** Recargo que cada pago tapó dentro del saldo anterior. Usa todo el historial, no solo la página. */
+async function partesRecargoDelContrato(contratoId: string) {
+  const sb = createServerSupabase();
+  const [{ data: cargos }, { data: pagos }] = await Promise.all([
+    sb
+      .from("cargos")
+      .select("id, fecha, monto, tipo, concepto, concepto_codigo, pago_id")
+      .eq("contrato_id", contratoId)
+      .eq("tipo", "multa"),
+    sb
+      .from("pagos")
+      .select("id, fecha, asignaciones")
+      .eq("contrato_id", contratoId)
+      .in("estado_conciliacion", ["conciliado", "manual"]),
+  ]);
+  const { partesPorPago } = atribuirRecargos(
+    ((cargos ?? []) as {
+      id: string;
+      fecha: string | null;
+      monto: number;
+      tipo: string;
+      concepto: string | null;
+      concepto_codigo: string | null;
+      pago_id: string | null;
+    }[]).map((c) => ({
+      id: c.id,
+      fecha: c.fecha ?? "",
+      monto: Number(c.monto) || 0,
+      tipo: c.tipo,
+      concepto: c.concepto,
+      conceptoCodigo: c.concepto_codigo,
+      pagoId: c.pago_id,
+    })),
+    ((pagos ?? []) as { id: string; fecha: string | null; asignaciones: unknown }[]).map((p) => ({
+      id: p.id,
+      fecha: p.fecha ?? "",
+      lineas: lineasAsignadas(p.asignaciones),
+    })),
+  );
+  return partesPorPago;
 }
