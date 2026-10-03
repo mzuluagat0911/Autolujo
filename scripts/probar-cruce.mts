@@ -8,7 +8,7 @@ import {
   esCrucePerfecto, decidirMovimiento, huellaMovimiento,
   type ContratoFlota, type PagoCandidato,
 } from "@/lib/cartera/cruce";
-import { mismaCuenta } from "@/lib/cartera/cuenta";
+import { cuentaAUnDigito, mismaCuenta } from "@/lib/cartera/cuenta";
 
 let fallos = 0;
 function check(nombre: string, obtenido: unknown, esperado: unknown) {
@@ -59,6 +59,13 @@ check("refs distintas no calzan", canonReferencia("1111") === canonReferencia("2
 console.log("\n· Cuenta y monto");
 check("cuenta enmascarada calza", mismaCuenta("****5678", "0412345678"), true);
 check("cuenta de otro banco no calza", mismaCuenta("9999", "0412345678"), false);
+check(
+  "un 9 comido sigue siendo la cuenta de Gold",
+  cuentaAUnDigito("04-69-00-00226-0", "0469000022690"),
+  true,
+);
+check("dos dígitos de diferencia no calzan", cuentaAUnDigito("04-69-00-0022-0", "0469000022690"), false);
+check("la cuenta exacta no entra por la vía del dígito", cuentaAUnDigito("0469000022690", "0469000022690"), false);
 check("monto exacto a centavos", montoExacto(30, 30.00), true);
 check("30 vs 30.01 no calzan", montoExacto(30, 30.01), false);
 

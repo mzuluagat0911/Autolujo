@@ -86,7 +86,9 @@ PASO 2 — Si es comprobante, extrae con MUCHA precisión:
   Devuelve solo el código/número, sin la etiqueta. En un cheque, el número del cheque.
   Si el número está en la imagen y no lo copias, la lectura está mal. Si de verdad no aparece, null y confianza baja.
 - banco emisor y banco destino, si se ven.
-- cuenta destino: el número de cuenta que RECIBE, tal como aparece.
+- cuenta destino: el número de cuenta que RECIBE, tal como aparece. Cópialo dígito
+  por dígito, incluidos los que se repiten. Si el comprobante dice 002269, no
+  devuelvas 00226: saltarse un 9 hace que el pago parezca de otra cuenta.
 - número de carro: SOLO si el cliente lo puso en el comentario/descripción ("CARRO 144", "auto172").
   Si la descripción dice otra cosa (días, nombres), pon null.
 

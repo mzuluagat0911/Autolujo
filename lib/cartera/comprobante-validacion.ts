@@ -10,7 +10,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { hoyPanama, horaPanama, sumarDias } from "./fecha";
-import { digitos, mismaCuenta } from "./cuenta";
+import { cuentaAUnDigito, digitos, mismaCuenta } from "./cuenta";
 
 /** Texto exacto que el agente manda cuando faltó el número. Sirve para saber que ya se pidió. */
 export const FRASE_PEDIR_CONFIRMACION =
@@ -49,7 +49,7 @@ export type Veredicto = {
 };
 
 /** Solo los dígitos, para comparar cuentas escritas de mil formas. */
-export { digitos, mismaCuenta } from "./cuenta";
+export { cuentaAUnDigito, digitos, mismaCuenta } from "./cuenta";
 
 /**
  * La referencia viene de un OCR. Un `%` o un `_` leídos de más convertirían el
@@ -188,7 +188,18 @@ export async function validarComprobante(opts: {
       titular: string | null;
     }[];
 
-    const calce = filas.find((f) => f.numero_cuenta && mismaCuenta(c.cuenta_destino!, f.numero_cuenta));
+    let calce = filas.find((f) => f.numero_cuenta && mismaCuenta(c.cuenta_destino!, f.numero_cuenta));
+    if (!calce) {
+      const cercanas = filas.filter(
+        (f) => f.numero_cuenta && cuentaAUnDigito(c.cuenta_destino!, f.numero_cuenta),
+      );
+      // Un solo dígito de más o de menos, y una sola cuenta nuestra así: es
+      // la lectura la que falló, no el cliente. Se guarda el número real.
+      if (cercanas.length === 1 && cercanas[0]?.numero_cuenta) {
+        c.cuenta_destino = cercanas[0].numero_cuenta;
+        calce = cercanas[0];
+      }
+    }
     if (!calce) {
       alertas.push({
         codigo: "cuenta_ajena",
