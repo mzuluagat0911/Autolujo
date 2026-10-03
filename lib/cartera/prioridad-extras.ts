@@ -108,7 +108,7 @@ export function elegirExtraDelDia(
 export function candidatosDesdeExtracto(opts: {
   acuerdoHoy: number;
   acuerdoSaldo?: number;
-  extras: { etiqueta: string; monto: number }[];
+  extras: { etiqueta: string; monto: number; saldo?: number }[];
   /** Tajada de domingo a cobrarse hoy (0 = no compite). */
   domingoTajada?: number;
   /** Saldo total del balde DOMINGOS (para mostrar). */
@@ -147,7 +147,7 @@ export function candidatosDesdeExtracto(opts: {
       categoria: cat,
       etiqueta: x.etiqueta,
       montoHoy: x.monto,
-      saldo: x.monto,
+      saldo: x.saldo ?? x.monto,
     });
   }
   return out;

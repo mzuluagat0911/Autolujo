@@ -226,6 +226,43 @@ check(
   true,
 );
 
+import { rebanadaDelDia } from "@/lib/cartera/recargo-montos";
+check("sábado del exceso: cobra $5", rebanadaDelDia("Exceso [[r:5|30]]", 160, "2026-10-03"), 5);
+check("domingo del exceso: cobra $30", rebanadaDelDia("Exceso [[r:5|30]]", 160, "2026-10-04"), 30);
+check("sin cuota entra el saldo", rebanadaDelDia("Exceso", 160, "2026-10-03"), 160);
+const fakeKm = {
+  totalHoy: 215,
+  pendienteAnterior: 195,
+  recargo: 0,
+  faltaAcuerdo: 0,
+  acuerdoHoy: 0,
+  lineas: [],
+  cuotaDomingo: 30,
+  hoyIso: "2026-10-03",
+} as unknown as EstadoCuenta;
+const armKm = armarExtractoDiario(fakeKm, {
+  acuerdoSaldo: 0,
+  extras: [{
+    etiqueta: "exceso de kilometraje",
+    monto: 160,
+    cobrarHoy: 5,
+    cuotaDiaria: 5,
+    cuotaDomingo: 30,
+  }],
+  hoy: "2026-10-03",
+});
+check("exceso en cuotas: hoy entra $5 y el total es $60", armKm.totalCobrarHoy, 60);
+check(
+  "la línea de hoy es $5 de exceso",
+  armKm.lineas.some((l) => l.etiqueta === "exceso de kilometraje" && l.monto === 5 && !l.aviso),
+  true,
+);
+check(
+  "el resto queda como saldo con la cuota del domingo",
+  armKm.lineas.some((l) => l.aviso && /saldo \$155/.test(l.etiqueta) && /\$30 el domingo/.test(l.etiqueta)),
+  true,
+);
+
 const sabadoLibre = calcularCifras(base({ hoy: "2026-09-05", saldo: 30 }));
 check("sábado con domingo libre: mañana no suma cuota", sabadoLibre.totalManana, sabadoLibre.totalHoyTarde);
 check("y no anuncia domingo", sabadoLibre.domingo, null);

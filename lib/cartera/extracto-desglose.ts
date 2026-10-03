@@ -15,7 +15,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
 import { esDomingo, fechaLarga, hoyPanama } from "./fecha";
-import { conceptoSinMarca, leerPlanCargo } from "./recargo-montos";
+import { conceptoSinMarca, leerPlanCargo, rebanadaDelDia } from "./recargo-montos";
 import { tajadaDomingoQueFalta } from "./cifras";
 import {
   candidatosDesdeExtracto,
@@ -34,6 +34,13 @@ export type LineaExtracto = {
   aviso?: boolean;
   /** Está en el saldo, pero se cobra en una fecha posterior. No entra al total de hoy. */
   reserva?: number;
+  /**
+   * Cuota que entra hoy si el cargo tiene diario/domingo. El `monto` sigue
+   * siendo el saldo, para no contarlo como letra. Si falta, hoy entra el saldo.
+   */
+  cobrarHoy?: number;
+  cuotaDiaria?: number;
+  cuotaDomingo?: number;
 };
 
 const SKIP_CODIGOS = new Set(["PAGO_TARDE"]);
@@ -166,6 +173,17 @@ export function armarExtractoDiario(
 
   const extrasBase = extrasEmbebidos.filter((x) => esCargoBase(x.etiqueta)); // ej. cierre
   const extrasCompetidores = extrasEmbebidos.filter((x) => !esCargoBase(x.etiqueta));
+  const planPorEtiqueta = new Map<string, LineaExtracto>();
+  for (const x of extrasParaSaldo) {
+    if (x.cobrarHoy == null) continue;
+    planPorEtiqueta.set(x.etiqueta, x);
+  }
+  const conCuota = (etiqueta: string, embebido: number) => {
+    const plan = planPorEtiqueta.get(etiqueta);
+    if (!plan || plan.cobrarHoy == null) return { cobra: embebido, resto: 0, plan };
+    const cobra = Math.min(embebido, plan.cobrarHoy);
+    return { cobra, resto: Math.round((embebido - cobra) * 100) / 100, plan };
+  };
 
   let { cuenta, recargo } = cuentaYRecargo(e);
   // Solo descontar lo embebido en pendienteAnterior (anti-duplicado real).
@@ -196,7 +214,10 @@ export function armarExtractoDiario(
   const candidatos = candidatosDesdeExtracto({
     acuerdoHoy: Math.max(Number(e.faltaAcuerdo) || 0, 0),
     acuerdoSaldo: opts?.acuerdoSaldo,
-    extras: extrasCompetidores,
+    extras: extrasCompetidores.map((x) => {
+      const { cobra } = conCuota(x.etiqueta, x.monto);
+      return { etiqueta: x.etiqueta, monto: cobra, saldo: x.monto };
+    }),
     domingoTajada: 0,
     domingoBalde: baldeDomingo,
   });
@@ -244,17 +265,33 @@ export function armarExtractoDiario(
   }
 
   for (const x of extrasCompetidores) {
+    const baseEtiqueta = x.etiqueta.replace(/\s*\(pendiente\)\s*$/i, "");
+    const { cobra, resto, plan } = conCuota(baseEtiqueta, x.monto);
     const esElegido =
       extraElegido != null &&
       extraElegido.categoria !== "acuerdo" &&
       extraElegido.categoria !== "domingo" &&
-      extraElegido.etiqueta === x.etiqueta &&
-      Math.abs(extraElegido.montoHoy - x.monto) < 0.05;
-    const baseEtiqueta = x.etiqueta.replace(/\s*\(pendiente\)\s*$/i, "");
-    out.push({
-      etiqueta: esElegido ? baseEtiqueta : `${baseEtiqueta} (pendiente)`,
-      monto: x.monto,
-    });
+      extraElegido.etiqueta === baseEtiqueta &&
+      Math.abs(extraElegido.montoHoy - cobra) < 0.05;
+    if (cobra > 0.009) {
+      out.push({
+        etiqueta: esElegido ? baseEtiqueta : `${baseEtiqueta} (pendiente)`,
+        monto: cobra,
+      });
+    }
+    if (resto > 0.009) {
+      const diaria = plan?.cuotaDiaria;
+      const dom = plan?.cuotaDomingo;
+      const ritmo =
+        diaria != null && dom != null
+          ? `, ${money(diaria)} entre semana y ${money(dom)} el domingo`
+          : "";
+      out.push({
+        etiqueta: `${baseEtiqueta}, saldo ${money(resto)}${ritmo}`,
+        monto: resto,
+        aviso: true,
+      });
+    }
   }
 
   // La tajada ya está en la base. Lo que sobra del balde es el próximo domingo.
@@ -439,7 +476,16 @@ async function partirAcuerdosPorContrato(
   return out;
 }
 
-type AcumExtra = { debido: number; futuro: number; vence: string | null };
+type AcumExtra = {
+  debido: number;
+  futuro: number;
+  vence: string | null;
+  /** Suma de las cuotas de hoy. Igual a `debido` si el cargo no tiene plan. */
+  cobrarHoy: number;
+  cuotaDiaria?: number;
+  cuotaDomingo?: number;
+  cuotasMixtas?: boolean;
+};
 
 function centavos(n: number): number {
   return Math.round(n * 100) / 100;
@@ -513,12 +559,29 @@ export async function cargosExtraPorContrato(
     const vence = venceCargo(f.concepto, f.fecha, hoy);
     const futuro = !esEtiquetaDomingo(crudo) && vence > hoy;
     const m = maps.get(f.contrato_id) ?? new Map<string, AcumExtra>();
-    const prev = m.get(et) ?? { debido: 0, futuro: 0, vence: null };
+    const prev = m.get(et) ?? { debido: 0, futuro: 0, vence: null, cobrarHoy: 0 };
     if (futuro) {
       prev.futuro = centavos(prev.futuro + monto);
       if (!prev.vence || vence < prev.vence) prev.vence = vence;
     } else {
       prev.debido = centavos(prev.debido + monto);
+      prev.cobrarHoy = centavos(prev.cobrarHoy + rebanadaDelDia(f.concepto, monto, hoy));
+      const plan = leerPlanCargo(f.concepto);
+      const tieneCuota =
+        plan.modo === "diario" &&
+        ((plan.diario ?? 0) > 0.009 || (plan.domingo ?? 0) > 0.009);
+      if (tieneCuota && !prev.cuotasMixtas) {
+        const d = plan.diario ?? 0;
+        const s = plan.domingo ?? 0;
+        if (prev.cuotaDiaria == null && prev.cuotaDomingo == null) {
+          prev.cuotaDiaria = d;
+          prev.cuotaDomingo = s;
+        } else if (prev.cuotaDiaria !== d || prev.cuotaDomingo !== s) {
+          prev.cuotaDiaria = undefined;
+          prev.cuotaDomingo = undefined;
+          prev.cuotasMixtas = true;
+        }
+      }
     }
     m.set(et, prev);
     maps.set(f.contrato_id, m);
@@ -545,7 +608,20 @@ export async function cargosExtraPorContrato(
         abono = centavos(abono - toma);
       }
       if (cubeta) porCubeta.set(cubeta, abono);
-      if (debido > 0.009) lineas.push({ etiqueta, monto: debido });
+      if (debido > 0.009) {
+        const cobrarHoy = centavos(Math.min(acum.cobrarHoy, debido));
+        lineas.push({
+          etiqueta,
+          monto: debido,
+          ...(cobrarHoy + 0.009 < debido
+            ? {
+                cobrarHoy,
+                cuotaDiaria: acum.cuotaDiaria,
+                cuotaDomingo: acum.cuotaDomingo,
+              }
+            : {}),
+        });
+      }
       if (futuro > 0.009 && acum.vence) {
         lineas.push({
           etiqueta: `${etiqueta} (se cobra el ${fechaLarga(acum.vence)}, saldo ${money(futuro)})`,
