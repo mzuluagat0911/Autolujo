@@ -56,6 +56,7 @@ export const PRIORIDAD: Record<TipoObligacion, number> = {
   exceso_km: 44,
   ajuste: 45,
   recogida: 46,
+  cobro_presencial: 40,
 };
 
 const ETIQUETA: Record<TipoObligacion, string> = {
@@ -71,6 +72,7 @@ const ETIQUETA: Record<TipoObligacion, string> = {
   exceso_km: "exceso de kilometraje",
   ajuste: "ajuste",
   recogida: "recogida de vehículo",
+  cobro_presencial: "cobro presencial",
 };
 
 function r2(n: number): number {
@@ -705,6 +707,7 @@ function cubetaDeCargoFila(c: {
   }
   if (c.tipo === "ajuste" || /negociaci[oó]n|^ajuste\b/i.test(c.concepto ?? "")) return "ajuste";
   if (codigo === "RECOGIDA" || /recogida/i.test(c.concepto ?? "")) return "recogida de vehículo";
+  if (codigo === "PRESENCIAL" || /presencial/i.test(c.concepto ?? "")) return "cobro presencial";
   return null;
 }
 

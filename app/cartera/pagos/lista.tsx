@@ -290,6 +290,7 @@ function Fila({
                 <option value="exceso_km">Exceso de km</option>
                 <option value="ajuste">Negociación / ajuste</option>
                 <option value="recogida">Recogida de vehículo</option>
+                <option value="cobro_presencial">Cobro presencial</option>
                 <option value="recargo">Recargo</option>
               </select>
             </label>

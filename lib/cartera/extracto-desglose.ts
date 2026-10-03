@@ -71,6 +71,7 @@ export function etiquetaCargo(concepto: string | null, codigo: string | null, ti
   if (/cierre(\s+de)?\s+semana/.test(t)) return "Recargo Cierre semana";
   if (/exceso/.test(t) && /km|kilom/.test(t)) return "exceso de kilometraje";
   if (/recogida|domicilio/.test(t)) return "recogida del vehículo";
+  if (/presencial/.test(t)) return "cobro presencial";
   if (/domingo/.test(t)) return "domingo";
   if (/penonom/.test(t)) return "extensión a penonomé";
   if (/extensi[oó]n/.test(t) && /contrato/.test(t)) return "extensión en el contrato";

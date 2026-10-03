@@ -34,7 +34,8 @@ export type TipoObligacion =
   | "cierre_semana"
   | "exceso_km"
   | "ajuste"
-  | "recogida";
+  | "recogida"
+  | "cobro_presencial";
 
 export type Obligacion = {
   tipo: TipoObligacion;

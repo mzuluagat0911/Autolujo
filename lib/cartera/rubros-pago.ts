@@ -10,6 +10,7 @@ export type RubroPago =
   | "exceso_km"
   | "ajuste"
   | "recogida"
+  | "cobro_presencial"
   | "salida_interior";
 
 export const RUBROS_PAGO: { value: RubroPago; label: string }[] = [
@@ -23,6 +24,7 @@ export const RUBROS_PAGO: { value: RubroPago; label: string }[] = [
   { value: "exceso_km", label: "Exceso de km" },
   { value: "ajuste", label: "Negociación / ajuste" },
   { value: "recogida", label: "Recogida de vehículo" },
+  { value: "cobro_presencial", label: "Cobro presencial" },
 ];
 
 export function etiquetaRubro(rubro: string | null | undefined): string {
@@ -53,6 +55,7 @@ export const CONCEPTOS_PAGO = [
   { value: "exceso_km", label: "Exceso de km", cubeta: "exceso de kilometraje" },
   { value: "ajuste", label: "Negociación / ajuste", cubeta: "ajuste" },
   { value: "recogida", label: "Recogida de vehículo", cubeta: "recogida de vehículo" },
+  { value: "cobro_presencial", label: "Cobro presencial", cubeta: "cobro presencial" },
   { value: "salida_interior", label: "Salida al interior", cubeta: null },
 ] as const;
 
@@ -71,6 +74,7 @@ export const CARGO_DE_CONCEPTO: Record<
   exceso_km: { tipo: "exceso_km", codigo: "122", concepto: "Exceso de kilometraje" },
   ajuste: { tipo: "ajuste", codigo: null, concepto: "Ajuste / negociación" },
   recogida: { tipo: "otras", codigo: "RECOGIDA", concepto: "Recogida de vehículo" },
+  cobro_presencial: { tipo: "otras", codigo: "PRESENCIAL", concepto: "Cobro presencial" },
 };
 
 export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string | null {
@@ -91,5 +95,6 @@ export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string
   if (/exceso/.test(et) && /km|kilom/.test(et)) return "exceso de kilometraje";
   if (/negociaci[oó]n|^ajuste\b/.test(et)) return "ajuste";
   if (/recogida/.test(et)) return "recogida de vehículo";
+  if (/presencial/.test(et)) return "cobro presencial";
   return null;
 }

@@ -213,7 +213,7 @@ function EditorAsignaciones({
           Reasignar conceptos
         </p>
         <p className="mt-1 text-xs text-muted">
-          Letra, acuerdo y recargo, y también domingo, mantenimiento, panapass, cierre, exceso de km y ajuste. Si asignás una parte a uno de esos y no había cargo, se carga ese monto para que no baje la letra. La suma + sobrante debe igualar {money(pago.monto)}.
+          Letra, acuerdo y recargo, y también domingo, mantenimiento, panapass, cierre, exceso de km, cobro presencial y ajuste. Si asignás una parte a uno de esos y no había cargo, se carga ese monto para que no baje la letra. La suma + sobrante debe igualar {money(pago.monto)}.
         </p>
       </div>
 
