@@ -25,6 +25,7 @@ import {
   totalConUnExtra,
   type ItemExtraElegido,
 } from "./prioridad-extras";
+import { atribuirRecargos, lineasAsignadas } from "./recargo-cubierto";
 import { cubetaDeConcepto } from "./rubros-pago";
 
 export type LineaExtracto = {
@@ -516,6 +517,71 @@ export function partirCargosNoLetra(lineas: LineaExtracto[]): { debido: number; 
   return { debido: centavos(debido), futuro: centavos(futuro) };
 }
 
+/** Recargo de las 7 p.m. que todavía no está pagado, por contrato. */
+async function recargoAbiertoPorContrato(ids: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const [{ data: cargos }, { data: pagos }] = await Promise.all([
+    sb
+      .from("cargos")
+      .select("id, contrato_id, fecha, monto, tipo, concepto, concepto_codigo, pago_id")
+      .eq("tipo", "multa")
+      .in("contrato_id", ids),
+    sb
+      .from("pagos")
+      .select("id, contrato_id, fecha, monto, rubro, asignaciones")
+      .in("contrato_id", ids)
+      .in("estado_conciliacion", ["conciliado", "manual"]),
+  ]);
+  const cargosPor = new Map<string, Parameters<typeof atribuirRecargos>[0]>();
+  for (const c of (cargos ?? []) as {
+    id: string;
+    contrato_id: string;
+    fecha: string | null;
+    monto: number;
+    tipo: string | null;
+    concepto: string | null;
+    concepto_codigo: string | null;
+    pago_id: string | null;
+  }[]) {
+    const lista = cargosPor.get(c.contrato_id) ?? [];
+    lista.push({
+      id: c.id,
+      fecha: c.fecha ?? "",
+      monto: Number(c.monto) || 0,
+      tipo: c.tipo ?? "multa",
+      concepto: c.concepto,
+      conceptoCodigo: c.concepto_codigo,
+      pagoId: c.pago_id,
+    });
+    cargosPor.set(c.contrato_id, lista);
+  }
+  const pagosPor = new Map<string, Parameters<typeof atribuirRecargos>[1]>();
+  for (const p of (pagos ?? []) as {
+    id: string;
+    contrato_id: string | null;
+    fecha: string | null;
+    monto: number;
+    rubro: string | null;
+    asignaciones: unknown;
+  }[]) {
+    if (!p.contrato_id) continue;
+    const lineas = lineasAsignadas(p.asignaciones);
+    if (lineas.length === 0 && (p.rubro ?? "").toLowerCase() === "recargo") {
+      lineas.push({ tipo: "recargo", etiqueta: "recargo", aplicado: Number(p.monto) || 0 });
+    }
+    const lista = pagosPor.get(p.contrato_id) ?? [];
+    lista.push({ id: p.id, fecha: p.fecha ?? "", lineas });
+    pagosPor.set(p.contrato_id, lista);
+  }
+  for (const id of new Set([...cargosPor.keys(), ...pagosPor.keys()])) {
+    const { abierto } = atribuirRecargos(cargosPor.get(id) ?? [], pagosPor.get(id) ?? []);
+    if (abierto > 0.009) out.set(id, abierto);
+  }
+  return out;
+}
+
 export async function cargosExtraPorContrato(
   contratoIds: string[],
   hoy = hoyPanama(),
@@ -542,6 +608,7 @@ export async function cargosExtraPorContrato(
     fecha: string | null;
   }[]) {
     const codigo = (f.concepto_codigo ?? "").toUpperCase();
+    if ((f.concepto ?? "").includes("[[qc]]")) continue;
     const monto = Number(f.monto) || 0;
     if (monto <= 0.009) continue;
     const crudo = etiquetaCargo(f.concepto, f.concepto_codigo, f.tipo);
@@ -589,7 +656,12 @@ export async function cargosExtraPorContrato(
   }
   // Si un pago ya cubrió el concepto (recargo, domingo, mantenimiento, …),
   // ese monto no se vuelve a discriminar. Primero lo vencido, luego lo futuro.
-  const abonos = await abonosExtraPorContrato(ids);
+  // El recargo de las 7 p.m. que ya se pagó (aunque el pago diga “saldo anterior”)
+  // no vuelve al estado de cuenta: solo queda el que sigue abierto.
+  const [abonos, abiertoRecargo] = await Promise.all([
+    abonosExtraPorContrato(ids),
+    recargoAbiertoPorContrato(ids),
+  ]);
   for (const [id, m] of maps) {
     const porCubeta = new Map(abonos.get(id) ?? []);
     const lineas: LineaExtracto[] = [];
@@ -597,7 +669,11 @@ export async function cargosExtraPorContrato(
       const cubeta = cubetaDeConcepto("", etiqueta);
       let debido = acum.debido;
       let futuro = acum.futuro;
-      let abono = cubeta ? (porCubeta.get(cubeta) ?? 0) : 0;
+      if (etiqueta === "por no pagar") {
+        debido = abiertoRecargo.get(id) ?? 0;
+        futuro = 0;
+      }
+      let abono = etiqueta === "por no pagar" ? 0 : cubeta ? (porCubeta.get(cubeta) ?? 0) : 0;
       if (abono > 0.009 && debido > 0.009) {
         const toma = Math.min(debido, abono);
         debido = centavos(debido - toma);

@@ -26,6 +26,8 @@ import {
   marcarFechaEspecifica,
 } from "@/lib/cartera/recargo-montos";
 import { CONCEPTOS_PAGO, cubetaDeConcepto } from "@/lib/cartera/rubros-pago";
+import { historicoDeContrato, movimientosDelDia } from "@/lib/cartera/historico-cuenta";
+import { guardarDiaHistorico } from "@/lib/cartera/historico-editar";
 import { atribuirRecargos, lineasAsignadas } from "@/lib/cartera/recargo-cubierto";
 import type { TipoObligacion } from "@/lib/cartera/types";
 
@@ -293,7 +295,9 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
 
   if (carErr) return { ok: false, error: carErr.message };
 
-  const cargosCrudos = (cargosData ?? []) as CargoEditable[];
+  const cargosCrudos = ((cargosData ?? []) as CargoEditable[]).filter(
+    (c) => !(c.concepto ?? "").includes("[[qc]]"),
+  );
   const { data: pagosCubiertos } = await sb
     .from("pagos")
     .select("id, fecha, asignaciones")
@@ -1021,6 +1025,25 @@ export async function filaEstadoEnVivo(
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "No pude leer el estado." };
   }
+}
+
+/** Día a día desde que entra el cliente. Incluye recargos ya pagados. */
+export async function historicoCompleto(contratoId: string) {
+  return historicoDeContrato(contratoId);
+}
+
+export async function movimientosHistoricoDia(contratoId: string, fecha: string) {
+  return movimientosDelDia(contratoId, fecha);
+}
+
+export async function guardarHistoricoDia(input: {
+  contratoId: string;
+  fecha: string;
+  cargos: { id: string; monto: number }[];
+  pagos: { id: string; monto: number; lineas: { tipo: string; aplicado: number }[] }[];
+  nuevoCargo?: { tipo: string; concepto: string; monto: number } | null;
+}) {
+  return guardarDiaHistorico(input);
 }
 
 export type PreviewMensajeResultado = {

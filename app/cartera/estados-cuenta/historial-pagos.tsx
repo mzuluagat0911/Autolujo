@@ -560,7 +560,7 @@ export function HistorialPagosSeccion({
             <ul className="divide-y divide-line rounded-xl ring-1 ring-line">
               {delDia.map((p) => {
                 const abiertoAhora = abierto === p.id;
-                const vista = p.lineasVista?.length ? p.lineasVista : p.asignaciones;
+                const vista = p.asignaciones;
                 const tieneDisc = (vista?.length ?? 0) > 0;
                 const editando = abiertoAhora && modo === "editar";
                 const asignando = abiertoAhora && modo === "asignar";

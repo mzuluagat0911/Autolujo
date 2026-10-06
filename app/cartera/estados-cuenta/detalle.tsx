@@ -18,6 +18,7 @@ import { fechaConDia, fechaLarga } from "@/lib/cartera/fecha";
 import type { EstadoCuentaFila } from "./types";
 import { EditorLedger } from "./detalle-editar";
 import { HistorialPagosSeccion } from "./historial-pagos";
+import { HistoricoCompleto } from "./historico-completo";
 
 type TabId = "resumen" | "ajustar" | "pagos";
 
@@ -47,6 +48,12 @@ function pctCuotas(e: EstadoCuenta): number | null {
   const pagadas = e.cuotasPagadas;
   if (total == null || !(total > 0) || pagadas == null) return null;
   return Math.min(100, Math.max(0, Math.round((pagadas / total) * 100)));
+}
+
+function esRecargoYaCubierto(etiqueta: string, abierto: number): boolean {
+  if (abierto > 0.009) return false;
+  if (/cierre/i.test(etiqueta)) return false;
+  return /por no pagar|^recargo\b/i.test(etiqueta);
 }
 
 function capEtiqueta(s: string): string {
@@ -153,6 +160,7 @@ export function DetalleEstadoModal({
   const [tab, setTab] = useState<TabId>("resumen");
   const [toast, setToast] = useState<string | null>(null);
   const [vivo, setVivo] = useState(estado);
+  const [historico, setHistorico] = useState(false);
   const carro = etiquetaCarroUi(vivo.empresa, vivo.vehiculoNumero);
   const progreso = pctCuotas(vivo);
   const adelantado = esAdelantado(vivo);
@@ -160,11 +168,27 @@ export function DetalleEstadoModal({
   const lineasHoy = vivo.lineas.filter(
     (l) => !(l.concepto.includes("no pagar") && (vivo.recargosAcumulados ?? 0) <= 0.009),
   );
+  const lineasCobroVisibles = (vivo.lineasCobro ?? []).filter(
+    (l) => !esRecargoYaCubierto(l.etiqueta, vivo.recargosAcumulados ?? 0),
+  );
+  const recargoOculto = (vivo.lineasCobro ?? [])
+    .filter((l) => !l.aviso && esRecargoYaCubierto(l.etiqueta, vivo.recargosAcumulados ?? 0))
+    .reduce((s, l) => s + l.monto, 0);
   const recargoSoloCalculado = vivo.lineas.reduce(
     (s, l) => s + (l.concepto.includes("no pagar") && (vivo.recargosAcumulados ?? 0) <= 0.009 ? l.monto : 0),
     0,
   );
-  const totalHoyVisible = Math.max((vivo.totalCobrarHoy ?? vivo.totalHoy) - recargoSoloCalculado, 0);
+  const totalHoyVisible = Math.max(
+    (vivo.totalCobrarHoy ?? vivo.totalHoy) - recargoSoloCalculado - recargoOculto,
+    0,
+  );
+  const textoDesglose =
+    recargoOculto > 0.009
+      ? lineasCobroVisibles
+          .filter((l) => !l.aviso && l.monto > 0.009)
+          .map((l) => `${money(l.monto)} ${l.etiqueta}`)
+          .join(" · ")
+      : vivo.desgloseCobro || vivo.desglose;
 
   const partesSaldo = useMemo(
     () =>
@@ -191,6 +215,7 @@ export function DetalleEstadoModal({
     document.body.style.overflow = "hidden";
     function onKey(ev: KeyboardEvent) {
       if (ev.key === "Escape") {
+        if (historico) return;
         if (tab !== "resumen") setTab("resumen");
         else onClose();
       }
@@ -200,7 +225,7 @@ export function DetalleEstadoModal({
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [onClose, tab]);
+  }, [historico, onClose, tab]);
 
   useEffect(() => {
     if (!toast) return;
@@ -311,10 +336,8 @@ export function DetalleEstadoModal({
                     Cubierto hasta {fechaCorta(vivo.cubiertoHasta)}
                   </p>
                 )}
-                {!adelantado && !alDia && (vivo.desgloseCobro || vivo.desglose) && (
-                  <p className="mt-2 text-sm leading-snug text-muted">
-                    {vivo.desgloseCobro || vivo.desglose}
-                  </p>
+                {!adelantado && !alDia && textoDesglose && (
+                  <p className="mt-2 text-sm leading-snug text-muted">{textoDesglose}</p>
                 )}
                 {vivo.pendiente && (
                   <p className="mt-2 text-sm text-azul">
@@ -337,9 +360,9 @@ export function DetalleEstadoModal({
                   onClick={() => setTab("pagos")}
                 />
                 <Atajo
-                  label="Cerrar"
-                  hint="Volver a la lista"
-                  onClick={onClose}
+                  label="Ver histórico completo"
+                  hint="Día a día desde que entró"
+                  onClick={() => setHistorico(true)}
                 />
               </div>
 
@@ -355,8 +378,8 @@ export function DetalleEstadoModal({
                   </button>
                 }
               >
-                {(vivo.lineasCobro?.length ?? 0) > 0 ? (
-                  vivo.lineasCobro.map((l, i) => (
+                {lineasCobroVisibles.length > 0 ? (
+                  lineasCobroVisibles.map((l, i) => (
                     <Fila
                       key={`${l.etiqueta}-${i}`}
                       label={capEtiqueta(l.etiqueta)}
@@ -558,15 +581,23 @@ export function DetalleEstadoModal({
             </button>
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => setHistorico(true)}
               className="flex-1 rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
             >
-              Cerrar
+              Histórico
             </button>
           </div>
         )}
       </div>
       {toast && <Toast tone="good" message={toast} />}
+      {historico && (
+        <HistoricoCompleto
+          contratoId={vivo.contratoId}
+          cliente={vivo.clienteNombre}
+          carro={carro}
+          onClose={() => setHistorico(false)}
+        />
+      )}
     </div>
   );
 }
