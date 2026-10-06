@@ -201,8 +201,13 @@ function valorCelda(
 
 function celdasDeFila(rowXml: string, shared: string[]): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const m of rowXml.matchAll(/<c r="([A-Z]+)\d+"([^>]*)>([\s\S]*?)<\/c>/g)) {
-    out[m[1]] = valorCelda(m[2], m[3], shared);
+  // Banco General deja columnas vacías como `<c r="A7" s="1"/>`. Si eso se
+  // lee como celda abierta, se traga la de al lado (la Fecha) y el archivo
+  // queda sin créditos.
+  const re = /<c r="([A-Z]+)(\d+)"([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/g;
+  for (const m of rowXml.matchAll(re)) {
+    if (m[4] == null) continue;
+    out[m[1]] = valorCelda(m[3], m[4], shared);
   }
   return out;
 }
