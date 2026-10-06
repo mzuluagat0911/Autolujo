@@ -12,6 +12,7 @@ import {
 } from "@/lib/cartera/fecha";
 import { cuotaDeFecha, tarifaPlena, penalidadDe, type TerminosCuota } from "@/lib/cartera/cuota";
 import { calcularCifras, cubrioCuotaDelDia, type EntradaCifras } from "@/lib/cartera/cifras";
+import { inactivacionVigente } from "@/lib/cartera/inactivo";
 
 let fallos = 0;
 function check(nombre: string, obtenido: unknown, esperado: unknown) {
@@ -332,6 +333,14 @@ const conArreglo = calcularCifras(base({
 }));
 check("con arreglo de $5 el total de hoy es $35", conArreglo.totalHoy, 35);
 check("y el desglose nombra el arreglo", conArreglo.lineas.some((l) => l.concepto === "arreglo" && l.monto === 5), true);
+
+console.log("\n· Improductivo");
+const ventana = { vehiculoId: "x", desde: "2026-10-05", hasta: "2026-10-06" };
+check("el día improductivo no corre letra", inactivacionVigente(ventana, "2026-10-05"), true);
+check("el día de cobro ya corre letra", inactivacionVigente(ventana, "2026-10-06"), false);
+check("antes de la ventana se cobra", inactivacionVigente(ventana, "2026-10-04"), false);
+const abierta = { vehiculoId: "x", desde: "2026-10-05", hasta: null };
+check("sin fecha de cobro sigue sin letra", inactivacionVigente(abierta, "2026-10-06"), true);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

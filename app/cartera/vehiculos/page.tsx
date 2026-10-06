@@ -220,7 +220,10 @@ async function getData() {
         pausaDesde: pausas.get(v.id)?.desde ?? null,
         pausaHasta: pausas.get(v.id)?.hasta ?? null,
         devueltoDesde: devoluciones.get(v.id)?.desde ?? null,
-        inactivoDesde: inactivaciones.get(v.id)?.desde ?? null,
+        inactivoDesde:
+          v.estado === "improductivo" ? (inactivaciones.get(v.id)?.desde ?? null) : null,
+        inactivoHasta:
+          v.estado === "improductivo" ? (inactivaciones.get(v.id)?.hasta ?? null) : null,
         empresa: v.empresa?.codigo ?? null,
         cliente: c?.cliente ?? null,
         clienteId: c?.clienteId ?? null,

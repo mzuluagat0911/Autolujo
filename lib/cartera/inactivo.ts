@@ -13,10 +13,14 @@ export type Inactivacion = {
   vehiculoId: string;
   /** Primer día sin letra diaria. */
   desde: string;
+  /** Primer día en que vuelve la letra. Vacío = sigue sin letra. */
+  hasta: string | null;
 };
 
 export function inactivacionVigente(dev: Inactivacion | null | undefined, fecha: string): boolean {
-  return Boolean(dev && fecha >= dev.desde);
+  if (!dev || fecha < dev.desde) return false;
+  if (dev.hasta && fecha >= dev.hasta) return false;
+  return true;
 }
 
 /** Entre semana no corre letra nueva. El acuerdo y el saldo pendiente sí. */
@@ -31,15 +35,31 @@ export function ajustarCobroInactivo<T extends {
   };
 }
 
-function partes(detalle: string): string | null {
-  if (!detalle.startsWith("inactivo:")) return null;
-  const fecha = detalle.slice("inactivo:".length);
-  return /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null;
+function fechaOk(v: string | undefined): v is string {
+  return Boolean(v && /^\d{4}-\d{2}-\d{2}$/.test(v));
 }
 
-/** Inactivaciones abiertas: el carro sigue en Improductivo y el último evento trae fecha. */
+/** `inactivo:YYYY-MM-DD` o `inactivo:YYYY-MM-DD:YYYY-MM-DD` (el segundo día ya se cobra). */
+function partes(detalle: string): { desde: string; hasta: string | null } | null {
+  if (!detalle.startsWith("inactivo:")) return null;
+  const [desde, hasta] = detalle.slice("inactivo:".length).split(":");
+  if (!fechaOk(desde)) return null;
+  if (hasta && !fechaOk(hasta)) return null;
+  return { desde, hasta: hasta || null };
+}
+
+function detalleInactivo(desde: string, hasta: string | null): string {
+  return hasta ? `inactivo:${desde}:${hasta}` : `inactivo:${desde}`;
+}
+
+/**
+ * Ventanas de improductivo. Una ventana con fecha de cobro sigue valiendo
+ * aunque el carro ya esté activo: así el devengo no vuelve a cargar esos días.
+ * Sin fecha de cobro, solo cuenta si el carro sigue en Improductivo.
+ */
 export async function inactivacionesAbiertas(): Promise<Map<string, Inactivacion>> {
   const sb = createServerSupabase();
+  const hoy = hoyPanama();
   const { data, error } = await sb
     .from("vehiculo_eventos")
     .select("vehiculo_id, detalle, created_at")
@@ -57,8 +77,8 @@ export async function inactivacionesAbiertas(): Promise<Map<string, Inactivacion
     ultimo.set(row.vehiculo_id, row.detalle);
   }
   const candidatos = [...ultimo.entries()].flatMap(([id, detalle]) => {
-    const desde = partes(detalle);
-    return desde ? [[id, desde] as const] : [];
+    const ventana = partes(detalle);
+    return ventana ? [[id, ventana] as const] : [];
   });
   if (candidatos.length === 0) return out;
 
@@ -66,14 +86,17 @@ export async function inactivacionesAbiertas(): Promise<Map<string, Inactivacion
     .from("vehiculos")
     .select("id, estado")
     .in("id", candidatos.map(([id]) => id));
-  const improductivo = new Set(
-    ((vehs ?? []) as { id: string; estado: string }[])
-      .filter((v) => v.estado === "improductivo")
-      .map((v) => v.id),
+  const estadoDe = new Map(
+    ((vehs ?? []) as { id: string; estado: string }[]).map((v) => [v.id, v.estado]),
   );
-  for (const [id, desde] of candidatos) {
-    if (!improductivo.has(id)) continue;
-    out.set(id, { vehiculoId: id, desde });
+  for (const [id, ventana] of candidatos) {
+    const est = estadoDe.get(id) ?? "";
+    if (ventana.hasta && ventana.hasta <= hoy && est === "improductivo") {
+      await sb.from("vehiculos").update({ estado: "activo" }).eq("id", id);
+      await reponerLetras(id, ventana.hasta, hoy);
+    }
+    if (!ventana.hasta && est !== "improductivo") continue;
+    out.set(id, { vehiculoId: id, desde: ventana.desde, hasta: ventana.hasta });
   }
   return out;
 }
@@ -84,23 +107,46 @@ export async function inactivacionDeVehiculo(vehiculoId: string | null | undefin
   return map.get(vehiculoId) ?? null;
 }
 
-async function ajustarLetras(vehiculoId: string, anterior: string | null, desde: string, hoy: string): Promise<number> {
-  if (anterior && anterior < desde) {
-    const fin = sumarDias(desde, -1);
-    const hasta = fin < hoy ? fin : hoy;
-    if (anterior <= hasta) await reponerLetras(vehiculoId, anterior, hasta);
-  }
-  if (desde > hoy) return 0;
-  return quitarLetrasDeLaPausa(vehiculoId, desde, hoy);
+async function anotar(vehiculoId: string, desde: string, hasta: string | null): Promise<string | null> {
+  const sb = createServerSupabase();
+  const { error } = await sb.from("vehiculo_eventos").insert({
+    vehiculo_id: vehiculoId,
+    fecha: desde,
+    tipo: "otro",
+    titulo: hasta ? "Improductivo con regreso" : "Inactivo",
+    detalle: detalleInactivo(desde, hasta),
+    origen: "manual",
+  });
+  return error ? error.message : null;
+}
+
+/** Al volver a Activo: la letra corre desde hoy y los días improductivos no se rellenan. */
+export async function cerrarInactivacion(vehiculoId: string, hoy = hoyPanama()): Promise<void> {
+  const previa = await inactivacionDeVehiculo(vehiculoId);
+  if (!previa || previa.hasta) return;
+  const fin = sumarDias(hoy, -1);
+  if (previa.desde <= fin) await quitarLetrasDeLaPausa(vehiculoId, previa.desde, fin);
+  await reponerLetras(vehiculoId, hoy, hoy);
+  await anotar(vehiculoId, previa.desde, hoy);
 }
 
 export async function aplicarInactivacion(input: {
   vehiculoId: string;
+  /** Primer día sin letra. */
   fecha: string | null;
+  /** Primer día en que vuelve la letra. Vacío = sigue sin letra. */
+  cobrarDesde?: string | null;
 }): Promise<{ ok: boolean; msg: string }> {
   const desde = String(input.fecha ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
-    return { ok: false, msg: "Indicá desde cuándo se inactiva el carro." };
+  const cobrar = String(input.cobrarDesde ?? "").trim();
+  if (!fechaOk(desde)) {
+    return { ok: false, msg: "Indicá desde cuándo no se cobra la letra." };
+  }
+  if (cobrar && !fechaOk(cobrar)) {
+    return { ok: false, msg: "La fecha desde la que se cobra no es válida." };
+  }
+  if (cobrar && cobrar <= desde) {
+    return { ok: false, msg: "La fecha de cobro tiene que ser después del día en que deja de cobrar." };
   }
   const hoy = hoyPanama();
   const sb = createServerSupabase();
@@ -117,29 +163,53 @@ export async function aplicarInactivacion(input: {
     });
   }
 
-  const guardado = await sb.from("vehiculos").update({ estado: "improductivo" }).eq("id", input.vehiculoId);
+  const yaCobra = Boolean(cobrar && cobrar <= hoy);
+  const guardado = await sb
+    .from("vehiculos")
+    .update({ estado: yaCobra ? "activo" : "improductivo" })
+    .eq("id", input.vehiculoId);
   if (guardado.error) return { ok: false, msg: guardado.error.message };
 
-  if (!previa || previa.desde !== desde) {
-    const { error } = await sb.from("vehiculo_eventos").insert({
-      vehiculo_id: input.vehiculoId,
-      fecha: desde,
-      tipo: "otro",
-      titulo: "Inactivo",
-      detalle: `inactivo:${desde}`,
-      origen: "manual",
-    });
-    if (error) return { ok: false, msg: error.message };
+  const igual =
+    previa &&
+    previa.desde === desde &&
+    (previa.hasta ?? "") === (cobrar || "");
+  if (!igual) {
+    const nota = await anotar(input.vehiculoId, desde, cobrar || null);
+    if (nota) return { ok: false, msg: nota };
   }
 
-  const quitadas = await ajustarLetras(input.vehiculoId, previa?.desde ?? null, desde, hoy);
+  if (previa && previa.desde < desde) {
+    const fin = sumarDias(desde, -1);
+    const tope = fin < hoy ? fin : hoy;
+    if (previa.desde <= tope) await reponerLetras(input.vehiculoId, previa.desde, tope);
+  }
+
+  const finSinLetra = cobrar ? sumarDias(cobrar, -1) : hoy;
+  const hastaQuitar = finSinLetra < hoy ? finSinLetra : hoy;
+  const quitadas =
+    desde <= hastaQuitar ? await quitarLetrasDeLaPausa(input.vehiculoId, desde, hastaQuitar) : 0;
+  if (yaCobra) await reponerLetras(input.vehiculoId, cobrar, hoy);
+
   const extra =
     quitadas > 0
-      ? ` Se quitaron ${quitadas} ${quitadas === 1 ? "letra" : "letras"} desde esa fecha.`
+      ? ` Se quitaron ${quitadas} ${quitadas === 1 ? "letra" : "letras"} de esos días.`
       : "";
+  if (cobrar && yaCobra) {
+    return {
+      ok: true,
+      msg: `Sin letra del ${desde} al ${sumarDias(cobrar, -1)}. Desde el ${cobrar} volvió a productivo y corre la letra.${extra}`,
+    };
+  }
+  if (cobrar) {
+    return {
+      ok: true,
+      msg: `Sin letra desde el ${desde}. El ${cobrar} vuelve la letra. Hasta ese día se sigue cobrando la deuda que ya tenía.${extra}`,
+    };
+  }
   const cuando =
     desde > hoy
       ? ` Queda para el ${desde}. Hasta el día anterior se cobra la letra normal.`
       : " Desde ese día no corre letra diaria. Si queda deuda, se sigue cobrando hasta que pague o hasta que archives el caso.";
-  return { ok: true, msg: `Inactivo desde el ${desde}.${extra}${cuando}` };
+  return { ok: true, msg: `Sin letra desde el ${desde}.${extra}${cuando}` };
 }

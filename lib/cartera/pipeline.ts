@@ -321,7 +321,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       ...(est.devuelto
         ? [`- CARRO DEVUELTO desde ${est.devueltoDesde ?? "la fecha de devolución"}. NO cobres letra diaria ni hables de la cuota de hoy. El TOTAL de arriba es el saldo que ya debía.`]
         : est.inactivo
-          ? [`- CARRO INACTIVO desde ${est.inactivoDesde ?? "la fecha"}. NO cobres letra diaria ni hables de la cuota de hoy. El TOTAL de arriba es la deuda que ya tenía. Se sigue cobrando hasta que pague o hasta que el equipo archive el caso.`]
+          ? [`- CARRO INACTIVO desde ${est.inactivoDesde ?? "la fecha"}.${est.inactivoHasta ? ` El ${est.inactivoHasta} vuelve la letra.` : " Sin fecha de cobro: sigue sin letra hasta que la pongan o lo pasen a Activo."} NO cobres letra diaria ni hables de la cuota de hoy. El TOTAL de arriba es la deuda que ya tenía. Se sigue cobrando hasta que pague o hasta que el equipo archive el caso.`]
         : est.enTaller
           ? [`- CARRO EN TALLER: ${est.tallerEtiqueta ?? "taller"} desde ${est.tallerDesde ?? "el ingreso"}.${est.tallerHasta ? ` Vuelve a productivo el ${est.tallerHasta}: ese día sí corre letra y acuerdo.` : " Sin fecha de activación: sigue así hasta que la pongan o lo pasen a Activo."} NO cobres letra diaria ni acuerdo diario. El TOTAL de arriba es solo el saldo que ya debía. No hables de la cuota de hoy.`]
           : []),

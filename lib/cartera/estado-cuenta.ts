@@ -153,6 +153,8 @@ export type EstadoCuenta = Cifras & {
   /** Improductivo desde esta fecha: no corre letra diaria. La deuda sigue en el cobro. */
   inactivo: boolean;
   inactivoDesde: string | null;
+  /** Primer día en que vuelve la letra. Vacío si sigue sin fecha. */
+  inactivoHasta: string | null;
 };
 
 type ContratoRow = TerminosCuota & {
@@ -365,6 +367,7 @@ function armar(
     devueltoDesde?: string | null;
     inactivo?: boolean;
     inactivoDesde?: string | null;
+    inactivoHasta?: string | null;
   },
 ): EstadoCuenta {
   const manana = sumarDias(extra.hoy, 1);
@@ -473,6 +476,7 @@ function armar(
     devueltoDesde: extra.devueltoDesde ?? null,
     inactivo: Boolean(extra.inactivo),
     inactivoDesde: extra.inactivoDesde ?? null,
+    inactivoHasta: extra.inactivoHasta ?? null,
     templateVars: [nombre, carro, fecha, desgloseOut, money(cifrasOut.totalHoy)],
   };
 }
@@ -795,6 +799,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     devueltoDesde: devuelto ? devolucion!.desde : null,
     inactivo,
     inactivoDesde: inactivo ? inactivacion!.desde : null,
+    inactivoHasta: inactivo ? inactivacion!.hasta : null,
   });
 }
 
@@ -1294,6 +1299,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       devueltoDesde: devuelto ? devolucion!.desde : null,
       inactivo,
       inactivoDesde: inactivo ? inactivacion!.desde : null,
+      inactivoHasta: inactivo ? inactivacion!.hasta : null,
     });
   });
 }

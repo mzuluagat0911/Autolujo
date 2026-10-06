@@ -34,6 +34,8 @@ export type FilaVehiculo = {
   devueltoDesde: string | null;
   /** Primer día sin letra diaria, si el carro está improductivo. */
   inactivoDesde: string | null;
+  /** Primer día en que vuelve la letra. Vacío si sigue sin fecha. */
+  inactivoHasta: string | null;
   empresa: string | null;
   cliente: string | null;
   clienteId: string | null;
@@ -586,7 +588,9 @@ export function ListaVehiculos({
                       {v.devueltoDesde
                         ? ` · ${fechaCorta(v.devueltoDesde)}`
                         : v.inactivoDesde
-                          ? ` · ${fechaCorta(v.inactivoDesde)}`
+                          ? v.inactivoHasta
+                            ? ` · ${fechaCorta(v.inactivoDesde)} → ${fechaCorta(v.inactivoHasta)}`
+                            : ` · ${fechaCorta(v.inactivoDesde)}`
                           : v.pausaDesde
                           ? v.pausaHasta
                             ? ` · ${fechaCorta(v.pausaDesde)} → ${fechaCorta(v.pausaHasta)}`
@@ -634,6 +638,7 @@ function PanelEditarCarro({
   const [activacion, setActivacion] = useState(carro.pausaHasta ?? "");
   const [devolucion, setDevolucion] = useState(carro.devueltoDesde ?? "");
   const [inactivoDesde, setInactivoDesde] = useState(carro.inactivoDesde ?? "");
+  const [inactivoHasta, setInactivoHasta] = useState(carro.inactivoHasta ?? "");
   const [ultimaLetra, setUltimaLetra] = useState(hoyInput());
   const [err, setErr] = useState<string | null>(null);
   const enTaller = estado === "mantenimiento" || estado === "chapisteria" || estado === "colision";
@@ -660,6 +665,7 @@ function PanelEditarCarro({
           fechaActivacion: enTaller ? activacion || null : null,
           fechaDevolucion: entregado ? devolucion : null,
           fechaInactivacion: inactivo ? inactivoDesde : null,
+          fechaCobroInactivacion: inactivo ? inactivoHasta || null : null,
         });
         if (!r.ok) {
           setErr(r.msg);
@@ -777,21 +783,38 @@ function PanelEditarCarro({
             </label>
           )}
           {inactivo && (
-            <label className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                Desde que se inactiva
-              </span>
-              <input
-                required
-                type="date"
-                value={inactivoDesde}
-                onChange={(e) => setInactivoDesde(e.target.value)}
-                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
-              />
-              <span className="text-xs text-muted">
-                Desde ese día no corre letra nueva. La deuda sigue en el cobro diario hasta que pague el total o archives el caso.
-              </span>
-            </label>
+            <>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  No cobrar desde
+                </span>
+                <input
+                  required
+                  type="date"
+                  value={inactivoDesde}
+                  onChange={(e) => setInactivoDesde(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+                <span className="text-xs text-muted">
+                  Desde este día no corre la letra. La deuda que ya tenía se sigue cobrando.
+                </span>
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Cobrar desde
+                </span>
+                <input
+                  type="date"
+                  value={inactivoHasta}
+                  min={inactivoDesde || undefined}
+                  onChange={(e) => setInactivoHasta(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+                <span className="text-xs text-muted">
+                  El día que vuelve la letra. Si todavía no se sabe, dejala vacía.
+                </span>
+              </label>
+            </>
           )}
           {carro.clienteId ? (
             <>
