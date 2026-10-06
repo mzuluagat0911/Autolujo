@@ -31,6 +31,7 @@ export function HistoricoCompleto({
   const [nuevoTipo, setNuevoTipo] = useState("renta");
   const [nuevoConcepto, setNuevoConcepto] = useState("");
   const [nuevoMonto, setNuevoMonto] = useState("");
+  const [aviso, setAviso] = useState<string | null>(null);
 
   useEffect(() => {
     let cancel = false;

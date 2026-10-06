@@ -145,7 +145,7 @@ export async function guardarDiaHistorico(input: {
   }
 
   const nuevo = input.nuevoCargo;
-  const montoNuevo = r2(nuevo?.monto);
+  const montoNuevo = r2(nuevo?.monto ?? 0);
   if (montoNuevo > 0.009) {
     const tipos = new Set(["renta", "multa", "otras", "ajuste", "panapass", "exceso_km", "afiliacion"]);
     const tipo = tipos.has(nuevo?.tipo ?? "") ? nuevo!.tipo : "otras";

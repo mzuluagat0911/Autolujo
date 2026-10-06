@@ -358,7 +358,7 @@ export async function movimientosDelDia(
       concepto_codigo: string | null;
       monto: number;
     }[])
-      .filter((c) => !esMarcaQc({ concepto_codigo: c.concepto_codigo }))
+      .filter((c) => !esMarcaQc(c))
       .map((c) => ({
         id: c.id,
         tipo: c.tipo,
