@@ -139,6 +139,67 @@ export function planQueCobra(acuerdos: AcuerdoActivo[]): AcuerdoActivo | null {
   return acuerdos.find((a) => Math.max(Number(a.saldo) || 0, 0) > 0.009) ?? null;
 }
 
+/**
+ * El plan de adelante todavía se cobra el domingo (cuota de domingo, o
+ * frecuencia domingo). Mientras eso siga, el concepto domingo del contrato
+ * queda en cero y se retoma cuando este plan ya no cobre ese día.
+ */
+export function acuerdoCobraDomingo(
+  a: {
+    saldo: number;
+    cuota_diaria?: number | null;
+    cuota_domingo?: number | null;
+    frecuencia?: string | null;
+    fecha_especifica?: string | null;
+  },
+  fecha: string,
+): boolean {
+  if (!esDomingo(fecha)) return false;
+  const saldo = Math.max(Number(a.saldo) || 0, 0);
+  if (saldo <= 0.009) return false;
+  const freq = (a.frecuencia ?? "dia") as FrecuenciaAcuerdo;
+  if (freq !== "dia" && freq !== "domingo") return false;
+  const como: AcuerdoActivo = {
+    id: "",
+    saldo,
+    cuota_diaria: Math.max(Number(a.cuota_diaria) || 0, 0),
+    cuota_domingo: a.cuota_domingo ?? null,
+    descripcion: null,
+    frecuencia: freq,
+    fecha_especifica: a.fecha_especifica ?? null,
+  };
+  if (!tocaAcuerdoHoy(como, fecha)) return false;
+  if (freq === "domingo") return cuotaAcuerdoHoy(como, fecha) > 0.009;
+  return (Number(a.cuota_domingo) || 0) > 0.009;
+}
+
+/** El plan que se está cobrando pausa el domingo del contrato. */
+export function domingoPausadoPorPlanes(
+  planes: {
+    saldo: number;
+    cuotaDiaria?: number;
+    cuotaDomingo?: number;
+    frecuencia?: string;
+    fecha?: string | null;
+    cobra?: boolean;
+  }[] | undefined,
+  fecha: string,
+): boolean {
+  if (!planes?.length || !esDomingo(fecha)) return false;
+  const plan = planes.find((p) => p.cobra) ?? planes.find((p) => p.saldo > 0.009);
+  if (!plan) return false;
+  return acuerdoCobraDomingo(
+    {
+      saldo: plan.saldo,
+      cuota_diaria: plan.cuotaDiaria,
+      cuota_domingo: plan.cuotaDomingo,
+      frecuencia: plan.frecuencia,
+      fecha_especifica: plan.fecha,
+    },
+    fecha,
+  );
+}
+
 export function acuerdoHoyDe(acuerdos: AcuerdoActivo[], fecha: string): number {
   const plan = planQueCobra(acuerdos);
   return plan ? cuotaAcuerdoHoy(plan, fecha) : 0;

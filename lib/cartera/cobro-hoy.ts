@@ -28,6 +28,9 @@
 //    (cuota del día anterior sin pagar) + acuerdo de domingo
 //    (frecuencia domingo, o frecuencia día con cuota domingo puesta).
 //    La cuota diaria del acuerdo no se cobra el domingo. Al día → $0.
+//    Si el plan de adelante todavía cobra el domingo, la tajada queda en $0
+//    (pausada) hasta que ese plan ya no tenga cuota de domingo. Ese día el
+//    cobro es el acuerdo y la letra atrasada. No se abre letra nueva.
 //
 // Taller (chapistería, mantenimiento, colisión) desde la fecha de ingreso
 // hasta el día anterior a la activación: no corre letra diaria ni acuerdo
@@ -37,10 +40,13 @@
 // Árbol lun–sáb: tajada del domingo pasado si sigue abierta → recargo →
 // acuerdo del día → Recargo Cierre semana → letras atrasadas → letra de hoy
 // → días siguientes (acuerdo de ese día, luego la letra).
-// Domingo: primero la tajada. Después recargo, acuerdo del día y letra
-// atrasada. El excedente va a la letra siguiente, salvo que quede saldo de
-// acuerdo (baja el plan) o el pago traiga rubro domingo (adelanta el próximo
-// domingo, solo hasta el balde que queda). El atraso ya se comió antes.
+// Domingo sin acuerdo de domingo: primero la tajada. Después recargo, acuerdo
+// del día y letra atrasada. El excedente va a la letra siguiente, salvo que
+// quede saldo de acuerdo (baja el plan) o el pago traiga rubro domingo
+// (adelanta el próximo domingo, solo hasta el balde que queda).
+// Domingo con acuerdo que todavía cobra ese día: primero ese acuerdo, después
+// la letra atrasada. La tajada no se debita. El excedente baja el plan y luego
+// la letra siguiente; no llena el balde.
 //
 // Excedente lun–vie: si el cliente NOMBRA el destino y ese concepto existe,
 // el sobrante va ahí. Si no lo nombra, no se inventa.
@@ -57,6 +63,7 @@
 //
 // TOTAL A PAGAR HOY = letra/recargo/cierre + el un ítem extra elegido.
 
+import { domingoPausadoPorPlanes } from "./acuerdo";
 import type { EstadoCuenta } from "./estado-cuenta";
 import {
   armarExtractoDiario,
@@ -95,6 +102,8 @@ export type CobroHoy = ExtractoArmado & {
   acuerdoHoy: number;
   /** Lo que aún falta del acuerdo hoy (lo que sí puede ir al total). */
   faltaAcuerdo: number;
+  /** El plan de adelante todavía cobra el domingo: la tajada del contrato está en $0. */
+  domingoPausado: boolean;
 };
 
 /** Carga saldo de acuerdos + cargos extra del contrato. */
@@ -115,11 +124,13 @@ export async function ctxCobroHoy(contratoId: string): Promise<CobroHoyCtx> {
 
 /** Cálculo canónico de cobro del día a partir del estado de cuenta. */
 export function cobroHoyDe(e: EstadoCuenta, ctx: CobroHoyCtx): CobroHoy {
+  const domingoPausado = domingoPausadoPorPlanes(ctx.planes, e.hoyIso);
   const armado = armarExtractoDiario(e, {
     acuerdoSaldo: ctx.acuerdoSaldo,
     extras: ctx.extras,
     preferencia: ctx.preferencia,
     enEspera: ctx.enEspera,
+    planes: ctx.planes,
     hoy: e.hoyIso,
   });
   return {
@@ -128,6 +139,7 @@ export function cobroHoyDe(e: EstadoCuenta, ctx: CobroHoyCtx): CobroHoy {
     acuerdoSaldo: ctx.acuerdoSaldo,
     acuerdoHoy: Math.max(Number(e.acuerdoHoy) || 0, 0),
     faltaAcuerdo: Math.max(Number(e.faltaAcuerdo) || 0, 0),
+    domingoPausado,
   };
 }
 

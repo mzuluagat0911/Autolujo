@@ -12,7 +12,11 @@
 //    El próximo domingo no se llena, salvo que el pago traiga ese rubro.
 //    Sábado: el sobrante no se adelanta solo.
 //
-// Domingo:
+// Domingo, si el plan de adelante todavía cobra ese día:
+// 1) Ese acuerdo, antes que la letra atrasada. La tajada del contrato queda en $0.
+// 2) Letra atrasada. No se abre letra nueva.
+// 3) El excedente baja el saldo del plan y luego la letra siguiente. No llena el balde.
+// Domingo, si ese plan ya no cobra el domingo:
 // 1) La tajada del día, antes que la letra atrasada y que otro concepto.
 // 2) Recargo, cuota de acuerdo que toque hoy, letra atrasada.
 // 3) El excedente va a la letra siguiente, salvo que quede saldo de acuerdo
@@ -24,7 +28,7 @@ import { distribuirPago } from "./rules";
 import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { cargosExtraPorContrato, partirCargosNoLetra } from "./extracto-desglose";
-import { cuotaAcuerdoHoy, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
+import { acuerdoCobraDomingo, cuotaAcuerdoHoy, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
 import { devolucionDeVehiculo, devolucionVigente } from "./devolucion";
 import { inactivacionDeVehiculo, inactivacionVigente } from "./inactivo";
 import { pausaDeVehiculo, pausaVigente } from "./pausa-productiva";
@@ -981,7 +985,8 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     pagoId,
     Number(terminos.cuota_domingo) || 0,
   );
-  const domingoHoy = domingoAbierto.tajada;
+  const pausaDomingo = Boolean(planCobro && acuerdoCobraDomingo(planCobro, fecha));
+  const domingoHoy = pausaDomingo ? 0 : domingoAbierto.tajada;
   // Multa de “no pago” = solo letra; el acuerdo no entra a la meta puntual.
   const meta = cuotaHoy;
   const pagoPuntualAntes = cubrioCuotaDelDia(pagadoPuntualAntes, meta);
@@ -1086,7 +1091,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       letra: letraDiaria,
       desde: fecha,
       bucketNeto: domingoAbierto.bucketNeto,
-      adelantarDomingo: pago.rubro === "domingo",
+      adelantarDomingo: pago.rubro === "domingo" && !pausaDomingo,
     });
     if (parte.aplicado > 0.009) {
       resultado = {

@@ -114,7 +114,11 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   con motivo "Reasignar pago" para que el equipo lo haga. Solo el equipo reasigna distinto al árbol.
   El domingo el acuerdo NO ocupa ese lugar por tener saldo. Solo entra si el TOTAL ya lo trae
   (acuerdo atrasado o acuerdo de domingo).
-  DOMINGO, el reparto del pago es otro: primero la tajada, antes que la letra atrasada y que
+  DOMINGO, el reparto del pago es otro. Si el CONTEXTO dice que el domingo está pausado
+  porque el acuerdo todavía cobra ese día: primero ese acuerdo, después la letra atrasada.
+  La tajada del contrato queda en $0 y no se debita. Lo que sobre baja el saldo del acuerdo
+  y luego la letra siguiente. No llena el balde de domingo.
+  Si el domingo NO está pausado: primero la tajada, antes que la letra atrasada y que
   otro concepto. Lo que sobre va a la letra siguiente. No va ahí si tiene acuerdo (baja el
   plan), si tiene letra atrasada (baja ese atraso) o si el cliente dice que ese excedente
   adelanta el próximo domingo (baja el balde). Si no lo dice, no llenes el resto del balde.
@@ -172,10 +176,12 @@ REGLAS ESTRICTAS (NUNCA las rompas):
   · Si el TOTAL es $0, está al día: dilo. No armes un cobro.
 - DOMINGO (obligatorio — no lo recalcules):
   · El único monto es TOTAL A PAGAR HOY. No armes otro.
-  · Si HOY es domingo, ese total solo puede traer esto: la tajada del domingo, la letra atrasada, un acuerdo atrasado (la cuota del día anterior que no se pagó) o un acuerdo de domingo.
+  · Si HOY es domingo y el CONTEXTO dice que el domingo está pausado: el TOTAL solo trae el acuerdo que cobra ese día y la letra atrasada. La tajada del contrato es $0. No la pidas ni la sumes. Se retoma el domingo en que ese acuerdo ya no cobre el domingo.
+  · Si HOY es domingo y no está pausado, ese total solo puede traer esto: la tajada del domingo, la letra atrasada, un acuerdo atrasado (la cuota del día anterior que no se pagó) o un acuerdo de domingo.
   · La cuota diaria del acuerdo (la de lunes a sábado) NO se cobra el domingo. Tener saldo de acuerdo no basta para pedirla.
-  · Si el cliente paga la tajada de domingo, esa plata va al domingo, antes que la letra atrasada y que otro concepto. No la pases a la letra.
-  · Lo que pague de más va a la letra siguiente. Si tiene acuerdo, ese excedente baja el acuerdo. Si tiene letra atrasada, baja ese atraso. Si dice que quiere adelantar el próximo domingo, ese excedente baja el balde: confírmalo y marca pasar_a_humano con motivo "Excedente a domingo". Si no lo dice, no llenes el resto del balde.
+  · Si el domingo no está pausado y el cliente paga la tajada, esa plata va al domingo, antes que la letra atrasada y que otro concepto. No la pases a la letra.
+  · Si el domingo está pausado, el pago va primero al acuerdo y después a la letra atrasada. No lo pases a la tajada.
+  · Lo que pague de más va a la letra siguiente. Si tiene acuerdo, ese excedente baja el acuerdo. Si tiene letra atrasada, baja ese atraso. Si el domingo está pausado, ese excedente no va al balde. Si no está pausado y dice que quiere adelantar el próximo domingo, ese excedente baja el balde: confírmalo y marca pasar_a_humano con motivo "Excedente a domingo". Si no lo dice, no llenes el resto del balde.
   · Pagada la tajada de hoy, no pidas otra el mismo día: lo que queda del balde es pendiente.
   · Si el TOTAL es $0, está al día: no pidas cuota de domingo, ni el balde entero, ni el acuerdo.
   · Lun–sáb: si ya pagó la tajada del domingo, lo que queda es el próximo domingo. Se menciona y NO se suma. Si está al día, hoy solo va la letra. Lun–vie solo entra una tajada si el domingo pasado quedó sin pagar.

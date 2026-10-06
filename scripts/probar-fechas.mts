@@ -219,6 +219,46 @@ const armSabado = armarExtractoDiario(fakeSabado, {
   extras: [{ etiqueta: "domingo", monto: 90 }],
   hoy: "2026-09-26",
 });
+const fakeDomingoAcuerdo = {
+  ...domConBalde,
+  cuotaDomingo: 30,
+  faltaAcuerdo: 30,
+  acuerdoHoy: 30,
+  hoyIso: "2026-10-04",
+} as unknown as EstadoCuenta;
+const armDomingoAcuerdo = armarExtractoDiario(fakeDomingoAcuerdo, {
+  acuerdoSaldo: 185,
+  extras: [{ etiqueta: "domingo", monto: 60 }],
+  hoy: "2026-10-04",
+  planes: [{
+    etiqueta: "Acuerdo de pago",
+    saldo: 185,
+    montoTotal: 185,
+    cuotaDiaria: 5,
+    cuotaDomingo: 30,
+    frecuencia: "dia",
+    fecha: "2026-09-29",
+    cobra: true,
+  }],
+});
+check("domingo con acuerdo: la tajada no entra", armDomingoAcuerdo.lineas.some((l) => l.etiqueta === "domingo" && !l.aviso), false);
+check(
+  "domingo con acuerdo: el balde queda pausado",
+  armDomingoAcuerdo.lineas.some((l) => l.aviso && /domingo pausado: \$60/.test(l.etiqueta)),
+  true,
+);
+check("domingo con acuerdo: cobra el acuerdo $30", armDomingoAcuerdo.totalCobrarHoy, 30);
+const armDomingoSinAcuerdo = armarExtractoDiario(fakeDomingoAcuerdo, {
+  acuerdoSaldo: 0,
+  extras: [{ etiqueta: "domingo", monto: 60 }],
+  hoy: "2026-10-04",
+});
+check(
+  "domingo sin acuerdo: la tajada sigue en el total",
+  armDomingoSinAcuerdo.lineas.some((l) => l.etiqueta === "domingo" && l.monto === 30 && !l.aviso),
+  true,
+);
+
 check("extracto sábado: domingo NO suma (solo aviso)", armSabado.totalCobrarHoy, 0);
 check(
   "extracto sábado: aviso del balde $90",

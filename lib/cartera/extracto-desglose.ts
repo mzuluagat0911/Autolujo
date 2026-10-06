@@ -14,6 +14,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
+import { domingoPausadoPorPlanes } from "./acuerdo";
 import { esDomingo, fechaLarga, hoyPanama } from "./fecha";
 import { conceptoSinMarca, leerPlanCargo, rebanadaDelDia } from "./recargo-montos";
 import { tajadaDomingoQueFalta } from "./cifras";
@@ -118,6 +119,8 @@ export function armarExtractoDiario(
     preferencia?: string | null;
     /** Planes que esperan detrás del que se está cobrando. No suman. */
     enEspera?: { etiqueta: string; saldo: number }[];
+    /** Planes activos. Si el de adelante cobra el domingo, la tajada se pausa. */
+    planes?: PlanAcuerdoVista[];
     /** ISO YYYY-MM-DD del día del extracto (para saber si es domingo). */
     hoy?: string;
   },
@@ -160,9 +163,12 @@ export function armarExtractoDiario(
 
   // Árbol domingo:
   // - Domingo calendario: tajada = cobro del día (base), resto aviso.
+  // - Si el plan de adelante todavía cobra el domingo, esa tajada queda en $0
+  //   y el cobro del día es el acuerdo más la letra atrasada.
   // - Lun–sáb: la tajada del domingo pasado entra al total si sigue sin pagar.
   //   El sábado no abre el domingo que viene. Tajada ya pagada: solo aviso.
-  const domingoComoBase = hoyEsDomingo && tajada > 0.009;
+  const pausaDomingo = domingoPausadoPorPlanes(opts?.planes, hoyIso);
+  const domingoComoBase = hoyEsDomingo && tajada > 0.009 && !pausaDomingo;
   const tajadaEntreSemana = !hoyEsDomingo && tajada > 0.009;
 
   // Un cargo “otros/mant” del ledger solo está dentro de totalHoy si cabe en el
@@ -191,8 +197,8 @@ export function armarExtractoDiario(
   // Solo descontar lo embebido en pendienteAnterior (anti-duplicado real).
   cuenta = Math.max(cuenta - embebidosSum, 0);
 
-  // Domingo: la tajada va en su línea. “Cuenta” queda solo la letra impaga.
-  if (domingoComoBase) {
+  // Domingo: la tajada sale de la cuenta. Si el acuerdo la pausa, no se cobra.
+  if (hoyEsDomingo && tajada > 0.009) {
     cuenta = Math.max(cuenta - tajada, 0);
   }
 
@@ -296,8 +302,14 @@ export function armarExtractoDiario(
     }
   }
 
-  // La tajada ya está en la base. Lo que sobra del balde es el próximo domingo.
-  if (domingoComoBase || tajadaEntreSemana) {
+  // La tajada ya está en la base, o el acuerdo la dejó en cero.
+  if (pausaDomingo && baldeDomingo > 0.009) {
+    out.push({
+      etiqueta: `domingo pausado: ${money(baldeDomingo)}`,
+      monto: baldeDomingo,
+      aviso: true,
+    });
+  } else if (domingoComoBase || tajadaEntreSemana) {
     const resto = Math.round((baldeDomingo - tajada) * 100) / 100;
     if (resto > 0.009) {
       out.push({

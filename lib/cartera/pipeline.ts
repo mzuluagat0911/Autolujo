@@ -317,7 +317,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     lineas.push(
       ``,
       `RESUMEN DE LA CUENTA (para "cuánto debo hoy" cobra EXACTAMENTE el total de abajo; no lo recalcules):`,
-      `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${esDomingo(hoyPanama()) ? " HOY ES DOMINGO: cobra la tajada del domingo, la letra atrasada, un acuerdo atrasado o un acuerdo de domingo. La cuota diaria del acuerdo no entra. Si no hay nada de eso, el total es $0." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
+      `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${esDomingo(hoyPanama()) ? cobro.domingoPausado ? " HOY ES DOMINGO Y EL DOMINGO ESTÁ PAUSADO: el acuerdo de adelante todavía cobra ese día. El TOTAL es ese acuerdo y la letra atrasada. La tajada del contrato es $0. No la sumes. Cuando ese acuerdo ya no cobre el domingo, la tajada vuelve." : " HOY ES DOMINGO: cobra la tajada del domingo, la letra atrasada, un acuerdo atrasado o un acuerdo de domingo. La cuota diaria del acuerdo no entra. Si no hay nada de eso, el total es $0." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
       ...(est.devuelto
         ? [`- CARRO DEVUELTO desde ${est.devueltoDesde ?? "la fecha de devolución"}. NO cobres letra diaria ni hables de la cuota de hoy. El TOTAL de arriba es el saldo que ya debía.`]
         : est.inactivo
@@ -339,7 +339,9 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         : `- ACUERDO DE PAGO: no tiene plan activo.`,
       est.domingoSaldo > 0.009
         ? esDomingo(hoyPanama())
-          ? `- DOMINGO: balde ${m(est.domingoSaldo)}. La tajada YA está dentro del TOTAL si el desglose trae una línea "$X domingo". El resto es aviso. NUNCA sumes el balde entero encima del TOTAL.`
+          ? cobro.domingoPausado
+            ? `- DOMINGO PAUSADO: balde ${m(est.domingoSaldo)}. Hoy es $0 porque el acuerdo todavía cobra el domingo. Mencionalo solo si pregunta. NO lo sumes. Se retoma cuando ese acuerdo ya no cobre el domingo.`
+            : `- DOMINGO: balde ${m(est.domingoSaldo)}. La tajada YA está dentro del TOTAL si el desglose trae una línea "$X domingo". El resto es aviso. NUNCA sumes el balde entero encima del TOTAL.`
           : `- DOMINGO PENDIENTE: ${m(est.domingoSaldo)}. Si ya pagó la tajada del domingo, esto es el próximo domingo: menciónalo y NO lo sumes. Hoy, si está al día, solo va la letra. Lun–vie solo entra al total la tajada que el domingo pasado quedó sin pagar, y solo si el desglose la trae con $.`
         : `- DOMINGO PENDIENTE: $0.`,
       `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
@@ -460,10 +462,14 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `REGLA DE COBRO DIARIO (OBLIGATORIA — “cuánto debo HOY” / extracto):`,
       `- La cifra oficial es TOTAL A PAGAR HOY de arriba (${m(cobro.totalCobrarHoy)}) y su desglose. No inventes otra.`,
       esDomingo(hoyPanama())
-        ? `- HOY ES DOMINGO. No se abre letra nueva. El TOTAL solo puede traer tajada del domingo, letra atrasada, acuerdo atrasado o acuerdo de domingo. La cuota diaria del acuerdo no entra. Tener saldo de acuerdo no basta.`
+        ? cobro.domingoPausado
+          ? `- HOY ES DOMINGO Y EL DOMINGO ESTÁ PAUSADO. No se abre letra nueva. El TOTAL es el acuerdo que cobra el domingo y la letra atrasada. La tajada del contrato es $0. La cuota diaria del acuerdo (lunes a sábado) no entra.`
+          : `- HOY ES DOMINGO. No se abre letra nueva. El TOTAL solo puede traer tajada del domingo, letra atrasada, acuerdo atrasado o acuerdo de domingo. La cuota diaria del acuerdo no entra. Tener saldo de acuerdo no basta.`
         : `- Lun–sáb se cobra: letra del día + saldo anterior de letra + recargo/cierre si aplica, más un solo concepto. Si el acuerdo tiene saldo, ese es el concepto hasta que quede en cero.`,
       esDomingo(hoyPanama())
-        ? `- ÁRBOL DE UN PAGO hoy: primero la tajada de domingo, antes que la letra atrasada y que otro concepto. Después recargo, acuerdo que toque hoy, Recargo Cierre semana si está cargado, y luego la letra atrasada. El excedente va a la letra siguiente, salvo acuerdo (baja el saldo del plan), salvo atraso (ya va en la letra atrasada) o salvo que el cliente pida adelantar el próximo domingo (baja el balde, solo hasta lo que queda). No armes un concepto nuevo.`
+        ? cobro.domingoPausado
+          ? `- ÁRBOL DE UN PAGO hoy: 1) el acuerdo que cobra el domingo, antes que la letra atrasada. Si hay varios, el que todavía tiene saldo. 2) la letra atrasada. La tajada no se debita. El excedente baja el saldo del acuerdo y luego la letra siguiente. No llena el balde de domingo.`
+          : `- ÁRBOL DE UN PAGO hoy: primero la tajada de domingo, antes que la letra atrasada y que otro concepto. Después recargo, acuerdo que toque hoy, Recargo Cierre semana si está cargado, y luego la letra atrasada. El excedente va a la letra siguiente, salvo acuerdo (baja el saldo del plan), salvo atraso (ya va en la letra atrasada) o salvo que el cliente pida adelantar el próximo domingo (baja el balde, solo hasta lo que queda). No armes un concepto nuevo.`
         : `- ÁRBOL DE UN PAGO (estricto, por carro): 1) tajada del domingo pasado, si sigue sin pagar. Una sola, no el balde. Si ya se pagó, el resto es el próximo domingo y no entra  2) recargo por no pago  3) compromiso de pago del día. Si el acuerdo tiene saldo, ESE es el concepto hasta que quede en cero: mantenimiento y lo demás se listan pendientes y no entran al total  4) Recargo Cierre semana, si está cargado: no es atraso ni letra ni domingo  5) letras atrasadas  6) letra de hoy  7) si sobra y NO es sábado (o el cliente ya dijo que es adelanto de letra): días siguientes, acuerdo de ese día y luego la letra. El próximo domingo no se llena solo.`,
       `- Si el cliente NOMBRA el destino del excedente y ese concepto existe (domingo, acuerdo, etc.), SE APLICA AHÍ. No lo dejes en letra. Confírmalo y marca pasar_a_humano con motivo "Excedente a <concepto>".`,
       esSabado(hoyPanama())
@@ -471,7 +477,9 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         : `- Sábado: si ese día el pago supera la letra diaria, se pregunta el destino del excedente (domingo adelantado o letra siguiente). No se asume.`,
       `- Si tiene plan de acuerdo con saldo pero la cuota de hoy YA está pagada: dilo (saldo del plan), NO lo sumes otra vez.`,
       esDomingo(hoyPanama())
-        ? `- La tajada YA está en el TOTAL si el desglose trae una línea con $ de domingo. El resto del balde es aviso. No lo sumes encima.`
+        ? cobro.domingoPausado
+          ? `- El desglose dice "domingo pausado". Eso es aviso, es $0 y no entra al TOTAL.`
+          : `- La tajada YA está en el TOTAL si el desglose trae una línea con $ de domingo. El resto del balde es aviso. No lo sumes encima.`
         : `- Lun–sáb el domingo no entra al total, salvo que el desglose lo traiga con $ como el concepto del día.`,
       esDomingo(hoyPanama())
         ? `- Puedes listar lo demás si preguntan. El TOTAL del domingo no se rearma.`
@@ -479,7 +487,9 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `- NO sumes mantenimiento + acuerdos + domingo el mismo día en el total de hoy.`,
       `- NUNCA inventes una línea “abono” con lo pagado hoy: eso ya está descontado.`,
       esDomingo(hoyPanama())
-        ? `- PAGO MAYOR AL TOTAL: si paga más de ${m(cobro.totalCobrarHoy)}, no preguntes el destino. El excedente va a la letra siguiente, salvo acuerdo o letra atrasada. Si pide adelantar el próximo domingo, confírmalo y marca pasar_a_humano con motivo "Excedente a domingo".`
+        ? cobro.domingoPausado
+          ? `- PAGO MAYOR AL TOTAL: si paga más de ${m(cobro.totalCobrarHoy)}, no preguntes el destino. El excedente baja el acuerdo y después la letra siguiente. No lo pongas en el domingo pausado.`
+          : `- PAGO MAYOR AL TOTAL: si paga más de ${m(cobro.totalCobrarHoy)}, no preguntes el destino. El excedente va a la letra siguiente, salvo acuerdo o letra atrasada. Si pide adelantar el próximo domingo, confírmalo y marca pasar_a_humano con motivo "Excedente a domingo".`
         : `- PAGO MAYOR AL TOTAL: si paga más de ${m(cobro.totalCobrarHoy)}, pregunta a dónde va el excedente.`,
       cobro.acuerdoSaldo > 0.009 || (est.domingoSaldo ?? 0) > 0.009
         ? `- Conceptos a los que SÍ puede abonar el excedente (parcial vale):${cobro.acuerdoSaldo > 0.009 ? ` acuerdo (saldo ${m(cobro.acuerdoSaldo)})` : ""}${(est.domingoSaldo ?? 0) > 0.009 ? ` domingo (${m(est.domingoSaldo)})` : ""}.`

@@ -34,6 +34,7 @@ export function varsExtractoDetalle(e: EstadoCuenta, ctx?: ExtractoCtx): string[
     extras: ctx?.extras ?? [],
     preferencia: ctx?.preferencia,
     enEspera: ctx?.enEspera,
+    planes: ctx?.planes,
     hoy: e.hoyIso,
   });
   return [
@@ -76,6 +77,7 @@ export function totalCobrarHoyExtracto(e: EstadoCuenta, ctx?: ExtractoCtx): numb
     extras: ctx?.extras ?? [],
     preferencia: ctx?.preferencia,
     enEspera: ctx?.enEspera,
+    planes: ctx?.planes,
     hoy: e.hoyIso,
   }).totalCobrarHoy;
 }
