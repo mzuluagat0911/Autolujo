@@ -148,7 +148,7 @@ export async function validarComprobante(opts: {
           codigo: "duplicado",
           detalle: `La referencia ${ref} ya está en un pago de hoy por $${montoComp.toFixed(2)}.`,
         });
-      } else if (!refNueva) {
+      } else if (!refCanon) {
         const primero = mismos[0]!;
         if (!opts.yaPidieronReferencia) {
           crearPago = false;

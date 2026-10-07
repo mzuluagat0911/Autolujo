@@ -6,8 +6,8 @@ import {
   loteIgnorarSeleccionados,
   resolverMovimientoExtracto,
 } from "./actions";
-import { StatusChip, Money, EmptyState } from "@/components/kit";
-import { siglaEmpresa } from "@/lib/cartera/empresa";
+import { StatusChip, Money, EmptyState, FiltersBar } from "@/components/kit";
+import { etiquetaCarroUi, siglaEmpresa } from "@/lib/cartera/empresa";
 import type { ResultadoRevision } from "@/lib/cartera/revision-extracto";
 
 export type CandidatoPago = {
@@ -16,6 +16,7 @@ export type CandidatoPago = {
   numeroCarro: string | null;
   pagadoAt: string;
   referencia: string | null;
+  empresa?: string | null;
 };
 
 export type MovimientoRevision = {
@@ -49,8 +50,11 @@ function parseIdsMotivo(motivo: string | null): string[] {
   return m[1].split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+const ORDEN_EMPRESA = ["AL", "KW", "GD"];
+
 export function ColaRevision({ movimientos }: { movimientos: MovimientoRevision[] }) {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [empresa, setEmpresa] = useState("all");
   const [loteMsg, setLoteMsg] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -63,8 +67,21 @@ export function ColaRevision({ movimientos }: { movimientos: MovimientoRevision[
     );
   }
 
-  const sugeridos = movimientos.filter((m) => m.via === "carro" && (m.sugeridoCarro || m.numeroCarro) && !(m.candidatos && m.candidatos.length > 1));
-  const seleccionados = movimientos.filter((m) => selected[m.id]).map((m) => m.id);
+  const conteo = new Map<string, number>();
+  for (const m of movimientos) {
+    const sigla = siglaEmpresa(m.empresa) || "Sin empresa";
+    conteo.set(sigla, (conteo.get(sigla) ?? 0) + 1);
+  }
+  const siglas = [...conteo.keys()].sort((a, b) => {
+    const ia = ORDEN_EMPRESA.indexOf(a);
+    const ib = ORDEN_EMPRESA.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+  const visibles =
+    empresa === "all" ? movimientos : movimientos.filter((m) => (siglaEmpresa(m.empresa) || "Sin empresa") === empresa);
+
+  const sugeridos = visibles.filter((m) => m.via === "carro" && (m.sugeridoCarro || m.numeroCarro) && !(m.candidatos && m.candidatos.length > 1));
+  const seleccionados = visibles.filter((m) => selected[m.id]).map((m) => m.id);
 
   function toggle(id: string) {
     setSelected((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -72,7 +89,9 @@ export function ColaRevision({ movimientos }: { movimientos: MovimientoRevision[
 
   function aplicarLote() {
     start(async () => {
-      const r = await loteAplicarSugeridos();
+      const fd = new FormData();
+      for (const m of sugeridos) fd.append("movimiento_id", m.id);
+      const r = await loteAplicarSugeridos(fd);
       setLoteMsg(r.msg);
     });
   }
@@ -89,6 +108,14 @@ export function ColaRevision({ movimientos }: { movimientos: MovimientoRevision[
 
   return (
     <div className="space-y-3">
+      <FiltersBar
+        chips={[
+          { id: "all", label: "Todas", count: movimientos.length },
+          ...siglas.map((s) => ({ id: s, label: s, count: conteo.get(s) ?? 0 })),
+        ]}
+        activeChip={empresa}
+        onChip={setEmpresa}
+      />
       <div className="flex flex-wrap items-center gap-2 rounded-xl bg-surface px-4 py-3 ring-1 ring-line">
         <button
           type="button"
@@ -107,12 +134,19 @@ export function ColaRevision({ movimientos }: { movimientos: MovimientoRevision[
           Ignorar seleccionados ({seleccionados.length})
         </button>
         <p className="text-xs text-muted">
-          Solo aplica solo si el carro está claro. Ambiguos y sin carro se resuelven uno a uno.
+          El número es de la empresa del extracto. Aplicar en lote solo toca la empresa que estás viendo.
         </p>
       </div>
       {loteMsg && <p className="text-sm text-muted">{loteMsg}</p>}
 
-      {movimientos.map((m) => (
+      {visibles.length === 0 && (
+        <EmptyState
+          title="Nada de esta empresa"
+          hint="Cambiá el filtro para ver los movimientos de otra flota."
+        />
+      )}
+
+      {visibles.map((m) => (
         <FilaRevision
           key={m.id}
           m={m}
@@ -152,11 +186,13 @@ function FilaRevision({
           numeroCarro: null as string | null,
           pagadoAt: "",
           referencia: null as string | null,
+          empresa: m.empresa,
         }));
   const ambiguo = candidatos.length > 1 || (m.motivo?.includes("Varios comprobantes") ?? false);
   const [pagoId, setPagoId] = useState(candidatos[0]?.id ?? "");
   const via = viaChip(m.via, ambiguo);
   const busy = aplicando || ignorando;
+  const sigla = siglaEmpresa(m.empresa);
 
   if (aplicar?.ok || ignorar?.ok) return null;
 
@@ -179,7 +215,7 @@ function FilaRevision({
               {m.empresa && <StatusChip tone="neutral">{siglaEmpresa(m.empresa)}</StatusChip>}
               <StatusChip tone={via.tone}>{via.label}</StatusChip>
               {m.sugeridoCarro && (
-                <StatusChip tone="azul">Carro {m.sugeridoCarro}</StatusChip>
+                <StatusChip tone="azul">{etiquetaCarroUi(m.empresa, m.sugeridoCarro)}</StatusChip>
               )}
               {m.referencia && (
                 <StatusChip tone="neutral">Ref {m.referencia}</StatusChip>
@@ -232,8 +268,10 @@ function FilaRevision({
               >
                 {candidatos.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.numeroCarro ? `Carro ${c.numeroCarro}` : "Sin carro"} ·{" "}
-                    {c.referencia ? `ref ${c.referencia}` : c.id.slice(0, 8)}
+                    {etiquetaCarroUi(c.empresa ?? m.empresa, c.numeroCarro) === "—"
+                      ? "Sin carro"
+                      : etiquetaCarroUi(c.empresa ?? m.empresa, c.numeroCarro)}{" "}
+                    · {c.referencia ? `ref ${c.referencia}` : c.id.slice(0, 8)}
                   </option>
                 ))}
               </select>
@@ -241,16 +279,23 @@ function FilaRevision({
           )}
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-              Carro
+              Carro{sigla ? ` · ${sigla}` : ""}
             </span>
-            <input
-              name="carro"
-              value={carro}
-              onChange={(e) => setCarro(e.target.value)}
-              placeholder="G25"
-              required
-              className="w-28 rounded-lg bg-white px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
-            />
+            <span className="flex overflow-hidden rounded-lg ring-1 ring-line focus-within:ring-2 focus-within:ring-ink/20">
+              {sigla && (
+                <span className="flex items-center bg-surface-2 px-2.5 text-sm font-medium text-ink">
+                  {sigla}
+                </span>
+              )}
+              <input
+                name="carro"
+                value={carro}
+                onChange={(e) => setCarro(e.target.value)}
+                placeholder={sigla === "GD" ? "G25" : "25"}
+                required
+                className="w-24 bg-white px-3 py-2.5 text-sm outline-none placeholder:text-faint"
+              />
+            </span>
           </label>
           <button
             disabled={busy}

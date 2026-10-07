@@ -71,8 +71,9 @@ export async function resolverMovimientoExtracto(
   return res;
 }
 
-export async function loteAplicarSugeridos(): Promise<{ ok: number; fail: number; msg: string }> {
-  const res = await aplicarSugeridosEnLote();
+export async function loteAplicarSugeridos(formData: FormData): Promise<{ ok: number; fail: number; msg: string }> {
+  const ids = formData.getAll("movimiento_id").map((v) => String(v));
+  const res = await aplicarSugeridosEnLote(ids);
   if (res.ok > 0) await refrescarCartera();
   return res;
 }

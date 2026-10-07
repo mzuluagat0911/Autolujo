@@ -84,16 +84,17 @@ async function getData(): Promise<{
     if (ambiguos.length > 0) {
       const { data: pend } = await sb
         .from("pagos")
-        .select("id, monto, pagado_at, numero_carro, referencia")
+        .select("id, monto, pagado_at, numero_carro, referencia, contrato:contratos(vehiculo:vehiculos(empresa:empresas(codigo)))")
         .eq("estado_conciliacion", "pendiente")
         .eq("origen", "comprobante")
         .limit(300);
-      const pendientes = (pend ?? []) as {
+      const pendientes = (pend ?? []) as unknown as {
         id: string;
         monto: number;
         pagado_at: string;
         numero_carro: string | null;
         referencia: string | null;
+        contrato: { vehiculo: { empresa: { codigo: string } | null } | null } | null;
       }[];
       for (const r of ambiguos) {
         if (!r.fecha) continue;
@@ -113,6 +114,7 @@ async function getData(): Promise<{
             numeroCarro: p.numero_carro,
             pagadoAt: p.pagado_at,
             referencia: p.referencia,
+            empresa: p.contrato?.vehiculo?.empresa?.codigo ?? null,
           }));
       }
     }

@@ -300,16 +300,22 @@ export async function aplicarMovimientoExtracto(opts: {
   return { ok: true };
 }
 
-/** Aplica en lote lo que ya tiene carro sugerido (vía carro). */
-export async function aplicarSugeridosEnLote(): Promise<{ ok: number; fail: number; msg: string }> {
+/** Aplica en lote lo que ya tiene carro sugerido (vía carro). Si llegan ids, solo esos. */
+export async function aplicarSugeridosEnLote(ids?: string[]): Promise<{ ok: number; fail: number; msg: string }> {
   const sb = createServerSupabase();
-  const { data, error } = await sb
+  const unicos = ids ? [...new Set(ids.map((id) => id.trim()).filter(Boolean))] : null;
+  if (unicos && unicos.length === 0) {
+    return { ok: 0, fail: 0, msg: "No hay movimientos con carro sugerido para aplicar en lote." };
+  }
+  let q = sb
     .from("movimientos_extracto")
     .select("id, numero_carro, via, contrato:contratos(vehiculo:vehiculos(numero))")
     .eq("estado", "revisar")
     .eq("via", "carro")
     .order("fecha", { ascending: true })
     .limit(80);
+  if (unicos) q = q.in("id", unicos);
+  const { data, error } = await q;
   if (error) return { ok: 0, fail: 0, msg: error.message };
 
   type Row = {
