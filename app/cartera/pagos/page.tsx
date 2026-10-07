@@ -2,7 +2,7 @@ import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader, PageShell, EmptyState } from "@/components/kit";
 import { salidasDePagos } from "@/lib/cartera/salidas-aplicar";
-import { etiquetaCarroUi } from "@/lib/cartera/empresa";
+import { etiquetaCarroUi, siglaEmpresa } from "@/lib/cartera/empresa";
 import { ListaComprobantes, type ContratoOpt, type PagoFila } from "./lista";
 
 export const dynamic = "force-dynamic";
@@ -107,6 +107,7 @@ async function getData() {
         signedUrl,
         salida: salidas.get(p.id) ?? null,
         alertaCuenta: /ALERTAS:.*cuenta/i.test(p.notas ?? ""),
+        empresa: siglaEmpresa(p.contrato?.vehiculo?.empresa?.codigo) || null,
       });
     }
 
@@ -116,6 +117,7 @@ async function getData() {
       vehiculo: { numero: string; empresa: { codigo: string } | null } | null;
     }[]).map((c) => ({
       id: c.id,
+      empresa: siglaEmpresa(c.vehiculo?.empresa?.codigo) || null,
       label: `${etiquetaCarroUi(c.vehiculo?.empresa?.codigo, c.vehiculo?.numero)} · ${c.cliente?.nombre ?? "sin nombre"}`,
     }));
 

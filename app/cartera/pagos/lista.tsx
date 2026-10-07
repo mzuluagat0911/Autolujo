@@ -26,11 +26,13 @@ export type PagoFila = {
   signedUrl?: string | null;
   salida?: SalidaFila | null;
   alertaCuenta: boolean;
+  empresa: string | null;
 };
 
-export type ContratoOpt = { id: string; label: string };
+export type ContratoOpt = { id: string; label: string; empresa: string | null };
 
 type Filtro = "todos" | "banco" | "alerta" | "contrato";
+type FiltroEmpresa = "todas" | "AL" | "KW" | "GD";
 
 function IconOjo({ open }: { open?: boolean }) {
   if (open) {
@@ -63,41 +65,75 @@ export function ListaComprobantes({
   contratos: ContratoOpt[];
 }) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [empresa, setEmpresa] = useState<FiltroEmpresa>("todas");
   const [imgAbierta, setImgAbierta] = useState<string | null>(null);
   const [comprobadoAbierto, setComprobadoAbierto] = useState<string | null>(null);
+
+  const deEmpresa = useMemo(
+    () => pendientes.filter((p) => empresa === "todas" || p.empresa === empresa),
+    [pendientes, empresa],
+  );
+
+  const porEmpresa = useMemo(
+    () => ({
+      AL: pendientes.filter((p) => p.empresa === "AL").length,
+      KW: pendientes.filter((p) => p.empresa === "KW").length,
+      GD: pendientes.filter((p) => p.empresa === "GD").length,
+    }),
+    [pendientes],
+  );
 
   const counts = useMemo(() => {
     let banco = 0;
     let alerta = 0;
     let contrato = 0;
-    for (const p of pendientes) {
+    for (const p of deEmpresa) {
       if (p.alertaCuenta) alerta++;
       else if (!p.contrato_id) contrato++;
       else banco++;
     }
     return { banco, alerta, contrato };
-  }, [pendientes]);
+  }, [deEmpresa]);
 
   const filas = useMemo(() => {
-    return pendientes.filter((p) => {
+    return deEmpresa.filter((p) => {
       if (filtro === "alerta") return p.alertaCuenta;
       if (filtro === "contrato") return !p.contrato_id;
       if (filtro === "banco") return Boolean(p.contrato_id) && !p.alertaCuenta;
       return true;
     });
-  }, [pendientes, filtro]);
+  }, [deEmpresa, filtro]);
+
+  const contratosEmpresa = useMemo(
+    () => contratos.filter((c) => empresa === "todas" || c.empresa === empresa),
+    [contratos, empresa],
+  );
 
   return (
     <div>
       <FiltersBar
-        chips={[
-          { id: "todos", label: "Todos", count: pendientes.length },
-          { id: "banco", label: "Esperando banco", count: counts.banco },
-          { id: "alerta", label: "Alerta cuenta", count: counts.alerta },
-          { id: "contrato", label: "Sin contrato", count: counts.contrato },
+        chipGroups={[
+          {
+            chips: [
+              { id: "todas", label: "Todas" },
+              { id: "AL", label: "AL", count: porEmpresa.AL },
+              { id: "KW", label: "KW", count: porEmpresa.KW },
+              { id: "GD", label: "GD", count: porEmpresa.GD },
+            ],
+            active: empresa,
+            onChip: (id) => setEmpresa(id as FiltroEmpresa),
+          },
+          {
+            chips: [
+              { id: "todos", label: "Todos", count: deEmpresa.length },
+              { id: "banco", label: "Esperando banco", count: counts.banco },
+              { id: "alerta", label: "Alerta cuenta", count: counts.alerta },
+              { id: "contrato", label: "Sin contrato", count: counts.contrato },
+            ],
+            active: filtro,
+            onChip: (id) => setFiltro(id as Filtro),
+          },
         ]}
-        activeChip={filtro}
-        onChip={(id) => setFiltro(id as Filtro)}
       />
 
       <p className="mt-3 text-sm text-muted">
@@ -118,7 +154,7 @@ export function ListaComprobantes({
             <Fila
               key={p.id}
               p={p}
-              contratos={contratos}
+              contratos={contratosEmpresa}
               verImg={imgAbierta === p.id}
               onToggleImg={() => setImgAbierta((id) => (id === p.id ? null : p.id))}
               verComprobado={comprobadoAbierto === p.id}
