@@ -12,6 +12,7 @@ import { EsqueletoEstados } from "./esqueleto";
 import type { EstadoCuentaFila } from "./types";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export default function EstadosCuentaPage() {
   return (

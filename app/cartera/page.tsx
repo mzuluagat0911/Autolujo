@@ -9,6 +9,7 @@ import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta-cache";
 import { esAdelantado, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 type Datos = {
   ok: boolean;

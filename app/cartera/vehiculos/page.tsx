@@ -12,6 +12,7 @@ import { inactivacionesAbiertas } from "@/lib/cartera/inactivo";
 import { pausasAbiertas } from "@/lib/cartera/pausa-productiva";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 const TOPE_KM_MES = 8000;
 

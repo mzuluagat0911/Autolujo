@@ -260,52 +260,6 @@ export async function cargarBandeja(): Promise<{
   }
 }
 
-const SEL_LISTA_POLL =
-  "id, wa_numero, etiqueta, ultimo_texto, ultimo_mensaje_at, no_leidos, estado, modo, necesita_humano, motivo_escalada, ultimo_entrante_at, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo))";
-
-function filaPoll(row: ConversacionLista): ConversacionLista {
-  return {
-    ...row,
-    cliente: row.cliente ? { nombre: row.cliente.nombre, cedula: row.cliente.cedula ?? null } : null,
-  };
-}
-
-/**
- * Cambios desde la última lectura. Sin fecha, la lista completa.
- * No trae la cédula: el hilo abierto la pide aparte.
- */
-export async function cargarBandejaDesde(desde: string | null): Promise<{
-  convs: ConversacionLista[];
-  incremental: boolean;
-  error: string | null;
-}> {
-  if (!desde) {
-    const full = await cargarBandeja();
-    return { ...full, incremental: false };
-  }
-  try {
-    const sb = createServerSupabase();
-    const [nuevos, humanos] = await Promise.all([
-      sb
-        .from("conversaciones")
-        .select(SEL_LISTA_POLL)
-        .gt("ultimo_mensaje_at", desde)
-        .order("ultimo_mensaje_at", { ascending: false })
-        .limit(80),
-      sb.from("conversaciones").select(SEL_LISTA_POLL).eq("necesita_humano", true).limit(80),
-    ]);
-    if (nuevos.error) throw nuevos.error;
-    if (humanos.error) throw humanos.error;
-    const map = new Map<string, ConversacionLista>();
-    for (const row of [...(humanos.data ?? []), ...(nuevos.data ?? [])] as unknown as ConversacionLista[]) {
-      map.set(row.id, filaPoll(row));
-    }
-    return { convs: [...map.values()], incremental: true, error: null };
-  } catch (e) {
-    return { convs: [], incremental: true, error: e instanceof Error ? e.message : "Error" };
-  }
-}
-
 /** Hilo del chat, sin el cobro del día. Eso es lo que tiene que aparecer al instante. */
 export async function cargarHilo(
   id: string,

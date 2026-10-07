@@ -15,7 +15,6 @@ import {
   accionMarcarLeida,
   accionTomarChat,
   cargarBandeja,
-  cargarBandejaDesde,
   cargarHilo,
   cargarSaldoChat,
   enviarAudioHumano,
@@ -116,11 +115,8 @@ export function InboxConversaciones({
   const listaOrdenFijoRef = useRef<string[] | null>(null);
   const selectedIdRef = useRef(selectedId);
   const detalleRef = useRef(detalle);
-  const convsRef = useRef(convs);
-  const ultimoFullRef = useRef(Date.now());
   selectedIdRef.current = selectedId;
   detalleRef.current = detalle;
-  convsRef.current = convs;
 
   function guardarScrollLista() {
     const el = listaRef.current;
@@ -151,21 +147,6 @@ export function InboxConversaciones({
       if (!vistos.has(c.id)) out.push(c);
     }
     return out;
-  }
-
-  function mezclarCambios(prev: ConversacionLista[], cambios: ConversacionLista[]): ConversacionLista[] {
-    if (cambios.length === 0) return prev;
-    const byId = new Map(prev.map((c) => [c.id, c]));
-    for (const c of cambios) {
-      const old = byId.get(c.id);
-      byId.set(c.id, {
-        ...c,
-        cliente: c.cliente
-          ? { nombre: c.cliente.nombre, cedula: c.cliente.cedula ?? old?.cliente?.cedula ?? null }
-          : (old?.cliente ?? null),
-      });
-    }
-    return aplicarBandeja(prev, [...byId.values()].sort(ordenBandeja));
   }
 
   // Sync URL (preserva ?demo=1).
@@ -227,24 +208,17 @@ export function InboxConversaciones({
         schedule();
         return;
       }
-      const full = Date.now() - ultimoFullRef.current > 45_000;
-      const desde = full ? null : ultimoMensajeDe(convsRef.current);
-      const { convs: next, error: err, incremental } = await cargarBandejaDesde(desde);
+      const { convs: next, error: err } = await cargarBandeja();
       if (cancelled || err) {
         schedule();
         return;
       }
-      if (!incremental) ultimoFullRef.current = Date.now();
       guardarScrollLista();
-      setConvs((prev) => (incremental ? mezclarCambios(prev, next) : aplicarBandeja(prev, next)));
+      setConvs((prev) => aplicarBandeja(prev, next));
 
       const sid = selectedIdRef.current;
       if (sid) {
         const row = next.find((c) => c.id === sid);
-        if (incremental && !row) {
-          schedule();
-          return;
-        }
         const cur = detalleRef.current;
         const sinCambio =
           cur?.id === sid &&
@@ -525,19 +499,6 @@ export function InboxConversaciones({
       )}
     </div>
   );
-}
-
-function ultimoMensajeDe(convs: ConversacionLista[]): string | null {
-  let max: string | null = null;
-  for (const c of convs) {
-    if (c.ultimo_mensaje_at && (!max || c.ultimo_mensaje_at > max)) max = c.ultimo_mensaje_at;
-  }
-  return max;
-}
-
-function ordenBandeja(a: ConversacionLista, b: ConversacionLista): number {
-  if (a.necesita_humano !== b.necesita_humano) return a.necesita_humano ? -1 : 1;
-  return (b.ultimo_mensaje_at ?? "").localeCompare(a.ultimo_mensaje_at ?? "");
 }
 
 function mismaBandeja(a: ConversacionLista[], b: ConversacionLista[]): boolean {
