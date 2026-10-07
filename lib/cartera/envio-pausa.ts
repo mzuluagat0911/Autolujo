@@ -1,13 +1,11 @@
-// AutoLujo y Kowua ya están en cartera, pero el agente todavía no les escribe.
-// Se prende con el mensaje de bienvenida, cuando lo confirmen.
-// Gold no entra en esa pausa.
+// La bienvenida de AutoLujo y Kowua ya se puede enviar. Gold sigue igual.
 //
-// Unos carros además no reciben ni bienvenida ni cobro, y no se les abre letra,
+// Unos carros no reciben ni bienvenida ni cobro, y no se les abre letra,
 // hasta que se les asigne un cliente nuevo (contrato creado después del corte).
 
 import { createServerSupabase } from "@/lib/supabase/server";
 
-const PAUSA = new Set(["AUTOLUJO", "KOWUA"]);
+const PAUSA = new Set<string>();
 
 /** Un contrato creado después de esta hora es un cliente nuevo: ya se le cobra. */
 export const SIN_CLIENTE_CORTE = "2026-10-07T03:00:00.000Z";
