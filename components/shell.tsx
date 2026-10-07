@@ -60,10 +60,15 @@ const NAV: Group[] = [
     ],
   },
   {
+    section: "Comercial",
+    items: [
+      { label: "Chats", href: "/comercial", status: "active" },
+    ],
+  },
+  {
     // Los demás módulos del negocio — la visión de la plataforma.
     section: "Módulos del negocio",
     items: [
-      { label: "Comercial y Atención", href: "/comercial", status: "pronto" },
       { label: "Seguros", href: "/seguros", status: "pronto" },
       { label: "Administrativo", href: "/administrativo", status: "pronto" },
     ],

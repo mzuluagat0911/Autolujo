@@ -22,6 +22,12 @@ import {
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
 import { responderComercial } from "@/lib/ai/agente-comercial";
+import {
+  historialParaLucia,
+  marcarEscaladaComercial,
+  registrarEntradaComercial,
+  registrarSalidaComercial,
+} from "@/lib/comercial/chats";
 import { revisarRespuesta } from "@/lib/ai/guard";
 import { destinarCharla } from "@/lib/ai/filtro-charla";
 import { transcribirAudio } from "@/lib/ai/transcribir";
@@ -140,51 +146,59 @@ async function procesar(payload: WebhookPayload) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Agente COMERCIAL (Lucía) — versión base.
-// Responde desde el número comercial, separado de cartera. Por ahora SIN
-// persistencia ni historial propio (no toca las tablas de cartera): contesta
-// el mensaje entrante y, si hace falta, pasa a ventas. El historial, la
-// calificación del lead y el inventario/tarifas se agregan después.
-// ---------------------------------------------------------------------------
+// Agente COMERCIAL (Lucía). El mensaje entra al número de ventas y se guarda
+// en conversaciones_comercial. No abre un hilo en la bandeja de cobranza.
 async function manejarMensajeComercial(msg: WhatsAppMessage) {
   const from = msg.from as string;
   const tipo = tipoMensaje(msg);
+  const anuncio = msg.referral?.headline?.trim() || null;
 
-  // Solo texto por ahora. Imagen/audio del canal comercial se atiende más
-  // adelante; por ahora pedimos que lo escriban para no quedar mudos.
   if (tipo !== "text") {
-    await enviarComercial(
-      from,
-      "Por aquí le atiendo mejor por escrito. Cuénteme qué está buscando y le ayudo.",
-    );
+    const aviso = "Por aquí le atiendo mejor por escrito. Cuénteme qué está buscando y le ayudo.";
+    const guardado = await registrarEntradaComercial({
+      waNumero: from,
+      texto: "[Mensaje que no es texto]",
+      waMessageId: msg.id ?? null,
+      anuncio,
+    });
+    if (!guardado.repetido) {
+      const enviado = await enviarComercial(from, aviso);
+      if (enviado && guardado.conversacionId) await registrarSalidaComercial(guardado.conversacionId, aviso);
+    }
     return;
   }
 
   const texto = msg.text?.body ?? "";
   if (!texto.trim()) return;
 
-  // Si el lead llegó por un anuncio, Lucía lo sabe y saluda enganchando con eso.
   const contexto = contextoAnuncio(msg);
-  if (msg.referral) {
-    console.log("[whatsapp/webhook] lead comercial de anuncio:", {
-      headline: msg.referral.headline,
-      source_id: msg.referral.source_id,
-      source_type: msg.referral.source_type,
-      ctwa_clid: msg.referral.ctwa_clid,
-    });
-    // TODO: cuando haya persistencia comercial, guardar el referral completo
-    // (source_id, ctwa_clid, headline) para atribución de pauta por lead.
-  }
+  const guardado = await registrarEntradaComercial({
+    waNumero: from,
+    texto: texto.trim(),
+    waMessageId: msg.id ?? null,
+    anuncio,
+  });
+  if (guardado.repetido) return;
+  if (guardado.error) console.error("[whatsapp/webhook] chat comercial:", guardado.error);
 
   try {
-    const r = await responderComercial({ historial: [{ direccion: "in", texto }], contexto });
-    await enviarComercial(from, r.mensaje);
-    // TODO: cuando haya cola de ventas, registrar aquí el lead y la escalada
-    // (r.pasar_a_humano / r.motivo) para que una persona lo tome.
+    const historial = guardado.conversacionId
+      ? await historialParaLucia(guardado.conversacionId)
+      : [{ direccion: "in" as const, texto: texto.trim() }];
+    const r = await responderComercial({
+      historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
+      contexto,
+    });
+    const enviado = await enviarComercial(from, r.mensaje);
+    if (guardado.conversacionId) {
+      if (enviado) await registrarSalidaComercial(guardado.conversacionId, r.mensaje);
+      if (r.pasar_a_humano) await marcarEscaladaComercial(guardado.conversacionId, r.motivo);
+    }
   } catch (e) {
     console.error("[whatsapp/webhook] agente comercial falló:", e);
-    await enviarComercial(from, "Deme un momento, le escribo ya.");
+    const fallo = "Deme un momento, le escribo ya.";
+    const enviado = await enviarComercial(from, fallo);
+    if (enviado && guardado.conversacionId) await registrarSalidaComercial(guardado.conversacionId, fallo);
   }
 }
 
@@ -203,11 +217,13 @@ function contextoAnuncio(msg: WhatsAppMessage): string | undefined {
 }
 
 /** Manda un texto DESDE el número comercial (no el de cartera). */
-async function enviarComercial(to: string, texto: string) {
+async function enviarComercial(to: string, texto: string): Promise<boolean> {
   try {
     await sendText(to, texto, PHONE_ID_COMERCIAL);
+    return true;
   } catch (e) {
     console.error("[whatsapp/webhook] sendText comercial falló:", e);
+    return false;
   }
 }
 
