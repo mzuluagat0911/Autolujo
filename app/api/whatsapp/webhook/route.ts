@@ -21,6 +21,7 @@ import {
   type Conversacion,
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
+import { responderComercial } from "@/lib/ai/agente-comercial";
 import { revisarRespuesta } from "@/lib/ai/guard";
 import { destinarCharla } from "@/lib/ai/filtro-charla";
 import { transcribirAudio } from "@/lib/ai/transcribir";
@@ -43,6 +44,11 @@ function conPieHorario(base: string): string {
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+
+// Número del agente COMERCIAL (Lucía). Los mensajes que entren a este
+// phone_number_id se atienden con ventas, no con cobranza (Claudia).
+// Si no está seteado (ej. local sin la env), todo va a cartera como siempre.
+const PHONE_ID_COMERCIAL = process.env.WHATSAPP_COMERCIAL_PHONE_NUMBER_ID;
 
 // ---------------------------------------------------------------------------
 // GET — verificación del webhook (handshake de Meta).
@@ -111,16 +117,97 @@ function verificarFirma(raw: string, signature: string | null): boolean {
 }
 
 async function procesar(payload: WebhookPayload) {
-  const messages = payload?.entry?.[0]?.changes?.[0]?.value?.messages;
+  const value = payload?.entry?.[0]?.changes?.[0]?.value;
+  const messages = value?.messages;
   if (!Array.isArray(messages)) return; // estados de entrega, etc. — ignorar por ahora
+
+  // ¿A qué número ENTRÓ el mensaje? Eso decide el agente: comercial (Lucía) vs
+  // cartera (Claudia). Misma app y mismo webhook, dos WABAs/números distintos.
+  const phoneIdEntrante = value?.metadata?.phone_number_id;
+  const esComercial = !!PHONE_ID_COMERCIAL && phoneIdEntrante === PHONE_ID_COMERCIAL;
 
   for (const msg of messages) {
     if (!msg.from) continue;
     try {
-      await manejarMensaje(msg);
+      if (esComercial) {
+        await manejarMensajeComercial(msg);
+      } else {
+        await manejarMensaje(msg);
+      }
     } catch (e) {
       console.error("[whatsapp/webhook] error en mensaje:", e);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Agente COMERCIAL (Lucía) — versión base.
+// Responde desde el número comercial, separado de cartera. Por ahora SIN
+// persistencia ni historial propio (no toca las tablas de cartera): contesta
+// el mensaje entrante y, si hace falta, pasa a ventas. El historial, la
+// calificación del lead y el inventario/tarifas se agregan después.
+// ---------------------------------------------------------------------------
+async function manejarMensajeComercial(msg: WhatsAppMessage) {
+  const from = msg.from as string;
+  const tipo = tipoMensaje(msg);
+
+  // Solo texto por ahora. Imagen/audio del canal comercial se atiende más
+  // adelante; por ahora pedimos que lo escriban para no quedar mudos.
+  if (tipo !== "text") {
+    await enviarComercial(
+      from,
+      "Por aquí le atiendo mejor por escrito. Cuénteme qué está buscando y le ayudo.",
+    );
+    return;
+  }
+
+  const texto = msg.text?.body ?? "";
+  if (!texto.trim()) return;
+
+  // Si el lead llegó por un anuncio, Lucía lo sabe y saluda enganchando con eso.
+  const contexto = contextoAnuncio(msg);
+  if (msg.referral) {
+    console.log("[whatsapp/webhook] lead comercial de anuncio:", {
+      headline: msg.referral.headline,
+      source_id: msg.referral.source_id,
+      source_type: msg.referral.source_type,
+      ctwa_clid: msg.referral.ctwa_clid,
+    });
+    // TODO: cuando haya persistencia comercial, guardar el referral completo
+    // (source_id, ctwa_clid, headline) para atribución de pauta por lead.
+  }
+
+  try {
+    const r = await responderComercial({ historial: [{ direccion: "in", texto }], contexto });
+    await enviarComercial(from, r.mensaje);
+    // TODO: cuando haya cola de ventas, registrar aquí el lead y la escalada
+    // (r.pasar_a_humano / r.motivo) para que una persona lo tome.
+  } catch (e) {
+    console.error("[whatsapp/webhook] agente comercial falló:", e);
+    await enviarComercial(from, "Deme un momento, le escribo ya.");
+  }
+}
+
+/** Arma el CONTEXTO para Lucía cuando el lead viene de un anuncio (click-to-WhatsApp). */
+function contextoAnuncio(msg: WhatsAppMessage): string | undefined {
+  const ref = msg.referral;
+  if (!ref) return undefined;
+  const partes: string[] = [];
+  if (ref.headline) partes.push(`Titular del anuncio: "${ref.headline.trim()}"`);
+  if (ref.body) partes.push(`Texto del anuncio: "${ref.body.trim()}"`);
+  return [
+    "LEAD DE ANUNCIO (pauta): este cliente llegó tocando un anuncio nuestro en Instagram/Facebook.",
+    ...partes,
+    'Salúdalo cálido y enganchando con lo que vio en el anuncio (sin repetirlo literal), y llévalo hacia agendar la visita. NO inventes precios, carros ni datos que no estén aquí.',
+  ].join("\n");
+}
+
+/** Manda un texto DESDE el número comercial (no el de cartera). */
+async function enviarComercial(to: string, texto: string) {
+  try {
+    await sendText(to, texto, PHONE_ID_COMERCIAL);
+  } catch (e) {
+    console.error("[whatsapp/webhook] sendText comercial falló:", e);
   }
 }
 
@@ -588,12 +675,29 @@ type WhatsAppMessage = {
   text?: { body?: string };
   image?: { id?: string; mime_type?: string };
   audio?: { id?: string; mime_type?: string; voice?: boolean };
+  // Click-to-WhatsApp: Meta adjunta de qué anuncio vino el lead (solo en el
+  // primer mensaje tras tocar el anuncio). Oro para ventas: qué carro/campaña vio.
+  referral?: {
+    source_url?: string;
+    source_id?: string;
+    source_type?: string; // "ad" | "post"
+    headline?: string;
+    body?: string;
+    media_type?: string;
+    image_url?: string;
+    video_url?: string;
+    thumbnail_url?: string;
+    ctwa_clid?: string;
+  };
 };
 
 type WebhookPayload = {
   entry?: Array<{
     changes?: Array<{
-      value?: { messages?: WhatsAppMessage[] };
+      value?: {
+        messages?: WhatsAppMessage[];
+        metadata?: { phone_number_id?: string; display_phone_number?: string };
+      };
     }>;
   }>;
 };

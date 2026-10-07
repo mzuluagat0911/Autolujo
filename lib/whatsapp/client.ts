@@ -3,8 +3,11 @@
 const GRAPH_VERSION = "v21.0";
 const GRAPH = `https://graph.facebook.com/${GRAPH_VERSION}`;
 
-function creds() {
-  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID;
+// `phoneIdOverride` deja mandar DESDE otro número de la cuenta (ej. el del
+// agente comercial). Si no se pasa, sale del número de cartera de siempre.
+// El token es el mismo (usuario del sistema "AutoLujo API") para ambos números.
+function creds(phoneIdOverride?: string) {
+  const phoneId = phoneIdOverride ?? process.env.WHATSAPP_PHONE_NUMBER_ID;
   const token = process.env.WHATSAPP_TOKEN;
   if (!phoneId || !token) {
     throw new Error("Faltan WHATSAPP_PHONE_NUMBER_ID / WHATSAPP_TOKEN en el entorno.");
@@ -12,8 +15,8 @@ function creds() {
   return { phoneId, token };
 }
 
-async function post(body: unknown) {
-  const { phoneId, token } = creds();
+async function post(body: unknown, phoneIdOverride?: string) {
+  const { phoneId, token } = creds(phoneIdOverride);
   const res = await fetch(`${GRAPH}/${phoneId}/messages`, {
     method: "POST",
     headers: {
@@ -29,14 +32,18 @@ async function post(body: unknown) {
   return res.json();
 }
 
-/** Mensaje de texto libre (solo dentro de la ventana de servicio de 24h). */
-export function sendText(to: string, body: string) {
-  return post({
-    messaging_product: "whatsapp",
-    to,
-    type: "text",
-    text: { body, preview_url: false },
-  });
+/** Mensaje de texto libre (solo dentro de la ventana de servicio de 24h).
+ *  `phoneId` elige el número de salida (ej. comercial); por defecto, cartera. */
+export function sendText(to: string, body: string, phoneId?: string) {
+  return post(
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "text",
+      text: { body, preview_url: false },
+    },
+    phoneId,
+  );
 }
 
 /**

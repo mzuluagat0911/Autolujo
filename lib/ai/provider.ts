@@ -13,6 +13,10 @@ export const MODELO_VISION = process.env.AI_MODEL_VISION ?? "google/gemini-2.5-f
 export const MODELO_VISION_FALLBACK =
   process.env.AI_MODEL_VISION_FALLBACK ?? "anthropic/claude-haiku-4.5";
 export const MODELO_TEXTO = process.env.AI_MODEL_TEXTO ?? "google/gemini-2.5-flash";
+// COMERCIAL = agente de ventas (Lucía). Perilla aparte para poder darle un
+// modelo distinto al de cobranza sin tocar a Claudia. Si no se setea, usa el
+// mismo que TEXTO.
+export const MODELO_COMERCIAL = process.env.AI_MODEL_COMERCIAL ?? MODELO_TEXTO;
 
 /** Modelo para leer comprobantes (visión) — barato por defecto. */
 export function modeloVision() {
@@ -24,7 +28,12 @@ export function modeloVisionFallback() {
   return openrouter(MODELO_VISION_FALLBACK);
 }
 
-/** Modelo para conversación / operativa del agente. */
+/** Modelo para conversación / operativa del agente de cobranza (Claudia). */
 export function modeloTexto() {
   return openrouter(MODELO_TEXTO);
+}
+
+/** Modelo del agente comercial (Lucía). Perilla aparte vía AI_MODEL_COMERCIAL. */
+export function modeloComercial() {
+  return openrouter(MODELO_COMERCIAL);
 }
