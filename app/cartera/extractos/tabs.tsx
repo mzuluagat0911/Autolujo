@@ -91,7 +91,7 @@ export function ExtractosTabs({
 
           <Panel
             title="Extracto bancario"
-            hint="Elegí la empresa y subí el Excel o PDF de Banco General. Lo que calce se aplica; el resto va a Revisión."
+            hint="Elegí la empresa y subí el Excel o PDF de Banco General. Solo se aplica lo que calza con un comprobante. Lo que no calza no entra a revisión."
           >
             {empresas.length === 0 ? (
               <EmptyState

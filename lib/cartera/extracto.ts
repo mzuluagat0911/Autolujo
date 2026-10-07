@@ -22,6 +22,7 @@ import {
   extraerReferencia,
   contratoPorCarro,
   decidirMovimiento,
+  numeroCarroOperativo,
   huellaMovimiento,
   type ContratoFlota,
   type PagoCandidato,
@@ -536,7 +537,7 @@ export async function procesarExtracto(
     .filter((p) => {
       if (p.contrato_id && contratoIds.has(p.contrato_id)) return true;
       if (p.contrato_id) return false;
-      if (p.numero_carro && contratoPorCarro(flota, p.numero_carro).unico) return true;
+      if (p.numero_carro && contratoPorCarro(flota, numeroCarroOperativo(p.numero_carro)).unico) return true;
       return false;
     })
     .map((p) => ({
@@ -617,6 +618,7 @@ export async function procesarExtracto(
         numeroCarro: mov.numeroCarro,
         nombre: mov.nombre,
         referencia: mov.referencia,
+        descripcion: mov.descripcion,
       },
       libres,
       flota,
@@ -678,6 +680,11 @@ export async function procesarExtracto(
       via = "carro";
       contratoId = null;
       res.revisar++;
+    } else if (veredicto.tipo === "sin_comprobante") {
+      estado = "omitido";
+      motivo = veredicto.motivo;
+      via = null;
+      contratoId = null;
     } else {
       motivo = veredicto.motivo;
       contratoId = veredicto.sugerido?.contratoId ?? null;

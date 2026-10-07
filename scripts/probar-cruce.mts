@@ -119,10 +119,30 @@ check(
   false,
 );
 check(
-  "refs distintas bloquean aunque el carro calce",
+  "el número del banco no bloquea si el carro, el monto y el día calzan",
   esCrucePerfecto(
     pago({ referencia: "AAA1111" }),
     { monto: 30, fecha: "2026-09-01", numeroCarro: "144", referencia: "BBB2222" },
+    extracto,
+    flota[0],
+  ),
+  true,
+);
+check(
+  "AL · Carro 67 es el 67",
+  esCrucePerfecto(
+    pago({ numeroCarro: "AL · Carro 67", referencia: "3219582" }),
+    { monto: 30, fecha: "2026-09-01", numeroCarro: "67", referencia: "554847746" },
+    extracto,
+    { ...flota[0], numero: "67" },
+  ),
+  true,
+);
+check(
+  "sin carro, dos referencias distintas no calzan",
+  esCrucePerfecto(
+    pago({ numeroCarro: null, referencia: "AAA1111", contratoId: "c-144" }),
+    { monto: 30, fecha: "2026-09-01", numeroCarro: null, referencia: "BBB2222" },
     extracto,
     flota[0],
   ),
@@ -159,9 +179,7 @@ const dNombre = decidirMovimiento(
   flota,
   extracto,
 );
-check("solo el nombre NO aplica", dNombre.tipo, "revisar");
-check("pero sí sugiere el contrato", dNombre.tipo === "revisar" ? dNombre.sugerido?.contratoId : null, "c-144");
-check("la vía es nombre", dNombre.tipo === "revisar" ? dNombre.via : null, "nombre");
+check("solo el nombre no se aplica ni queda en revisión", dNombre.tipo, "sin_comprobante");
 
 const dCarro = decidirMovimiento(
   { monto: 30, fecha: "2026-09-01", numeroCarro: "144", nombre: null },
@@ -169,8 +187,7 @@ const dCarro = decidirMovimiento(
   flota,
   extracto,
 );
-check("carro sin comprobante queda en revisión", dCarro.tipo, "revisar");
-check("sugiere el carro, no aplica", dCarro.tipo === "revisar" ? dCarro.via : null, "carro");
+check("carro sin comprobante no queda en revisión", dCarro.tipo, "sin_comprobante");
 
 const dColision = decidirMovimiento(
   { monto: 30, fecha: "2026-09-01", numeroCarro: null, nombre: "JOSE" },
@@ -178,7 +195,7 @@ const dColision = decidirMovimiento(
   flota,
   extracto,
 );
-check("un nombre corto no alcanza para sugerir", dColision.tipo === "revisar" ? dColision.sugerido : null, null);
+check("un nombre corto no se aplica", dColision.tipo, "sin_comprobante");
 
 const dos = [
   pago({ id: "p1" }),
@@ -268,7 +285,7 @@ check("G25 con la misma letra se aplica", decidirMovimiento(movG25, [pagoG25], f
 check(
   "el 25 pelado no es el G25",
   decidirMovimiento(movG25, [pagoSinLetra], flotaGold, extractoGold).tipo,
-  "revisar",
+  "sin_comprobante",
 );
 const dPelo = decidirMovimiento(
   { monto: 35, fecha: "2026-10-06", numeroCarro: "25", nombre: null, referencia: "548454493" },
@@ -276,11 +293,11 @@ const dPelo = decidirMovimiento(
   flotaGold,
   extractoGold,
 );
-check("el 25 pelado no sugiere el G25", dPelo.tipo === "revisar" ? dPelo.sugerido : "aplicado", null);
+check("el 25 pelado no se aplica al G25", dPelo.tipo, "sin_comprobante");
 check(
   "otra letra no es el mismo carro",
   decidirMovimiento({ ...movG25, numeroCarro: "A25" }, [pagoG25], flotaGold, extractoGold).tipo,
-  "revisar",
+  "sin_comprobante",
 );
 const flotaMezcla: ContratoFlota[] = [
   { contratoId: "al-34", letra: 30, numero: "34", clienteNombre: "Auto", empresaId: EMP },
@@ -294,7 +311,7 @@ check(
     flotaMezcla,
     extracto,
   ).tipo,
-  "revisar",
+  "sin_comprobante",
 );
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);

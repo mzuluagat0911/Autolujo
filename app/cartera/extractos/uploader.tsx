@@ -117,8 +117,8 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
             <Resumen label="Ya vistos" value={state.duplicados} />
           </div>
           <p className="mt-3 text-sm text-muted">
-            Cruce contra <b>{siglaEmpresa(state.empresa)}</b> · Solo se aplica con coincidencia perfecta
-            (carro + monto + fecha + cuenta). “Ya vistos” no se re-encolan. Total aplicado:{" "}
+            Cruce contra <b>{siglaEmpresa(state.empresa)}</b> · Se aplica si el comprobante calza en
+            carro, monto y fecha. Lo que no tiene comprobante no va a revisión. Total aplicado:{" "}
             <b><Money amount={state.montoAplicado} /></b>
           </p>
 
