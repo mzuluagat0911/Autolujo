@@ -255,6 +255,16 @@ check(
   huellaMovimiento("2026-09-01", 30, "X") === huellaMovimiento("2026-09-01", 35, "X"),
   false,
 );
+check(
+  "huella canónica ignora acentos y el monto escrito en el texto",
+  huellaMovimiento("2026-09-01", 30, "Transferencia de Juán  carro 144"),
+  "2026-09-01|3000|TRANSFERENCIA DE JUAN CARRO 144",
+);
+check(
+  "huella de centavos",
+  huellaMovimiento("2026-10-06", 36.5, "ACH $36.50"),
+  "2026-10-06|3650|ACH",
+);
 
 console.log("\n· La letra es parte del código");
 const GOLD = "emp-gold";

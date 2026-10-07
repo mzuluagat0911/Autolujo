@@ -281,7 +281,10 @@ export type VeredictoCruce =
       via: "carro" | "nombre" | null;
     };
 
-/** Huella estable para no re-encolar el mismo movimiento al re-subir el PDF. */
+/**
+ * Huella estable para no re-encolar el mismo movimiento al re-subir el archivo.
+ * Tiene que coincidir con `huella_movimiento` en la migración 0034.
+ */
 export function huellaMovimiento(
   fecha: string | null,
   monto: number,

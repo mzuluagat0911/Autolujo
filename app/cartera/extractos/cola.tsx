@@ -2,13 +2,16 @@
 
 import { useActionState, useState, useTransition } from "react";
 import {
+  deshacerMovimientoExtracto,
   loteAplicarSugeridos,
   loteIgnorarSeleccionados,
   resolverMovimientoExtracto,
 } from "./actions";
 import { StatusChip, Money, EmptyState, FiltersBar } from "@/components/kit";
 import { numeroCarroOperativo } from "@/lib/cartera/cruce";
+import { partirNotaSombra } from "@/lib/cartera/puntaje-cruce";
 import { etiquetaCarroUi, siglaEmpresa } from "@/lib/cartera/empresa";
+import { TARIFAS_SALIDA_INTERIOR } from "@/lib/cartera/salidas-interior";
 import type { ResultadoRevision } from "@/lib/cartera/revision-extracto";
 
 export type CandidatoPago = {
@@ -54,7 +57,22 @@ function parseIdsMotivo(motivo: string | null): string[] {
 
 const ORDEN_EMPRESA = ["AL", "KW", "GD"];
 
-export function ColaRevision({ movimientos }: { movimientos: MovimientoRevision[] }) {
+export type CruceAplicado = {
+  id: string;
+  fecha: string | null;
+  monto: number;
+  numeroCarro: string | null;
+  estado: string;
+  empresa: string | null;
+};
+
+export function ColaRevision({
+  movimientos,
+  aplicados = [],
+}: {
+  movimientos: MovimientoRevision[];
+  aplicados?: CruceAplicado[];
+}) {
   const [selected, setSelected] = useState<Record<string, boolean>>({});
   const [empresa, setEmpresa] = useState("all");
   const [loteMsg, setLoteMsg] = useState<string | null>(null);
@@ -62,10 +80,13 @@ export function ColaRevision({ movimientos }: { movimientos: MovimientoRevision[
 
   if (movimientos.length === 0) {
     return (
-      <EmptyState
-        title="Nada por revisar"
-        hint="Al subir un extracto, lo que no calce perfecto aparece aquí."
-      />
+      <div className="space-y-8">
+        <EmptyState
+          title="Nada por revisar"
+          hint="Al subir un extracto, lo que no calce perfecto aparece aquí."
+        />
+        <DeshacerRecientes aplicados={aplicados} />
+      </div>
     );
   }
 
@@ -156,6 +177,7 @@ export function ColaRevision({ movimientos }: { movimientos: MovimientoRevision[
           onToggle={() => toggle(m.id)}
         />
       ))}
+      <DeshacerRecientes aplicados={aplicados} />
     </div>
   );
 }
@@ -192,6 +214,7 @@ function FilaRevision({
         }));
   const ambiguo = candidatos.length > 1 || (m.motivo?.includes("Varios comprobantes") ?? false);
   const [pagoId, setPagoId] = useState(candidatos[0]?.id ?? "");
+  const elegido = candidatos.find((c) => c.id === pagoId) ?? candidatos[0] ?? null;
   const via = viaChip(m.via, ambiguo);
   const busy = aplicando || ignorando;
   const sigla = siglaEmpresa(m.empresa);
@@ -231,15 +254,30 @@ function FilaRevision({
             {m.descripcion && (
               <p className="mt-1 text-sm">{m.descripcion.slice(0, 140)}</p>
             )}
-            {m.motivo && (
-              <p className={`mt-2 text-[12px] ${m.motivo.includes("Aviso:") ? "text-ambar" : "text-muted"}`}>
-                {m.motivo.replace(/\s*\[ids:[^\]]+\]/, "")}
-              </p>
-            )}
+            {m.motivo && (() => {
+              const nota = partirNotaSombra(m.motivo);
+              const aviso = (nota.motivo ?? "").includes("Aviso:");
+              return (
+                <>
+                  {nota.motivo && (
+                    <p className={`mt-2 text-[12px] ${aviso ? "text-ambar" : "text-muted"}`}>
+                      {nota.motivo.replace(/\s*\[ids:[^\]]+\]/, "")}
+                    </p>
+                  )}
+                  {nota.sombra && (
+                    <p className="mt-1 text-[12px] text-azul">{nota.sombra}</p>
+                  )}
+                  {nota.aprendizaje && (
+                    <p className="mt-1 text-[12px] text-purpura">{nota.aprendizaje}</p>
+                  )}
+                </>
+              );
+            })()}
             {m.salidaHint && <p className="mt-1 text-[12px] text-ambar">{m.salidaHint}</p>}
             {m.sugeridoCliente && (
               <p className="mt-1 text-[12px] text-muted">Sugerido: {m.sugeridoCliente}</p>
             )}
+            <Evidencia banco={m} comprobante={elegido} />
           </div>
         </div>
       </div>
@@ -303,11 +341,35 @@ function FilaRevision({
               />
             </span>
           </label>
+          <details className="min-w-[16rem]">
+            <summary className="cursor-pointer text-sm text-muted">Partir el pago</summary>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <select
+                name="partida_destino"
+                className="rounded-lg bg-white px-3 py-2.5 text-sm ring-1 ring-line"
+                defaultValue=""
+              >
+                <option value="">Destino</option>
+                {TARIFAS_SALIDA_INTERIOR.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nombre}
+                  </option>
+                ))}
+              </select>
+              <input
+                name="partida_monto"
+                inputMode="decimal"
+                placeholder="Monto"
+                className="w-24 rounded-lg bg-white px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint"
+              />
+            </div>
+            <p className="mt-1 text-[12px] text-muted">El resto queda en la letra. Ejemplo: $36 = $31 + $5 Penonomé.</p>
+          </details>
           <button
             disabled={busy}
             className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white transition hover:bg-black disabled:opacity-50"
           >
-            {aplicando ? "Aplicando…" : "Aplicar"}
+            {aplicando ? "Aplicando…" : "Aplicar cruce"}
           </button>
         </form>
         <form action={accionIgnorar}>
@@ -320,6 +382,102 @@ function FilaRevision({
             {ignorando ? "…" : "Ignorar"}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+function Evidencia({
+  banco,
+  comprobante,
+}: {
+  banco: MovimientoRevision;
+  comprobante: CandidatoPago | null;
+}) {
+  const diaBanco = banco.fecha;
+  const diaComp = comprobante?.pagadoAt?.slice(0, 10) || null;
+  const carroBanco = numeroCarroOperativo(banco.numeroCarro);
+  const carroComp = numeroCarroOperativo(comprobante?.numeroCarro);
+  return (
+    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+      <div className="rounded-lg bg-surface-2 px-3 py-3">
+        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Banco</p>
+        <p className="mt-2 text-sm">{diaBanco ?? "Sin fecha"} · <Money amount={banco.monto} /></p>
+        <p className="mt-1 text-sm">Carro {etiquetaCarroUi(banco.empresa, banco.numeroCarro)}</p>
+        <p className="mt-1 text-[12px] text-muted">{banco.referencia ? `Ref ${banco.referencia}` : "Sin referencia"}</p>
+      </div>
+      <div className="rounded-lg bg-surface-2 px-3 py-3">
+        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Comprobante</p>
+        {comprobante ? (
+          <>
+            <p className="mt-2 text-sm">
+              {diaComp ?? "Sin fecha"}
+              {diaBanco && diaComp && diaBanco !== diaComp ? " · día distinto" : ""}
+              {" · "}
+              <Money amount={comprobante.monto} />
+              {Math.round(comprobante.monto * 100) !== Math.round(banco.monto * 100) ? " · monto distinto" : ""}
+            </p>
+            <p className="mt-1 text-sm">
+              Carro {etiquetaCarroUi(comprobante.empresa ?? banco.empresa, comprobante.numeroCarro)}
+              {carroBanco && carroComp && carroBanco !== carroComp ? " · carro distinto" : ""}
+            </p>
+            <p className="mt-1 text-[12px] text-muted">
+              {comprobante.referencia ? `Ref ${comprobante.referencia}` : "Sin referencia"}
+              {banco.referencia && comprobante.referencia && banco.referencia !== comprobante.referencia
+                ? " · referencia distinta"
+                : ""}
+            </p>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-muted">No hay un comprobante pendiente para este movimiento.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function DeshacerRecientes({ aplicados }: { aplicados: CruceAplicado[] }) {
+  const [state, action, pending] = useActionState<ResultadoRevision | null, FormData>(
+    deshacerMovimientoExtracto,
+    null,
+  );
+  if (aplicados.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      <div>
+        <p className="text-sm font-medium">Deshacer un cruce reciente</p>
+        <p className="text-[12px] text-muted">Vuelve el movimiento a revisión y saca del saldo el pago y la parte que no era letra.</p>
+      </div>
+      {state?.error && <p className="text-sm text-rojo">{state.error}</p>}
+      {state?.ok && <p className="text-sm text-verde">Cruce deshecho. Quedó otra vez en revisión.</p>}
+      <div className="divide-y divide-line overflow-hidden rounded-xl bg-surface ring-1 ring-line">
+        {aplicados.map((m) => (
+          <form key={m.id} action={action} className="flex flex-wrap items-end gap-3 px-4 py-3">
+            <input type="hidden" name="movimiento_id" value={m.id} />
+            <div className="min-w-[10rem] flex-1">
+              <p className="text-sm font-medium">
+                {etiquetaCarroUi(m.empresa, m.numeroCarro)} · <Money amount={m.monto} />
+              </p>
+              <p className="text-[12px] text-muted">{m.fecha ?? "Sin fecha"} · {m.estado}</p>
+            </div>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Motivo</span>
+              <input
+                name="motivo"
+                required
+                minLength={3}
+                placeholder="Por qué se deshace"
+                className="w-56 rounded-lg bg-white px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint"
+              />
+            </label>
+            <button
+              disabled={pending}
+              className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash disabled:opacity-50"
+            >
+              {pending ? "Deshaciendo…" : "Deshacer"}
+            </button>
+          </form>
+        ))}
       </div>
     </div>
   );

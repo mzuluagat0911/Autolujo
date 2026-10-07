@@ -718,7 +718,16 @@ function cubetaDeCargoFila(c: {
 export async function borrarCargosAcuerdoDelPago(pagoId: string): Promise<void> {
   if (!pagoId) return;
   const sb = createServerSupabase();
-  await sb.from("cargos").delete().eq("pago_id", pagoId).eq("tipo", "acuerdo");
+  const { data } = await sb
+    .from("cargos")
+    .select("id, concepto_codigo")
+    .eq("pago_id", pagoId)
+    .eq("tipo", "acuerdo");
+  const ids = ((data ?? []) as { id: string; concepto_codigo: string | null }[])
+    .filter((c) => (c.concepto_codigo ?? "").toUpperCase() !== "SALIDA_INT")
+    .map((c) => c.id);
+  if (ids.length === 0) return;
+  await sb.from("cargos").delete().in("id", ids);
 }
 
 async function asignacionesDeHoy(

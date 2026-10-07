@@ -4,6 +4,7 @@ import { useActionState, useState } from "react";
 import { conciliarExtracto } from "./actions";
 import { StatusChip, Money } from "@/components/kit";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
+import { partirNotaSombra } from "@/lib/cartera/puntaje-cruce";
 import type { ResultadoConciliacion } from "@/lib/cartera/extracto";
 
 type Empresa = { id: string; codigo: string; nombre: string };
@@ -117,9 +118,16 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
             <Resumen label="Ya vistos" value={state.duplicados} />
           </div>
           <p className="mt-3 text-sm text-muted">
-            Cruce contra <b>{siglaEmpresa(state.empresa)}</b> · Se aplica si el comprobante calza en
-            carro, monto y fecha. Lo que no tiene comprobante no va a revisión. Total aplicado:{" "}
+            Cruce contra <b>{siglaEmpresa(state.empresa)}</b> · Se aplica si el carro es inequívoco
+            o la referencia del voucher es exacta, y la sombra está de acuerdo. Lo que no tiene
+            comprobante no va a revisión. Total aplicado:{" "}
             <b><Money amount={state.montoAplicado} /></b>
+            {state.retenidos > 0
+              ? ` · ${state.retenidos} quedaron en revisión porque no tenían confianza máxima.`
+              : ""}
+            {state.sombraDistinta > 0
+              ? ` · La sombra difiere del motor en ${state.sombraDistinta}.`
+              : " · La sombra coincide con el motor en este archivo."}
           </p>
 
           <div className="mt-4 overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
@@ -144,7 +152,18 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
                     </td>
                     <td className="px-4 py-2.5 text-right tabular-nums"><Money amount={d.monto} /></td>
                     <td className="px-4 py-2.5"><StatusChip tone={tone(d.estado)}>{d.estado}</StatusChip></td>
-                    <td className="px-4 py-2.5 text-[11px] text-muted">{d.motivo ?? "—"}</td>
+                    <td className="px-4 py-2.5 text-[11px] text-muted">
+                      {(() => {
+                        const nota = partirNotaSombra(d.motivo);
+                        return (
+                          <>
+                            <span>{nota.motivo?.replace(/\s*\[ids:[^\]]+\]/, "") || "—"}</span>
+                            {nota.sombra && <span className="mt-1 block text-azul">{nota.sombra}</span>}
+                            {nota.aprendizaje && <span className="mt-1 block text-purpura">{nota.aprendizaje}</span>}
+                          </>
+                        );
+                      })()}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -8,6 +8,7 @@ import {
   aplicarSugeridosEnLote,
   ignorarMovimientoExtracto,
   ignorarMovimientosEnLote,
+  revertirMovimientoExtracto,
   type ResultadoRevision,
 } from "@/lib/cartera/revision-extracto";
 
@@ -20,7 +21,7 @@ async function refrescarCartera() {
 }
 
 const VACIO: ResultadoConciliacion = {
-  ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, detalle: [],
+  ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, sombraDistinta: 0, retenidos: 0, detalle: [],
 };
 
 export async function conciliarExtracto(
@@ -58,12 +59,16 @@ export async function resolverMovimientoExtracto(
   const contratoId = String(formData.get("contrato_id") ?? "").trim() || null;
   const carro = String(formData.get("carro") ?? "").trim() || null;
   const pagoId = String(formData.get("pago_id") ?? "").trim() || null;
+  const destino = String(formData.get("partida_destino") ?? "").trim();
+  const rawParte = String(formData.get("partida_monto") ?? "").trim().replace(",", ".");
+  const montoParte = rawParte ? Number(rawParte) : 0;
+  const partida = destino || montoParte > 0 ? { destinoId: destino, monto: montoParte } : null;
 
   let res: ResultadoRevision;
   if (accion === "ignorar") {
     res = await ignorarMovimientoExtracto(movimientoId);
   } else if (accion === "aplicar") {
-    res = await aplicarMovimientoExtracto({ movimientoId, contratoId, carro, pagoId });
+    res = await aplicarMovimientoExtracto({ movimientoId, contratoId, carro, pagoId, partida });
   } else {
     res = { ok: false, error: "Acción inválida." };
   }
@@ -82,5 +87,16 @@ export async function loteIgnorarSeleccionados(formData: FormData): Promise<{ ok
   const ids = formData.getAll("movimiento_id").map((v) => String(v));
   const res = await ignorarMovimientosEnLote(ids);
   if (res.ok > 0) await refrescarCartera();
+  return res;
+}
+
+export async function deshacerMovimientoExtracto(
+  _prev: ResultadoRevision | null,
+  formData: FormData,
+): Promise<ResultadoRevision> {
+  const movimientoId = String(formData.get("movimiento_id") ?? "").trim();
+  const motivo = String(formData.get("motivo") ?? "");
+  const res = await revertirMovimientoExtracto(movimientoId, motivo);
+  if (res.ok) await refrescarCartera();
   return res;
 }

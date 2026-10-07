@@ -2,7 +2,7 @@ import { PageHeader, PageShell } from "@/components/kit";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { salidasPendientesBanco } from "@/lib/cartera/salidas-aplicar";
 import { ExtractosTabs } from "./tabs";
-import { type MovimientoRevision, type CandidatoPago } from "./cola";
+import { type MovimientoRevision, type CandidatoPago, type CruceAplicado } from "./cola";
 import { carroAtribuible, fechaCubrePago, montoExacto, numeroCarroOperativo } from "@/lib/cartera/cruce";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 
@@ -20,17 +20,19 @@ async function getData(): Promise<{
   empresas: Empresa[];
   recientes: ExtractoReciente[];
   revision: MovimientoRevision[];
+  aplicados: CruceAplicado[];
   salidasBanco: Awaited<ReturnType<typeof salidasPendientesBanco>>;
 }> {
   const vacio = {
     empresas: [] as Empresa[],
     recientes: [] as ExtractoReciente[],
     revision: [] as MovimientoRevision[],
+    aplicados: [] as CruceAplicado[],
     salidasBanco: [] as Awaited<ReturnType<typeof salidasPendientesBanco>>,
   };
   try {
     const sb = createServerSupabase();
-    const [emp, ext, mov, salidasBanco] = await Promise.all([
+    const [emp, ext, mov, aplicadosRaw, salidasBanco] = await Promise.all([
       sb.from("empresas").select("id, codigo, nombre").order("codigo"),
       sb
         .from("extractos_bancarios")
@@ -45,6 +47,12 @@ async function getData(): Promise<{
         .eq("estado", "revisar")
         .order("fecha", { ascending: false })
         .limit(80),
+      sb
+        .from("movimientos_extracto")
+        .select("id, fecha, monto, numero_carro, estado, extracto:extractos_bancarios(empresa:empresas(codigo))")
+        .in("estado", ["aplicado", "parcial"])
+        .order("created_at", { ascending: false })
+        .limit(8),
       salidasPendientesBanco(),
     ]);
     const revision: MovimientoRevision[] = ((mov.data ?? []) as unknown as {
@@ -79,6 +87,22 @@ async function getData(): Promise<{
       contratoId: m.contrato_id,
       salidaHint: null as string | null,
       candidatos: [] as CandidatoPago[],
+    }));
+
+    const aplicados: CruceAplicado[] = ((aplicadosRaw.data ?? []) as unknown as {
+      id: string;
+      fecha: string | null;
+      monto: number;
+      numero_carro: string | null;
+      estado: string;
+      extracto: { empresa: { codigo: string } | null } | null;
+    }[]).map((m) => ({
+      id: m.id,
+      fecha: m.fecha,
+      monto: Number(m.monto),
+      numeroCarro: m.numero_carro,
+      estado: m.estado,
+      empresa: m.extracto?.empresa?.codigo ?? null,
     }));
 
     const { data: pend } = await sb
@@ -138,6 +162,7 @@ async function getData(): Promise<{
       empresas: (emp.data as Empresa[]) ?? [],
       recientes: (ext.data as unknown as ExtractoReciente[]) ?? [],
       revision,
+      aplicados,
       salidasBanco,
     };
   } catch {
@@ -146,7 +171,7 @@ async function getData(): Promise<{
 }
 
 export default async function ExtractosPage() {
-  const { empresas, recientes, revision, salidasBanco } = await getData();
+  const { empresas, recientes, revision, aplicados, salidasBanco } = await getData();
 
   return (
     <PageShell>
@@ -159,6 +184,7 @@ export default async function ExtractosPage() {
         empresas={empresas}
         recientes={recientes}
         revision={revision}
+        aplicados={aplicados}
         salidasBanco={salidasBanco}
       />
     </PageShell>

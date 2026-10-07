@@ -13,6 +13,11 @@ import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
 import { pagoEsperaRevisionDosPagos, rechazarComprobantesRepetidos } from "./comprobante-validacion";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { destinoPorId } from "./salidas-interior";
+import { MOTOR_CONCILIACION, registrarAuditoriaConciliacion } from "./conciliacion-auditoria";
+import { aplicarEnEsteNivel } from "./activacion-cruce";
+import { MARCA_IMAGEN_PARECIDA, rankearAprendizaje, textoAprendizaje } from "./aprendizaje-cruce";
+import { cargarMemoriaAprendizaje, referenciaEnOtraEmpresa } from "./aprendizaje-datos";
+import { puntuarMovimiento, textoSombra } from "./puntaje-cruce";
 import {
   canonCarro,
   canonReferencia,
@@ -395,6 +400,10 @@ export type ResultadoConciliacion = {
   revisar: number;
   duplicados: number;
   montoAplicado: number;
+  /** Movimientos donde la sombra no recomienda lo mismo que el motor. */
+  sombraDistinta: number;
+  /** El motor los habría aplicado y la llave de confianza máxima los dejó en revisión. */
+  retenidos: number;
   detalle: {
     fecha: string | null;
     descripcion: string;
@@ -407,8 +416,152 @@ export type ResultadoConciliacion = {
 };
 
 const VACIO: ResultadoConciliacion = {
-  ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, detalle: [],
+  ok: false, empresa: null, total: 0, aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, sombraDistinta: 0, retenidos: 0, detalle: [],
 };
+
+type MovimientoGuardado = {
+  id: string | null;
+  repetido: boolean;
+  error: string | null;
+  /** rpc ya vinculó el pago y escribió la auditoría. tabla deja ese cierre al llamador. */
+  vinculo: "rpc" | "tabla" | null;
+};
+
+function esHuellaRepetida(error: { code?: string; message?: string } | null): boolean {
+  if (!error) return false;
+  return error.code === "23505" || /uq_mov_empresa_huella|duplicate key/i.test(error.message ?? "");
+}
+
+/** Huellas ya vistas de la empresa, paginadas. PostgREST corta en 1000 filas. */
+async function cargarHuellasEmpresa(
+  sb: ReturnType<typeof createServerSupabase>,
+  empresaId: string,
+  desde: string,
+): Promise<Set<string>> {
+  const ids: string[] = [];
+  for (let from = 0; from < 10000; from += 1000) {
+    const { data, error } = await sb
+      .from("extractos_bancarios")
+      .select("id")
+      .eq("empresa_id", empresaId)
+      .gte("fecha", desde)
+      .range(from, from + 999);
+    if (error) break;
+    const chunk = (data ?? []) as { id: string }[];
+    ids.push(...chunk.map((e) => e.id));
+    if (chunk.length < 1000) break;
+  }
+
+  const huellas = new Set<string>();
+  let columnaHuella = true;
+  for (let i = 0; i < ids.length; i += 40) {
+    const slice = ids.slice(i, i + 40);
+    for (let from = 0; from < 50000; from += 1000) {
+      let data: unknown[] | null = null;
+      let errorMessage: string | null = null;
+      if (columnaHuella) {
+        const q = await sb
+          .from("movimientos_extracto")
+          .select("fecha, monto, descripcion, huella")
+          .in("extracto_id", slice)
+          .range(from, from + 999);
+        if (q.error && /huella/i.test(q.error.message)) {
+          columnaHuella = false;
+        } else {
+          data = q.data;
+          errorMessage = q.error?.message ?? null;
+        }
+      }
+      if (!columnaHuella && !data) {
+        const q = await sb
+          .from("movimientos_extracto")
+          .select("fecha, monto, descripcion")
+          .in("extracto_id", slice)
+          .range(from, from + 999);
+        data = q.data;
+        errorMessage = q.error?.message ?? null;
+      }
+      if (errorMessage) break;
+      const chunk = (data ?? []) as {
+        fecha: string | null;
+        monto: number;
+        descripcion: string | null;
+        huella?: string | null;
+      }[];
+      for (const row of chunk) {
+        huellas.add(row.huella || huellaMovimiento(row.fecha, Number(row.monto), row.descripcion ?? ""));
+      }
+      if (chunk.length < 1000) break;
+    }
+  }
+  return huellas;
+}
+
+async function guardarMovimientoExtracto(
+  sb: ReturnType<typeof createServerSupabase>,
+  fila: Record<string, unknown>,
+  rpcEstado: { activo: boolean; cimientos: boolean },
+): Promise<MovimientoGuardado> {
+  if (!rpcEstado.activo) return guardarMovimientoEnTabla(sb, fila, rpcEstado);
+
+  const rpc = await sb.rpc("registrar_movimiento_extracto", { p: fila });
+  if (!rpc.error) {
+    const body = rpc.data as { id?: string; repetido?: boolean } | null;
+    if (body?.repetido) return { id: null, repetido: true, error: null, vinculo: null };
+    return { id: body?.id ?? null, repetido: false, error: null, vinculo: "rpc" };
+  }
+  if (!/registrar_movimiento_extracto|schema cache|could not find the function/i.test(rpc.error.message)) {
+    if (/pago_no_pendiente/i.test(rpc.error.message)) {
+      return { id: null, repetido: false, error: "El comprobante ya no estaba pendiente.", vinculo: null };
+    }
+    if (esHuellaRepetida(rpc.error)) return { id: null, repetido: true, error: null, vinculo: null };
+    return { id: null, repetido: false, error: rpc.error.message, vinculo: null };
+  }
+  rpcEstado.activo = false;
+  return guardarMovimientoEnTabla(sb, fila, rpcEstado);
+}
+
+async function guardarMovimientoEnTabla(
+  sb: ReturnType<typeof createServerSupabase>,
+  fila: Record<string, unknown>,
+  rpcEstado: { cimientos: boolean },
+): Promise<MovimientoGuardado> {
+  const intento = { ...fila };
+  delete intento.actor;
+  delete intento.accion;
+  if (!rpcEstado.cimientos) {
+    delete intento.empresa_id;
+    delete intento.huella;
+    delete intento.referencia_canonica;
+    delete intento.numero_carro_canon;
+    delete intento.motor_version;
+    delete intento.sombra;
+  }
+  let ins = await sb.from("movimientos_extracto").insert(intento).select("id").maybeSingle();
+  if (ins.error && /empresa_id|huella|referencia_canonica|numero_carro_canon|motor_version|sombra/i.test(ins.error.message)) {
+    rpcEstado.cimientos = false;
+    delete intento.empresa_id;
+    delete intento.huella;
+    delete intento.referencia_canonica;
+    delete intento.numero_carro_canon;
+    delete intento.motor_version;
+    delete intento.sombra;
+    ins = await sb.from("movimientos_extracto").insert(intento).select("id").maybeSingle();
+  }
+  if (ins.error && /motivo|via/i.test(ins.error.message)) {
+    delete intento.motivo;
+    delete intento.via;
+    ins = await sb.from("movimientos_extracto").insert(intento).select("id").maybeSingle();
+  }
+  if (esHuellaRepetida(ins.error)) return { id: null, repetido: true, error: null, vinculo: null };
+  if (ins.error) return { id: null, repetido: false, error: ins.error.message, vinculo: null };
+  return {
+    id: (ins.data as { id: string } | null)?.id ?? null,
+    repetido: false,
+    error: null,
+    vinculo: "tabla",
+  };
+}
 
 /** Procesa el extracto (Excel o PDF): parsea, concilia y persiste. */
 export async function procesarExtracto(
@@ -477,6 +630,9 @@ export async function procesarExtracto(
     .filter((n): n is string => Boolean(n && n.trim()));
 
   let aviso: string | undefined;
+  if (numerosCuenta.length === 0) {
+    aviso = `${empresa.codigo} no tiene cuentas bancarias cargadas. El cruce no puede verificar la cuenta destino.`;
+  }
   if (titular) {
     const tU = titular.toUpperCase();
     const delArchivo = tU.includes("GOLD")
@@ -487,7 +643,8 @@ export async function procesarExtracto(
           ? "AUTOLUJO"
           : null;
     if (delArchivo && delArchivo !== empresa.codigo) {
-      aviso = `El archivo parece de ${delArchivo} (titular “${titular}”) y tú elegiste ${empresa.codigo}. No mezclo flotas: revisa que sea la cuenta correcta.`;
+      const mezcla = `El archivo parece de ${delArchivo} (titular “${titular}”) y tú elegiste ${empresa.codigo}. No mezclo flotas: revisa que sea la cuenta correcta.`;
+      aviso = aviso ? `${aviso} ${mezcla}` : mezcla;
     }
   }
 
@@ -555,32 +712,11 @@ export async function procesarExtracto(
 
   const res: ResultadoConciliacion = {
     ok: true, aviso, empresa: empresa.codigo, total: movimientos.length,
-    aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, detalle: [],
+    aplicados: 0, parciales: 0, revisar: 0, duplicados: 0, montoAplicado: 0, sombraDistinta: 0, retenidos: 0, detalle: [],
   };
 
   // Movimientos ya vistos de esta empresa (misma huella → no re-encolar).
-  const desde = sumarDias(hoyPanama(), -60);
-  const { data: extractosPrev } = await sb
-    .from("extractos_bancarios")
-    .select("id")
-    .eq("empresa_id", empresa.id)
-    .gte("fecha", desde)
-    .limit(200);
-  const extractoIds = ((extractosPrev ?? []) as { id: string }[]).map((e) => e.id);
-  const huellasVistas = new Set<string>();
-  if (extractoIds.length > 0) {
-    const { data: previosRaw } = await sb
-      .from("movimientos_extracto")
-      .select("fecha, monto, descripcion")
-      .in("extracto_id", extractoIds);
-    for (const row of (previosRaw ?? []) as {
-      fecha: string | null;
-      monto: number;
-      descripcion: string | null;
-    }[]) {
-      huellasVistas.add(huellaMovimiento(row.fecha, Number(row.monto), row.descripcion ?? ""));
-    }
-  }
+  const huellasVistas = await cargarHuellasEmpresa(sb, empresa.id, sumarDias(hoyPanama(), -60));
 
   const usados = new Set<string>();
   const porRecalcular = new Set<string>();
@@ -591,7 +727,15 @@ export async function procesarExtracto(
     numeroCuenta: cuentaRow?.numero_cuenta ?? null,
     numerosCuenta: numerosCuenta,
   };
+  const rpcEstado = { activo: true, cimientos: true };
   const huellasEnEsteArchivo = new Set<string>();
+  const memoria = await cargarMemoriaAprendizaje(sb, empresa.id);
+  const imagenParecida = new Set(
+    ((pagosQ.data ?? []) as { id: string; notas?: string | null }[])
+      .filter((p) => (p.notas ?? "").includes(MARCA_IMAGEN_PARECIDA))
+      .map((p) => p.id),
+  );
+  const refsAjenas = new Map<string, boolean>();
 
   for (const mov of movimientos) {
     const huella = huellaMovimiento(mov.fecha, mov.monto, mov.descripcion);
@@ -608,22 +752,19 @@ export async function procesarExtracto(
       });
       continue;
     }
-    huellasEnEsteArchivo.add(huella);
-
     const libres = pendientes.filter((p) => !usados.has(p.id));
-    const veredicto = decidirMovimiento(
-      {
-        monto: mov.monto,
-        fecha: mov.fecha,
-        numeroCarro: mov.numeroCarro,
-        nombre: mov.nombre,
-        referencia: mov.referencia,
-        descripcion: mov.descripcion,
-      },
-      libres,
-      flota,
-      ctxExtracto,
-    );
+    const movIn = {
+      monto: mov.monto,
+      fecha: mov.fecha,
+      numeroCarro: mov.numeroCarro,
+      nombre: mov.nombre,
+      referencia: mov.referencia,
+      descripcion: mov.descripcion,
+    };
+    const veredicto = decidirMovimiento(movIn, libres, flota, ctxExtracto);
+    const sombra = puntuarMovimiento(movIn, libres, flota, ctxExtracto, veredicto);
+    if (!sombra.coincide) res.sombraDistinta++;
+    const puerta = aplicarEnEsteNivel(veredicto, sombra);
 
     let estado = "revisar";
     let pagoId: string | null = null;
@@ -632,7 +773,7 @@ export async function procesarExtracto(
     let motivo: string | null = null;
     let conciliado = false;
 
-    if (veredicto.tipo === "repetido") {
+    if (puerta.aplicar && veredicto.tipo === "repetido") {
       for (const dup of veredicto.rechazar) {
         const { data: previo } = await sb.from("pagos").select("notas").eq("id", dup.id).maybeSingle();
         const notas = [
@@ -646,59 +787,83 @@ export async function procesarExtracto(
       }
     }
 
-    if (veredicto.tipo === "perfecto" || veredicto.tipo === "repetido") {
+    if (puerta.aplicar && (veredicto.tipo === "perfecto" || veredicto.tipo === "repetido")) {
       const { pago, contrato } = veredicto;
       usados.add(pago.id);
       contratoId = contrato.contratoId;
       via = "perfecto";
-      const { error } = await sb
-        .from("pagos")
-        .update({
-          estado_conciliacion: "conciliado",
-          contrato_id: contrato.contratoId,
-        })
-        .eq("id", pago.id);
-      if (error) {
-        motivo = `Calzó, pero no pude marcar el pago: ${error.message}`;
-        res.revisar++;
-      } else {
-        pagoId = pago.id;
-        conciliado = true;
-        estado = pago.destinoInterior || mov.monto + 0.01 >= contrato.letra ? "aplicado" : "parcial";
-        const destNom = pago.destinoInterior ? destinoPorId(pago.destinoInterior)?.nombre ?? pago.destinoInterior : null;
-        motivo = destNom
-          ? `Cruce perfecto de salida a ${destNom}: ancla (carro/ref), monto, fecha y empresa.`
-          : "Cruce perfecto: ancla (carro y/o referencia exacta), monto, fecha y empresa.";
-        if (estado === "parcial") res.parciales++; else res.aplicados++;
-        res.montoAplicado += mov.monto;
-        porRecalcular.add(`${contrato.contratoId}|${fechaContable(pago.pagadoAt)}`);
-        aplicarPagoIds.push(pago.id);
-      }
+      pagoId = pago.id;
+      conciliado = true;
+      estado = pago.destinoInterior || mov.monto + 0.01 >= contrato.letra ? "aplicado" : "parcial";
+      const destNom = pago.destinoInterior ? destinoPorId(pago.destinoInterior)?.nombre ?? pago.destinoInterior : null;
+      motivo = destNom
+        ? `Cruce perfecto de salida a ${destNom}: ancla (carro/ref), monto, fecha y empresa.`
+        : "Cruce perfecto: ancla (carro y/o referencia exacta), monto, fecha y empresa.";
+    } else if (puerta.retenido && (veredicto.tipo === "perfecto" || veredicto.tipo === "repetido")) {
+      res.retenidos++;
+      estado = "revisar";
+      const ids =
+        veredicto.tipo === "repetido"
+          ? [veredicto.pago.id, ...veredicto.rechazar.map((p) => p.id)].join(",")
+          : veredicto.pago.id;
+      motivo = `${puerta.motivo} [ids:${ids}]`;
+      via = null;
+      contratoId = veredicto.contrato.contratoId;
     } else if (veredicto.tipo === "ambiguo") {
       const ids = veredicto.pagos.map((p) => p.id).join(",");
       motivo = `${veredicto.motivo} [ids:${ids}]`;
       via = "carro";
       contratoId = null;
-      res.revisar++;
     } else if (veredicto.tipo === "sin_comprobante") {
       estado = "omitido";
       motivo = veredicto.motivo;
       via = null;
       contratoId = null;
-    } else {
+    } else if (veredicto.tipo === "revisar") {
       motivo = veredicto.motivo;
       contratoId = veredicto.sugerido?.contratoId ?? null;
       via = veredicto.via;
-      res.revisar++;
     }
 
+    const letra =
+      veredicto.tipo === "perfecto" || veredicto.tipo === "repetido"
+        ? veredicto.contrato.letra
+        : (flota.find((c) => c.contratoId === sombra.contratoId)?.letra ?? null);
+    let refAjena = false;
+    if (mov.referencia) {
+      if (!refsAjenas.has(mov.referencia)) {
+        refsAjenas.set(mov.referencia, await referenciaEnOtraEmpresa(sb, mov.referencia, empresa.id));
+      }
+      refAjena = refsAjenas.get(mov.referencia) ?? false;
+    }
+    const aprendizaje = rankearAprendizaje({
+      candidatos: sombra.candidatos,
+      aliases: memoria.aliases,
+      pesos: memoria.pesos,
+      nombre: mov.nombre,
+      descripcion: mov.descripcion,
+      letra,
+      monto: mov.monto,
+      refAjena,
+      imagenParecida: sombra.candidatos.some((c) => imagenParecida.has(c.pagoId)),
+      sombraTipo: sombra.tipo,
+      sombraPagoId: sombra.pagoId,
+    });
+    motivo = [motivo, textoSombra(sombra), textoAprendizaje(aprendizaje)].filter(Boolean).join("\n");
+
+    const carroCanon = mov.numeroCarro ? canonCarro(numeroCarroOperativo(mov.numeroCarro) ?? mov.numeroCarro) : null;
     const fila: Record<string, unknown> = {
+      actor: cargadoPor,
+      accion: estado === "revisar" && veredicto.tipo === "ambiguo" ? "ambiguo" : estado,
       extracto_id: extractoId,
+      empresa_id: empresa.id,
       fecha: mov.fecha,
       monto: mov.monto,
       descripcion: mov.descripcion,
       referencia: mov.referencia,
+      referencia_canonica: canonReferencia(mov.referencia),
       numero_carro: mov.numeroCarro,
+      numero_carro_canon: carroCanon,
       nombre_detectado: mov.nombre,
       contrato_id: contratoId,
       conciliado,
@@ -706,25 +871,105 @@ export async function procesarExtracto(
       estado,
       motivo,
       via,
+      huella,
+      motor_version: MOTOR_CONCILIACION,
+      sombra: { ...sombra, aprendizaje },
     };
-    const ins = await sb.from("movimientos_extracto").insert(fila).select("id").maybeSingle();
-    let movId = (ins.data as { id: string } | null)?.id ?? null;
-    if (ins.error && /motivo|via/i.test(ins.error.message)) {
-      delete fila.motivo;
-      delete fila.via;
-      const retry = await sb.from("movimientos_extracto").insert(fila).select("id").maybeSingle();
-      movId = (retry.data as { id: string } | null)?.id ?? null;
-    } else if (ins.error) {
-      console.error("[extracto] insert movimiento", ins.error.message);
+    const guardado = await guardarMovimientoExtracto(sb, fila, rpcEstado);
+    if (guardado.repetido) {
+      res.duplicados++;
+      res.detalle.push({
+        fecha: mov.fecha,
+        descripcion: mov.descripcion,
+        monto: mov.monto,
+        carro: mov.numeroCarro,
+        via: null,
+        estado: "duplicado",
+        motivo: "Esa huella ya estaba registrada en esta empresa. No se volvió a cargar.",
+      });
+      huellasVistas.add(huella);
+      huellasEnEsteArchivo.add(huella);
+      continue;
+    }
+    if (guardado.error || !guardado.id) {
+      console.error("[extracto] insert movimiento", guardado.error);
+      motivo = guardado.error ?? "No pude guardar el movimiento.";
+      estado = "revisar";
+      res.revisar++;
+      res.detalle.push({
+        fecha: mov.fecha,
+        descripcion: mov.descripcion,
+        monto: mov.monto,
+        carro: mov.numeroCarro,
+        via,
+        estado,
+        motivo,
+      });
+      continue;
     }
 
-    if (pagoId && movId) {
-      await sb.from("pagos").update({ movimiento_extracto_id: movId }).eq("id", pagoId);
+    if (guardado.vinculo === "tabla" && pagoId) {
+      const { error } = await sb
+        .from("pagos")
+        .update({
+          estado_conciliacion: "conciliado",
+          contrato_id: contratoId,
+          movimiento_extracto_id: guardado.id,
+        })
+        .eq("id", pagoId)
+        .eq("estado_conciliacion", "pendiente");
+      if (error) {
+        await sb.from("movimientos_extracto").delete().eq("id", guardado.id);
+        motivo = `Calzó, pero no pude marcar el pago: ${error.message}`;
+        estado = "revisar";
+        conciliado = false;
+        res.revisar++;
+        res.detalle.push({
+          fecha: mov.fecha,
+          descripcion: mov.descripcion,
+          monto: mov.monto,
+          carro: mov.numeroCarro,
+          via,
+          estado,
+          motivo,
+        });
+        continue;
+      }
+      await registrarAuditoriaConciliacion({
+        accion: estado,
+        actor: cargadoPor,
+        extractoId,
+        movimientoId: guardado.id,
+        pagoId,
+        contratoId,
+        empresaId: empresa.id,
+        motivo,
+        despues: { estado, via, huella },
+      });
+    } else if (guardado.vinculo === "tabla") {
+      await registrarAuditoriaConciliacion({
+        accion: veredicto.tipo === "ambiguo" ? "ambiguo" : estado,
+        actor: cargadoPor,
+        extractoId,
+        movimientoId: guardado.id,
+        contratoId,
+        empresaId: empresa.id,
+        motivo,
+        despues: { estado, via, huella },
+      });
     }
 
-    // Para no re-detectar esta misma línea si el insert falló a medias, igual marcamos vista.
+    if (conciliado && pagoId && (veredicto.tipo === "perfecto" || veredicto.tipo === "repetido")) {
+      if (estado === "parcial") res.parciales++;
+      else res.aplicados++;
+      res.montoAplicado += mov.monto;
+      porRecalcular.add(`${contratoId}|${fechaContable(veredicto.pago.pagadoAt)}`);
+      aplicarPagoIds.push(pagoId);
+    }
+
     huellasVistas.add(huella);
-
+    huellasEnEsteArchivo.add(huella);
+    if (estado === "revisar") res.revisar++;
     res.detalle.push({
       fecha: mov.fecha,
       descripcion: mov.descripcion,

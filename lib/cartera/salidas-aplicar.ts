@@ -274,7 +274,7 @@ export async function asegurarCargoSalida(opts: {
   const { error } = await sb.from("cargos").insert({
     contrato_id: opts.contratoId,
     fecha: opts.fecha,
-    tipo: "otras",
+    tipo: "acuerdo",
     concepto_codigo: "SALIDA_INT",
     concepto: `Salida al interior — ${opts.dest.nombre}`,
     monto: opts.monto,

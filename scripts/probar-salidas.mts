@@ -11,6 +11,7 @@ import {
 } from "@/lib/cartera/salidas-interior";
 import { cruzarPuntoConSalida, enInterior, enMetroPanama, haversineKm, destinoTarifaCercano } from "@/lib/cartera/salidas-geo";
 import { montoQueCubreCuota } from "@/lib/cartera/salidas-aplicar";
+import { armarPagoCombinado } from "@/lib/cartera/partida-pago";
 import { textoComoSeAplico, PRIORIDAD } from "@/lib/cartera/aplicar-pago";
 import { distribuirPago } from "@/lib/cartera/rules";
 
@@ -129,6 +130,20 @@ check(
   "en_camino",
 );
 check("David queda lejos de la ciudad", haversineKm({ lat: 8.98, lng: -79.52 }, { lat: 8.43, lng: -82.43 }) > 200, true);
+
+const partido = armarPagoCombinado(36, { destinoId: "penonome", monto: 5 });
+check("36 se parte en 31 de letra y 5 de Penonomé", "error" in partido ? null : partido.resultado.asignaciones, [
+  { tipo: "saldo_anterior", aplicado: 31, etiqueta: "saldo anterior" },
+  { tipo: "salida_interior", aplicado: 5, etiqueta: "salida a Penonomé" },
+]);
+check(
+  "esos 5 no cubren la letra",
+  "error" in partido
+    ? null
+    : montoQueCubreCuota({ monto: 36, asignaciones: partido.resultado.asignaciones, destino_interior: partido.destinoId }),
+  31,
+);
+check("una parte mayor que el pago no se arma", "error" in armarPagoCombinado(36, { destinoId: "penonome", monto: 40 }), true);
 
 console.log(fallos === 0 ? `\n✅ Salidas en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

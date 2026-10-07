@@ -4,9 +4,13 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { instantePanama, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
-import { aplicarPagoEnObligaciones } from "./aplicar-pago";
+import { aplicarPagoEnObligaciones, borrarCargosAcuerdoDelPago } from "./aplicar-pago";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
+import { registrarAuditoriaConciliacion } from "./conciliacion-auditoria";
+import { aprenderDecision } from "./aprendizaje-datos";
 import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
+import { armarPagoCombinado, type PartidaPago } from "./partida-pago";
+import { borrarCargoSalidaDelPago } from "./salidas-aplicar";
 import { carroAtribuible, contratoPorCarro, fechaCubrePago, montoExacto, numeroCarroOperativo, type ContratoFlota } from "./cruce";
 
 export type ResultadoRevision = { ok: boolean; error?: string };
@@ -139,6 +143,20 @@ export async function ignorarMovimientoExtracto(movimientoId: string): Promise<R
     .maybeSingle();
   if (error) return { ok: false, error: error.message };
   if (!data) return { ok: false, error: "Ese movimiento ya no está en revisión." };
+  await registrarAuditoriaConciliacion({
+    accion: "ignorado",
+    actor: "equipo",
+    movimientoId,
+    motivo: "Ignorado por el equipo.",
+    antes: { estado: "revisar" },
+    despues: { estado: "ignorado" },
+  });
+  await aprenderDecision({
+    sb,
+    movimientoId,
+    resultado: "rechazo",
+    tocarAlias: false,
+  });
   return { ok: true };
 }
 
@@ -148,6 +166,8 @@ export async function aplicarMovimientoExtracto(opts: {
   carro: string | null;
   /** Si hay varios comprobantes que calzan, el equipo elige cuál. */
   pagoId?: string | null;
+  /** Parte del pago que no es letra, por ejemplo $5 de Penonomé. */
+  partida?: PartidaPago | null;
 }): Promise<ResultadoRevision> {
   const { movimientoId } = opts;
   if (!movimientoId) return { ok: false, error: "Falta el movimiento." };
@@ -173,6 +193,10 @@ export async function aplicarMovimientoExtracto(opts: {
     return { ok: false, error: "Ese movimiento ya no está en revisión." };
   }
   if (!mov.fecha) return { ok: false, error: "Ese movimiento no tiene fecha." };
+
+  const partida = opts.partida ?? null;
+  const armado = partida ? armarPagoCombinado(Number(mov.monto), partida) : null;
+  if (armado && "error" in armado) return { ok: false, error: armado.error };
 
   const empresaId = mov.extracto.empresa_id;
   const carroBruto = (opts.carro ?? "").trim() || mov.numero_carro;
@@ -277,6 +301,23 @@ export async function aplicarMovimientoExtracto(opts: {
     pagoId = (pago as { id: string }).id;
   }
 
+  if (armado && !("error" in armado)) {
+    const { error } = await sb
+      .from("pagos")
+      .update({
+        asignaciones: armado.resultado,
+        destino_interior: armado.destinoId,
+      })
+      .eq("id", pagoId);
+    if (error && !/destino_interior/i.test(error.message)) {
+      return { ok: false, error: error.message };
+    }
+    if (error) {
+      const retry = await sb.from("pagos").update({ asignaciones: armado.resultado }).eq("id", pagoId);
+      if (retry.error) return { ok: false, error: retry.error.message };
+    }
+  }
+
   const estado = monto + 0.01 < contrato.letra ? "parcial" : "aplicado";
   const { error: errUp } = await sb
     .from("movimientos_extracto")
@@ -295,6 +336,29 @@ export async function aplicarMovimientoExtracto(opts: {
     .eq("estado", "revisar");
   if (errUp) return { ok: false, error: errUp.message };
 
+  await registrarAuditoriaConciliacion({
+    accion: estado,
+    actor: "equipo",
+    movimientoId: mov.id,
+    pagoId,
+    contratoId: contrato.id,
+    empresaId: contrato.empresaId,
+    motivo: pendiente
+      ? `Aplicado a mano: se cruzó con el comprobante del carro ${contrato.numero}.`
+      : `Aplicado a mano al carro ${contrato.numero} (sin comprobante pendiente).`,
+    antes: { estado: "revisar", conciliado: false },
+    despues: { estado, pagoId, contratoId: contrato.id },
+  });
+  await aprenderDecision({
+    sb,
+    movimientoId: mov.id,
+    resultado: "acierto",
+    empresaId,
+    contratoId: contrato.id,
+    numeroCarro: contrato.numero,
+    pagoId,
+  });
+
   try {
     await recalcularRecargo(contrato.id, mov.fecha);
   } catch (e) {
@@ -312,6 +376,121 @@ export async function aplicarMovimientoExtracto(opts: {
     console.error("[revision-extracto] waterfall", e);
   }
 
+  return { ok: true };
+}
+
+export async function revertirMovimientoExtracto(
+  movimientoId: string,
+  motivo: string,
+): Promise<ResultadoRevision> {
+  const porque = motivo.trim();
+  if (!movimientoId) return { ok: false, error: "Falta el movimiento." };
+  if (porque.length < 3) return { ok: false, error: "Escribe por qué se deshace." };
+
+  const sb = createServerSupabase();
+  const { data: raw, error } = await sb
+    .from("movimientos_extracto")
+    .select("id, estado, conciliado, pago_id, contrato_id, extracto:extractos_bancarios(empresa_id)")
+    .eq("id", movimientoId)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  const mov = raw as {
+    id: string;
+    estado: string;
+    conciliado: boolean;
+    pago_id: string | null;
+    contrato_id: string | null;
+    extracto: { empresa_id: string } | null;
+  } | null;
+  if (!mov) return { ok: false, error: "No encontré ese movimiento." };
+  if (!mov.conciliado || (mov.estado !== "aplicado" && mov.estado !== "parcial")) {
+    return { ok: false, error: "Solo se puede deshacer un cruce ya aplicado." };
+  }
+  if (!mov.pago_id) return { ok: false, error: "Ese movimiento no tiene un pago vinculado." };
+
+  const { data: pagoRaw } = await sb
+    .from("pagos")
+    .select("id, origen, notas, estado_conciliacion")
+    .eq("id", mov.pago_id)
+    .maybeSingle();
+  const pago = pagoRaw as {
+    id: string;
+    origen: string | null;
+    notas: string | null;
+    estado_conciliacion: string;
+  } | null;
+  if (!pago) return { ok: false, error: "No encontré el pago de ese cruce." };
+
+  await borrarCargoSalidaDelPago(pago.id);
+  await borrarCargosAcuerdoDelPago(pago.id);
+
+  const nota = [pago.notas, `Revertido: ${porque}`].filter(Boolean).join(" · ");
+  if (pago.origen === "comprobante") {
+    const { error: errPago } = await sb
+      .from("pagos")
+      .update({
+        estado_conciliacion: "pendiente",
+        movimiento_extracto_id: null,
+        asignaciones: null,
+        destino_interior: null,
+        notas: nota,
+      })
+      .eq("id", pago.id);
+    if (errPago && /destino_interior|asignaciones/i.test(errPago.message)) {
+      const retry = await sb
+        .from("pagos")
+        .update({
+          estado_conciliacion: "pendiente",
+          movimiento_extracto_id: null,
+          notas: nota,
+        })
+        .eq("id", pago.id);
+      if (retry.error) return { ok: false, error: retry.error.message };
+    } else if (errPago) {
+      return { ok: false, error: errPago.message };
+    }
+  } else {
+    const { error: errPago } = await sb
+      .from("pagos")
+      .update({
+        estado_conciliacion: "rechazado",
+        movimiento_extracto_id: null,
+        notas: nota,
+      })
+      .eq("id", pago.id);
+    if (errPago) return { ok: false, error: errPago.message };
+  }
+
+  const { error: errMov } = await sb
+    .from("movimientos_extracto")
+    .update({
+      estado: "revisar",
+      conciliado: false,
+      pago_id: null,
+      motivo: `Revertido: ${porque}`,
+    })
+    .eq("id", mov.id);
+  if (errMov) return { ok: false, error: errMov.message };
+
+  await registrarAuditoriaConciliacion({
+    accion: "revertido",
+    actor: "equipo",
+    movimientoId: mov.id,
+    pagoId: pago.id,
+    contratoId: mov.contrato_id,
+    empresaId: mov.extracto?.empresa_id ?? null,
+    motivo: porque,
+    antes: { estado: mov.estado, conciliado: true },
+    despues: { estado: "revisar", conciliado: false },
+  });
+  await aprenderDecision({
+    sb,
+    movimientoId: mov.id,
+    resultado: "rechazo",
+    empresaId: mov.extracto?.empresa_id ?? null,
+    contratoId: mov.contrato_id,
+    pagoId: pago.id,
+  });
   return { ok: true };
 }
 

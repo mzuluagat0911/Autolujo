@@ -15,6 +15,7 @@ import { textoComoSeAplico } from "./aplicar-pago";
 import { cobroHoyContrato, MARCA_EXCEDENTE_SIN_CONCEPTO } from "./cobro-hoy";
 import { validarComprobante, resumirAlertas, FRASE_PEDIR_CONFIRMACION, MARCA_REVISION_DOS_PAGOS, type Veredicto } from "@/lib/cartera/comprobante-validacion";
 import { carroCompatibleConChat } from "@/lib/cartera/cruce";
+import { observarImagenComprobante } from "./aprendizaje-datos";
 import { detectarDiasViaje, textoTarifasInterior, type DestinoInterior } from "./salidas-interior";
 import {
   inferirSalidaDelChat,
@@ -1333,6 +1334,12 @@ export async function procesarPagoComprobante(opts: {
   }
 
   const pagoId = pago.id as string;
+  try {
+    const empresaImagen = resolucion.vehiculoId ? await empresaDelVehiculo(resolucion.vehiculoId) : null;
+    await observarImagenComprobante({ sb, bytes, pagoId, empresaId: empresaImagen });
+  } catch (e) {
+    console.error("[pipeline] imagen", e);
+  }
   let salida: DestinoInterior | null = null;
   try {
     const hist = await historialReciente(conversacion.id, 16);

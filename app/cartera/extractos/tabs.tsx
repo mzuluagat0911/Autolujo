@@ -5,7 +5,7 @@ import { Money, StatusChip, Tabs, EmptyState } from "@/components/kit";
 import { lineaSalidaCruce, type SalidaHoyVista } from "@/lib/cartera/salidas-aplicar";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { SubirExtracto } from "./uploader";
-import { ColaRevision, type MovimientoRevision } from "./cola";
+import { ColaRevision, type CruceAplicado, type MovimientoRevision } from "./cola";
 import { PagoManualForm } from "../pagos/pago-manual-form";
 
 type Empresa = { id: string; codigo: string; nombre: string };
@@ -22,11 +22,13 @@ export function ExtractosTabs({
   empresas,
   recientes,
   revision,
+  aplicados,
   salidasBanco,
 }: {
   empresas: Empresa[];
   recientes: ExtractoReciente[];
   revision: MovimientoRevision[];
+  aplicados: CruceAplicado[];
   salidasBanco: SalidaHoyVista[];
 }) {
   const [tab, setTab] = useState<TabId>(
@@ -75,7 +77,7 @@ export function ExtractosTabs({
             title={`Por revisar · ${revision.length}`}
             hint="Aplicar ancla el movimiento a un carro. Ignorar lo saca de la cola sin mover el saldo."
           >
-            <ColaRevision movimientos={revision} />
+            <ColaRevision movimientos={revision} aplicados={aplicados} />
           </Panel>
         </div>
       )}
