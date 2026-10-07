@@ -53,7 +53,7 @@ function ordenar(filas: EstadoCuentaFila[]): EstadoCuentaFila[] {
 
 const flotaDelDia = unstable_cache(
   async (hoy: string) => ordenar(await enriquecer(await armarEstadosAlcance())),
-  ["extracto-flota-v5"],
+  ["extracto-flota-v6"],
   { revalidate: HORAS, tags: [TAG_DIA] },
 );
 

@@ -339,6 +339,14 @@ export function DetalleEstadoModal({
                 {!adelantado && !alDia && textoDesglose && (
                   <p className="mt-2 text-sm leading-snug text-muted">{textoDesglose}</p>
                 )}
+                {lineasCobroVisibles.some((l) => l.aviso && /domingo/i.test(l.etiqueta)) && (
+                  <p className="mt-2 text-sm leading-snug text-muted">
+                    {lineasCobroVisibles
+                      .filter((l) => l.aviso && /domingo/i.test(l.etiqueta))
+                      .map((l) => l.etiqueta)
+                      .join(" · ")}
+                  </p>
+                )}
                 {vivo.pendiente && (
                   <p className="mt-2 text-sm text-azul">
                     Comprobante en validación
@@ -388,7 +396,9 @@ export function DetalleEstadoModal({
                       {l.aviso || l.monto <= 0.009
                         ? l.reserva && l.reserva > 0.009
                           ? money(l.reserva)
-                          : "—"
+                          : l.aviso && l.monto > 0.009
+                            ? money(l.monto)
+                            : "—"
                         : money(l.monto)}
                     </Fila>
                   ))

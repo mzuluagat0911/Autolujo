@@ -322,6 +322,14 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
                         A pagar hoy {money(e.totalCobrarHoy)}
                       </p>
                     )}
+                    {(e.lineasCobro ?? []).some((l) => l.aviso && /domingo/i.test(l.etiqueta)) && (
+                      <p className="mt-1 text-[11px] text-muted">
+                        {(e.lineasCobro ?? [])
+                          .filter((l) => l.aviso && /domingo/i.test(l.etiqueta))
+                          .map((l) => l.etiqueta)
+                          .join(" · ")}
+                      </p>
+                    )}
                     <BotonPreviewMensaje onClick={() => setPreview(e)} />
                   </td>
                 </tr>
