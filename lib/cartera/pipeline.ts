@@ -1369,7 +1369,7 @@ export async function procesarPagoComprobante(opts: {
     console.error("[pipeline] salida interior", e);
   }
 
-  if (resolucion.contratoId) invalidarLecturaEstados(resolucion.contratoId);
+  if (resolucion.contratoId) await invalidarLecturaEstados(resolucion.contratoId);
 
   return {
     pagoId,

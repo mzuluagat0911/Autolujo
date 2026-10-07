@@ -607,22 +607,26 @@ async function generosDe(clienteIds: string[]): Promise<Map<string, string | nul
   return out;
 }
 
-async function acuerdosActivos(): Promise<Map<string, AcuerdoActivo[]>> {
+async function acuerdosActivos(contratoId?: string): Promise<Map<string, AcuerdoActivo[]>> {
   const sb = createServerSupabase();
   const sel =
     "id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica, created_at";
   let data: unknown[] | null = null;
   let error: { message: string } | null = null;
   {
-    const res = await sb.from("acuerdos").select(sel).eq("activo", true);
+    let q = sb.from("acuerdos").select(sel).eq("activo", true);
+    if (contratoId) q = q.eq("contrato_id", contratoId);
+    const res = await q;
     data = res.data as unknown[] | null;
     error = res.error;
   }
   if (error && /frecuencia|fecha_especifica/i.test(error.message)) {
-    const retry = await sb
+    let q = sb
       .from("acuerdos")
       .select("id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion")
       .eq("activo", true);
+    if (contratoId) q = q.eq("contrato_id", contratoId);
+    const retry = await q;
     data = retry.data as unknown[] | null;
     error = retry.error;
   }
@@ -671,7 +675,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
       .eq("tipo", "multa").eq("concepto_codigo", "PAGO_TARDE").limit(1),
     ultimoDiaDevengado(contratoId),
     comprobantePendienteContrato(contratoId, hoy),
-    acuerdosActivos(),
+    acuerdosActivos(contratoId),
     aplicadoArregloHoyContrato(contratoId, hoy),
     cuotasPorContrato(
       [contratoId],

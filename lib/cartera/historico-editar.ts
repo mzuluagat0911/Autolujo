@@ -171,6 +171,6 @@ export async function guardarDiaHistorico(input: {
   });
   if (eq) return { ok: false, error: eq.message };
 
-  invalidarLecturaEstados(contratoId);
+  await invalidarLecturaEstados(contratoId);
   return historicoDeContrato(contratoId);
 }

@@ -41,7 +41,7 @@ export async function guardarAlcanceCartera(
     revalidatePath("/cartera");
     revalidatePath("/cartera/estados-cuenta");
     revalidatePath("/cartera/por-llamar");
-    invalidarLecturaEstados();
+    await invalidarLecturaEstados();
   }
   return r;
 }

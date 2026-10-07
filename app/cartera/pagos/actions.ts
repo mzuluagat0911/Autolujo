@@ -153,7 +153,7 @@ export async function resolverPago(formData: FormData): Promise<void> {
   revalidatePath("/cartera");
   revalidatePath("/cartera/vehiculos");
   revalidatePath("/cartera/extractos");
-  invalidarLecturaEstados(p?.contrato_id);
+  await invalidarLecturaEstados(p?.contrato_id);
   revalidatePath("/");
 }
 
@@ -343,7 +343,7 @@ export async function registrarPagoManual(
   revalidatePath("/cartera");
   revalidatePath("/cartera/vehiculos");
   revalidatePath("/cartera/extractos");
-  invalidarLecturaEstados(r.contratoId);
+  await invalidarLecturaEstados(r.contratoId);
   revalidatePath("/");
 
   const base = dest
@@ -399,7 +399,7 @@ export async function asignarPagoASalida(formData: FormData): Promise<void> {
   revalidatePath("/cartera");
   revalidatePath("/cartera/vehiculos");
   revalidatePath("/cartera/extractos");
-  invalidarLecturaEstados(p?.contrato_id);
+  await invalidarLecturaEstados(p?.contrato_id);
 }
 
 export async function accionDarAval(formData: FormData): Promise<void> {
@@ -410,5 +410,5 @@ export async function accionDarAval(formData: FormData): Promise<void> {
   revalidatePath("/cartera");
   revalidatePath("/cartera/vehiculos");
   revalidatePath("/cartera/extractos");
-  invalidarLecturaEstados();
+  await invalidarLecturaEstados();
 }

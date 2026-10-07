@@ -17,7 +17,7 @@ export async function GET(req: Request) {
 
   try {
     const res = await devengarPendientes();
-    invalidarLecturaEstados();
+    await invalidarLecturaEstados();
     return Response.json({ ok: true, ...res });
   } catch (e) {
     console.error("[cron/devengo] falló:", e);

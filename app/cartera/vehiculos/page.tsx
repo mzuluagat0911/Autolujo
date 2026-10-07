@@ -15,6 +15,52 @@ export const dynamic = "force-dynamic";
 
 const TOPE_KM_MES = 8000;
 
+function kmDeAgg(v: unknown): number {
+  if (typeof v === "number") return v;
+  if (typeof v === "string") return Number(v) || 0;
+  if (v && typeof v === "object" && "sum" in v) return Number((v as { sum: unknown }).sum) || 0;
+  return 0;
+}
+
+/** Suma el km del mes en la base. Si el agregado no está, pagina las filas. */
+async function kmMesPorVehiculo(
+  sb: ReturnType<typeof createServerSupabase>,
+  mesIni: string,
+  hoy: string,
+): Promise<{ error: { message: string } | null; data: { vehiculo_id: string; km: number | null }[] | null }> {
+  const agg = await sb
+    .from("gps_dias")
+    .select("vehiculo_id, total:km.sum()")
+    .gte("fecha", mesIni)
+    .lte("fecha", hoy)
+    .not("vehiculo_id", "is", null)
+    .limit(5000);
+  if (!agg.error) {
+    return {
+      error: null,
+      data: ((agg.data ?? []) as { vehiculo_id: string; total: unknown }[]).map((r) => ({
+        vehiculo_id: r.vehiculo_id,
+        km: kmDeAgg(r.total),
+      })),
+    };
+  }
+  const rows: { vehiculo_id: string; km: number | null }[] = [];
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await sb
+      .from("gps_dias")
+      .select("vehiculo_id, km")
+      .gte("fecha", mesIni)
+      .lte("fecha", hoy)
+      .not("vehiculo_id", "is", null)
+      .range(from, from + 999);
+    if (error) return { error, data: null };
+    const chunk = (data ?? []) as { vehiculo_id: string; km: number | null }[];
+    rows.push(...chunk);
+    if (chunk.length < 1000) break;
+  }
+  return { error: null, data: rows };
+}
+
 type Empresa = { id: string; codigo: string; nombre: string };
 
 const ESTADOS = [
@@ -51,7 +97,7 @@ async function getData() {
         .from("contratos")
         .select("id, vehiculo_id, letra_diaria, cliente_id, cliente:clientes(nombre, whatsapp, telefono)")
         .eq("estado", "activo"),
-      sb.from("gps_dias").select("vehiculo_id, km").gte("fecha", mesIni).lte("fecha", hoy).not("vehiculo_id", "is", null),
+      kmMesPorVehiculo(sb, mesIni, hoy),
       sb
         .from("gps_dias")
         .select("vehiculo_id, km, alerta")

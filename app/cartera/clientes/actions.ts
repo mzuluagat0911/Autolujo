@@ -428,7 +428,7 @@ export async function createClienteConContrato(
   revalidatePath("/cartera/conversaciones");
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
-  invalidarLecturaEstados();
+  await invalidarLecturaEstados();
   return {
     ok: true,
     msg: avisoChat

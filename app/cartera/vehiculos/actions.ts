@@ -150,7 +150,7 @@ export async function guardarIdentidadCarro(input: {
       });
       if (!p.ok) return p;
       try {
-        invalidarLecturaEstados();
+        await invalidarLecturaEstados();
       } catch (e) {
         console.error("[guardarIdentidadCarro] cache pausa", e);
       }
@@ -230,7 +230,7 @@ export async function guardarIdentidadCarro(input: {
       });
       if (!enlace.ok) return { ok: false, msg: enlace.error };
       try {
-        invalidarLecturaEstados();
+        await invalidarLecturaEstados();
       } catch (e) {
         console.error("[guardarIdentidadCarro] cache", e);
       }
@@ -334,7 +334,7 @@ export async function guardarIdentidadCarro(input: {
     }
 
     try {
-      invalidarLecturaEstados();
+      await invalidarLecturaEstados();
     } catch (e) {
       console.error("[guardarIdentidadCarro] cache", e);
     }
@@ -415,7 +415,7 @@ export async function archivarCasoCarro(
     origen: "manual",
   });
   try {
-    invalidarLecturaEstados();
+    await invalidarLecturaEstados();
   } catch (e) {
     console.error("[archivarCasoCarro] cache", e);
   }

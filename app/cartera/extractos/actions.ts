@@ -11,12 +11,12 @@ import {
   type ResultadoRevision,
 } from "@/lib/cartera/revision-extracto";
 
-function refrescarCartera() {
+async function refrescarCartera() {
   revalidatePath("/admin");
   revalidatePath("/cartera");
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera/extractos");
-  invalidarLecturaEstados();
+  await invalidarLecturaEstados();
 }
 
 const VACIO: ResultadoConciliacion = {
@@ -42,7 +42,7 @@ export async function conciliarExtracto(
   try {
     const buf = Buffer.from(await file.arrayBuffer());
     const res = await procesarExtracto(buf, "Equipo", empresaId, file.name);
-    refrescarCartera();
+    await refrescarCartera();
     return res;
   } catch (e) {
     return { ...VACIO, error: e instanceof Error ? e.message : "Error procesando el extracto." };
@@ -67,19 +67,19 @@ export async function resolverMovimientoExtracto(
   } else {
     res = { ok: false, error: "Acción inválida." };
   }
-  if (res.ok) refrescarCartera();
+  if (res.ok) await refrescarCartera();
   return res;
 }
 
 export async function loteAplicarSugeridos(): Promise<{ ok: number; fail: number; msg: string }> {
   const res = await aplicarSugeridosEnLote();
-  if (res.ok > 0) refrescarCartera();
+  if (res.ok > 0) await refrescarCartera();
   return res;
 }
 
 export async function loteIgnorarSeleccionados(formData: FormData): Promise<{ ok: number; fail: number; msg: string }> {
   const ids = formData.getAll("movimiento_id").map((v) => String(v));
   const res = await ignorarMovimientosEnLote(ids);
-  if (res.ok > 0) refrescarCartera();
+  if (res.ok > 0) await refrescarCartera();
   return res;
 }
