@@ -209,5 +209,61 @@ check(
   false,
 );
 
+console.log("\n· Número sin letra, dentro de la empresa");
+const GOLD = "emp-gold";
+const flotaGold: ContratoFlota[] = [
+  { contratoId: "g-25", letra: 35, numero: "G25", clienteNombre: "Odalys", empresaId: GOLD },
+  { contratoId: "g-34", letra: 35, numero: "G34", clienteNombre: "Chris", empresaId: GOLD },
+];
+const extractoGold = { empresaId: GOLD, numeroCuenta: "0469000022690" };
+const pagoSinLetra = pago({
+  id: "p-g25",
+  contratoId: "g-25",
+  empresaId: GOLD,
+  monto: 35,
+  numeroCarro: "25",
+  cuentaDestino: "04-69-00-002269-0",
+  referencia: "548454493",
+  pagadoAt: instantePanama("2026-10-06", 10, 0).toISOString(),
+});
+const movG25 = {
+  monto: 35,
+  fecha: "2026-10-06",
+  numeroCarro: "G25",
+  referencia: "548454493",
+  nombre: "ODALYS",
+};
+const dSinLetra = decidirMovimiento(movG25, [pagoSinLetra], flotaGold, extractoGold);
+check("25 se atribuye a G25 si monto, fecha, cuenta y ref calzan", dSinLetra.tipo, "perfecto");
+check(
+  "monto distinto no atribuye el número pelado",
+  decidirMovimiento({ ...movG25, monto: 40 }, [pagoSinLetra], flotaGold, extractoGold).tipo,
+  "revisar",
+);
+check(
+  "confirmación distinta no atribuye el número pelado",
+  decidirMovimiento({ ...movG25, referencia: "00001111" }, [pagoSinLetra], flotaGold, extractoGold).tipo,
+  "revisar",
+);
+check(
+  "otra letra no es el mismo carro",
+  decidirMovimiento({ ...movG25, numeroCarro: "A25" }, [pagoSinLetra], flotaGold, extractoGold).tipo,
+  "revisar",
+);
+const flotaMezcla: ContratoFlota[] = [
+  { contratoId: "al-34", letra: 30, numero: "34", clienteNombre: "Auto", empresaId: EMP },
+  { contratoId: "g-34b", letra: 35, numero: "G34", clienteNombre: "Gold", empresaId: EMP },
+];
+check(
+  "si el 34 y el G34 están en la misma flota, el número pelado no se los come",
+  decidirMovimiento(
+    { monto: 35, fecha: "2026-09-01", numeroCarro: "G34", referencia: "548771957" },
+    [pago({ id: "p-al", contratoId: "al-34", numeroCarro: "34", monto: 35, referencia: "548771957" })],
+    flotaMezcla,
+    extracto,
+  ).tipo,
+  "revisar",
+);
+
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

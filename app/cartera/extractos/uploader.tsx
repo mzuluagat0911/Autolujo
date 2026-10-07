@@ -30,8 +30,9 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
       <form action={action} className="rounded-xl bg-surface p-6 ring-1 ring-line">
         <p className="text-sm font-semibold">Empresa del extracto</p>
         <p className="mt-1 text-sm text-muted">
-          Solo cruza carros de esa empresa. Auto-aplica si calza carro, monto, fecha y cuenta
-          destino; el resto va a la cola de arriba.
+          Solo cruza carros de esa empresa. Auto-aplica si calzan monto, fecha y cuenta, y el
+          carro: con la letra, o solo el número cuando en esa empresa no se repite. El resto
+          va a la cola de arriba.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">

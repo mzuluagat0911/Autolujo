@@ -8,7 +8,7 @@ import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
 import { pagoEsperaRevisionDosPagos } from "./comprobante-validacion";
-import { canonCarro, fechaCubrePago, montoExacto } from "./cruce";
+import { carroAtribuible, contratoPorCarro, fechaCubrePago, montoExacto, type ContratoFlota } from "./cruce";
 
 export type ResultadoRevision = { ok: boolean; error?: string };
 
@@ -61,10 +61,16 @@ async function contratoPorCarroEnEmpresa(
     estado: string;
     vehiculo: { numero: string; empresa_id: string };
   }[];
-  const key = canonCarro(carro);
-  const hits = filas.filter((c) => canonCarro(c.vehiculo.numero) === key);
-  if (hits.length !== 1) return { unico: null, cuantos: hits.length };
-  const c = hits[0];
+  const flota: ContratoFlota[] = filas.map((c) => ({
+    contratoId: c.id,
+    letra: Number(c.letra_diaria),
+    numero: c.vehiculo.numero,
+    clienteNombre: null,
+    empresaId: c.vehiculo.empresa_id,
+  }));
+  const hallado = contratoPorCarro(flota, carro);
+  if (!hallado.unico) return { unico: null, cuantos: hallado.cuantos };
+  const c = filas.find((f) => f.id === hallado.unico!.contratoId)!;
   return {
     cuantos: 1,
     unico: {
@@ -209,7 +215,7 @@ export async function aplicarMovimientoExtracto(opts: {
     if (p.contrato_id && p.contrato_id !== contrato.id) {
       return { ok: false, error: "Ese comprobante pertenece a otro contrato." };
     }
-    if (p.numero_carro && canonCarro(p.numero_carro) !== canonCarro(contrato.numero)) {
+    if (p.numero_carro && !carroAtribuible(p.numero_carro, contrato.numero)) {
       return { ok: false, error: "Ese comprobante es de otro carro." };
     }
     pendiente = { id: p.id, pagadoAt: p.pagado_at };

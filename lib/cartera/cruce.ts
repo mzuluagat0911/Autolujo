@@ -3,7 +3,7 @@
 // Un movimiento del banco SOLO se marca conciliado si calza con un comprobante
 // pendiente en TODOS los criterios: empresa, cuenta destino (si se leyó),
 // monto exacto, fecha (día del pago o el siguiente) y un ancla operativa:
-//   - # de carro (comentario del banco ↔ comprobante/contrato), y/o
+//   - # de carro (con letra, o solo el número si en esa flota hay un único carro), y/o
 //   - referencia bancaria EXACTA (confirmación / comprobante / canje / ref).
 // Si ambos lados traen referencia y no es la misma → nunca es perfecto.
 // El banco del extracto es el destino (Banco General); el banco del
@@ -42,6 +42,32 @@ export function carroCompatibleConChat(
   const prefB = b.replace(/\d/g, "");
   // Uno sin letra (OCR) y el otro con (G15), o misma letra.
   return !prefA || !prefB || prefA === prefB;
+}
+
+/**
+ * ¿Esta lectura es ese carro?
+ * Primero letra+número (G25). Si la lectura no trae letra, el número se
+ * atribuye al carro que sí la tiene (25 → G25). Una letra distinta, o una
+ * lectura con letra contra un carro que no la tiene, no es el mismo carro:
+ * el 34 de otra empresa no es el G34.
+ */
+export function carroAtribuible(
+  leido: string | null | undefined,
+  delCarro: string | null | undefined,
+): boolean {
+  if (!leido || !delCarro) return false;
+  const a = canonCarro(leido.replace(/^carro\s+/i, ""));
+  const b = canonCarro(delCarro.replace(/^carro\s+/i, ""));
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const digA = a.replace(/\D/g, "");
+  const digB = b.replace(/\D/g, "");
+  if (!digA || digA !== digB) return false;
+  const prefA = a.replace(/\d/g, "");
+  const prefB = b.replace(/\d/g, "");
+  if (prefA && prefB && prefA !== prefB) return false;
+  if (prefA && !prefB) return false;
+  return !prefA && Boolean(prefB);
 }
 
 export function extraerCarro(desc: string, empresa: string | null): string | null {
@@ -188,14 +214,22 @@ export function huellaMovimiento(
   return `${fecha ?? ""}|${Math.round(Number(monto) * 100)}|${desc}`;
 }
 
-function contratoPorCarro(
+export function contratoPorCarro(
   flota: ContratoFlota[],
   numero: string | null,
 ): { unico: ContratoFlota | null; cuantos: number } {
   if (!numero) return { unico: null, cuantos: 0 };
-  const key = canonCarro(numero);
-  const hits = flota.filter((c) => canonCarro(c.numero) === key);
-  return { unico: hits.length === 1 ? hits[0] : null, cuantos: hits.length };
+  const key = canonCarro(numero.replace(/^carro\s+/i, ""));
+  const exactos = flota.filter((c) => canonCarro(c.numero) === key);
+  if (exactos.length > 0) {
+    return { unico: exactos.length === 1 ? exactos[0] : null, cuantos: exactos.length };
+  }
+  // Sin letra en la lectura: el número atribuye solo si en esta flota hay un carro.
+  const pref = key.replace(/\d/g, "");
+  const dig = key.replace(/\D/g, "");
+  if (pref || !dig) return { unico: null, cuantos: 0 };
+  const porDigito = flota.filter((c) => canonCarro(c.numero).replace(/\D/g, "") === dig);
+  return { unico: porDigito.length === 1 ? porDigito[0] : null, cuantos: porDigito.length };
 }
 
 /**
@@ -223,17 +257,15 @@ export function esCrucePerfecto(
   if (contrato.empresaId !== extracto.empresaId) return false;
   if (pago.empresaId && pago.empresaId !== extracto.empresaId) return false;
 
-  const carroPago = pago.numeroCarro ? canonCarro(pago.numeroCarro) : null;
-  const carroMov = mov.numeroCarro ? canonCarro(mov.numeroCarro) : null;
   const carroContrato = canonCarro(contrato.numero);
-  if (carroMov && carroMov !== carroContrato) return false;
-  if (carroPago && carroPago !== carroContrato) return false;
+  if (mov.numeroCarro && !carroAtribuible(mov.numeroCarro, carroContrato)) return false;
+  if (pago.numeroCarro && !carroAtribuible(pago.numeroCarro, carroContrato)) return false;
 
   const refPago = canonReferencia(pago.referencia);
   const refMov = canonReferencia(mov.referencia);
   if (refPago && refMov && refPago !== refMov) return false;
 
-  const anclaCarro = Boolean(carroMov || carroPago);
+  const anclaCarro = Boolean(mov.numeroCarro || pago.numeroCarro);
   const anclaRef = Boolean(refPago && refMov && refPago === refMov);
   if (!anclaCarro && !anclaRef) return false;
 

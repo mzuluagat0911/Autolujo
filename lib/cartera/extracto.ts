@@ -20,6 +20,7 @@ import {
   extraerCarroCeldas,
   extraerNombre,
   extraerReferencia,
+  contratoPorCarro,
   decidirMovimiento,
   huellaMovimiento,
   type ContratoFlota,
@@ -532,7 +533,8 @@ export async function procesarExtracto(
     .filter((p) => !pagoEsperaConceptoExcedente(p.notas) && !pagoEsperaRevisionDosPagos(p.notas))
     .filter((p) => {
       if (p.contrato_id && contratoIds.has(p.contrato_id)) return true;
-      if (p.numero_carro && flota.some((c) => canonCarro(c.numero) === canonCarro(p.numero_carro!))) return true;
+      if (p.contrato_id) return false;
+      if (p.numero_carro && contratoPorCarro(flota, p.numero_carro).unico) return true;
       return false;
     })
     .map((p) => ({
