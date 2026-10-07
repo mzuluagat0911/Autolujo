@@ -20,6 +20,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "./fecha";
 import { normalizarTelefono } from "./telefono";
 import { estadosCuentaHoy, cuotasAtraso, type EstadoCuenta } from "./estado-cuenta";
+import { envioPausado } from "./envio-pausa";
 import { espejarEnChat } from "./pipeline";
 
 const TEMPLATE_POR_NIVEL = {
@@ -111,7 +112,7 @@ export async function enviarRecordatoriosHoy(nivel: NivelRecordatorio): Promise<
 }> {
   const sb = createServerSupabase();
   const fecha = hoyPanama();
-  const base = await estadosCuentaHoy(); // alcance + excluye a quien pagó
+  const base = (await estadosCuentaHoy()).filter((e) => !envioPausado(e.empresa));
   const estados =
     nivel === "mediodia" ? base.filter((e) => cuotasAtraso(e) > 1) : base;
 

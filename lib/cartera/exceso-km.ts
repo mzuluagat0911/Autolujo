@@ -14,6 +14,7 @@ import type { ConfigReglas } from "./types";
 import { finMes, hoyPanama, inicioMes, mesLargo, sumarDias } from "./fecha";
 import { normalizarTelefono } from "./telefono";
 import { money } from "./estado-cuenta";
+import { envioPausadoVehiculo } from "./envio-pausa";
 
 const CONCEPT_CODIGO = "122";
 const CONCEPT_NOMBRE = "Exceso de Kilometraje";
@@ -229,7 +230,7 @@ export async function liquidarExcesoKmMes(
     res.cargosCreados++;
     yaCargados.add(c.id);
 
-    if (notificar) {
+    if (notificar && !(await envioPausadoVehiculo(vehId))) {
       const to = normalizarTelefono(item.waNumero);
       if (to) {
         try {

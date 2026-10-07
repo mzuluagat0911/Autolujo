@@ -30,6 +30,7 @@ import {
   type ExtractoCtx,
 } from "./extracto-preview";
 import { obtenerConversacion, registrarMensaje } from "./pipeline";
+import { envioPausado } from "./envio-pausa";
 
 export { estaAlDia, previewEstadoCuenta, varsExtractoDetalle };
 export type { ExtractoCtx };
@@ -118,6 +119,10 @@ export async function enviarYRegistrar(
   e: EstadoCuenta,
   opts: { forzar?: boolean; ctx?: ExtraCtx } = {},
 ): Promise<{ ok: boolean; error?: string }> {
+  if (envioPausado(e.empresa)) {
+    return { ok: false, error: "Esta empresa todavía no recibe mensajes." };
+  }
+
   const sb = createServerSupabase();
   const fecha = hoyStr();
 
@@ -270,7 +275,7 @@ export async function enviarEstadosCuentaHoy(): Promise<{
   fallidos: number;
   sinNumero: number;
 }> {
-  const estados = await estadosCuentaHoy(); // ya filtra por alcance
+  const estados = (await estadosCuentaHoy()).filter((e) => !envioPausado(e.empresa));
   const ids = estados.map((e) => e.contratoId);
   const [saldos, extras, espera] = await Promise.all([
     acuerdosSaldoPorContrato(ids),

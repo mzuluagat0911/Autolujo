@@ -26,6 +26,7 @@ import { destinarCharla } from "@/lib/ai/filtro-charla";
 import { transcribirAudio } from "@/lib/ai/transcribir";
 import { fueraHorarioOperativo } from "@/lib/cartera/fecha";
 import { FRASE_PEDIR_CONFIRMACION } from "@/lib/cartera/comprobante-validacion";
+import { envioPausadoConversacion } from "@/lib/cartera/envio-pausa";
 
 type Conv = Conversacion;
 
@@ -126,6 +127,7 @@ async function procesar(payload: WebhookPayload) {
 // Responde y deja registrado el mensaje saliente en la conversación.
 // Si el envío falla, deja el ERROR guardado en la conversación para diagnóstico.
 async function responder(conversacionId: string, from: string, texto: string, pagoId?: string) {
+  if (await envioPausadoConversacion(conversacionId)) return;
   try {
     await sendText(from, texto);
     await registrarMensaje({ conversacionId, direccion: "out", texto, pagoId: pagoId ?? null });

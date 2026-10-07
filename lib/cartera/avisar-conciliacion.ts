@@ -16,6 +16,7 @@ import { money } from "./estado-cuenta";
 import type { ResultadoPago } from "./types";
 import { normalizarTelefono } from "./telefono";
 import { obtenerConversacion, registrarMensaje, ventanaAbierta } from "./pipeline";
+import { envioPausadoContrato } from "./envio-pausa";
 
 const TEMPLATE_CONFIRMACION = "pago_confirmado";
 
@@ -72,6 +73,7 @@ export async function avisarPagoConciliado(
   } | null;
 
   if (!pago || pago.estado_conciliacion !== "conciliado") return false;
+  if (await envioPausadoContrato(pago.contrato_id)) return false;
 
   let cliente = pago.cliente;
   if (!cliente && pago.contrato_id) {

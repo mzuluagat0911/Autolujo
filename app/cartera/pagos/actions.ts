@@ -21,6 +21,7 @@ import { destinoLibre, destinoPorId, type DestinoInterior } from "@/lib/cartera/
 import { darAvalSalida, etiquetarPagoSalida, idsVehiculoYCliente } from "@/lib/cartera/salidas-aplicar";
 import { esRubroConcepto, etiquetaRubro, CARGO_DE_CONCEPTO } from "@/lib/cartera/rubros-pago";
 import { pagoEsperaConceptoExcedente } from "@/lib/cartera/cobro-hoy";
+import { envioPausadoContrato } from "@/lib/cartera/envio-pausa";
 
 function destDesdeForm(formData: FormData, monto: number): DestinoInterior | null {
   const destinoId = String(formData.get("destino_interior") ?? "").trim();
@@ -328,7 +329,7 @@ export async function registrarPagoManual(
         .maybeSingle();
       const ultimoEntrante = (vent as { ultimo_entrante_at?: string | null } | null)?.ultimo_entrante_at ?? null;
 
-      if (ventanaAbierta(ultimoEntrante)) {
+      if (ventanaAbierta(ultimoEntrante) && !(await envioPausadoContrato(r.contratoId as string))) {
         await sendText(waNumero, texto);
         await registrarMensaje({ conversacionId: conv.id, direccion: "out", tipo: "text", texto });
         avisado = true;
