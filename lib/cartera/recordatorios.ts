@@ -20,7 +20,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "./fecha";
 import { normalizarTelefono } from "./telefono";
 import { estadosCuentaHoy, cuotasAtraso, type EstadoCuenta } from "./estado-cuenta";
-import { envioPausado } from "./envio-pausa";
+import { envioPausado, envioPausadoContrato } from "./envio-pausa";
 import { espejarEnChat } from "./pipeline";
 
 const TEMPLATE_POR_NIVEL = {
@@ -87,6 +87,7 @@ async function enviarUno(
   fecha: string,
   nivel: NivelRecordatorio,
 ): Promise<"enviado" | "fallido" | "sin_numero" | "ya"> {
+  if (envioPausado(e.empresa) || (await envioPausadoContrato(e.contratoId))) return "ya";
   const to = normalizarTelefono(e.waNumero);
   if (!to) return "sin_numero";
   if (await yaEnviado(sb, e.contratoId, fecha, nivel)) return "ya";

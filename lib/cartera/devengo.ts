@@ -33,6 +33,7 @@ import {
   pagoHoyContrato,
 } from "./pagos-dia";
 import { cubrioCuotaDelDia } from "./cifras";
+import { carroSinCliente } from "./envio-pausa";
 
 /** Días hacia atrás que el job intenta rellenar si el cron no corrió. */
 const MAX_DIAS_ATRAS = 7;
@@ -59,6 +60,11 @@ type ContratoDevengo = TerminosCuota & {
   fecha_inicio: string;
   /** Si existe, la letra diaria empieza aquí (no en fecha_inicio). */
   fecha_inicio_letra: string | null;
+  created_at?: string | null;
+  vehiculo?: {
+    numero?: string | null;
+    empresa?: { codigo?: string | null } | null;
+  } | null;
 };
 
 /** Día desde el cual corre la letra diaria. */
@@ -126,7 +132,7 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
 
   const { data: contratos, error } = await sb
     .from("contratos")
-    .select("id, cliente_id, vehiculo_id, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+    .select("id, cliente_id, vehiculo_id, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo, created_at, vehiculo:vehiculos(numero, empresa:empresas(codigo))")
     .eq("estado", "activo");
   if (error) throw error;
 
@@ -155,6 +161,10 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
   for (const c of ((contratos ?? []) as unknown as ContratoDevengo[])) {
     if (inicioLetraDe(c) > fecha) continue;
     if (yaTiene.has(c.id)) { res.yaEstaban++; continue; }
+    if (carroSinCliente(c.vehiculo?.empresa?.codigo, c.vehiculo?.numero, c.created_at)) {
+      res.sinCuota++;
+      continue;
+    }
     const monto = cuotaDeFecha(c, fecha);
     if (monto <= 0) { res.sinCuota++; continue; }
     // Domingo no abre renta nueva. Se cobra el impago que ya está en el

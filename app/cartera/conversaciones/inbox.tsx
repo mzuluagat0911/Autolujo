@@ -21,7 +21,8 @@ import {
   enviarPlantillaMora,
   enviarRespuestaHumana,
 } from "./actions";
-import type { ConversacionDetalle, ConversacionLista, FiltroBandeja, Mensaje } from "./types";
+import type { ConversacionDetalle, ConversacionLista, FiltroBandeja, FiltroEmpresa, Mensaje } from "./types";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { NOMBRE_AGENTE } from "@/lib/ai/identidad";
 import {
   demoDetalle,
@@ -101,6 +102,7 @@ export function InboxConversaciones({
 }: Props) {
   const [convs, setConvs] = useState(inicial);
   const [filtro, setFiltro] = useState<FiltroBandeja>("todas");
+  const [empresa, setEmpresa] = useState<FiltroEmpresa>("todas");
   const [q, setQ] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(seleccionInicial?.id ?? null);
   const [detalle, setDetalle] = useState<ConversacionDetalle | null>(seleccionInicial ?? null);
@@ -291,12 +293,18 @@ export function InboxConversaciones({
     setDetalle(null);
   }
 
-  const filtradas = filtrar(convs, filtro, q);
+  const filtradas = filtrar(convs, filtro, empresa, q);
+  const deEmpresa = convs.filter((c) => empresa === "todas" || siglaDe(c) === empresa);
   const contadores = {
-    todas: convs.length,
-    responder: convs.filter((c) => c.necesita_humano).length,
-    humano: convs.filter((c) => c.modo === "humano").length,
-    agente: convs.filter((c) => c.modo === "agente").length,
+    todas: deEmpresa.length,
+    responder: deEmpresa.filter((c) => c.necesita_humano).length,
+    humano: deEmpresa.filter((c) => c.modo === "humano").length,
+    agente: deEmpresa.filter((c) => c.modo === "agente").length,
+  };
+  const porEmpresa = {
+    AL: convs.filter((c) => siglaDe(c) === "AL").length,
+    KW: convs.filter((c) => siglaDe(c) === "KW").length,
+    GD: convs.filter((c) => siglaDe(c) === "GD").length,
   };
 
   return (
@@ -338,14 +346,28 @@ export function InboxConversaciones({
               variant="bare"
               search={{ value: q, onChange: setQ }}
               searchPlaceholder="Buscar carro, cliente o teléfono…"
-              chips={[
-                { id: "todas", label: "Todas", count: contadores.todas },
-                { id: "responder", label: "Responder", count: contadores.responder },
-                { id: "humano", label: "En humano", count: contadores.humano },
-                { id: "agente", label: "Agente", count: contadores.agente },
+              chipGroups={[
+                {
+                  chips: [
+                    { id: "todas", label: "Todas" },
+                    { id: "AL", label: "AL", count: porEmpresa.AL },
+                    { id: "KW", label: "KW", count: porEmpresa.KW },
+                    { id: "GD", label: "GD", count: porEmpresa.GD },
+                  ],
+                  active: empresa,
+                  onChip: (id) => setEmpresa(id as FiltroEmpresa),
+                },
+                {
+                  chips: [
+                    { id: "todas", label: "Todas", count: contadores.todas },
+                    { id: "responder", label: "Responder", count: contadores.responder },
+                    { id: "humano", label: "En humano", count: contadores.humano },
+                    { id: "agente", label: "Agente", count: contadores.agente },
+                  ],
+                  active: filtro,
+                  onChip: (id) => setFiltro(id as FiltroBandeja),
+                },
               ]}
-              activeChip={filtro}
-              onChip={(id) => setFiltro(id as FiltroBandeja)}
             />
           </div>
 
@@ -499,9 +521,14 @@ function mismaBandeja(a: ConversacionLista[], b: ConversacionLista[]): boolean {
   return true;
 }
 
-function filtrar(convs: ConversacionLista[], filtro: FiltroBandeja, q: string) {
+function siglaDe(c: ConversacionLista): string {
+  return siglaEmpresa(c.vehiculo?.empresa?.codigo);
+}
+
+function filtrar(convs: ConversacionLista[], filtro: FiltroBandeja, empresa: FiltroEmpresa, q: string) {
   const needle = q.trim().toLowerCase();
   return convs.filter((c) => {
+    if (empresa !== "todas" && siglaDe(c) !== empresa) return false;
     if (filtro === "responder" && !c.necesita_humano) return false;
     if (filtro === "humano" && c.modo !== "humano") return false;
     if (filtro === "agente" && c.modo !== "agente") return false;

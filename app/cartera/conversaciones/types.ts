@@ -35,3 +35,4 @@ export type ConversacionDetalle = ConversacionLista & {
 };
 
 export type FiltroBandeja = "todas" | "responder" | "humano" | "agente";
+export type FiltroEmpresa = "todas" | "AL" | "KW" | "GD";

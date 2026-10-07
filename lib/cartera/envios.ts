@@ -30,7 +30,7 @@ import {
   type ExtractoCtx,
 } from "./extracto-preview";
 import { obtenerConversacion, registrarMensaje } from "./pipeline";
-import { envioPausado } from "./envio-pausa";
+import { envioPausado, envioPausadoContrato } from "./envio-pausa";
 
 export { estaAlDia, previewEstadoCuenta, varsExtractoDetalle };
 export type { ExtractoCtx };
@@ -119,7 +119,7 @@ export async function enviarYRegistrar(
   e: EstadoCuenta,
   opts: { forzar?: boolean; ctx?: ExtraCtx } = {},
 ): Promise<{ ok: boolean; error?: string }> {
-  if (envioPausado(e.empresa)) {
+  if (envioPausado(e.empresa) || (await envioPausadoContrato(e.contratoId))) {
     return { ok: false, error: "Esta empresa todavía no recibe mensajes." };
   }
 
