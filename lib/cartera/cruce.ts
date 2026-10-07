@@ -61,6 +61,15 @@ export function carroAtribuible(
   return Boolean(a && b && a === b);
 }
 
+/** "AL · Carro 67" o "KW · Carro 102" es el 67 o el 102. La letra de flota (G25) se queda. */
+export function numeroCarroOperativo(leido: string | null | undefined): string | null {
+  if (!leido) return null;
+  let t = String(leido).trim();
+  t = t.replace(/^(AL|KW|GD|AUTOLUJO|KOWUA|GOLD)\s*[·•.\-]?\s*/i, "");
+  t = t.replace(/^carro\s+/i, "").trim();
+  return t || null;
+}
+
 /**
  * Códigos con letra en un comentario (G25, G-14, CamposG41, G45f).
  * "cr323" no cuenta: es el comentario de banca móvil, no un prefijo.

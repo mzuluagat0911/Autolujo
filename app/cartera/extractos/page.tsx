@@ -3,7 +3,8 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { salidasPendientesBanco } from "@/lib/cartera/salidas-aplicar";
 import { ExtractosTabs } from "./tabs";
 import { type MovimientoRevision, type CandidatoPago } from "./cola";
-import { fechaCubrePago, montoExacto } from "@/lib/cartera/cruce";
+import { carroAtribuible, fechaCubrePago, montoExacto, numeroCarroOperativo } from "@/lib/cartera/cruce";
+import { siglaEmpresa } from "@/lib/cartera/empresa";
 
 export const dynamic = "force-dynamic";
 
@@ -39,7 +40,7 @@ async function getData(): Promise<{
       sb
         .from("movimientos_extracto")
         .select(
-          "id, fecha, monto, descripcion, referencia, numero_carro, nombre_detectado, motivo, via, extracto:extractos_bancarios(empresa:empresas(codigo)), contrato:contratos(cliente:clientes(nombre), vehiculo:vehiculos(numero))",
+          "id, fecha, monto, descripcion, referencia, numero_carro, nombre_detectado, motivo, via, contrato_id, extracto:extractos_bancarios(empresa:empresas(codigo)), contrato:contratos(cliente:clientes(nombre), vehiculo:vehiculos(numero))",
         )
         .eq("estado", "revisar")
         .order("fecha", { ascending: false })
@@ -56,6 +57,7 @@ async function getData(): Promise<{
       nombre_detectado: string | null;
       motivo: string | null;
       via: string | null;
+      contrato_id: string | null;
       extracto: { empresa: { codigo: string } | null } | null;
       contrato: {
         cliente: { nombre: string } | null;
@@ -74,49 +76,53 @@ async function getData(): Promise<{
       sugeridoCarro: m.contrato?.vehiculo?.numero ?? m.numero_carro,
       sugeridoCliente: m.contrato?.cliente?.nombre ?? null,
       empresa: m.extracto?.empresa?.codigo ?? null,
+      contratoId: m.contrato_id,
       salidaHint: null as string | null,
       candidatos: [] as CandidatoPago[],
     }));
 
-    const ambiguos = revision.filter(
-      (r) => r.motivo?.includes("Varios comprobantes") || r.motivo?.includes("[ids:"),
-    );
-    if (ambiguos.length > 0) {
-      const { data: pend } = await sb
-        .from("pagos")
-        .select("id, monto, pagado_at, numero_carro, referencia, contrato:contratos(vehiculo:vehiculos(empresa:empresas(codigo)))")
-        .eq("estado_conciliacion", "pendiente")
-        .eq("origen", "comprobante")
-        .limit(300);
-      const pendientes = (pend ?? []) as unknown as {
-        id: string;
-        monto: number;
-        pagado_at: string;
-        numero_carro: string | null;
-        referencia: string | null;
-        contrato: { vehiculo: { empresa: { codigo: string } | null } | null } | null;
-      }[];
-      for (const r of ambiguos) {
-        if (!r.fecha) continue;
-        const idsMotivo =
-          /\[ids:([^\]]+)\]/
-            .exec(r.motivo ?? "")?.[1]
-            ?.split(",")
-            .map((s) => s.trim()) ?? [];
-        r.candidatos = pendientes
-          .filter((p) => {
-            if (idsMotivo.length > 0) return idsMotivo.includes(p.id);
-            return montoExacto(Number(p.monto), r.monto) && fechaCubrePago(p.pagado_at, r.fecha!);
-          })
-          .map((p) => ({
-            id: p.id,
-            monto: Number(p.monto),
-            numeroCarro: p.numero_carro,
-            pagadoAt: p.pagado_at,
-            referencia: p.referencia,
-            empresa: p.contrato?.vehiculo?.empresa?.codigo ?? null,
-          }));
-      }
+    const { data: pend } = await sb
+      .from("pagos")
+      .select("id, monto, pagado_at, numero_carro, referencia, contrato_id, contrato:contratos(vehiculo:vehiculos(empresa:empresas(codigo)))")
+      .eq("estado_conciliacion", "pendiente")
+      .eq("origen", "comprobante")
+      .limit(300);
+    const pendientes = (pend ?? []) as unknown as {
+      id: string;
+      monto: number;
+      pagado_at: string;
+      numero_carro: string | null;
+      referencia: string | null;
+      contrato_id: string | null;
+      contrato: { vehiculo: { empresa: { codigo: string } | null } | null } | null;
+    }[];
+    for (const r of revision) {
+      if (!r.fecha) continue;
+      const idsMotivo =
+        /\[ids:([^\]]+)\]/
+          .exec(r.motivo ?? "")?.[1]
+          ?.split(",")
+          .map((s) => s.trim()) ?? [];
+      const carro = numeroCarroOperativo(r.sugeridoCarro || r.numeroCarro);
+      const empR = siglaEmpresa(r.empresa);
+      r.candidatos = pendientes
+        .filter((p) => {
+          if (idsMotivo.length > 0) return idsMotivo.includes(p.id);
+          if (!montoExacto(Number(p.monto), r.monto) || !fechaCubrePago(p.pagado_at, r.fecha!)) return false;
+          if (r.contratoId && p.contrato_id === r.contratoId) return true;
+          const empP = siglaEmpresa(p.contrato?.vehiculo?.empresa?.codigo);
+          if (empP && empR && empP !== empR) return false;
+          const leido = numeroCarroOperativo(p.numero_carro);
+          return Boolean(carro && leido && carroAtribuible(leido, carro));
+        })
+        .map((p) => ({
+          id: p.id,
+          monto: Number(p.monto),
+          numeroCarro: numeroCarroOperativo(p.numero_carro) ?? p.numero_carro,
+          pagadoAt: p.pagado_at,
+          referencia: p.referencia,
+          empresa: p.contrato?.vehiculo?.empresa?.codigo ?? r.empresa,
+        }));
     }
 
     for (const r of revision) {

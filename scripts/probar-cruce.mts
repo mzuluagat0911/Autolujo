@@ -4,6 +4,7 @@
 import { instantePanama } from "@/lib/cartera/fecha";
 import {
   canonCarro, extraerCarro, extraerCarroCeldas, extraerNombre, extraerReferencia, canonReferencia,
+  numeroCarroOperativo,
   montoExacto, fechaCubrePago,
   esCrucePerfecto, decidirMovimiento, huellaMovimiento,
   type ContratoFlota, type PagoCandidato,
@@ -54,6 +55,8 @@ check("sin palabra clave no inventa un número suelto", extraerCarro("REF 998877
 check("celda G41", extraerCarroCeldas("", "G41", "AUTOLUJO"), "G41");
 check("celda solo número no se vuelve G", extraerCarroCeldas("", "66", "GOLD"), "66");
 check("canon quita ceros", canonCarro("0144"), "144");
+check("la sigla de empresa no es parte del número", numeroCarroOperativo("AL · Carro 67"), "67");
+check("la G del carro se conserva", numeroCarroOperativo("G25"), "G25");
 check("nombre desde transferencia", extraerNombre("TRANSFERENCIA DE EDGAR JOEL BONILLA CARRO 144"), "EDGAR JOEL BONILLA");
 
 console.log("\n· Referencia / confirmación / canje");

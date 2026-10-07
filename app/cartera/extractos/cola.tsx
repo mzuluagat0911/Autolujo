@@ -7,6 +7,7 @@ import {
   resolverMovimientoExtracto,
 } from "./actions";
 import { StatusChip, Money, EmptyState, FiltersBar } from "@/components/kit";
+import { numeroCarroOperativo } from "@/lib/cartera/cruce";
 import { etiquetaCarroUi, siglaEmpresa } from "@/lib/cartera/empresa";
 import type { ResultadoRevision } from "@/lib/cartera/revision-extracto";
 
@@ -32,6 +33,7 @@ export type MovimientoRevision = {
   sugeridoCarro: string | null;
   sugeridoCliente: string | null;
   empresa: string | null;
+  contratoId?: string | null;
   salidaHint?: string | null;
   candidatos?: CandidatoPago[];
 };
@@ -175,7 +177,7 @@ function FilaRevision({
     resolverMovimientoExtracto,
     null,
   );
-  const [carro, setCarro] = useState(m.sugeridoCarro ?? m.numeroCarro ?? "");
+  const [carro, setCarro] = useState(numeroCarroOperativo(m.sugeridoCarro ?? m.numeroCarro) ?? "");
   const idsMotivo = parseIdsMotivo(m.motivo);
   const candidatos =
     m.candidatos && m.candidatos.length > 0
@@ -250,6 +252,9 @@ function FilaRevision({
         <form action={accionAplicar} className="flex flex-wrap items-end gap-3">
           <input type="hidden" name="movimiento_id" value={m.id} />
           <input type="hidden" name="accion" value="aplicar" />
+          {candidatos.length === 1 && !ambiguo && (
+            <input type="hidden" name="pago_id" value={candidatos[0].id} />
+          )}
           {ambiguo && candidatos.length > 0 && (
             <label className="flex flex-col gap-1.5">
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
@@ -261,7 +266,8 @@ function FilaRevision({
                 onChange={(e) => {
                   setPagoId(e.target.value);
                   const c = candidatos.find((x) => x.id === e.target.value);
-                  if (c?.numeroCarro) setCarro(c.numeroCarro);
+                  const op = numeroCarroOperativo(c?.numeroCarro);
+                  if (op) setCarro(op);
                 }}
                 required
                 className="min-w-[14rem] rounded-lg bg-white px-3 py-2.5 text-sm ring-1 ring-line"

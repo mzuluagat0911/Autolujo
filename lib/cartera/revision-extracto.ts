@@ -2,13 +2,12 @@
 // cruce no pudo marcar solo. No inventa matches: exige un contrato.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { instantePanama } from "./fecha";
+import { instantePanama, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
 import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
-import { pagoEsperaRevisionDosPagos } from "./comprobante-validacion";
-import { carroAtribuible, contratoPorCarro, fechaCubrePago, montoExacto, type ContratoFlota } from "./cruce";
+import { carroAtribuible, contratoPorCarro, fechaCubrePago, montoExacto, numeroCarroOperativo, type ContratoFlota } from "./cruce";
 
 export type ResultadoRevision = { ok: boolean; error?: string };
 
@@ -88,26 +87,40 @@ async function contratoPorCarroEnEmpresa(
  * fecha, lo usamos. Así no se duplica el dinero en el saldo.
  */
 async function comprobantePendienteCalza(
-  contratoId: string,
+  contrato: { id: string; numero: string; empresaId: string },
   monto: number,
   fechaMov: string,
 ): Promise<{ id: string; pagadoAt: string } | null> {
   const sb = createServerSupabase();
   const { data } = await sb
     .from("pagos")
-    .select("id, monto, pagado_at, notas")
-    .eq("contrato_id", contratoId)
+    .select("id, monto, pagado_at, fecha, notas, numero_carro, contrato_id, contrato:contratos(vehiculo:vehiculos(empresa_id))")
     .eq("estado_conciliacion", "pendiente")
     .eq("origen", "comprobante")
+    .gte("fecha", sumarDias(fechaMov, -1))
+    .lte("fecha", fechaMov)
     .order("pagado_at", { ascending: true });
-  const hits = ((data ?? []) as { id: string; monto: number; pagado_at: string; notas: string | null }[]).filter(
-    (p) =>
-      !pagoEsperaConceptoExcedente(p.notas) &&
-      !pagoEsperaRevisionDosPagos(p.notas) &&
-      montoExacto(Number(p.monto), monto) &&
-      fechaCubrePago(p.pagado_at, fechaMov),
-  );
-  return hits[0] ? { id: hits[0].id, pagadoAt: hits[0].pagado_at } : null;
+  const hits = ((data ?? []) as unknown as {
+    id: string;
+    monto: number;
+    pagado_at: string;
+    notas: string | null;
+    numero_carro: string | null;
+    contrato_id: string | null;
+    contrato: { vehiculo: { empresa_id: string } | null } | null;
+  }[]).filter((p) => {
+    if (pagoEsperaConceptoExcedente(p.notas)) return false;
+    if (!montoExacto(Number(p.monto), monto) || !fechaCubrePago(p.pagado_at, fechaMov)) return false;
+    if (p.contrato_id === contrato.id) return true;
+    const emp = p.contrato?.vehiculo?.empresa_id ?? null;
+    if (emp && emp !== contrato.empresaId) return false;
+    if (p.contrato_id && p.contrato_id !== contrato.id) return false;
+    const op = numeroCarroOperativo(p.numero_carro);
+    return Boolean(op && carroAtribuible(op, contrato.numero));
+  });
+  const delContrato = hits.filter((p) => p.contrato_id === contrato.id);
+  const elegido = delContrato[0] ?? (hits.length === 1 ? hits[0] : null);
+  return elegido ? { id: elegido.id, pagadoAt: elegido.pagado_at } : null;
 }
 
 export async function ignorarMovimientoExtracto(movimientoId: string): Promise<ResultadoRevision> {
@@ -162,7 +175,8 @@ export async function aplicarMovimientoExtracto(opts: {
   if (!mov.fecha) return { ok: false, error: "Ese movimiento no tiene fecha." };
 
   const empresaId = mov.extracto.empresa_id;
-  const carro = (opts.carro ?? "").trim() || mov.numero_carro;
+  const carroBruto = (opts.carro ?? "").trim() || mov.numero_carro;
+  const carro = numeroCarroOperativo(carroBruto) || carroBruto;
   let contrato: Awaited<ReturnType<typeof contratoActivo>> = null;
   if (carro) {
     const r = await contratoPorCarroEnEmpresa(carro, empresaId);
@@ -215,12 +229,13 @@ export async function aplicarMovimientoExtracto(opts: {
     if (p.contrato_id && p.contrato_id !== contrato.id) {
       return { ok: false, error: "Ese comprobante pertenece a otro contrato." };
     }
-    if (p.numero_carro && !carroAtribuible(p.numero_carro, contrato.numero)) {
+    const op = numeroCarroOperativo(p.numero_carro);
+    if (op && p.contrato_id !== contrato.id && !carroAtribuible(op, contrato.numero)) {
       return { ok: false, error: "Ese comprobante es de otro carro." };
     }
     pendiente = { id: p.id, pagadoAt: p.pagado_at };
   } else {
-    pendiente = await comprobantePendienteCalza(contrato.id, monto, mov.fecha);
+    pendiente = await comprobantePendienteCalza(contrato, monto, mov.fecha);
   }
 
   let pagoId: string;
