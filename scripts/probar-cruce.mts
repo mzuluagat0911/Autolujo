@@ -182,8 +182,23 @@ const dos = [
   pago({ id: "p2", numeroCarro: "144" }),
 ];
 const dAmb = decidirMovimiento(mov144, dos, flota, extracto);
-check("dos comprobantes iguales = ambiguo, no aplica el primero", dAmb.tipo, "ambiguo");
-check("ambiguo trae los dos pagos", dAmb.tipo === "ambiguo" ? dAmb.pagos.length : 0, 2);
+check("dos comprobantes con los mismos datos no quedan en revisión", dAmb.tipo, "repetido");
+check(
+  "se conserva uno y se rechaza el repetido",
+  dAmb.tipo === "repetido" ? dAmb.rechazar.length : 0,
+  1,
+);
+const distintos = [
+  pago({ id: "p1", referencia: "AAAA1111" }),
+  pago({ id: "p2", referencia: "BBBB2222", numeroCarro: "144" }),
+];
+const dDistintos = decidirMovimiento(mov144, distintos, flota, extracto);
+check("comprobantes parecidos pero no iguales quedan en revisión", dDistintos.tipo, "ambiguo");
+check(
+  "la revisión avisa que no son el mismo comprobante",
+  dDistintos.tipo === "ambiguo" && dDistintos.motivo.includes("Aviso:"),
+  true,
+);
 
 const dosConRef = [
   pago({ id: "p1", referencia: "AAAA1111" }),

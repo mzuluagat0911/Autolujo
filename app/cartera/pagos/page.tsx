@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader, PageShell, EmptyState } from "@/components/kit";
+import { rechazarComprobantesRepetidos } from "@/lib/cartera/comprobante-validacion";
 import { salidasDePagos } from "@/lib/cartera/salidas-aplicar";
 import { etiquetaCarroUi, siglaEmpresa } from "@/lib/cartera/empresa";
 import { ListaComprobantes, type ContratoOpt, type PagoFila } from "./lista";
@@ -19,6 +20,7 @@ function esPorRevisar(p: {
 async function getData() {
   try {
     const sb = createServerSupabase();
+    await rechazarComprobantesRepetidos();
     const [pagosRes, contratosRes] = await Promise.all([
       sb
         .from("pagos")

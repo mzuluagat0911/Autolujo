@@ -194,7 +194,7 @@ function FilaRevision({
               <p className="mt-1 text-sm">{m.descripcion.slice(0, 140)}</p>
             )}
             {m.motivo && (
-              <p className="mt-2 text-[12px] text-muted">
+              <p className={`mt-2 text-[12px] ${m.motivo.includes("Aviso:") ? "text-ambar" : "text-muted"}`}>
                 {m.motivo.replace(/\s*\[ids:[^\]]+\]/, "")}
               </p>
             )}

@@ -9,8 +9,9 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
-import { hoyPanama, horaPanama, sumarDias } from "./fecha";
+import { hoyPanama, sumarDias } from "./fecha";
 import { cuentaAUnDigito, digitos, mismaCuenta } from "./cuenta";
+import { canonReferencia, esMismoComprobante } from "./cruce";
 
 /** Texto exacto que el agente manda cuando faltó el número. Sirve para saber que ya se pidió. */
 export const FRASE_PEDIR_CONFIRMACION =
@@ -87,15 +88,19 @@ export async function validarComprobante(opts: {
 
   // --- 1. ¿Ya registramos esta referencia? -----------------------------------
   const ref = (c.referencia ?? "").trim();
+  const refCanon = canonReferencia(ref);
   if (ref) {
-    const { data: previo } = await sb
+    const { data: previos } = await sb
       .from("pagos")
-      .select("id, fecha, monto")
-      .ilike("referencia", escaparLike(ref))
+      .select("id, fecha, monto, referencia")
+      .ilike("referencia", `%${escaparLike(refCanon ?? ref)}%`)
       .neq("estado_conciliacion", "rechazado")
-      .limit(1)
-      .maybeSingle();
-    const p = previo as { id: string; fecha: string; monto: number } | null;
+      .limit(30);
+    const p = ((previos ?? []) as { id: string; fecha: string; monto: number; referencia: string | null }[])
+      .find((row) => {
+        if (refCanon) return canonReferencia(row.referencia) === refCanon;
+        return (row.referencia ?? "").trim().toLowerCase() === ref.toLowerCase();
+      }) ?? null;
     if (p) {
       crearPago = false;
       pagoDuplicadoId = p.id;
@@ -116,7 +121,7 @@ export async function validarComprobante(opts: {
   if (crearPago && contratoId && montoComp != null) {
     const { data: delDia } = await sb
       .from("pagos")
-      .select("id, monto, origen, fecha, pagado_at, referencia")
+      .select("id, monto, origen, fecha, pagado_at, referencia, cuenta_destino, numero_carro, contrato_id")
       .eq("contrato_id", contratoId)
       .eq("fecha", fechaComp)
       .neq("estado_conciliacion", "rechazado")
@@ -128,15 +133,17 @@ export async function validarComprobante(opts: {
       fecha: string;
       pagado_at: string | null;
       referencia: string | null;
+      cuenta_destino: string | null;
+      numero_carro: string | null;
+      contrato_id: string | null;
     }[]).filter((p) => Math.abs(Number(p.monto) - montoComp) < 0.02);
     if (mismos.length > 0) {
-      const refNueva = ref.toLowerCase();
-      const mismaRef = refNueva
-        ? mismos.some((p) => (p.referencia ?? "").trim().toLowerCase() === refNueva)
+      const mismaRef = refCanon
+        ? mismos.some((p) => canonReferencia(p.referencia) === refCanon)
         : false;
-      if (refNueva && mismaRef) {
+      if (refCanon && mismaRef) {
         crearPago = false;
-        pagoDuplicadoId = mismos.find((p) => (p.referencia ?? "").trim().toLowerCase() === refNueva)?.id ?? mismos[0]!.id;
+        pagoDuplicadoId = mismos.find((p) => canonReferencia(p.referencia) === refCanon)?.id ?? mismos[0]!.id;
         alertas.push({
           codigo: "duplicado",
           detalle: `La referencia ${ref} ya está en un pago de hoy por $${montoComp.toFixed(2)}.`,
@@ -151,29 +158,64 @@ export async function validarComprobante(opts: {
             detalle: `Ya hay un pago del ${fechaComp} por $${montoComp.toFixed(2)} y esta captura no trae número de confirmación.`,
           });
         } else {
-          const horaNueva = normalizarHora(c.hora);
-          const horasPrevias = mismos
-            .map((p) => (p.pagado_at ? horaPanama(new Date(p.pagado_at)) : null))
-            .filter((h): h is string => !!h);
-          const horaRepetida = !!horaNueva && horasPrevias.includes(horaNueva);
-          if (!horaNueva || horaRepetida) {
+          const igual = mismos.some((p) =>
+            esMismoComprobante(
+              {
+                monto: montoComp,
+                fecha: fechaComp,
+                referencia: ref,
+                cuentaDestino: c.cuenta_destino,
+                numeroCarro: c.numero_carro,
+                contratoId,
+              },
+              {
+                monto: Number(p.monto),
+                fecha: p.fecha,
+                pagadoAt: p.pagado_at,
+                referencia: p.referencia,
+                cuentaDestino: p.cuenta_destino,
+                numeroCarro: p.numero_carro,
+                contratoId: p.contrato_id,
+              },
+            ),
+          );
+          if (igual) {
             crearPago = false;
             pagoDuplicadoId = primero.id;
             alertas.push({
               codigo: "reenvio_dia",
-              detalle: horaRepetida
-                ? `La hora ${horaNueva} es la del pago que ya está registrado. Es el mismo comprobante.`
-                : `No se lee la hora ni el número de confirmación. Se toma como el mismo comprobante de $${montoComp.toFixed(2)}.`,
+              detalle: `Es el mismo comprobante de $${montoComp.toFixed(2)} del ${fechaComp}. No se vuelve a cargar.`,
             });
           } else {
+            const horaNueva = normalizarHora(c.hora);
             pagoDuplicadoId = primero.id;
             alertas.push({
               codigo: "hora_distinta",
-              detalle: `Mismo monto ($${montoComp.toFixed(2)}) sin número de confirmación, hora ${horaNueva} distinta a ${horasPrevias.join(", ") || "la del primer pago"}. Lo revisa el equipo antes de aplicarlo.`,
+              detalle: `Aviso: ya hay un pago del ${fechaComp} por $${montoComp.toFixed(2)}${horaNueva ? ` y esta captura marca las ${horaNueva}` : ""}, pero no coinciden todos los datos. Queda en revisión.`,
             });
           }
         }
       }
+    }
+  }
+
+  // Sin contrato amarrado: el mismo número, monto y día tampoco se vuelve a cargar.
+  if (crearPago && refCanon && montoComp != null) {
+    const { data: porDia } = await sb
+      .from("pagos")
+      .select("id, fecha, monto, referencia")
+      .eq("fecha", fechaComp)
+      .neq("estado_conciliacion", "rechazado")
+      .limit(40);
+    const otro = ((porDia ?? []) as { id: string; fecha: string; monto: number; referencia: string | null }[])
+      .find((row) => canonReferencia(row.referencia) === refCanon && Math.abs(Number(row.monto) - montoComp) < 0.02);
+    if (otro) {
+      crearPago = false;
+      pagoDuplicadoId = otro.id;
+      alertas.push({
+        codigo: "duplicado",
+        detalle: `La referencia ${ref} ya está registrada (pago del ${otro.fecha} por $${otro.monto}).`,
+      });
     }
   }
 
@@ -249,6 +291,58 @@ export async function validarComprobante(opts: {
     alertas,
     pagoDuplicadoId,
   };
+}
+
+const NOTA_REPETIDO =
+  "AVISO: comprobante repetido (mismos monto, día, referencia, cuenta y carro). Rechazado; no queda en comprobantes ni en revisión.";
+
+/**
+ * Un comprobante pendiente que repite todos los datos de uno anterior se rechaza.
+ * El primero se queda. Así no vuelve a salir en la cola.
+ */
+export async function rechazarComprobantesRepetidos(): Promise<number> {
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("pagos")
+    .select("id, created_at, monto, fecha, pagado_at, referencia, cuenta_destino, contrato_id, numero_carro, estado_conciliacion, origen, notas")
+    .neq("estado_conciliacion", "rechazado")
+    .order("created_at", { ascending: true })
+    .limit(1000);
+  if (error || !data) return 0;
+  const vivos = data as {
+    id: string;
+    monto: number;
+    fecha: string | null;
+    pagado_at: string | null;
+    referencia: string | null;
+    cuenta_destino: string | null;
+    contrato_id: string | null;
+    numero_carro: string | null;
+    estado_conciliacion: string;
+    origen: string | null;
+    notas: string | null;
+  }[];
+  const rechazar: { id: string; notas: string | null }[] = [];
+  for (let i = 0; i < vivos.length; i++) {
+    const p = vivos[i];
+    if (p.estado_conciliacion !== "pendiente" || p.origen !== "comprobante") continue;
+    const como = (q: (typeof vivos)[number]) => ({
+      monto: Number(q.monto),
+      fecha: q.fecha,
+      pagadoAt: q.pagado_at,
+      referencia: q.referencia,
+      cuentaDestino: q.cuenta_destino,
+      numeroCarro: q.numero_carro,
+      contratoId: q.contrato_id,
+    });
+    const previo = vivos.slice(0, i).find((q) => esMismoComprobante(como(p), como(q)));
+    if (previo) rechazar.push({ id: p.id, notas: p.notas });
+  }
+  for (const p of rechazar) {
+    const notas = [p.notas, NOTA_REPETIDO].filter(Boolean).join(" · ");
+    await sb.from("pagos").update({ estado_conciliacion: "rechazado", notas }).eq("id", p.id);
+  }
+  return rechazar.length;
 }
 
 /** Resumen de las alertas para dejarlo en las notas del pago / la conversación. */

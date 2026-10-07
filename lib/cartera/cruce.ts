@@ -153,6 +153,51 @@ export function mismaReferencia(
   return Boolean(ca && cb && ca === cb);
 }
 
+/**
+ * El mismo comprobante enviado otra vez: monto, día, referencia, cuenta y carro.
+ * La hora no cuenta: el lector la mueve. Si un lado trae referencia o cuenta y
+ * el otro no, no es el mismo.
+ */
+export function esMismoComprobante(
+  a: {
+    monto: number;
+    pagadoAt?: string | null;
+    fecha?: string | null;
+    referencia?: string | null;
+    cuentaDestino?: string | null;
+    numeroCarro?: string | null;
+    contratoId?: string | null;
+  },
+  b: {
+    monto: number;
+    pagadoAt?: string | null;
+    fecha?: string | null;
+    referencia?: string | null;
+    cuentaDestino?: string | null;
+    numeroCarro?: string | null;
+    contratoId?: string | null;
+  },
+): boolean {
+  if (!montoExacto(a.monto, b.monto)) return false;
+  const fa = (a.fecha ?? "").slice(0, 10) || (a.pagadoAt ? fechaContable(a.pagadoAt) : "");
+  const fb = (b.fecha ?? "").slice(0, 10) || (b.pagadoAt ? fechaContable(b.pagadoAt) : "");
+  if (!fa || !fb || fa !== fb) return false;
+  const ra = canonReferencia(a.referencia);
+  const rb = canonReferencia(b.referencia);
+  if ((ra ?? "") !== (rb ?? "")) return false;
+  const ca = (a.cuentaDestino ?? "").replace(/\D/g, "");
+  const cb = (b.cuentaDestino ?? "").replace(/\D/g, "");
+  if ((ca ? "1" : "0") !== (cb ? "1" : "0")) return false;
+  if (ca && cb && !mismaCuenta(a.cuentaDestino!, b.cuentaDestino!)) return false;
+  if (a.contratoId && b.contratoId && a.contratoId !== b.contratoId) return false;
+  const na = a.numeroCarro ? canonCarro(a.numeroCarro) : "";
+  const nb = b.numeroCarro ? canonCarro(b.numeroCarro) : "";
+  if (na && nb && na !== nb) return false;
+  // Sin referencia, sin carro y sin contrato no hay cómo saber que es el mismo.
+  if (!ra && !na && !nb && !a.contratoId && !b.contratoId) return false;
+  return true;
+}
+
 /** Saca la referencia del texto del extracto o del comentario bancario. */
 export function extraerReferencia(desc: string): string | null {
   const re =
@@ -210,6 +255,13 @@ export type ContratoFlota = {
 
 export type VeredictoCruce =
   | { tipo: "perfecto"; pago: PagoCandidato; contrato: ContratoFlota }
+  | {
+      tipo: "repetido";
+      pago: PagoCandidato;
+      contrato: ContratoFlota;
+      /** El resto es el mismo comprobante. Se rechaza y no queda en revisión. */
+      rechazar: PagoCandidato[];
+    }
   | { tipo: "ambiguo"; motivo: string; pagos: PagoCandidato[] }
   | {
       tipo: "revisar";
@@ -357,9 +409,19 @@ export function decidirMovimiento(
     return { tipo: "perfecto", pago: perfectos[0].pago, contrato: perfectos[0].contrato };
   }
   if (perfectos.length > 1) {
+    const cabeza = perfectos[0];
+    const iguales = perfectos.every((p) => esMismoComprobante(cabeza.pago, p.pago));
+    if (iguales) {
+      return {
+        tipo: "repetido",
+        pago: cabeza.pago,
+        contrato: cabeza.contrato,
+        rechazar: perfectos.slice(1).map((p) => p.pago),
+      };
+    }
     return {
       tipo: "ambiguo",
-      motivo: `Varios comprobantes calzan con este movimiento (${perfectos.length}): hay que elegir a mano.`,
+      motivo: `Aviso: ${perfectos.length} comprobantes calzan con este movimiento y no son iguales en todos los datos. Hay que elegir a mano.`,
       pagos: perfectos.map((p) => p.pago),
     };
   }

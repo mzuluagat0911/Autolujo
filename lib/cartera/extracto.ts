@@ -10,7 +10,7 @@ import { hoyPanama, fechaContable, sumarDias } from "./fecha";
 import { recalcularRecargo } from "./devengo";
 import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
-import { pagoEsperaRevisionDosPagos } from "./comprobante-validacion";
+import { pagoEsperaRevisionDosPagos, rechazarComprobantesRepetidos } from "./comprobante-validacion";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
 import { destinoPorId } from "./salidas-interior";
 import {
@@ -505,6 +505,8 @@ export async function procesarExtracto(
     .select("id").single();
   const extractoId = extracto!.id as string;
 
+  await rechazarComprobantesRepetidos();
+
   let pagosQ = await sb
     .from("pagos")
     .select("id, contrato_id, monto, pagado_at, numero_carro, cuenta_destino, origen, estado_conciliacion, destino_interior, referencia, notas")
@@ -628,7 +630,21 @@ export async function procesarExtracto(
     let motivo: string | null = null;
     let conciliado = false;
 
-    if (veredicto.tipo === "perfecto") {
+    if (veredicto.tipo === "repetido") {
+      for (const dup of veredicto.rechazar) {
+        const { data: previo } = await sb.from("pagos").select("notas").eq("id", dup.id).maybeSingle();
+        const notas = [
+          (previo as { notas: string | null } | null)?.notas,
+          "AVISO: comprobante repetido (mismos datos). Rechazado; no queda en revisión.",
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        await sb.from("pagos").update({ estado_conciliacion: "rechazado", notas }).eq("id", dup.id);
+        usados.add(dup.id);
+      }
+    }
+
+    if (veredicto.tipo === "perfecto" || veredicto.tipo === "repetido") {
       const { pago, contrato } = veredicto;
       usados.add(pago.id);
       contratoId = contrato.contratoId;
