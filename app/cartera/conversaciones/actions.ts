@@ -12,8 +12,9 @@ import {
 import { createServerSupabase } from "@/lib/supabase/server";
 import { cobroHoyContrato } from "@/lib/cartera/cobro-hoy";
 import { estadoCuentaContrato } from "@/lib/cartera/estado-cuenta";
+import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta-cache";
 import { revalidatePath } from "next/cache";
-import type { ConversacionDetalle, ConversacionLista, Mensaje } from "./types";
+import type { ConversacionDetalle, ConversacionLista, Mensaje, VigiaChat } from "./types";
 import { alertasGpsPendientes, marcarAlertaGpsVista } from "@/lib/gps/revisar-dia";
 import { marcarAlertaSalidaVista, salidasAlertasPendientes, salidasPendientesAval } from "@/lib/cartera/salidas-aplicar";
 
@@ -241,6 +242,61 @@ export async function enviarAudioHumano(
 const SEL_LISTA =
   "id, wa_numero, etiqueta, ultimo_texto, ultimo_mensaje_at, no_leidos, estado, modo, necesita_humano, motivo_escalada, ultimo_entrante_at, cliente:clientes(nombre, cedula), vehiculo:vehiculos(numero, empresa:empresas(codigo))";
 
+/** Sin joins. Sirve para saber si la bandeja cambió antes de volver a armarla. */
+const SEL_VIGIA =
+  "id, ultimo_texto, ultimo_mensaje_at, no_leidos, estado, modo, necesita_humano, motivo_escalada, ultimo_entrante_at";
+
+const LIMITE_MENSAJES = 40;
+
+type FilaMensaje = {
+  id: string;
+  direccion: "in" | "out";
+  tipo: string;
+  texto: string | null;
+  media_url: string | null;
+  enviado_por: string | null;
+  created_at: string;
+};
+
+async function firmarMedios(
+  sb: ReturnType<typeof createServerSupabase>,
+  filas: FilaMensaje[],
+): Promise<Mensaje[]> {
+  const paths = [...new Set(filas.map((m) => m.media_url).filter((p): p is string => !!p))];
+  const porPath = new Map<string, string>();
+  if (paths.length > 0) {
+    const { data } = await sb.storage.from("comprobantes").createSignedUrls(paths, 3600);
+    for (const item of data ?? []) {
+      if (item.path && item.signedUrl) porPath.set(item.path, item.signedUrl);
+    }
+  }
+  return filas.map((m) => ({
+    ...m,
+    signedUrl: m.media_url ? (porPath.get(m.media_url) ?? null) : null,
+  }));
+}
+
+/** Últimos mensajes, o la página anterior a `antesDe`. Una sola firma para todas las fotos. */
+async function paginaMensajes(
+  conversacionId: string,
+  antesDe?: string,
+): Promise<{ mensajes: Mensaje[]; hayAnteriores: boolean }> {
+  const sb = createServerSupabase();
+  const base = sb
+    .from("mensajes")
+    .select("id, direccion, tipo, texto, media_url, enviado_por, created_at")
+    .eq("conversacion_id", conversacionId);
+  const q = antesDe ? base.lt("created_at", antesDe) : base;
+  const { data, error } = await q
+    .order("created_at", { ascending: false })
+    .limit(LIMITE_MENSAJES + 1);
+  if (error) throw error;
+  const filas = (data ?? []) as FilaMensaje[];
+  const hayAnteriores = filas.length > LIMITE_MENSAJES;
+  const pagina = filas.slice(0, LIMITE_MENSAJES).reverse();
+  return { mensajes: await firmarMedios(sb, pagina), hayAnteriores };
+}
+
 /** Lista la bandeja (para refresco del cliente sin recargar toda la página). */
 export async function cargarBandeja(): Promise<{
   convs: ConversacionLista[];
@@ -260,7 +316,22 @@ export async function cargarBandeja(): Promise<{
   }
 }
 
-/** Hilo del chat, sin el cobro del día. Eso es lo que tiene que aparecer al instante. */
+/** Marcas livianas de cada chat. Si no cambiaron, la bandeja no se vuelve a armar. */
+export async function vigilarBandeja(): Promise<{ filas: VigiaChat[]; error: string | null }> {
+  try {
+    const sb = createServerSupabase();
+    const { data, error } = await sb
+      .from("conversaciones")
+      .select(SEL_VIGIA)
+      .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false });
+    if (error) throw error;
+    return { filas: (data as unknown as VigiaChat[]) ?? [], error: null };
+  } catch (e) {
+    return { filas: [], error: e instanceof Error ? e.message : "Error" };
+  }
+}
+
+/** Hilo del chat, sin el cobro del día. Los últimos mensajes; el resto se pide al subir. */
 export async function cargarHilo(
   id: string,
 ): Promise<{ detalle: ConversacionDetalle | null; error: string | null }> {
@@ -274,28 +345,13 @@ export async function cargarHilo(
     if (error) throw error;
     if (!conv) return { detalle: null, error: null };
 
-    const { data: msgs } = await sb
-      .from("mensajes")
-      .select("id, direccion, tipo, texto, media_url, enviado_por, created_at")
-      .eq("conversacion_id", id)
-      .order("created_at", { ascending: true });
-
-    const mensajesRaw = (msgs as Mensaje[]) ?? [];
-    const mensajes = await Promise.all(
-      mensajesRaw.map(async (m) => {
-        if (!m.media_url) return m;
-        const { data: signed } = await sb.storage
-          .from("comprobantes")
-          .createSignedUrl(m.media_url, 3600);
-        return { ...m, signedUrl: signed?.signedUrl ?? null };
-      }),
-    );
-
+    const { mensajes, hayAnteriores } = await paginaMensajes(id);
     const base = conv as unknown as ConversacionLista & { contrato_id: string | null };
     const detalle: ConversacionDetalle = {
       ...base,
       saldo: null,
       mensajes,
+      hayAnteriores,
       ventana_abierta: ventanaAbierta(base.ultimo_entrante_at),
     };
     return { detalle, error: null };
@@ -304,10 +360,35 @@ export async function cargarHilo(
   }
 }
 
-/** TOTAL a pagar hoy del contrato. No bloquea la apertura del chat. */
+/** Página anterior del hilo, más vieja que el primer mensaje que ya se ve. */
+export async function cargarMensajesAnteriores(
+  id: string,
+  antesDe: string,
+): Promise<{ mensajes: Mensaje[]; hayAnteriores: boolean; error: string | null }> {
+  if (!id || !antesDe) return { mensajes: [], hayAnteriores: false, error: null };
+  try {
+    const pagina = await paginaMensajes(id, antesDe);
+    return { ...pagina, error: null };
+  } catch (e) {
+    return {
+      mensajes: [],
+      hayAnteriores: true,
+      error: e instanceof Error ? e.message : "No pude cargar los mensajes anteriores.",
+    };
+  }
+}
+
+/** TOTAL a pagar hoy: la cifra del extracto del día. Si ese contrato no está ahí, se arma solo ese. */
 export async function cargarSaldoChat(contratoId: string): Promise<number | null> {
   const id = String(contratoId ?? "").trim();
   if (!id) return null;
+  try {
+    const filas = await estadosCuentaPanel();
+    const fila = filas.find((f) => f.contratoId === id);
+    if (fila) return Math.round(fila.totalCobrarHoy * 100) / 100;
+  } catch {
+    /* el extracto del día no respondió; sigue el cálculo de este contrato */
+  }
   try {
     const estado = await estadoCuentaContrato(id);
     if (!estado) return null;

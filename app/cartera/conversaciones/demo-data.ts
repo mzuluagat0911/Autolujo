@@ -206,6 +206,7 @@ export function demoDetalle(id: string): ConversacionDetalle | null {
     contrato_id: "demo-contrato",
     saldo: SALDOS[id] ?? null,
     mensajes: MENSAJES[id] ?? [],
+    hayAnteriores: false,
     ventana_abierta: true,
   };
 }

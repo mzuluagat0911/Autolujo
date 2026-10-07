@@ -31,8 +31,23 @@ export type ConversacionDetalle = ConversacionLista & {
   contrato_id: string | null;
   saldo: number | null;
   mensajes: Mensaje[];
+  /** Hay mensajes más viejos que los que ya están en pantalla. */
+  hayAnteriores: boolean;
   ventana_abierta: boolean;
 };
 
 export type FiltroBandeja = "todas" | "responder" | "humano" | "agente";
 export type FiltroEmpresa = "todas" | "AL" | "KW" | "GD";
+
+/** Marcas livianas para el refresco. Sin cliente ni carro. */
+export type VigiaChat = {
+  id: string;
+  ultimo_texto: string | null;
+  ultimo_mensaje_at: string | null;
+  no_leidos: number;
+  estado: string;
+  modo: "agente" | "humano";
+  necesita_humano: boolean;
+  motivo_escalada: string | null;
+  ultimo_entrante_at: string | null;
+};

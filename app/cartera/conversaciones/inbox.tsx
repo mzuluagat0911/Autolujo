@@ -16,12 +16,14 @@ import {
   accionTomarChat,
   cargarBandeja,
   cargarHilo,
+  cargarMensajesAnteriores,
   cargarSaldoChat,
+  vigilarBandeja,
   enviarAudioHumano,
   enviarPlantillaMora,
   enviarRespuestaHumana,
 } from "./actions";
-import type { ConversacionDetalle, ConversacionLista, FiltroBandeja, FiltroEmpresa, Mensaje } from "./types";
+import type { ConversacionDetalle, ConversacionLista, FiltroBandeja, FiltroEmpresa, Mensaje, VigiaChat } from "./types";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { NOMBRE_AGENTE } from "@/lib/ai/identidad";
 import {
@@ -57,6 +59,48 @@ const PLANTILLAS_MORA = [
 const POLL_LISTA_MS = 6_000;
 const POLL_CHAT_MS = 2_500;
 
+function ventanaCliente(iso: string | null): boolean {
+  if (!iso) return false;
+  return Date.now() - new Date(iso).getTime() < 24 * 60 * 60 * 1000;
+}
+
+function vigiaIgual(prev: ConversacionLista[], filas: VigiaChat[]): boolean {
+  if (prev.length !== filas.length) return false;
+  const map = new Map(filas.map((f) => [f.id, f]));
+  for (const c of prev) {
+    const f = map.get(c.id);
+    if (!f) return false;
+    if (c.ultimo_mensaje_at !== f.ultimo_mensaje_at) return false;
+    if ((c.ultimo_texto ?? "") !== (f.ultimo_texto ?? "")) return false;
+    if (c.no_leidos !== f.no_leidos) return false;
+    if (c.modo !== f.modo) return false;
+    if (c.necesita_humano !== f.necesita_humano) return false;
+    if ((c.motivo_escalada ?? "") !== (f.motivo_escalada ?? "")) return false;
+    if ((c.ultimo_entrante_at ?? "") !== (f.ultimo_entrante_at ?? "")) return false;
+    if (c.estado !== f.estado) return false;
+  }
+  return true;
+}
+
+function parchearConVigia(prev: ConversacionLista[], filas: VigiaChat[]): ConversacionLista[] {
+  const map = new Map(filas.map((f) => [f.id, f]));
+  return prev.map((c) => {
+    const f = map.get(c.id);
+    if (!f) return c;
+    return {
+      ...c,
+      ultimo_texto: f.ultimo_texto,
+      ultimo_mensaje_at: f.ultimo_mensaje_at,
+      no_leidos: f.no_leidos,
+      estado: f.estado,
+      modo: f.modo,
+      necesita_humano: f.necesita_humano,
+      motivo_escalada: f.motivo_escalada,
+      ultimo_entrante_at: f.ultimo_entrante_at,
+    };
+  });
+}
+
 function esNotaDeVoz(m: Mensaje): boolean {
   if (m.tipo === "audio") return true;
   const p = (m.media_url ?? "").toLowerCase();
@@ -80,10 +124,15 @@ function aplicarDetalle(
   next: ConversacionDetalle,
 ): ConversacionDetalle {
   if (!prev || prev.id !== next.id) return next;
+  const primero = next.mensajes[0]?.created_at;
+  const antiguos = primero
+    ? prev.mensajes.filter((m) => !m.id.startsWith("tmp-") && m.created_at < primero)
+    : [];
   return {
     ...next,
     saldo: next.saldo ?? prev.saldo,
-    mensajes: conservarSignedUrls(prev.mensajes, next.mensajes),
+    hayAnteriores: antiguos.length > 0 ? prev.hayAnteriores : next.hayAnteriores,
+    mensajes: [...antiguos, ...conservarSignedUrls(prev.mensajes, next.mensajes)],
   };
 }
 
@@ -115,8 +164,10 @@ export function InboxConversaciones({
   const listaOrdenFijoRef = useRef<string[] | null>(null);
   const selectedIdRef = useRef(selectedId);
   const detalleRef = useRef(detalle);
+  const convsRef = useRef(convs);
   selectedIdRef.current = selectedId;
   detalleRef.current = detalle;
+  convsRef.current = convs;
 
   function guardarScrollLista() {
     const el = listaRef.current;
@@ -187,7 +238,7 @@ export function InboxConversaciones({
     };
   }, [demo, detalle?.id, detalle?.contrato_id]);
 
-  // Polling: lista cada 6s; chat abierto cada 2.5s. Pausa si la pestaña está oculta.
+  // Polling liviano. La bandeja completa y el hilo solo se piden si cambió algo.
   useEffect(() => {
     if (demo) return;
     let cancelled = false;
@@ -208,31 +259,64 @@ export function InboxConversaciones({
         schedule();
         return;
       }
-      const { convs: next, error: err } = await cargarBandeja();
+      const { filas, error: err } = await vigilarBandeja();
       if (cancelled || err) {
         schedule();
         return;
       }
-      guardarScrollLista();
-      setConvs((prev) => aplicarBandeja(prev, next));
+      const prev = convsRef.current;
+      const idsPrev = new Set(prev.map((c) => c.id));
+      const entroOSalio =
+        filas.length !== prev.length || filas.some((f) => !idsPrev.has(f.id));
+
+      if (entroOSalio) {
+        const { convs: next, error: errLista } = await cargarBandeja();
+        if (!cancelled && !errLista) {
+          guardarScrollLista();
+          setConvs((p) => aplicarBandeja(p, next));
+        }
+      } else if (!vigiaIgual(prev, filas)) {
+        guardarScrollLista();
+        setConvs((p) => aplicarBandeja(p, parchearConVigia(p, filas)));
+      }
 
       const sid = selectedIdRef.current;
       if (sid) {
-        const row = next.find((c) => c.id === sid);
+        const row = filas.find((f) => f.id === sid);
         const cur = detalleRef.current;
-        const sinCambio =
-          cur?.id === sid &&
-          row &&
-          cur.ultimo_mensaje_at === row.ultimo_mensaje_at &&
-          cur.necesita_humano === row.necesita_humano &&
-          cur.modo === row.modo &&
-          (cur.ultimo_texto ?? "") === (row.ultimo_texto ?? "");
-        if (!sinCambio) {
+        const textoNuevo =
+          !!row &&
+          !!cur &&
+          cur.id === sid &&
+          (cur.ultimo_mensaje_at !== row.ultimo_mensaje_at ||
+            (cur.ultimo_texto ?? "") !== (row.ultimo_texto ?? ""));
+        const metaNueva =
+          !!row &&
+          !!cur &&
+          cur.id === sid &&
+          (cur.modo !== row.modo ||
+            cur.necesita_humano !== row.necesita_humano ||
+            (cur.motivo_escalada ?? "") !== (row.motivo_escalada ?? "") ||
+            (cur.ultimo_entrante_at ?? "") !== (row.ultimo_entrante_at ?? ""));
+        if (!cur || cur.id !== sid || textoNuevo) {
           const { detalle: d } = await cargarHilo(sid);
           if (!cancelled && d && selectedIdRef.current === sid) {
-            setDetalle((prev) => aplicarDetalle(prev, d));
-            setConvs((prev) => prev.map((c) => (c.id === sid ? { ...c, no_leidos: 0 } : c)));
+            setDetalle((p) => aplicarDetalle(p, d));
+            setConvs((p) => p.map((c) => (c.id === sid ? { ...c, no_leidos: 0 } : c)));
           }
+        } else if (metaNueva && row) {
+          setDetalle((p) =>
+            p && p.id === sid
+              ? {
+                  ...p,
+                  modo: row.modo,
+                  necesita_humano: row.necesita_humano,
+                  motivo_escalada: row.motivo_escalada,
+                  ultimo_entrante_at: row.ultimo_entrante_at,
+                  ventana_abierta: ventanaCliente(row.ultimo_entrante_at),
+                }
+              : p,
+          );
         }
       }
       schedule();
@@ -782,7 +866,30 @@ function ChatPanel({
       <Thread
         conversacionId={detalle.id}
         mensajes={detalle.mensajes}
+        hayAnteriores={detalle.hayAnteriores}
         agenteEscribiendo={agenteEscribiendo}
+        onCargarAnteriores={
+          demo
+            ? undefined
+            : async () => {
+                const primero = detalle.mensajes[0]?.created_at;
+                if (!primero || !detalle.hayAnteriores) return { mensajes: [], hayAnteriores: false };
+                const r = await cargarMensajesAnteriores(detalle.id, primero);
+                if (r.error) {
+                  setAccionError(r.error);
+                  return { mensajes: [], hayAnteriores: true };
+                }
+                if (r.mensajes.length === 0) {
+                  onLocalPatch({ hayAnteriores: false });
+                  return { mensajes: [], hayAnteriores: false };
+                }
+                onLocalPatch({
+                  mensajes: [...r.mensajes, ...detalle.mensajes],
+                  hayAnteriores: r.hayAnteriores,
+                });
+                return r;
+              }
+        }
       />
 
       {demo && !esHumano && (
@@ -844,18 +951,36 @@ function ChatPanel({
 function Thread({
   conversacionId,
   mensajes,
+  hayAnteriores = false,
   agenteEscribiendo = false,
+  onCargarAnteriores,
 }: {
   conversacionId: string;
   mensajes: Mensaje[];
+  hayAnteriores?: boolean;
   agenteEscribiendo?: boolean;
+  onCargarAnteriores?: () => Promise<{ mensajes: Mensaje[]; hayAnteriores: boolean }>;
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
   const prevLastIdRef = useRef<string | null>(null);
   const prevConvRef = useRef<string | null>(null);
+  const cargandoAnterioresRef = useRef(false);
+  const [cargandoAnteriores, setCargandoAnteriores] = useState(false);
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false);
   const lastId = mensajes.at(-1)?.id ?? null;
+
+  async function pedirAnteriores() {
+    if (!onCargarAnteriores || !hayAnteriores || cargandoAnterioresRef.current) return;
+    cargandoAnterioresRef.current = true;
+    setCargandoAnteriores(true);
+    try {
+      await onCargarAnteriores();
+    } finally {
+      cargandoAnterioresRef.current = false;
+      setCargandoAnteriores(false);
+    }
+  }
 
   // flex-col-reverse: scrollTop ≈ 0 = abajo (último mensaje).
   function syncNearBottom() {
@@ -864,6 +989,9 @@ function Thread({
     const near = el.scrollTop < 80;
     nearBottomRef.current = near;
     setMostrarIrAbajo(!near && mensajes.length > 0);
+    const overflow = el.scrollHeight > el.clientHeight + 8;
+    const distTop = el.scrollHeight - el.clientHeight - el.scrollTop;
+    if (overflow && distTop < 120) void pedirAnteriores();
   }
 
   function pegarAbajoSiCorresponde() {
@@ -1009,6 +1137,18 @@ function Thread({
         })}
         {mensajes.length === 0 && !agenteEscribiendo && (
           <p className="py-16 text-center text-sm text-muted">Sin mensajes todavía.</p>
+        )}
+        {hayAnteriores && (
+          <div className="flex justify-center py-2">
+            <button
+              type="button"
+              onClick={() => void pedirAnteriores()}
+              disabled={cargandoAnteriores}
+              className="rounded-md bg-surface px-3 py-1.5 text-xs text-muted ring-1 ring-line transition hover:text-ink disabled:opacity-50"
+            >
+              {cargandoAnteriores ? "Cargando…" : "Mensajes anteriores"}
+            </button>
+          </div>
         )}
       </div>
       {mostrarIrAbajo && (
