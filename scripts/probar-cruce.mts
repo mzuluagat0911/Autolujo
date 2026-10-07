@@ -257,7 +257,7 @@ const flotaMezcla: ContratoFlota[] = [
 check(
   "si el 34 y el G34 están en la misma flota, el número pelado no se los come",
   decidirMovimiento(
-    { monto: 35, fecha: "2026-09-01", numeroCarro: "G34", referencia: "548771957" },
+    { monto: 35, fecha: "2026-09-01", numeroCarro: "G34", nombre: null, referencia: "548771957" },
     [pago({ id: "p-al", contratoId: "al-34", numeroCarro: "34", monto: 35, referencia: "548771957" })],
     flotaMezcla,
     extracto,
