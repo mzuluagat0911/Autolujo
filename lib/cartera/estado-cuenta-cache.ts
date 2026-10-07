@@ -82,12 +82,12 @@ function mezclar(
 
 const flotaDelDia = unstable_cache(
   async (hoy: string) => ordenar(await enriquecer(await armarEstadosAlcance())),
-  ["extracto-flota-v2"],
+  ["extracto-flota-v3"],
   { revalidate: HORAS, tags: [TAG_DIA] },
 );
 
 function cacheDeFila(hoy: string, id: string) {
-  return unstable_cache(async () => filaViva(id), ["extracto-fila-v2", hoy, id], {
+  return unstable_cache(async () => filaViva(id), ["extracto-fila-v3", hoy, id], {
     revalidate: HORAS,
     tags: [tagContrato(id)],
   });
@@ -135,7 +135,7 @@ function vistaPanel(hoy: string, firma: string) {
       const parches = await Promise.all(ids.map((id) => cacheDeFila(hoy, id)()));
       return ordenar(mezclar(base, ids, parches));
     },
-    ["extracto-vista-v2", hoy, firma],
+    ["extracto-vista-v3", hoy, firma],
     { revalidate: HORAS, tags: [TAG_DIA, TAG_SUCIOS] },
   );
 }

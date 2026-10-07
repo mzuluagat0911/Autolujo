@@ -143,7 +143,10 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
   );
 
   // Saldo + cumpleaños por contrato (el beneficio aplica solo si está al día).
-  const { data: saldos } = await sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual");
+  const idsActivos = ((contratos ?? []) as { id: string }[]).map((c) => c.id);
+  const { data: saldos } = idsActivos.length
+    ? await sb.from("vw_saldo_contrato").select("contrato_id, saldo_actual").in("contrato_id", idsActivos)
+    : { data: [] as { contrato_id: string; saldo_actual: number | null }[] };
   const saldoMap = new Map<string, number>();
   for (const s of (saldos ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {
     saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));

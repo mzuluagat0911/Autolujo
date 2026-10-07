@@ -541,24 +541,30 @@ async function cuotasPorContrato(
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
   const [pg, ext] = await Promise.all([
-    sb
-      .from("pagos")
-      .select("contrato_id, monto")
-      .in("contrato_id", ids)
-      .in("estado_conciliacion", ["conciliado", "manual"]),
-    sb
-      .from("cargos")
-      .select("contrato_id, monto")
-      .in("contrato_id", ids)
-      .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)"),
+    filasPorPagina<{ contrato_id: string | null; monto: number }>((desde) =>
+      sb
+        .from("pagos")
+        .select("contrato_id, monto")
+        .in("contrato_id", ids)
+        .in("estado_conciliacion", ["conciliado", "manual"])
+        .range(desde, desde + 999),
+    ),
+    filasPorPagina<{ contrato_id: string; monto: number }>((desde) =>
+      sb
+        .from("cargos")
+        .select("contrato_id, monto")
+        .in("contrato_id", ids)
+        .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)")
+        .range(desde, desde + 999),
+    ),
   ]);
   const pagado = new Map<string, number>();
-  for (const p of (pg.data ?? []) as { contrato_id: string | null; monto: number }[]) {
+  for (const p of pg.rows) {
     if (!p.contrato_id) continue;
     pagado.set(p.contrato_id, (pagado.get(p.contrato_id) ?? 0) + Number(p.monto || 0));
   }
   const extras = new Map<string, number>();
-  for (const x of (ext.data ?? []) as { contrato_id: string; monto: number }[]) {
+  for (const x of ext.rows) {
     extras.set(x.contrato_id, (extras.get(x.contrato_id) ?? 0) + Number(x.monto || 0));
   }
   for (const id of ids) {
@@ -921,26 +927,32 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
-  const [{ data }, { data: pagos }] = await Promise.all([
-    sb
-      .from("cargos")
-      .select("id, contrato_id, fecha, monto, tipo, concepto, concepto_codigo, pago_id")
-      .eq("tipo", "multa")
-      .in("contrato_id", ids),
-    sb
-      .from("pagos")
-      .select("id, contrato_id, fecha, monto, rubro, asignaciones")
-      .in("contrato_id", ids)
-      .in("estado_conciliacion", ["conciliado", "manual"]),
+  const [{ rows: data }, { rows: pagos }] = await Promise.all([
+    filasPorPagina<{ contrato_id: string }>((desde) =>
+      sb
+        .from("cargos")
+        .select("id, contrato_id, fecha, monto, tipo, concepto, concepto_codigo, pago_id")
+        .eq("tipo", "multa")
+        .in("contrato_id", ids)
+        .range(desde, desde + 999),
+    ),
+    filasPorPagina<{ contrato_id: string | null }>((desde) =>
+      sb
+        .from("pagos")
+        .select("id, contrato_id, fecha, monto, rubro, asignaciones")
+        .in("contrato_id", ids)
+        .in("estado_conciliacion", ["conciliado", "manual"])
+        .range(desde, desde + 999),
+    ),
   ]);
   const cargosPor = new Map<string, CargoRecargo[]>();
-  for (const g of (data ?? []) as { contrato_id: string }[]) {
+  for (const g of data) {
     const lista = cargosPor.get(g.contrato_id) ?? [];
     lista.push(...cargosRecargoDe([g]));
     cargosPor.set(g.contrato_id, lista);
   }
   const pagosPor = new Map<string, PagoParaRecargo[]>();
-  for (const p of (pagos ?? []) as { contrato_id: string | null }[]) {
+  for (const p of pagos) {
     if (!p.contrato_id) continue;
     const lista = pagosPor.get(p.contrato_id) ?? [];
     lista.push(...pagosRecargoDe([p]));
@@ -1011,11 +1023,48 @@ function pagadoDomingoHoyPorContrato(ids: string[], hoy: string): Promise<Map<st
   return pagadoDomingoRangoPorContrato(ids, hoy, hoy);
 }
 
+type CargoDomingo = {
+  contrato_id: string;
+  monto: number;
+  fecha: string | null;
+  concepto_codigo: string | null;
+  concepto: string | null;
+};
+
+type PagoDomingo = {
+  contrato_id: string | null;
+  monto: number;
+  rubro?: string | null;
+  asignaciones?: unknown;
+};
+
+/** La API corta en 1000 filas. Se sigue pidiendo mientras la página venga llena. */
+async function filasPorPagina<T>(
+  pedir: (desde: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<{ rows: T[]; error: boolean }> {
+  const rows: T[] = [];
+  for (let desde = 0; desde < 20000; desde += 1000) {
+    const { data, error } = await pedir(desde);
+    if (error) return { rows, error: true };
+    const chunk = data ?? [];
+    rows.push(...chunk);
+    if (chunk.length < 1000) break;
+  }
+  return { rows, error: false };
+}
+
+function esCargoDomingo(g: { concepto_codigo: string | null; concepto: string | null }): boolean {
+  const codigo = (g.concepto_codigo ?? "").toUpperCase();
+  const texto = (g.concepto ?? "").toLowerCase();
+  return codigo === "DOMINGOS" || /\bdomingo\b/.test(texto);
+}
+
 /**
  * Domingo que sigue debiéndose. `total` es el balde neto.
  * `alCorte` es solo lo fechado hasta el domingo de esta semana: eso puede
  * entrar al cobro si quedó sin pagar. Lo fechado después es el próximo
  * domingo y no se cobra entre semana.
+ * La letra atrasada sale del saldo. El acuerdo sale de la tabla de acuerdos.
  */
 async function domingoPorContrato(
   ids: string[],
@@ -1024,27 +1073,32 @@ async function domingoPorContrato(
   const bruto = new Map<string, { total: number; alCorte: number }>();
   if (ids.length === 0) return bruto;
   const sb = createServerSupabase();
-  const [{ data }, pagosRes] = await Promise.all([
+  const selCargo = "contrato_id, monto, fecha, concepto_codigo, concepto";
+  const filtrados = await filasPorPagina<CargoDomingo>((desde) =>
     sb
       .from("cargos")
-      .select("contrato_id, monto, fecha, concepto_codigo, concepto")
-      .in("contrato_id", ids),
+      .select(selCargo)
+      .in("contrato_id", ids)
+      .or("concepto_codigo.ilike.DOMINGOS,concepto.ilike.*domingo*")
+      .range(desde, desde + 999),
+  );
+  const cargos = filtrados.error
+    ? (
+        await filasPorPagina<CargoDomingo>((desde) =>
+          sb.from("cargos").select(selCargo).in("contrato_id", ids).range(desde, desde + 999),
+        )
+      ).rows
+    : filtrados.rows;
+  const pagos = await filasPorPagina<PagoDomingo>((desde) =>
     sb
       .from("pagos")
       .select("contrato_id, monto, rubro, asignaciones")
       .in("contrato_id", ids)
-      .in("estado_conciliacion", ["conciliado", "manual"]),
-  ]);
-  for (const g of (data ?? []) as {
-    contrato_id: string;
-    monto: number;
-    fecha: string | null;
-    concepto_codigo: string | null;
-    concepto: string | null;
-  }[]) {
-    const codigo = (g.concepto_codigo ?? "").toUpperCase();
-    const texto = (g.concepto ?? "").toLowerCase();
-    if (codigo !== "DOMINGOS" && !/\bdomingo\b/.test(texto)) continue;
+      .in("estado_conciliacion", ["conciliado", "manual"])
+      .range(desde, desde + 999),
+  );
+  for (const g of cargos) {
+    if (!esCargoDomingo(g)) continue;
     const monto = Number(g.monto) || 0;
     const cur = bruto.get(g.contrato_id) ?? { total: 0, alCorte: 0 };
     cur.total += monto;
@@ -1058,13 +1112,8 @@ async function domingoPorContrato(
       alCorte: Math.round(cur.alCorte * 100) / 100,
     });
   }
-  if (!pagosRes.error) {
-    for (const p of (pagosRes.data ?? []) as {
-      contrato_id: string | null;
-      monto: number;
-      rubro?: string | null;
-      asignaciones?: unknown;
-    }[]) {
+  if (!pagos.error) {
+    for (const p of pagos.rows) {
       if (!p.contrato_id || !out.has(p.contrato_id)) continue;
       const abono = abonoDomingoDePago(p);
       if (abono <= 0.009) continue;

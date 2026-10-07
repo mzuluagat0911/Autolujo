@@ -602,15 +602,7 @@ export async function cargosExtraPorContrato(
   const ids = contratoIds.filter(Boolean);
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
-  const { data } = await sb
-    .from("cargos")
-    .select("contrato_id, tipo, concepto, concepto_codigo, monto, pago_id, fecha")
-    .in("contrato_id", ids)
-    .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)")
-    .order("fecha", { ascending: false });
-
-  const maps = new Map<string, Map<string, AcumExtra>>();
-  for (const f of (data ?? []) as {
+  const data: {
     contrato_id: string;
     tipo: string;
     concepto: string | null;
@@ -618,7 +610,23 @@ export async function cargosExtraPorContrato(
     monto: number;
     pago_id: string | null;
     fecha: string | null;
-  }[]) {
+  }[] = [];
+  for (let desde = 0; desde < 20000; desde += 1000) {
+    const { data: chunk, error } = await sb
+      .from("cargos")
+      .select("contrato_id, tipo, concepto, concepto_codigo, monto, pago_id, fecha")
+      .in("contrato_id", ids)
+      .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)")
+      .order("fecha", { ascending: false })
+      .range(desde, desde + 999);
+    if (error) break;
+    const filas = (chunk ?? []) as typeof data;
+    data.push(...filas);
+    if (filas.length < 1000) break;
+  }
+
+  const maps = new Map<string, Map<string, AcumExtra>>();
+  for (const f of data) {
     const codigo = (f.concepto_codigo ?? "").toUpperCase();
     if ((f.concepto ?? "").includes("[[qc]]")) continue;
     const monto = Number(f.monto) || 0;

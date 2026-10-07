@@ -2,7 +2,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader, Kpi } from "@/components/kit";
 import { Field, Select, SubmitButton, FormCard } from "@/components/form";
 import { createVehiculo } from "./actions";
-import { hoyPanama } from "@/lib/cartera/fecha";
+import { hoyPanama, sumarDias } from "@/lib/cartera/fecha";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { etiquetaZona } from "@/lib/cartera/salidas-geo";
 import { lineaSalidaHoy, salidasDelDia } from "@/lib/cartera/salidas-aplicar";
@@ -112,9 +112,11 @@ async function getData() {
       sb
         .from("gps_posiciones")
         .select("vehiculo_id, latitud, longitud, direccion, tomado_at")
+        .gte("fecha", sumarDias(hoy, -1))
+        .lte("fecha", hoy)
         .not("vehiculo_id", "is", null)
         .order("tomado_at", { ascending: false })
-        .limit(800),
+        .limit(1000),
       pausasAbiertas(),
       devolucionesAbiertas(),
       inactivacionesAbiertas(),
