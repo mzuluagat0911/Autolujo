@@ -247,7 +247,7 @@ function FilaRevision({
               name="carro"
               value={carro}
               onChange={(e) => setCarro(e.target.value)}
-              placeholder="144"
+              placeholder="G25"
               required
               className="w-28 rounded-lg bg-white px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
             />

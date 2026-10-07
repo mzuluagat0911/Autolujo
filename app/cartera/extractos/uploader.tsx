@@ -31,8 +31,8 @@ export function SubirExtracto({ empresas }: { empresas: Empresa[] }) {
         <p className="text-sm font-semibold">Empresa del extracto</p>
         <p className="mt-1 text-sm text-muted">
           Solo cruza carros de esa empresa. Auto-aplica si calzan monto, fecha y cuenta, y el
-          carro: con la letra, o solo el número cuando en esa empresa no se repite. El resto
-          va a la cola de arriba.
+          carro con su letra: G25 no es el 25. El número pelado solo vale para un carro que
+          no lleva letra. El resto va a la cola de arriba.
         </p>
 
         <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">

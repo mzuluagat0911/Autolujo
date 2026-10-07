@@ -3,7 +3,7 @@
 
 import { instantePanama } from "@/lib/cartera/fecha";
 import {
-  canonCarro, extraerCarro, extraerNombre, extraerReferencia, canonReferencia,
+  canonCarro, extraerCarro, extraerCarroCeldas, extraerNombre, extraerReferencia, canonReferencia,
   montoExacto, fechaCubrePago,
   esCrucePerfecto, decidirMovimiento, huellaMovimiento,
   type ContratoFlota, type PagoCandidato,
@@ -45,7 +45,14 @@ check("carro con palabra clave", extraerCarro("TRANSFERENCIA DE JUAN PEREZ CARRO
 check("carro con auto", extraerCarro("pagos del auto 97", "AUTOLUJO"), "97");
 check("carro con cr", extraerCarro("cr323", "AUTOLUJO"), "323");
 check("carro Gold con prefijo", extraerCarro("PAGO G-14 CUOTA", "GOLD"), "G14");
+check("la G se lee aunque el archivo no sea Gold", extraerCarro("PAGO G-14 CUOTA", "AUTOLUJO"), "G14");
+check("G pegada al nombre", extraerCarro("TRANSFERENCIA DE CAMPOSG41", "KOWUA"), "G41");
+check("G con letra suelta al final", extraerCarro("PAGO G45F CUOTA", "GOLD"), "G45");
+check("cr323 sigue siendo el 323, no un prefijo R", extraerCarro("cr323", "KOWUA"), "323");
+check("dos códigos distintos no se adivinan", extraerCarro("PAGO G14 Y G15", "GOLD"), null);
 check("sin palabra clave no inventa un número suelto", extraerCarro("REF 998877 monto varios", "AUTOLUJO"), null);
+check("celda G41", extraerCarroCeldas("", "G41", "AUTOLUJO"), "G41");
+check("celda solo número no se vuelve G", extraerCarroCeldas("", "66", "GOLD"), "66");
 check("canon quita ceros", canonCarro("0144"), "144");
 check("nombre desde transferencia", extraerNombre("TRANSFERENCIA DE EDGAR JOEL BONILLA CARRO 144"), "EDGAR JOEL BONILLA");
 
@@ -96,6 +103,11 @@ check(
 check(
   "cuenta de otra empresa no es perfecto",
   esCrucePerfecto(pago({ cuentaDestino: "00009999" }), { monto: 30, fecha: "2026-09-01", numeroCarro: "144" }, extracto, flota[0]),
+  false,
+);
+check(
+  "un comprobante de otra empresa no se aplica",
+  esCrucePerfecto(pago({ empresaId: "emp-gold" }), { monto: 30, fecha: "2026-09-01", numeroCarro: "144" }, extracto, flota[0]),
   false,
 );
 check(
@@ -209,23 +221,24 @@ check(
   false,
 );
 
-console.log("\n· Número sin letra, dentro de la empresa");
+console.log("\n· La letra es parte del código");
 const GOLD = "emp-gold";
 const flotaGold: ContratoFlota[] = [
   { contratoId: "g-25", letra: 35, numero: "G25", clienteNombre: "Odalys", empresaId: GOLD },
   { contratoId: "g-34", letra: 35, numero: "G34", clienteNombre: "Chris", empresaId: GOLD },
 ];
 const extractoGold = { empresaId: GOLD, numeroCuenta: "0469000022690" };
-const pagoSinLetra = pago({
+const pagoG25 = pago({
   id: "p-g25",
   contratoId: "g-25",
   empresaId: GOLD,
   monto: 35,
-  numeroCarro: "25",
+  numeroCarro: "G25",
   cuentaDestino: "04-69-00-002269-0",
   referencia: "548454493",
   pagadoAt: instantePanama("2026-10-06", 10, 0).toISOString(),
 });
+const pagoSinLetra = pago({ ...pagoG25, numeroCarro: "25" });
 const movG25 = {
   monto: 35,
   fecha: "2026-10-06",
@@ -233,21 +246,22 @@ const movG25 = {
   referencia: "548454493",
   nombre: "ODALYS",
 };
-const dSinLetra = decidirMovimiento(movG25, [pagoSinLetra], flotaGold, extractoGold);
-check("25 se atribuye a G25 si monto, fecha, cuenta y ref calzan", dSinLetra.tipo, "perfecto");
+check("G25 con la misma letra se aplica", decidirMovimiento(movG25, [pagoG25], flotaGold, extractoGold).tipo, "perfecto");
 check(
-  "monto distinto no atribuye el número pelado",
-  decidirMovimiento({ ...movG25, monto: 40 }, [pagoSinLetra], flotaGold, extractoGold).tipo,
+  "el 25 pelado no es el G25",
+  decidirMovimiento(movG25, [pagoSinLetra], flotaGold, extractoGold).tipo,
   "revisar",
 );
-check(
-  "confirmación distinta no atribuye el número pelado",
-  decidirMovimiento({ ...movG25, referencia: "00001111" }, [pagoSinLetra], flotaGold, extractoGold).tipo,
-  "revisar",
+const dPelo = decidirMovimiento(
+  { monto: 35, fecha: "2026-10-06", numeroCarro: "25", nombre: null, referencia: "548454493" },
+  [],
+  flotaGold,
+  extractoGold,
 );
+check("el 25 pelado no sugiere el G25", dPelo.tipo === "revisar" ? dPelo.sugerido : "aplicado", null);
 check(
   "otra letra no es el mismo carro",
-  decidirMovimiento({ ...movG25, numeroCarro: "A25" }, [pagoSinLetra], flotaGold, extractoGold).tipo,
+  decidirMovimiento({ ...movG25, numeroCarro: "A25" }, [pagoG25], flotaGold, extractoGold).tipo,
   "revisar",
 );
 const flotaMezcla: ContratoFlota[] = [

@@ -3,7 +3,8 @@
 // Un movimiento del banco SOLO se marca conciliado si calza con un comprobante
 // pendiente en TODOS los criterios: empresa, cuenta destino (si se leyó),
 // monto exacto, fecha (día del pago o el siguiente) y un ancla operativa:
-//   - # de carro (con letra, o solo el número si en esa flota hay un único carro), y/o
+//   - # de carro con su letra (G25 no es el 25; el número pelado solo calza
+//     con un carro que no lleva letra), y/o
 //   - referencia bancaria EXACTA (confirmación / comprobante / canje / ref).
 // Si ambos lados traen referencia y no es la misma → nunca es perfecto.
 // El banco del extracto es el destino (Banco General); el banco del
@@ -46,10 +47,9 @@ export function carroCompatibleConChat(
 
 /**
  * ¿Esta lectura es ese carro?
- * Primero letra+número (G25). Si la lectura no trae letra, el número se
- * atribuye al carro que sí la tiene (25 → G25). Una letra distinta, o una
- * lectura con letra contra un carro que no la tiene, no es el mismo carro:
- * el 34 de otra empresa no es el G34.
+ * La letra forma parte del código: G25, 25 y A25 son tres carros. Un número
+ * pelado no se atribuye al carro que lleva letra, aunque sea el único de
+ * la flota.
  */
 export function carroAtribuible(
   leido: string | null | undefined,
@@ -58,23 +58,46 @@ export function carroAtribuible(
   if (!leido || !delCarro) return false;
   const a = canonCarro(leido.replace(/^carro\s+/i, ""));
   const b = canonCarro(delCarro.replace(/^carro\s+/i, ""));
-  if (!a || !b) return false;
-  if (a === b) return true;
-  const digA = a.replace(/\D/g, "");
-  const digB = b.replace(/\D/g, "");
-  if (!digA || digA !== digB) return false;
-  const prefA = a.replace(/\d/g, "");
-  const prefB = b.replace(/\d/g, "");
-  if (prefA && prefB && prefA !== prefB) return false;
-  if (prefA && !prefB) return false;
-  return !prefA && Boolean(prefB);
+  return Boolean(a && b && a === b);
 }
 
-export function extraerCarro(desc: string, empresa: string | null): string | null {
-  if (empresa === "GOLD") {
-    const m = /\bG\s*-?\s*0*(\d{1,3})\b/i.exec(desc);
-    return m ? "G" + parseInt(m[1], 10) : null;
+/**
+ * Códigos con letra en un comentario (G25, G-14, CamposG41, G45f).
+ * "cr323" no cuenta: es el comentario de banca móvil, no un prefijo.
+ * Si hay más de un código distinto, no se elige.
+ */
+function codigosConLetra(desc: string): string[] {
+  const upper = desc.toUpperCase();
+  const vistos = new Set<string>();
+  const re = /([A-Z])[\s-]*0*(\d{1,3})(?!\d)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(upper))) {
+    const letra = m[1];
+    const num = String(parseInt(m[2], 10));
+    const idx = m.index;
+    if (
+      letra === "R" &&
+      idx > 0 &&
+      upper[idx - 1] === "C" &&
+      (idx < 2 || !/[A-Z0-9]/.test(upper[idx - 2] ?? ""))
+    ) {
+      continue;
+    }
+    const abre = idx === 0 || !/[A-Z0-9]/.test(upper[idx - 1] ?? "");
+    // Pegado a un nombre (CamposG41) solo la G, que es el código de flota.
+    if (!abre && letra !== "G") continue;
+    const resto = upper.slice(idx + m[0].length);
+    if (/^[A-Z]{2,}/.test(resto)) continue;
+    vistos.add(letra + num);
   }
+  return [...vistos];
+}
+
+export function extraerCarro(desc: string, _empresa: string | null): string | null {
+  // La letra del comentario manda, aunque el archivo se haya cargado en otra empresa.
+  const letras = codigosConLetra(desc);
+  if (letras.length > 1) return null;
+  if (letras.length === 1) return letras[0];
   // "carro 68", "auto 97", "unidad 54", "cr323" (comentario de banca móvil).
   const m =
     /\b(?:carro|auto|cuota|veh[ií]culo|unidad|#)\s*#?\s*0*(\d{1,3})\b/i.exec(desc) ||
@@ -84,7 +107,8 @@ export function extraerCarro(desc: string, empresa: string | null): string | nul
 
 /**
  * Carro desde celdas del Excel BG: descripción + "Referencia 2".
- * Ref2 a veces trae solo el número ("66", "313") — eso sí lo tomamos.
+ * Ref2 con letra ("G66") conserva la letra. Un número pelado ("66", "313")
+ * queda pelado: no se convierte en G66.
  */
 export function extraerCarroCeldas(
   descripcion: string,
@@ -96,10 +120,8 @@ export function extraerCarroCeldas(
   const desdeTexto = extraerCarro(blob, empresa);
   if (desdeTexto) return desdeTexto;
   if (!memo) return null;
-  if (empresa === "GOLD") {
-    const g = /^g\s*-?\s*0*(\d{1,3})$/i.exec(memo);
-    return g ? "G" + parseInt(g[1], 10) : null;
-  }
+  const letras = codigosConLetra(memo);
+  if (letras.length === 1) return letras[0];
   if (/^\d{1,3}$/.test(memo)) return String(parseInt(memo, 10));
   return null;
 }
@@ -221,15 +243,8 @@ export function contratoPorCarro(
   if (!numero) return { unico: null, cuantos: 0 };
   const key = canonCarro(numero.replace(/^carro\s+/i, ""));
   const exactos = flota.filter((c) => canonCarro(c.numero) === key);
-  if (exactos.length > 0) {
-    return { unico: exactos.length === 1 ? exactos[0] : null, cuantos: exactos.length };
-  }
-  // Sin letra en la lectura: el número atribuye solo si en esta flota hay un carro.
-  const pref = key.replace(/\d/g, "");
-  const dig = key.replace(/\D/g, "");
-  if (pref || !dig) return { unico: null, cuantos: 0 };
-  const porDigito = flota.filter((c) => canonCarro(c.numero).replace(/\D/g, "") === dig);
-  return { unico: porDigito.length === 1 ? porDigito[0] : null, cuantos: porDigito.length };
+  if (exactos.length === 0) return { unico: null, cuantos: 0 };
+  return { unico: exactos.length === 1 ? exactos[0] : null, cuantos: exactos.length };
 }
 
 /**
