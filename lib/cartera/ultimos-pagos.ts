@@ -1,4 +1,5 @@
 import { createServerSupabase } from "@/lib/supabase/server";
+import { horaPanama } from "./fecha";
 import type { UltimoPago } from "./estado-csv";
 
 /** Último pago que ya cuenta (conciliado o de oficina), por contrato. */
@@ -27,13 +28,17 @@ export async function ultimosPagosPorContrato(
         contrato_id: string | null;
         fecha: string | null;
         monto: number | null;
+        pagado_at: string | null;
       }[];
       for (const p of filas) {
         if (!p.contrato_id || vistos.has(p.contrato_id)) continue;
         vistos.add(p.contrato_id);
+        const cuando = p.pagado_at ? new Date(p.pagado_at) : null;
+        const hora = cuando && !Number.isNaN(cuando.getTime()) ? horaPanama(cuando) : null;
         out[p.contrato_id] = {
           fecha: String(p.fecha ?? "").slice(0, 10),
           monto: Number(p.monto) || 0,
+          hora,
         };
       }
       if (filas.length < 1000 || vistos.size >= grupo.length) break;

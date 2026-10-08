@@ -13,7 +13,7 @@ import { siglaEmpresa, etiquetaCarroUi } from "./empresa";
 import { categoriaDeEtiqueta, esEtiquetaDomingo } from "./prioridad-extras";
 import type { EstadoCuentaFila } from "@/app/cartera/estados-cuenta/types";
 
-export type UltimoPago = { fecha: string; monto: number };
+export type UltimoPago = { fecha: string; monto: number; hora?: string | null };
 
 const COLUMNAS = [
   "Nombre",
@@ -31,7 +31,7 @@ const COLUMNAS = [
   "Otros",
   "Detalle de otros",
   "Último pago",
-  "Fecha último pago",
+  "Fecha y hora último pago",
   "Cuotas del contrato",
   "Desglose de hoy",
   "Observación",
@@ -121,7 +121,7 @@ export function filasCsvEstado(
       monto(otros.total),
       otros.detalle,
       ultimo ? monto(ultimo.monto) : "",
-      ultimo?.fecha ?? "",
+      ultimo ? [ultimo.fecha, ultimo.hora].filter(Boolean).join(" ") : "",
       textoEstadoCuotas(e),
       e.desgloseCobro || e.desglose || "",
       observacion(e),
