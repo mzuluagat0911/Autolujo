@@ -26,6 +26,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { distribuirPago } from "./rules";
 import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
+import { descuentoLetraDe } from "./descuento-letra";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { cargosExtraPorContrato, partirCargosNoLetra } from "./extracto-desglose";
 import { acuerdoCobraDomingo, cuotaAcuerdoHoy, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
@@ -953,10 +954,11 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   }) | null;
   const terminos = contratoRow;
   if (!terminos) return null;
-  const [pausa, devolucion, inactivacion] = await Promise.all([
+  const [pausa, devolucion, inactivacion, descuentoLetra] = await Promise.all([
     pausaDeVehiculo(contratoRow?.vehiculo_id),
     devolucionDeVehiculo(contratoRow?.vehiculo_id),
     inactivacionDeVehiculo(contratoRow?.vehiculo_id),
+    contratoRow?.vehiculo_id ? descuentoLetraDe(contratoRow.vehiculo_id, fecha) : Promise.resolve(0),
   ]);
   const enPausa = pausaVigente(pausa, fecha);
   const devuelto = devolucionVigente(devolucion, fecha);
@@ -964,9 +966,13 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const iniLetra = contratoRow?.fecha_inicio_letra?.trim() ?? "";
   const letraNoEmpieza = Boolean(iniLetra && fecha < iniLetra);
   const acuerdos = (acuerdosData ?? []) as AcuerdoActivo[];
-  const cuotaHoy = (enPausa || devuelto || inactivo || letraNoEmpieza) && !esDomingo(fecha)
+  const cuotaBase = (enPausa || devuelto || inactivo || letraNoEmpieza) && !esDomingo(fecha)
     ? 0
     : cuotaDeFecha(terminos, fecha);
+  const cuotaHoy = Math.max(
+    Math.round((cuotaBase - (esDomingo(fecha) ? 0 : descuentoLetra)) * 100) / 100,
+    0,
+  );
   const multaHoy = (multaRes.data?.length ?? 0) > 0;
   const hoyYaDevengado = (rentaRes.data?.length ?? 0) > 0;
   const saldoVista = Number((saldoRes.data as { saldo_actual: number } | null)?.saldo_actual ?? 0);
@@ -1020,6 +1026,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     hoyYaDevengado,
     pendiente: false,
     diaLibre: (enPausa || devuelto || inactivo || letraNoEmpieza) && !hoyEsDomingo,
+    descuentoLetraHoy: hoyEsDomingo ? 0 : descuentoLetra,
     cargosFuturos: extrasNoLetra.futuro,
     cargosExtraEnSaldo: extrasNoLetra.debido,
   });

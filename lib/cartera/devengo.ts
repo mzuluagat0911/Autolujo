@@ -22,6 +22,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, sumarDias, pasoCorte, diasEntre, esDomingo } from "./fecha";
 import { cuotaDeFecha, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
+import { descuentosLetraDelDia } from "./descuento-letra";
 import { devolucionesAbiertas, devolucionVigente } from "./devolucion";
 import { inactivacionesAbiertas, inactivacionVigente } from "./inactivo";
 import { filasUltimaLetra } from "./archivo-caso";
@@ -152,10 +153,11 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
   }
   const nacMap = await nacimientosPorCliente();
-  const [pausas, devoluciones, inactivaciones] = await Promise.all([
+  const [pausas, devoluciones, inactivaciones, descuentosLetra] = await Promise.all([
     pausasAbiertas(),
     devolucionesAbiertas(),
     inactivacionesAbiertas(),
+    descuentosLetraDelDia(fecha),
   ]);
 
   const res: ResultadoDevengo = { fecha, creados: 0, yaEstaban: 0, sinCuota: 0 };
@@ -168,7 +170,9 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
       res.sinCuota++;
       continue;
     }
-    const monto = cuotaDeFecha(c, fecha);
+    const bruto = cuotaDeFecha(c, fecha);
+    const descuento = descuentosLetra.get(c.vehiculo_id ?? "") ?? 0;
+    const monto = Math.max(Math.round((bruto - descuento) * 100) / 100, 0);
     if (monto <= 0) { res.sinCuota++; continue; }
     // Domingo no abre renta nueva. Se cobra el impago que ya está en el
     // saldo y, si hay balde DOMINGOS, una tajada. Al día queda en $0

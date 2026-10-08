@@ -78,6 +78,11 @@ export type EntradaCifras = {
   /** Hoy no corre cuota (ej. cumpleaños libre): la cuota del día es 0. */
   diaLibre?: boolean;
   /**
+   * Parte de la letra de HOY que no se cobra (taller unas horas, medio día).
+   * No toca la letra del contrato ni la de mañana.
+   */
+  descuentoLetraHoy?: number;
+  /**
    * Cargos que no son letra y todavía no vencen. Están en el saldo,
    * pero no se cobran hoy y no se usan para armar la letra del día.
    */
@@ -128,7 +133,9 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   const letra = Math.max(Number(e.terminos.letra_diaria) || 0, 0);
   const penalidad = penalidadDe(e.terminos);
   // diaLibre (ej. cumpleaños): hoy no corre cuota, como un domingo libre.
-  const cuotaHoy = e.diaLibre ? 0 : cuotaDeFecha(e.terminos, e.hoy);
+  const cuotaBase = e.diaLibre ? 0 : cuotaDeFecha(e.terminos, e.hoy);
+  const descuentoLetra = Math.min(Math.max(Number(e.descuentoLetraHoy) || 0, 0), cuotaBase);
+  const cuotaHoy = Math.round((cuotaBase - descuentoLetra) * 100) / 100;
   const manana = sumarDias(e.hoy, 1);
   const cuotaManana = cuotaDeFecha(e.terminos, manana);
   const acuerdoHoy = Math.max(Number(e.acuerdoHoy) || 0, 0);

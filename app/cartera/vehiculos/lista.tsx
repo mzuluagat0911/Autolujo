@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { StatusChip, FiltersBar, EmptyState } from "@/components/kit";
@@ -12,6 +12,8 @@ import {
   completarPlacasDesdeDiacor,
   actualizarKmHoy,
   rellenarKmDelMes,
+  descuentosLetraDelCarro,
+  guardarDescuentoLetra,
 } from "./actions";
 
 export type FilaVehiculo = {
@@ -645,6 +647,48 @@ function PanelEditarCarro({
   const entregado = estado === "entregado";
   const inactivo = estado === "improductivo";
   const [pending, start] = useTransition();
+  const [descValor, setDescValor] = useState("");
+  const [descFecha, setDescFecha] = useState(hoyInput());
+  const [descMotivo, setDescMotivo] = useState("");
+  const [descErr, setDescErr] = useState<string | null>(null);
+  const [descuentos, setDescuentos] = useState<{ id: string; fecha: string; monto: number; motivo: string }[]>([]);
+  const [descPending, startDesc] = useTransition();
+
+  useEffect(() => {
+    let vivo = true;
+    void descuentosLetraDelCarro(carro.id).then((rows) => {
+      if (vivo) setDescuentos(rows);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [carro.id]);
+
+  function aplicarDescuento() {
+    setDescErr(null);
+    if (!carro.contratoId) {
+      setDescErr("Este carro no tiene un contrato activo.");
+      return;
+    }
+    const monto = Number(String(descValor).replace(",", "."));
+    startDesc(async () => {
+      const r = await guardarDescuentoLetra({
+        vehiculoId: carro.id,
+        contratoId: carro.contratoId!,
+        fecha: descFecha,
+        monto,
+        motivo: descMotivo.trim(),
+      });
+      if (!r.ok) {
+        setDescErr(r.msg);
+        return;
+      }
+      setDescValor("");
+      setDescMotivo("");
+      setDescuentos(await descuentosLetraDelCarro(carro.id));
+      onSaved(r.msg);
+    });
+  }
   const titulo = `${carro.empresa ? `${siglaEmpresa(carro.empresa)} · ` : ""}${carro.numero}`;
 
   function guardar(e: FormEvent) {
@@ -911,6 +955,82 @@ function PanelEditarCarro({
                 Ese día entra la última cuota a la deuda. Después no se abre letra y el agente cobra ese saldo.
               </span>
             </label>
+          )}
+        </div>
+        <div className="mt-6 border-t border-line pt-5">
+          <h3 className="text-sm font-semibold text-ink">Descuento de letra diaria</h3>
+          <p className="mt-1 text-xs text-muted">
+            Si el carro estuvo en taller o parado unas horas, bajá solo la letra de ese día. La letra del contrato sigue igual.
+            {carro.letra != null ? ` La letra es ${money(carro.letra)}.` : ""}
+          </p>
+          {carro.contratoId ? (
+            <div className="mt-4 space-y-4">
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Valor del descuento
+                </span>
+                <input
+                  inputMode="decimal"
+                  placeholder="15"
+                  value={descValor}
+                  onChange={(e) => setDescValor(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.preventDefault();
+                  }}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm tabular-nums ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Fecha del descuento
+                </span>
+                <input
+                  type="date"
+                  value={descFecha}
+                  onChange={(e) => setDescFecha(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Motivo
+                </span>
+                <input
+                  placeholder="Taller medio día"
+                  value={descMotivo}
+                  onChange={(e) => setDescMotivo(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.preventDefault();
+                  }}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+              <button
+                type="button"
+                disabled={descPending}
+                onClick={aplicarDescuento}
+                className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
+              >
+                {descPending ? "Aplicando…" : "Aplicar descuento"}
+              </button>
+              {descErr && <p className="text-sm text-rojo">{descErr}</p>}
+              {descuentos.length > 0 && (
+                <ul className="space-y-2">
+                  {descuentos.map((d) => (
+                    <li key={d.id} className="text-sm text-ink">
+                      <span className="tabular-nums">{fechaCorta(d.fecha)}</span>
+                      <span className="text-muted"> · </span>
+                      <span className="tabular-nums font-medium">
+                        {Number.isInteger(d.monto) ? money(d.monto) : `$${d.monto.toFixed(2)}`}
+                      </span>
+                      {d.motivo ? <span className="text-muted"> · {d.motivo}</span> : null}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : (
+            <p className="mt-3 text-xs text-muted">Hace falta un contrato activo para descontar la letra.</p>
           )}
         </div>
         {err && <p className="mt-3 text-sm text-rojo">{err}</p>}

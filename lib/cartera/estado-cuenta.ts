@@ -31,6 +31,7 @@ import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
 import { tratamientoCliente } from "./tratamiento";
 import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
 import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
+import { descuentoLetraDe, descuentosLetraDelDia } from "./descuento-letra";
 import { atribuirRecargos, lineasAsignadas, type CargoRecargo, type PagoParaRecargo } from "./recargo-cubierto";
 
 async function cargosNoLetraPorContrato(
@@ -729,10 +730,11 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   // Contrato cerrado (devuelto/finalizado/abandonado…): ya NO corre cuota diaria;
   // solo queda la deuda pendiente. Se trata como "día libre" permanente.
   const contratoCerrado = row.estado !== "activo";
-  const [pausa, devolucion, inactivacion] = await Promise.all([
+  const [pausa, devolucion, inactivacion, descuentoHoy] = await Promise.all([
     pausaDeVehiculo(row.vehiculo?.id),
     devolucionDeVehiculo(row.vehiculo?.id),
     inactivacionDeVehiculo(row.vehiculo?.id),
+    row.vehiculo?.id ? descuentoLetraDe(row.vehiculo.id, hoy) : Promise.resolve(0),
   ]);
   const devuelto = devolucionVigente(devolucion, hoy);
   const inactivo = inactivacionVigente(inactivacion, hoy);
@@ -755,6 +757,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
     cargosFuturos: noLetraMap.get(contratoId)?.futuro ?? 0,
     cargosExtraEnSaldo: noLetraMap.get(contratoId)?.debido ?? 0,
+    descuentoLetraHoy: descuentoHoy,
   }, pausa), devolucion), inactivacion);
   const cifrasBase = calcularCifras(entrada);
   const nac = row.cliente_id ? (await nacimientosDe([row.cliente_id])).get(row.cliente_id) ?? null : null;
@@ -1259,6 +1262,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
   ]);
 
   const atrasoMap = await atrasoAcuerdoPorContrato(hoy, acuerdosMap);
+  const descuentosHoy = await descuentosLetraDelDia(hoy);
 
   const saldoMap = new Map<string, number>();
   for (const s of (saldos.data ?? []) as { contrato_id: string; saldo_actual: number | null }[]) {
@@ -1309,6 +1313,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
       cargosFuturos: noLetraMap.get(c.id)?.futuro ?? 0,
       cargosExtraEnSaldo: noLetraMap.get(c.id)?.debido ?? 0,
+      descuentoLetraHoy: descuentosHoy.get(c.vehiculo?.id ?? "") ?? 0,
     }, pausa), devolucion), inactivacion);
     const cifrasBase = calcularCifras(entrada);
     const nac = c.cliente_id ? nacMap.get(c.cliente_id) ?? null : null;

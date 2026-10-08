@@ -582,3 +582,26 @@ export async function rellenarKmDelMes(): Promise<ResultadoMasivo> {
     return { ok: false, msg: e instanceof Error ? e.message : "No pude rellenar el mes.", actualizados: 0 };
   }
 }
+
+export async function descuentosLetraDelCarro(vehiculoId: string) {
+  const { listarDescuentosLetra } = await import("@/lib/cartera/descuento-letra");
+  return listarDescuentosLetra(vehiculoId);
+}
+
+/** Baja la letra de un solo día. El valor, la fecha y el motivo quedan en la ficha. */
+export async function guardarDescuentoLetra(input: {
+  vehiculoId: string;
+  contratoId: string;
+  fecha: string;
+  monto: number;
+  motivo: string;
+}) {
+  const { aplicarDescuentoLetra } = await import("@/lib/cartera/descuento-letra");
+  const r = await aplicarDescuentoLetra(input);
+  if (r.ok) {
+    revalidatePath("/cartera/vehiculos");
+    revalidatePath("/cartera/estados-cuenta");
+    await invalidarLecturaEstados(input.contratoId);
+  }
+  return r;
+}
