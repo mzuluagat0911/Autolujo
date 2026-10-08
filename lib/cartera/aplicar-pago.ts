@@ -705,6 +705,11 @@ function cubetaDeCargoFila(c: {
   if (codigo === "DOMINGOS" || /\bdomingo\b/i.test(c.concepto ?? "")) return "domingo";
   if (codigo === "124" || /manten/i.test(c.concepto ?? "")) return "mantenimiento";
   if (codigo === "PANAPASS" || c.tipo === "panapass" || /panapass/i.test(c.concepto ?? "")) return "panapass";
+  // El abono de la entrada ya es un cargo. Si esta lectura no lo ve, cada
+  // guardado de la asignación vuelve a cargarlo (AL 323: $150 × 3).
+  if (codigo === "AFILIACION" || c.tipo === "afiliacion" || /abono\s*inicial|afiliaci[oó]n/i.test(c.concepto ?? "")) {
+    return "abono inicial";
+  }
   if (codigo === "CIERRE_SEMANA" || /cierre(\s+de)?\s+semana/i.test(c.concepto ?? "")) return "cierre de semana";
   if (codigo === "122" || (/exceso/i.test(c.concepto ?? "") && /km|kilom/i.test(c.concepto ?? ""))) {
     return "exceso de kilometraje";
