@@ -44,18 +44,27 @@ async function cargosNoLetraPorContrato(
   return out;
 }
 
+/**
+ * Corte del Excel Gold (GOLD PARA MATEO (8), 23 sep 2026).
+ * Ese número es del cliente que tenía el carro ese día, no del carro.
+ * Un contrato que empieza después es otro cliente: arranca en 0 y suma sus pagos.
+ */
+const PLAN_GOLD_CORTE = "2026-09-23";
+
 /** Preferir plan del Excel/DB sobre el cálculo desde ledger (piloto Gold). */
 function aplicarPlanCuotas(
   computed: { numCuotasTotal: number | null; cuotasPagadas: number | null; cuotasDebe: number | null },
   opts: {
     numero: string | null | undefined;
     empresa: string | null | undefined;
+    fechaInicio: string | null | undefined;
     cuotasPagadasDb: number | null | undefined;
     numTotalDb: number | null | undefined;
   },
 ): { numCuotasTotal: number | null; cuotasPagadas: number | null; cuotasDebe: number | null } {
+  const clienteDelCorte = (opts.fechaInicio ?? "").slice(0, 10) <= PLAN_GOLD_CORTE && (opts.fechaInicio ?? "") !== "";
   const plan =
-    (opts.empresa ?? "").toUpperCase() === "GOLD" && opts.numero
+    clienteDelCorte && (opts.empresa ?? "").toUpperCase() === "GOLD" && opts.numero
       ? GOLD_CUOTAS_PLAN[opts.numero]
       : undefined;
 
@@ -758,12 +767,13 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
         pagadoTotal: 0,
         extrasTotal: 0,
       }),
-    {
-      numero: row.vehiculo?.numero,
-      empresa: row.vehiculo?.empresa?.codigo,
-      cuotasPagadasDb: row.cuotas_pagadas,
-      numTotalDb: row.num_cuotas_total,
-    },
+      {
+        numero: row.vehiculo?.numero,
+        empresa: row.vehiculo?.empresa?.codigo,
+        fechaInicio: row.fecha_inicio,
+        cuotasPagadasDb: row.cuotas_pagadas,
+        numTotalDb: row.num_cuotas_total,
+      },
   );
   const cifras = cumple.cifras;
   const { data: pagosRecargo } = await sb
@@ -1312,6 +1322,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       {
         numero: c.vehiculo?.numero,
         empresa: c.vehiculo?.empresa?.codigo,
+        fechaInicio: c.fecha_inicio,
         cuotasPagadasDb: c.cuotas_pagadas,
         numTotalDb: c.num_cuotas_total,
       },
