@@ -1098,3 +1098,12 @@ export async function previewMensajeLetraDiaria(
     };
   }
 }
+
+/** Carros improductivos y por entregar que el extracto del día no lista. */
+export async function complementoInforme(yaEnPanel: string[]) {
+  const { reporteImproductivos } = await import("@/lib/cartera/improductivos-reporte");
+  const { ultimosPagosPorContrato } = await import("@/lib/cartera/ultimos-pagos");
+  const reporte = await reporteImproductivos(yaEnPanel);
+  const ultimos = await ultimosPagosPorContrato(reporte.extra.map((e) => e.contratoId));
+  return { ...reporte, ultimos };
+}

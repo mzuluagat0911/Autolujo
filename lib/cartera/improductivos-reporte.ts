@@ -1,6 +1,6 @@
-// Carros en estado improductivo que el extracto del día no trae
-// (contrato suspendido u otro estado distinto de activo). El reporte
-// los agrega al final, con el mismo desglose.
+// Carros que no producen y el extracto del día no trae: improductivo
+// y por entregar (un carro por entregar sigue siendo improductivo).
+// El reporte los agrega al final, con el mismo desglose.
 
 import type { EstadoCuentaFila } from "@/app/cartera/estados-cuenta/types";
 import { cobroHoyDe, ctxCobroHoy } from "./cobro-hoy";
@@ -18,41 +18,51 @@ function elegirContrato(contratos: ContratoMini[]): string | null {
   return ordenados[0]?.id ?? null;
 }
 
-/** Ids de contrato de cada carro improductivo, y las filas que el panel no tiene. */
+const ESTADOS_SIN_PRODUCIR = ["improductivo", "por_entregar"] as const;
+
+/** Ids de contrato de cada carro improductivo o por entregar, y las filas que el panel no tiene. */
 export async function reporteImproductivos(yaEnPanel: string[]): Promise<{
   ids: string[];
+  porEntregarIds: string[];
   extra: EstadoCuentaFila[];
 }> {
   const sb = createServerSupabase();
   const { data, error } = await sb
     .from("vehiculos")
-    .select("id, contratos(id, estado, fecha_inicio)")
-    .eq("estado", "improductivo");
+    .select("id, estado, contratos(id, estado, fecha_inicio)")
+    .in("estado", [...ESTADOS_SIN_PRODUCIR]);
   if (error) throw new Error(error.message);
 
   const ids: string[] = [];
-  for (const v of (data ?? []) as { contratos: ContratoMini[] | null }[]) {
+  const porEntregarIds: string[] = [];
+  for (const v of (data ?? []) as { estado: string; contratos: ContratoMini[] | null }[]) {
     const id = elegirContrato(v.contratos ?? []);
-    if (id) ids.push(id);
+    if (!id) continue;
+    ids.push(id);
+    if (v.estado === "por_entregar") porEntregarIds.push(id);
   }
 
   const ya = new Set(yaEnPanel);
   const faltan = ids.filter((id) => !ya.has(id));
-  const extra: EstadoCuentaFila[] = [];
-  for (const id of faltan) {
-    const estado = await estadoCuentaContrato(id);
-    if (!estado) continue;
-    const ctx = await ctxCobroHoy(id);
-    const cobro = cobroHoyDe(estado, ctx);
-    extra.push({
-      ...estado,
-      acuerdoSaldo: ctx.acuerdoSaldo,
-      planesAcuerdo: ctx.planes ?? [],
-      extras: ctx.extras,
-      totalCobrarHoy: cobro.totalCobrarHoy,
-      lineasCobro: cobro.lineas,
-      desgloseCobro: cobro.desglose,
-    });
-  }
-  return { ids, extra };
+  const extra = (
+    await Promise.all(
+      faltan.map(async (id) => {
+        const estado = await estadoCuentaContrato(id);
+        if (!estado) return null;
+        const ctx = await ctxCobroHoy(id);
+        const cobro = cobroHoyDe(estado, ctx);
+        const fila: EstadoCuentaFila = {
+          ...estado,
+          acuerdoSaldo: ctx.acuerdoSaldo,
+          planesAcuerdo: ctx.planes ?? [],
+          extras: ctx.extras,
+          totalCobrarHoy: cobro.totalCobrarHoy,
+          lineasCobro: cobro.lineas,
+          desgloseCobro: cobro.desglose,
+        };
+        return fila;
+      }),
+    )
+  ).filter((f): f is EstadoCuentaFila => f != null);
+  return { ids, porEntregarIds, extra };
 }

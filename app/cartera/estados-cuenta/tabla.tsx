@@ -14,6 +14,7 @@ import {
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { fechaConDia } from "@/lib/cartera/fecha";
+import { complementoInforme } from "./actions";
 import { csvEstadoCuenta, type UltimoPago } from "@/lib/cartera/estado-csv";
 import { DetalleEstadoModal } from "./detalle";
 import { BotonPreviewMensaje, PreviewMensajeModal } from "./preview-mensaje";
@@ -59,11 +60,12 @@ function descargarLista(
   ultimos: Record<string, UltimoPago>,
   extra: EstadoCuentaFila[],
   improductivos: string[],
+  porEntregar: string[],
 ) {
   const vistos = new Set(filas.map((f) => f.contratoId));
   const todos = [...filas, ...extra.filter((e) => !vistos.has(e.contratoId))];
   const dia = (todos[0]?.hoyIso ?? filas[0]?.hoyIso ?? "hoy").slice(0, 10);
-  const csv = `\uFEFF${csvEstadoCuenta(todos, ultimos, improductivos)}`;
+  const csv = `\uFEFF${csvEstadoCuenta(todos, ultimos, improductivos, porEntregar)}`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -81,15 +83,9 @@ function fechaCorta(iso: string | null | undefined): string | null {
 export function EstadosTabla({
   estados,
   ultimosPagos = {},
-  improductivosExtra = [],
-  improductivosIds = [],
 }: {
   estados: EstadoCuentaFila[];
   ultimosPagos?: Record<string, UltimoPago>;
-  /** Carros improductivos que el extracto del día no lista. */
-  improductivosExtra?: EstadoCuentaFila[];
-  /** Contratos de carros en estado improductivo, estén o no en la tabla. */
-  improductivosIds?: string[];
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -100,6 +96,25 @@ export function EstadosTabla({
   const [preview, setPreview] = useState<EstadoCuentaFila | null>(null);
   const [previewTick, setPreviewTick] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
+  const [armando, setArmando] = useState(false);
+
+  async function onDescargar() {
+    setArmando(true);
+    try {
+      const comp = await complementoInforme(estados.map((e) => e.contratoId));
+      descargarLista(
+        visibles,
+        { ...ultimosPagos, ...comp.ultimos },
+        comp.extra,
+        comp.ids,
+        comp.porEntregarIds,
+      );
+    } catch {
+      setToast("No pude armar el archivo.");
+    } finally {
+      setArmando(false);
+    }
+  }
 
   function clickCabecera(col: OrdenCol) {
     if (orden === col) {
@@ -248,13 +263,11 @@ export function EstadosTabla({
             </p>
             <button
               type="button"
-              disabled={visibles.length === 0}
-              onClick={() =>
-                descargarLista(visibles, ultimosPagos, improductivosExtra, improductivosIds)
-              }
+              disabled={armando}
+              onClick={() => void onDescargar()}
               className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
             >
-              Descargar
+              {armando ? "Armando…" : "Descargar"}
             </button>
           </div>
         }

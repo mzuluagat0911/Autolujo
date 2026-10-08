@@ -100,7 +100,12 @@ function observacion(e: EstadoCuenta): string {
   return partes.join(" · ");
 }
 
-function textoImproductivo(e: EstadoCuentaFila, ids: Set<string>): string {
+function textoImproductivo(
+  e: EstadoCuentaFila,
+  ids: Set<string>,
+  porEntregar: Set<string>,
+): string {
+  if (porEntregar.has(e.contratoId)) return "Sí · por entregar";
   const si = e.inactivo || ids.has(e.contratoId);
   if (!si) return "No";
   return e.inactivoDesde ? `Sí desde ${e.inactivoDesde}` : "Sí";
@@ -110,8 +115,10 @@ export function filasCsvEstado(
   estados: EstadoCuentaFila[],
   ultimos: Record<string, UltimoPago>,
   improductivos: readonly string[] = [],
+  porEntregar: readonly string[] = [],
 ): string[][] {
   const ids = new Set(improductivos);
+  const porEntregarIds = new Set(porEntregar);
   return estados.map((e) => {
     const ultimo = ultimos[e.contratoId];
     const otros = otrosDe(e);
@@ -136,7 +143,7 @@ export function filasCsvEstado(
       textoEstadoCuotas(e),
       e.desgloseCobro || e.desglose || "",
       observacion(e),
-      textoImproductivo(e, ids),
+      textoImproductivo(e, ids, porEntregarIds),
     ];
   });
 }
@@ -146,10 +153,11 @@ export function csvEstadoCuenta(
   estados: EstadoCuentaFila[],
   ultimos: Record<string, UltimoPago>,
   improductivos: readonly string[] = [],
+  porEntregar: readonly string[] = [],
 ): string {
   const lineas = [
     COLUMNAS.join(";"),
-    ...filasCsvEstado(estados, ultimos, improductivos).map((f) => f.map(celda).join(";")),
+    ...filasCsvEstado(estados, ultimos, improductivos, porEntregar).map((f) => f.map(celda).join(";")),
   ];
   return lineas.join("\r\n");
 }
