@@ -57,9 +57,13 @@ function cmpStr(a: string, b: string): number {
 function descargarLista(
   filas: EstadoCuentaFila[],
   ultimos: Record<string, UltimoPago>,
+  extra: EstadoCuentaFila[],
+  improductivos: string[],
 ) {
-  const dia = (filas[0]?.hoyIso ?? "hoy").slice(0, 10);
-  const csv = `\uFEFF${csvEstadoCuenta(filas, ultimos)}`;
+  const vistos = new Set(filas.map((f) => f.contratoId));
+  const todos = [...filas, ...extra.filter((e) => !vistos.has(e.contratoId))];
+  const dia = (todos[0]?.hoyIso ?? filas[0]?.hoyIso ?? "hoy").slice(0, 10);
+  const csv = `\uFEFF${csvEstadoCuenta(todos, ultimos, improductivos)}`;
   const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -77,9 +81,15 @@ function fechaCorta(iso: string | null | undefined): string | null {
 export function EstadosTabla({
   estados,
   ultimosPagos = {},
+  improductivosExtra = [],
+  improductivosIds = [],
 }: {
   estados: EstadoCuentaFila[];
   ultimosPagos?: Record<string, UltimoPago>;
+  /** Carros improductivos que el extracto del día no lista. */
+  improductivosExtra?: EstadoCuentaFila[];
+  /** Contratos de carros en estado improductivo, estén o no en la tabla. */
+  improductivosIds?: string[];
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -239,7 +249,9 @@ export function EstadosTabla({
             <button
               type="button"
               disabled={visibles.length === 0}
-              onClick={() => descargarLista(visibles, ultimosPagos)}
+              onClick={() =>
+                descargarLista(visibles, ultimosPagos, improductivosExtra, improductivosIds)
+              }
               className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
             >
               Descargar

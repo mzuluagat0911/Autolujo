@@ -36,6 +36,7 @@ const COLUMNAS = [
   "Cuotas del contrato",
   "Desglose de hoy",
   "Observación",
+  "Improductivo",
 ] as const;
 
 function celda(v: string): string {
@@ -99,10 +100,18 @@ function observacion(e: EstadoCuenta): string {
   return partes.join(" · ");
 }
 
+function textoImproductivo(e: EstadoCuentaFila, ids: Set<string>): string {
+  const si = e.inactivo || ids.has(e.contratoId);
+  if (!si) return "No";
+  return e.inactivoDesde ? `Sí desde ${e.inactivoDesde}` : "Sí";
+}
+
 export function filasCsvEstado(
   estados: EstadoCuentaFila[],
   ultimos: Record<string, UltimoPago>,
+  improductivos: readonly string[] = [],
 ): string[][] {
+  const ids = new Set(improductivos);
   return estados.map((e) => {
     const ultimo = ultimos[e.contratoId];
     const otros = otrosDe(e);
@@ -127,6 +136,7 @@ export function filasCsvEstado(
       textoEstadoCuotas(e),
       e.desgloseCobro || e.desglose || "",
       observacion(e),
+      textoImproductivo(e, ids),
     ];
   });
 }
@@ -135,7 +145,11 @@ export function filasCsvEstado(
 export function csvEstadoCuenta(
   estados: EstadoCuentaFila[],
   ultimos: Record<string, UltimoPago>,
+  improductivos: readonly string[] = [],
 ): string {
-  const lineas = [COLUMNAS.join(";"), ...filasCsvEstado(estados, ultimos).map((f) => f.map(celda).join(";"))];
+  const lineas = [
+    COLUMNAS.join(";"),
+    ...filasCsvEstado(estados, ultimos, improductivos).map((f) => f.map(celda).join(";")),
+  ];
   return lineas.join("\r\n");
 }

@@ -7,6 +7,7 @@ import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas
 import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
 import { PruebaEnvio } from "./prueba";
 import { DeudoresCerrados } from "./deudores-cerrados";
+import { reporteImproductivos } from "@/lib/cartera/improductivos-reporte";
 import { ultimosPagosPorContrato } from "@/lib/cartera/ultimos-pagos";
 import { EstadosTabla } from "./tabla";
 import { EsqueletoEstados } from "./esqueleto";
@@ -44,11 +45,18 @@ async function EstadosCuerpo() {
     error = e instanceof Error ? e.message : "Error";
   }
 
-  const [alcance, cerradas, ultimosPagos] = await Promise.all([
+  const [alcance, cerradas, improductivos] = await Promise.all([
     alcanceP,
     cerradasP,
-    ultimosPagosPorContrato(estados.map((e) => e.contratoId)).catch(() => ({})),
+    reporteImproductivos(estados.map((e) => e.contratoId)).catch(() => ({
+      ids: [] as string[],
+      extra: [],
+    })),
   ]);
+  const ultimosPagos = await ultimosPagosPorContrato([
+    ...estados.map((e) => e.contratoId),
+    ...improductivos.extra.map((e) => e.contratoId),
+  ]).catch(() => ({}));
   const etiqueta = etiquetaAlcance(alcance.codigos);
   const deudaCerradaTotal = cerradas.reduce((a, d) => a + d.saldo, 0);
 
@@ -90,6 +98,8 @@ async function EstadosCuerpo() {
           <EstadosTabla
             estados={estados}
             ultimosPagos={ultimosPagos}
+            improductivosExtra={improductivos.extra}
+            improductivosIds={improductivos.ids}
           />
 
           <div className="mt-10">
