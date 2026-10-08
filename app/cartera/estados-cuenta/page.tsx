@@ -7,6 +7,7 @@ import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas
 import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
 import { PruebaEnvio } from "./prueba";
 import { DeudoresCerrados } from "./deudores-cerrados";
+import { ultimosPagosPorContrato } from "@/lib/cartera/ultimos-pagos";
 import { EstadosTabla } from "./tabla";
 import { EsqueletoEstados } from "./esqueleto";
 import type { EstadoCuentaFila } from "./types";
@@ -43,7 +44,11 @@ async function EstadosCuerpo() {
     error = e instanceof Error ? e.message : "Error";
   }
 
-  const [alcance, cerradas] = await Promise.all([alcanceP, cerradasP]);
+  const [alcance, cerradas, ultimosPagos] = await Promise.all([
+    alcanceP,
+    cerradasP,
+    ultimosPagosPorContrato(estados.map((e) => e.contratoId)).catch(() => ({})),
+  ]);
   const etiqueta = etiquetaAlcance(alcance.codigos);
   const deudaCerradaTotal = cerradas.reduce((a, d) => a + d.saldo, 0);
 
@@ -82,7 +87,10 @@ async function EstadosCuerpo() {
             <PruebaEnvio />
           </div>
 
-          <EstadosTabla estados={estados} />
+          <EstadosTabla
+            estados={estados}
+            ultimosPagos={ultimosPagos}
+          />
 
           <div className="mt-10">
             <h2 className="text-lg font-semibold tracking-tight">Ex-clientes con deuda</h2>

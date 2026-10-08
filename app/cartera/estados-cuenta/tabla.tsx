@@ -14,6 +14,7 @@ import {
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { fechaConDia } from "@/lib/cartera/fecha";
+import { csvEstadoCuenta, type UltimoPago } from "@/lib/cartera/estado-csv";
 import { DetalleEstadoModal } from "./detalle";
 import { BotonPreviewMensaje, PreviewMensajeModal } from "./preview-mensaje";
 import type { EstadoCuentaFila } from "./types";
@@ -53,12 +54,33 @@ function cmpStr(a: string, b: string): number {
   return a.localeCompare(b, "es", { sensitivity: "base", numeric: true });
 }
 
+function descargarLista(
+  filas: EstadoCuentaFila[],
+  ultimos: Record<string, UltimoPago>,
+) {
+  const dia = (filas[0]?.hoyIso ?? "hoy").slice(0, 10);
+  const csv = `\uFEFF${csvEstadoCuenta(filas, ultimos)}`;
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `estado-de-cuenta-${dia}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function fechaCorta(iso: string | null | undefined): string | null {
   if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
   return fechaConDia(iso.slice(0, 10));
 }
 
-export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
+export function EstadosTabla({
+  estados,
+  ultimosPagos = {},
+}: {
+  estados: EstadoCuentaFila[];
+  ultimosPagos?: Record<string, UltimoPago>;
+}) {
   const router = useRouter();
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todas");
@@ -209,10 +231,20 @@ export function EstadosTabla({ estados }: { estados: EstadoCuentaFila[] }) {
         activeChip={filtro}
         onChip={(id) => setFiltro(id as Filtro)}
         actions={
-          <p className="text-sm text-muted">
-            <span className="font-medium tabular-nums text-ink">{visibles.length}</span> de{" "}
-            {estados.length}
-          </p>
+          <div className="flex items-center gap-3">
+            <p className="text-sm text-muted">
+              <span className="font-medium tabular-nums text-ink">{visibles.length}</span> de{" "}
+              {estados.length}
+            </p>
+            <button
+              type="button"
+              disabled={visibles.length === 0}
+              onClick={() => descargarLista(visibles, ultimosPagos)}
+              className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+            >
+              Descargar
+            </button>
+          </div>
         }
       />
 
