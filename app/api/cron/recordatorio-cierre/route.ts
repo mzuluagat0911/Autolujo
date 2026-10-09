@@ -1,4 +1,8 @@
 import { enviarRecordatoriosHoy } from "@/lib/cartera/recordatorios";
+import { hoyPanama } from "@/lib/cartera/fecha";
+
+/** Solo este día: no sale el último aviso (5:30 p. m.). El resto del cobro sigue. */
+const SIN_ULTIMO_AVISO = "2026-10-09";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +19,13 @@ export async function GET(req: Request) {
   }
   if (process.env.ENVIOS_MASIVOS !== "on") {
     return Response.json({ ok: true, enviado: false, motivo: "ENVIOS_MASIVOS != 'on' — modo seguro." });
+  }
+  if (hoyPanama() === SIN_ULTIMO_AVISO) {
+    return Response.json({
+      ok: true,
+      enviado: false,
+      motivo: "Hoy no sale el último aviso. El cobro y los demás envíos siguen igual.",
+    });
   }
   const res = await enviarRecordatoriosHoy("cierre");
   return Response.json({ ok: true, enviado: true, ...res });
