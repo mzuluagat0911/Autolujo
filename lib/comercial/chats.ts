@@ -12,6 +12,7 @@ export type ChatComercial = {
   necesitaHumano: boolean;
   motivo: string | null;
   anuncio: string | null;
+  campanaId: string | null;
 };
 
 export type MensajeComercial = {
@@ -30,9 +31,20 @@ export async function listarChatsComercial(): Promise<{ chats: ChatComercial[]; 
     const sb = createServerSupabase();
     const { data, error } = await sb
       .from("conversaciones_comercial")
-      .select("id, wa_numero, ultimo_texto, ultimo_mensaje_at, ultimo_entrante_at, no_leidos, necesita_humano, motivo, anuncio")
+      .select("id, wa_numero, ultimo_texto, ultimo_mensaje_at, ultimo_entrante_at, no_leidos, necesita_humano, motivo, anuncio, campana_id")
       .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
       .limit(200);
+    if (error && /campana_id/i.test(error.message)) {
+      const retry = await sb
+        .from("conversaciones_comercial")
+        .select("id, wa_numero, ultimo_texto, ultimo_mensaje_at, ultimo_entrante_at, no_leidos, necesita_humano, motivo, anuncio")
+        .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
+        .limit(200);
+      if (retry.error) {
+        return { chats: [], error: retry.error.message };
+      }
+      return { chats: ((retry.data ?? []) as Record<string, unknown>[]).map(filaChat), error: null };
+    }
     if (error) {
       return {
         chats: [],
@@ -91,6 +103,9 @@ export async function registrarEntradaComercial(opts: {
   texto: string;
   waMessageId?: string | null;
   anuncio?: string | null;
+  campanaId?: string | null;
+  ctwaClid?: string | null;
+  campanaUrl?: string | null;
 }): Promise<{ conversacionId: string | null; repetido: boolean; error: string | null }> {
   try {
     const sb = createServerSupabase();
@@ -103,42 +118,59 @@ export async function registrarEntradaComercial(opts: {
       if (ya) return { conversacionId: null, repetido: true, error: null };
     }
 
-    const { data: previa } = await sb
+    let previaRes = await sb
       .from("conversaciones_comercial")
-      .select("id, anuncio, no_leidos")
+      .select("id, anuncio, no_leidos, campana_id")
       .eq("wa_numero", opts.waNumero)
       .maybeSingle();
+    if (previaRes.error && /campana_id/i.test(previaRes.error.message)) {
+      previaRes = await sb
+        .from("conversaciones_comercial")
+        .select("id, anuncio, no_leidos")
+        .eq("wa_numero", opts.waNumero)
+        .maybeSingle();
+    }
+    const previa = previaRes.data;
     const ahora = new Date().toISOString();
     let conversacionId = (previa as { id: string } | null)?.id ?? null;
     if (!conversacionId) {
-      const ins = await sb
-        .from("conversaciones_comercial")
-        .insert({
-          wa_numero: opts.waNumero,
-          anuncio: opts.anuncio ?? null,
-          ultimo_mensaje_at: ahora,
-          ultimo_entrante_at: ahora,
-          ultimo_texto: opts.texto.slice(0, 240),
-          no_leidos: 1,
-        })
-        .select("id")
-        .single();
+      const nuevo = {
+        wa_numero: opts.waNumero,
+        anuncio: opts.anuncio ?? null,
+        campana_id: opts.campanaId ?? null,
+        ctwa_clid: opts.ctwaClid ?? null,
+        campana_url: opts.campanaUrl ?? null,
+        ultimo_mensaje_at: ahora,
+        ultimo_entrante_at: ahora,
+        ultimo_texto: opts.texto.slice(0, 240),
+        no_leidos: 1,
+      };
+      let ins = await sb.from("conversaciones_comercial").insert(nuevo).select("id").single();
+      if (ins.error && /campana_id|ctwa_clid|campana_url/i.test(ins.error.message)) {
+        const { campana_id: _c, ctwa_clid: _t, campana_url: _u, ...sinCampana } = nuevo;
+        ins = await sb.from("conversaciones_comercial").insert(sinCampana).select("id").single();
+      }
       if (ins.error) {
         return { conversacionId: null, repetido: false, error: ins.error.message };
       }
       conversacionId = (ins.data as { id: string }).id;
     } else {
-      const prev = previa as { anuncio: string | null; no_leidos: number };
-      await sb
-        .from("conversaciones_comercial")
-        .update({
-          ultimo_mensaje_at: ahora,
-          ultimo_entrante_at: ahora,
-          ultimo_texto: opts.texto.slice(0, 240),
-          no_leidos: (prev.no_leidos ?? 0) + 1,
-          anuncio: prev.anuncio ?? opts.anuncio ?? null,
-        })
-        .eq("id", conversacionId);
+      const prev = previa as { anuncio: string | null; no_leidos: number; campana_id?: string | null };
+      const patch = {
+        ultimo_mensaje_at: ahora,
+        ultimo_entrante_at: ahora,
+        ultimo_texto: opts.texto.slice(0, 240),
+        no_leidos: (prev.no_leidos ?? 0) + 1,
+        anuncio: prev.anuncio ?? opts.anuncio ?? null,
+        campana_id: prev.campana_id ?? opts.campanaId ?? null,
+        ctwa_clid: opts.ctwaClid ?? undefined,
+        campana_url: opts.campanaUrl ?? undefined,
+      };
+      const upd = await sb.from("conversaciones_comercial").update(patch).eq("id", conversacionId);
+      if (upd.error && /campana_id|ctwa_clid|campana_url/i.test(upd.error.message)) {
+        const { campana_id: _c, ctwa_clid: _t, campana_url: _u, ...sinCampana } = patch;
+        await sb.from("conversaciones_comercial").update(sinCampana).eq("id", conversacionId);
+      }
     }
 
     const msg = await sb.from("mensajes_comercial").insert({
@@ -197,5 +229,6 @@ function filaChat(row: Record<string, unknown>): ChatComercial {
     necesitaHumano: Boolean(row.necesita_humano),
     motivo: (row.motivo as string | null) ?? null,
     anuncio: (row.anuncio as string | null) ?? null,
+    campanaId: (row.campana_id as string | null) ?? null,
   };
 }

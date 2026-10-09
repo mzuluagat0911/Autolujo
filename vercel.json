@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/exceso-km",
       "schedule": "0 13 1 * *"
+    },
+    {
+      "path": "/api/cron/citas-comercial",
+      "schedule": "0 12 * * *"
     }
   ]
 }

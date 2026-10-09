@@ -14,6 +14,14 @@ import {
 
 function refrescar() {
   revalidatePath("/comercial");
+  revalidatePath("/comercial/citas");
+}
+
+export async function marcarCitaConfirmadaPorLlamada(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { confirmarCitaPorLlamada } = await import("@/lib/comercial/citas");
+  const r = await confirmarCitaPorLlamada(id);
+  if (r.ok) refrescar();
+  return r;
 }
 
 export async function cargarBandejaComercial(): Promise<{ chats: ChatComercial[]; error: string | null }> {

@@ -22,8 +22,13 @@ import {
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
 import { responderComercial } from "@/lib/ai/agente-comercial";
+import { textoInventario } from "@/lib/comercial/inventario";
+import { textoSedes } from "@/lib/comercial/sedes";
+import { aplicarPedidoCita, citaAbierta } from "@/lib/comercial/citas";
+import { fechaConDia, hoyPanama, fueraHorarioOperativo } from "@/lib/cartera/fecha";
 import {
   historialParaLucia,
+  hiloComercial,
   marcarEscaladaComercial,
   registrarEntradaComercial,
   registrarSalidaComercial,
@@ -31,7 +36,6 @@ import {
 import { revisarRespuesta } from "@/lib/ai/guard";
 import { destinarCharla } from "@/lib/ai/filtro-charla";
 import { transcribirAudio } from "@/lib/ai/transcribir";
-import { fueraHorarioOperativo } from "@/lib/cartera/fecha";
 import { FRASE_PEDIR_CONFIRMACION } from "@/lib/cartera/comprobante-validacion";
 import { envioPausadoConversacion } from "@/lib/cartera/envio-pausa";
 
@@ -151,7 +155,8 @@ async function procesar(payload: WebhookPayload) {
 async function manejarMensajeComercial(msg: WhatsAppMessage) {
   const from = msg.from as string;
   const tipo = tipoMensaje(msg);
-  const anuncio = msg.referral?.headline?.trim() || null;
+  const campana = datosCampana(msg);
+  const anuncio = campana.anuncio;
 
   if (tipo !== "text") {
     const aviso = "Por aquí le atiendo mejor por escrito. Cuénteme qué está buscando y le ayudo.";
@@ -160,6 +165,9 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
       texto: "[Mensaje que no es texto]",
       waMessageId: msg.id ?? null,
       anuncio,
+      campanaId: campana.campanaId,
+      ctwaClid: campana.ctwaClid,
+      campanaUrl: campana.campanaUrl,
     });
     if (!guardado.repetido) {
       const enviado = await enviarComercial(from, aviso);
@@ -171,12 +179,14 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
   const texto = msg.text?.body ?? "";
   if (!texto.trim()) return;
 
-  const contexto = contextoAnuncio(msg);
   const guardado = await registrarEntradaComercial({
     waNumero: from,
     texto: texto.trim(),
     waMessageId: msg.id ?? null,
     anuncio,
+    campanaId: campana.campanaId,
+    ctwaClid: campana.ctwaClid,
+    campanaUrl: campana.campanaUrl,
   });
   if (guardado.repetido) return;
   if (guardado.error) console.error("[whatsapp/webhook] chat comercial:", guardado.error);
@@ -185,13 +195,26 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
     const historial = guardado.conversacionId
       ? await historialParaLucia(guardado.conversacionId)
       : [{ direccion: "in" as const, texto: texto.trim() }];
+    const contexto = await contextoParaLucia(guardado.conversacionId, msg);
     const r = await responderComercial({
       historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
       contexto,
     });
-    const enviado = await enviarComercial(from, r.mensaje);
+    let salida = r.mensaje;
+    if (guardado.conversacionId && r.cita && r.cita.accion !== "ninguna") {
+      const hilo = await hiloComercial(guardado.conversacionId);
+      const aplicada = await aplicarPedidoCita({
+        conversacionId: guardado.conversacionId,
+        waNumero: from,
+        pedido: r.cita,
+        anuncio: anuncio ?? hilo.chat?.anuncio ?? null,
+        campanaId: campana.campanaId ?? hilo.chat?.campanaId ?? null,
+      });
+      if (aplicada.mensaje) salida = aplicada.mensaje;
+    }
+    const enviado = await enviarComercial(from, salida);
     if (guardado.conversacionId) {
-      if (enviado) await registrarSalidaComercial(guardado.conversacionId, r.mensaje);
+      if (enviado) await registrarSalidaComercial(guardado.conversacionId, salida);
       if (r.pasar_a_humano) await marcarEscaladaComercial(guardado.conversacionId, r.motivo);
     }
   } catch (e) {
@@ -202,18 +225,43 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
   }
 }
 
-/** Arma el CONTEXTO para Lucía cuando el lead viene de un anuncio (click-to-WhatsApp). */
-function contextoAnuncio(msg: WhatsAppMessage): string | undefined {
+function datosCampana(msg: WhatsAppMessage): {
+  anuncio: string | null;
+  campanaId: string | null;
+  ctwaClid: string | null;
+  campanaUrl: string | null;
+} {
   const ref = msg.referral;
-  if (!ref) return undefined;
-  const partes: string[] = [];
-  if (ref.headline) partes.push(`Titular del anuncio: "${ref.headline.trim()}"`);
-  if (ref.body) partes.push(`Texto del anuncio: "${ref.body.trim()}"`);
-  return [
-    "LEAD DE ANUNCIO (pauta): este cliente llegó tocando un anuncio nuestro en Instagram/Facebook.",
-    ...partes,
-    'Salúdalo cálido y enganchando con lo que vio en el anuncio (sin repetirlo literal), y llévalo hacia agendar la visita. NO inventes precios, carros ni datos que no estén aquí.',
-  ].join("\n");
+  return {
+    anuncio: ref?.headline?.trim() || null,
+    campanaId: ref?.source_id?.trim() || null,
+    ctwaClid: ref?.ctwa_clid?.trim() || null,
+    campanaUrl: ref?.source_url?.trim() || null,
+  };
+}
+
+/** Inventario, sedes, campaña y cita abierta. Lucía no inventa lo que no está aquí. */
+async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMessage): Promise<string> {
+  const campana = datosCampana(msg);
+  const hoy = hoyPanama();
+  const partes = [`Hoy en Panamá: ${fechaConDia(hoy)} (${hoy}).`, textoSedes(), await textoInventario()];
+  if (campana.anuncio || campana.campanaId) {
+    partes.push(
+      "LEAD DE CAMPAÑA DE META. Llegó tocando este anuncio.",
+      campana.anuncio ? `Anuncio: "${campana.anuncio}"` : "",
+      campana.campanaId ? `Id de la campaña: ${campana.campanaId}` : "",
+      "Engánchalo con lo que vio, sin leerle el id.",
+    );
+  }
+  if (conversacionId) {
+    const cita = await citaAbierta(conversacionId).catch(() => null);
+    if (cita) {
+      partes.push(
+        `CITA ABIERTA: ${cita.nombre}, ${cita.fecha} a las ${cita.hora}, sede ${cita.sede}, lugar ${cita.lugar ?? "sin decir"}, confirmación ${cita.confirmacion}.`,
+      );
+    }
+  }
+  return partes.filter(Boolean).join("\n");
 }
 
 /** Manda un texto DESDE el número comercial (no el de cartera). */

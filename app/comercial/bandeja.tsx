@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
+import Link from "next/link";
 import { EmptyState } from "@/components/kit";
 import {
   cargarBandejaComercial,
@@ -92,7 +93,12 @@ export function BandejaComercial({
     <div className="-mx-5 flex h-[calc(100dvh-3rem)] flex-col sm:-mx-8 lg:-mx-12 md:h-dvh">
       <header className="shrink-0 border-b border-line bg-surface px-5 py-4 sm:px-6">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Comercial</p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight">Chats de ventas</h1>
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <h1 className="text-2xl font-bold tracking-tight">Chats de ventas</h1>
+          <Link href="/comercial/citas" className="text-sm font-medium text-ink underline-offset-2 hover:underline">
+            Citas
+          </Link>
+        </div>
         <p className="mt-1 text-sm text-muted">Número de Lucía. Los chats de cobranza no aparecen aquí.</p>
       </header>
 
@@ -146,7 +152,10 @@ export function BandejaComercial({
                   Volver a los chats
                 </button>
                 <p className="text-sm font-medium">{telefono(elegido.waNumero)}</p>
-                {elegido.anuncio && <p className="mt-1 text-[12px] text-azul">Llegó por el anuncio: {elegido.anuncio}</p>}
+                {elegido.anuncio && <p className="mt-1 text-[12px] text-azul">Campaña: {elegido.anuncio}</p>}
+                {elegido.campanaId && (
+                  <p className="mt-0.5 text-[11px] text-muted">Id Meta {elegido.campanaId}</p>
+                )}
               </div>
               <div ref={fondo} className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-paper px-5 py-4">
                 {mensajes.map((m) => (

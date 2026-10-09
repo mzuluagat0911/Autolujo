@@ -63,6 +63,7 @@ const NAV: Group[] = [
     section: "Comercial",
     items: [
       { label: "Chats", href: "/comercial", status: "active" },
+      { label: "Citas", href: "/comercial/citas", status: "active" },
     ],
   },
   {
@@ -78,7 +79,7 @@ const NAV: Group[] = [
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   // Paneles raíz: solo exacto (si no, /cartera marca todo Cartera).
-  if (href === "/admin" || href === "/cartera" || href === "/operaciones") {
+  if (href === "/admin" || href === "/cartera" || href === "/operaciones" || href === "/comercial") {
     return pathname === href;
   }
   return pathname === href || pathname.startsWith(href + "/");
