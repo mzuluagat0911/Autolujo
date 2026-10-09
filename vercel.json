@@ -51,6 +51,18 @@
     {
       "path": "/api/cron/citas-comercial",
       "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/cron/aviso-temblor",
+      "schedule": "0 13 10 10 *"
+    },
+    {
+      "path": "/api/cron/aviso-temblor",
+      "schedule": "30 13 10 10 *"
+    },
+    {
+      "path": "/api/cron/aviso-temblor",
+      "schedule": "0 14 10 10 *"
     }
   ]
 }
