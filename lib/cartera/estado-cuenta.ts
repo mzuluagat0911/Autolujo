@@ -27,7 +27,7 @@ import { programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
 import { ajustarCobroDevolucion, devolucionDeVehiculo, devolucionVigente, devolucionesAbiertas } from "./devolucion";
 import { ajustarCobroInactivo, inactivacionDeVehiculo, inactivacionVigente, inactivacionesAbiertas } from "./inactivo";
 import { ajustarCobroPausa, etiquetaPausa, pausaDeVehiculo, pausaVigente, pausasAbiertas } from "./pausa-productiva";
-import { cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
+import { correLetraNueva, cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
 import { tratamientoCliente } from "./tratamiento";
 import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
 import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
@@ -752,7 +752,7 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
     multaHoyRegistrada: (multa.data?.length ?? 0) > 0,
     hoyYaDevengado,
     sinDevengoRenta: devengadoHasta == null,
-    diaLibre: contratoCerrado || (letraNoEmpieza(row, hoy) && !esDomingo(hoy)),
+    diaLibre: contratoCerrado || (letraNoEmpieza(row, hoy) && correLetraNueva(terminosDe(row), hoy)),
     domingoEnSaldo: domingoMap.get(contratoId)?.total ?? 0,
     pagadoDomingoHoy: pagadoDomingoMap.get(contratoId) ?? 0,
     cargosFuturos: noLetraMap.get(contratoId)?.futuro ?? 0,
@@ -1308,7 +1308,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       multaHoyRegistrada: multaHoy.has(c.id),
       hoyYaDevengado,
       sinDevengoRenta: devengadoHasta == null,
-      diaLibre: c.estado !== "activo" || (letraNoEmpieza(c, hoy) && !esDomingo(hoy)),
+      diaLibre: c.estado !== "activo" || (letraNoEmpieza(c, hoy) && correLetraNueva(terminosDe(c), hoy)),
       domingoEnSaldo: domingoMap.get(c.id)?.total ?? 0,
       pagadoDomingoHoy: pagadoDomingoMap.get(c.id) ?? 0,
       cargosFuturos: noLetraMap.get(c.id)?.futuro ?? 0,
@@ -1406,14 +1406,15 @@ export async function estadosCuentaPanel(): Promise<EstadoCuenta[]> {
 
 /**
  * Domingo: se cobra si hay tajada de domingo, letra atrasada, acuerdo
- * atrasado o acuerdo de domingo. Al día → no se cobra, aunque el contrato
- * tenga cobra_domingo.
+ * atrasado o acuerdo de domingo. Al día → no se cobra, salvo el contrato
+ * que corre la letra diaria el domingo (sin cuota de domingo).
  */
 export function audienciaDomingo(e: EstadoCuenta): boolean {
   if ((e.pendienteAnterior ?? 0) > 0.009) return true;
   if ((e.faltaAcuerdo ?? 0) > 0.009) return true;
   if ((e.domingoSaldo ?? 0) > 0.009) return true;
   if (e.lineas.some((l) => l.monto > 0.009 && /domingo/i.test(l.concepto))) return true;
+  if (e.cobraDomingo && !(Number(e.cuotaDomingo) > 0.009) && e.totalHoy > 0.009) return true;
   return false;
 }
 

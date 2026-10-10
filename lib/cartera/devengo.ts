@@ -21,7 +21,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, sumarDias, pasoCorte, diasEntre, esDomingo } from "./fecha";
-import { cuotaDeFecha, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
+import { cuotaDeFecha, letraDiariaEnDomingo, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
 import { descuentosLetraDelDia } from "./descuento-letra";
 import { devolucionesAbiertas, devolucionVigente } from "./devolucion";
 import { inactivacionesAbiertas, inactivacionVigente } from "./inactivo";
@@ -177,7 +177,9 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     // Domingo no abre renta nueva. Se cobra el impago que ya está en el
     // saldo y, si hay balde DOMINGOS, una tajada. Al día queda en $0
     // (G14: saldo $163; sumarle la cuota domingo daba $193 de más).
-    if (esDomingo(fecha)) {
+    // Domingo normal: no abre letra. La excepción (cobra domingo y sin cuota
+    // de domingo) sí abre la letra diaria.
+    if (esDomingo(fecha) && !letraDiariaEnDomingo(c)) {
       res.sinCuota++;
       continue;
     }

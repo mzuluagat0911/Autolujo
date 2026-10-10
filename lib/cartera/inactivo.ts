@@ -4,7 +4,8 @@
 // La fecha vive en un evento; no hace falta columna nueva.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { esDomingo, hoyPanama, sumarDias } from "./fecha";
+import { hoyPanama, sumarDias } from "./fecha";
+import { correLetraNueva, type TerminosCuota } from "./cuota";
 import { pausaDeVehiculo, quitarLetrasDeLaPausa, reponerLetras } from "./pausa-productiva";
 
 const DETALLE_ANULADA = "inactivo-anulado";
@@ -27,11 +28,12 @@ export function inactivacionVigente(dev: Inactivacion | null | undefined, fecha:
 export function ajustarCobroInactivo<T extends {
   diaLibre?: boolean;
   hoy: string;
+  terminos?: TerminosCuota;
 }>(entrada: T, dev: Inactivacion | null | undefined): T {
   if (!inactivacionVigente(dev, entrada.hoy)) return entrada;
   return {
     ...entrada,
-    diaLibre: Boolean(entrada.diaLibre) || !esDomingo(entrada.hoy),
+    diaLibre: Boolean(entrada.diaLibre) || correLetraNueva(entrada.terminos, entrada.hoy),
   };
 }
 

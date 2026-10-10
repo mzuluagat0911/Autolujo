@@ -168,7 +168,8 @@ export function armarExtractoDiario(
   // - Lun–sáb: la tajada del domingo pasado entra al total si sigue sin pagar.
   //   El sábado no abre el domingo que viene. Tajada ya pagada: solo aviso.
   const pausaDomingo = domingoPausadoPorPlanes(opts?.planes, hoyIso);
-  const domingoComoBase = hoyEsDomingo && tajada > 0.009 && !pausaDomingo;
+  const letraEnDomingo = Boolean(e.cobraDomingo) && !(Number(e.cuotaDomingo) > 0.009);
+  const domingoComoBase = hoyEsDomingo && tajada > 0.009 && !pausaDomingo && !letraEnDomingo;
   const tajadaEntreSemana = !hoyEsDomingo && tajada > 0.009;
 
   // Un cargo “otros/mant” del ledger solo está dentro de totalHoy si cabe en el
@@ -198,7 +199,7 @@ export function armarExtractoDiario(
   cuenta = Math.max(cuenta - embebidosSum, 0);
 
   // Domingo: la tajada sale de la cuenta. Si el acuerdo la pausa, no se cobra.
-  if (hoyEsDomingo && tajada > 0.009) {
+  if (hoyEsDomingo && tajada > 0.009 && !letraEnDomingo) {
     cuenta = Math.max(cuenta - tajada, 0);
   }
 

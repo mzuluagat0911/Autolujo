@@ -3,7 +3,8 @@
 // La fecha vive en un evento; no hace falta columna nueva.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { esDomingo, hoyPanama, sumarDias } from "./fecha";
+import { hoyPanama, sumarDias } from "./fecha";
+import { correLetraNueva, type TerminosCuota } from "./cuota";
 import { pausaDeVehiculo, quitarLetrasDeLaPausa, reponerLetras } from "./pausa-productiva";
 
 const DETALLE_ANULADA = "devolucion-anulada";
@@ -25,11 +26,12 @@ export function devolucionVigente(dev: Devolucion | null | undefined, fecha: str
 export function ajustarCobroDevolucion<T extends {
   diaLibre?: boolean;
   hoy: string;
+  terminos?: TerminosCuota;
 }>(entrada: T, dev: Devolucion | null | undefined): T {
   if (!devolucionVigente(dev, entrada.hoy)) return entrada;
   return {
     ...entrada,
-    diaLibre: Boolean(entrada.diaLibre) || !esDomingo(entrada.hoy),
+    diaLibre: Boolean(entrada.diaLibre) || correLetraNueva(entrada.terminos, entrada.hoy),
   };
 }
 

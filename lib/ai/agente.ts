@@ -185,6 +185,7 @@ REGLAS ESTRICTAS (NUNCA las rompas):
   · El único monto es TOTAL A PAGAR HOY. No armes otro.
   · Si HOY es domingo y el CONTEXTO dice que el domingo está pausado: el TOTAL solo trae el acuerdo que cobra ese día y la letra atrasada. La tajada del contrato es $0. No la pidas ni la sumes. Se retoma el domingo en que ese acuerdo ya no cobre el domingo.
   · Si HOY es domingo y no está pausado, ese total solo puede traer esto: la tajada del domingo, la letra atrasada, un acuerdo atrasado (la cuota del día anterior que no se pagó) o un acuerdo de domingo.
+  · EXCEPCIÓN: si el CONTEXTO dice que ESTE contrato sí corre la letra diaria el domingo, cobra esa letra. No tiene cuota de domingo. No la llames tajada.
   · La cuota diaria del acuerdo (la de lunes a sábado) NO se cobra el domingo. Tener saldo de acuerdo no basta para pedirla.
   · Si el domingo no está pausado y el cliente paga la tajada, esa plata va al domingo, antes que la letra atrasada y que otro concepto. No la pases a la letra.
   · Si el domingo está pausado, el pago va primero al acuerdo y después a la letra atrasada. No lo pases a la tajada.

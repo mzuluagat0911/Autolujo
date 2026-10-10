@@ -252,9 +252,12 @@ export async function resumenContrato(contratoId: string): Promise<string | null
 
   const pagos = await pagosRecientesContrato(contratoId, 5);
   const tarifaPlenaDia = est.letra + est.penalidad;
-  const domingos = est.cobraDomingo
-    ? `SÍ cobra los domingos (cuota domingo ${m(est.cuotaDomingo || est.letra)})`
-    : "NO cobra los domingos (domingos libres)";
+  const letraEnDomingo = Boolean(est.cobraDomingo) && !(Number(est.cuotaDomingo) > 0.009);
+  const domingos = letraEnDomingo
+    ? `SÍ corre la letra diaria el domingo (${m(est.letra)}). No tiene cuota de domingo.`
+    : est.cobraDomingo
+      ? `SÍ cobra los domingos (cuota domingo ${m(est.cuotaDomingo || est.letra)})`
+      : "NO cobra los domingos (domingos libres)";
 
   // Misma cifra que el WhatsApp / extracto (NO usar est.totalHoy a pelo).
   const cobro = await cobroHoyContrato(est);
@@ -281,7 +284,9 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `- Días atrasados sin pagar quedan en la letra más el recargo (${m(tarifaPlenaDia)} por día, no solo ${m(est.letra)}).`,
     `- Domingos: ${domingos}.`,
     esDomingo(hoyPanama())
-      ? `- Hoy es domingo: NO corre letra nueva. La tarifa (${m(est.cuotaHoy)}) es el precio del día, no se suma.`
+      ? letraEnDomingo
+        ? `- Hoy es domingo y ESTE contrato SÍ corre la letra diaria (${m(est.letra)}). No es cuota de domingo ni tajada.`
+        : `- Hoy es domingo: NO corre letra nueva. La tarifa (${m(est.cuotaHoy)}) es el precio del día, no se suma.`
       : est.cuotaHoy > 0
         ? `- Hoy SÍ corre cuota (${m(est.cuotaHoy)}).`
         : `- Hoy NO corre cuota (día libre para este contrato).`,
@@ -313,7 +318,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     lineas.push(
       ``,
       `RESUMEN DE LA CUENTA (para "cuánto debo hoy" cobra EXACTAMENTE el total de abajo; no lo recalcules):`,
-      `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${esDomingo(hoyPanama()) ? cobro.domingoPausado ? " HOY ES DOMINGO Y EL DOMINGO ESTÁ PAUSADO: el acuerdo de adelante todavía cobra ese día. El TOTAL es ese acuerdo y la letra atrasada. La tajada del contrato es $0. No la sumes. Cuando ese acuerdo ya no cobre el domingo, la tajada vuelve." : " HOY ES DOMINGO: cobra la tajada del domingo, la letra atrasada, un acuerdo atrasado o un acuerdo de domingo. La cuota diaria del acuerdo no entra. Si no hay nada de eso, el total es $0." : " NO incluye el domingo (lun–sáb)."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
+      `- TOTAL A PAGAR HOY: ${m(cobro.totalCobrarHoy)}. Este es el único monto a cobrar (misma cifra del extracto WhatsApp).${!esDomingo(hoyPanama()) ? " NO incluye el domingo (lun–sáb)." : letraEnDomingo ? ` HOY ES DOMINGO Y ESTE CONTRATO SÍ CORRE LA LETRA DIARIA (${m(est.letra)}). No tiene cuota de domingo. El TOTAL incluye esa letra. No la llames tajada.` : cobro.domingoPausado ? " HOY ES DOMINGO Y EL DOMINGO ESTÁ PAUSADO: el acuerdo de adelante todavía cobra ese día. El TOTAL es ese acuerdo y la letra atrasada. La tajada del contrato es $0. No la sumes. Cuando ese acuerdo ya no cobre el domingo, la tajada vuelve." : " HOY ES DOMINGO: cobra la tajada del domingo, la letra atrasada, un acuerdo atrasado o un acuerdo de domingo. La cuota diaria del acuerdo no entra. Si no hay nada de eso, el total es $0."} NO le sumes la tarifa diaria ni el atraso otra vez.`,
       ...(est.devuelto
         ? [`- CARRO DEVUELTO desde ${est.devueltoDesde ?? "la fecha de devolución"}. NO cobres letra diaria ni hables de la cuota de hoy. El TOTAL de arriba es el saldo que ya debía.`]
         : est.inactivo
@@ -458,14 +463,18 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       `REGLA DE COBRO DIARIO (OBLIGATORIA — “cuánto debo HOY” / extracto):`,
       `- La cifra oficial es TOTAL A PAGAR HOY de arriba (${m(cobro.totalCobrarHoy)}) y su desglose. No inventes otra.`,
       esDomingo(hoyPanama())
-        ? cobro.domingoPausado
-          ? `- HOY ES DOMINGO Y EL DOMINGO ESTÁ PAUSADO. No se abre letra nueva. El TOTAL es el acuerdo que cobra el domingo y la letra atrasada. La tajada del contrato es $0. La cuota diaria del acuerdo (lunes a sábado) no entra.`
-          : `- HOY ES DOMINGO. No se abre letra nueva. El TOTAL solo puede traer tajada del domingo, letra atrasada, acuerdo atrasado o acuerdo de domingo. La cuota diaria del acuerdo no entra. Tener saldo de acuerdo no basta.`
+        ? letraEnDomingo
+          ? `- HOY ES DOMINGO Y ESTE CONTRATO SÍ CORRE LA LETRA DIARIA (${m(est.letra)}). No tiene cuota de domingo. El TOTAL incluye esa letra, la letra atrasada y el acuerdo que toque. No la llames tajada ni cuota de domingo.`
+          : cobro.domingoPausado
+            ? `- HOY ES DOMINGO Y EL DOMINGO ESTÁ PAUSADO. No se abre letra nueva. El TOTAL es el acuerdo que cobra el domingo y la letra atrasada. La tajada del contrato es $0. La cuota diaria del acuerdo (lunes a sábado) no entra.`
+            : `- HOY ES DOMINGO. No se abre letra nueva. El TOTAL solo puede traer tajada del domingo, letra atrasada, acuerdo atrasado o acuerdo de domingo. La cuota diaria del acuerdo no entra. Tener saldo de acuerdo no basta.`
         : `- Lun–sáb se cobra: letra del día + saldo anterior de letra + recargo/cierre si aplica, más un solo concepto. Si el acuerdo tiene saldo, ese es el concepto hasta que quede en cero.`,
       esDomingo(hoyPanama())
-        ? cobro.domingoPausado
-          ? `- ÁRBOL DE UN PAGO hoy: 1) el acuerdo que cobra el domingo, antes que la letra atrasada. Si hay varios, el que todavía tiene saldo. 2) la letra atrasada. La tajada no se debita. El excedente baja el saldo del acuerdo y luego la letra siguiente. No llena el balde de domingo.`
-          : `- ÁRBOL DE UN PAGO hoy: primero la tajada de domingo, antes que la letra atrasada y que otro concepto. Después recargo, acuerdo que toque hoy, Recargo Cierre semana si está cargado, y luego la letra atrasada. El excedente va a la letra siguiente, salvo acuerdo (baja el saldo del plan), salvo atraso (ya va en la letra atrasada) o salvo que el cliente pida adelantar el próximo domingo (baja el balde, solo hasta lo que queda). No armes un concepto nuevo.`
+        ? letraEnDomingo
+          ? `- ÁRBOL DE UN PAGO hoy: igual que entre semana. La letra de hoy entra. No hay tajada de domingo.`
+          : cobro.domingoPausado
+            ? `- ÁRBOL DE UN PAGO hoy: 1) el acuerdo que cobra el domingo, antes que la letra atrasada. Si hay varios, el que todavía tiene saldo. 2) la letra atrasada. La tajada no se debita. El excedente baja el saldo del acuerdo y luego la letra siguiente. No llena el balde de domingo.`
+            : `- ÁRBOL DE UN PAGO hoy: primero la tajada de domingo, antes que la letra atrasada y que otro concepto. Después recargo, acuerdo que toque hoy, Recargo Cierre semana si está cargado, y luego la letra atrasada. El excedente va a la letra siguiente, salvo acuerdo (baja el saldo del plan), salvo atraso (ya va en la letra atrasada) o salvo que el cliente pida adelantar el próximo domingo (baja el balde, solo hasta lo que queda). No armes un concepto nuevo.`
         : `- ÁRBOL DE UN PAGO (estricto, por carro): 1) tajada del domingo pasado, si sigue sin pagar. Una sola, no el balde. Si ya se pagó, el resto es el próximo domingo y no entra  2) recargo por no pago  3) compromiso de pago del día. Si el acuerdo tiene saldo, ESE es el concepto hasta que quede en cero: mantenimiento y lo demás se listan pendientes y no entran al total  4) Recargo Cierre semana, si está cargado: no es atraso ni letra ni domingo  5) letras atrasadas  6) letra de hoy  7) si sobra y NO es sábado (o el cliente ya dijo que es adelanto de letra): días siguientes, acuerdo de ese día y luego la letra. El próximo domingo no se llena solo.`,
       `- Si el cliente NOMBRA el destino del excedente y ese concepto existe (domingo, acuerdo, etc.), SE APLICA AHÍ. No lo dejes en letra. Confírmalo y marca pasar_a_humano con motivo "Excedente a <concepto>".`,
       esSabado(hoyPanama())

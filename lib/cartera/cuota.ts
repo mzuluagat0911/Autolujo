@@ -27,7 +27,25 @@ export function cuotaDeFecha(c: TerminosCuota, fecha: string): number {
   return Math.max(Number(c.letra_diaria) || 0, 0);
 }
 
-/** El descuento que se pierde por no pagar antes del corte de las 7:00 p.m. */
+/**
+ * Excepción de contrato: el domingo corre la letra diaria y no hay cuota de
+ * domingo. Si cuota_domingo está puesta, el domingo sigue siendo la tajada.
+ */
+export function letraDiariaEnDomingo(c: TerminosCuota): boolean {
+  if (!c.cobra_domingo) return false;
+  return !(Number(c.cuota_domingo) > 0.009);
+}
+
+/**
+ * Si hoy se abre letra nueva. Entre semana sí. El domingo normal no: corre
+ * la tajada. La excepción de letra diaria el domingo sí abre letra.
+ */
+export function correLetraNueva(c: TerminosCuota | undefined, fecha: string): boolean {
+  if (diaSemana(fecha) !== 0) return true;
+  return Boolean(c && letraDiariaEnDomingo(c));
+}
+
+/** El recargo que se cobra por no pagar antes del corte de las 7:00 p.m. */
 export function penalidadDe(c: TerminosCuota): number {
   return Math.max(Number(c.descuento_puntual ?? 0), 0);
 }

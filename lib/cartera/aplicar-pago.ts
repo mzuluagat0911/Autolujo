@@ -25,7 +25,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { distribuirPago } from "./rules";
-import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
+import { cuotaDeFecha, letraDiariaEnDomingo, penalidadDe, type TerminosCuota } from "./cuota";
 import { descuentoLetraDe } from "./descuento-letra";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { cargosExtraPorContrato, partirCargosNoLetra } from "./extracto-desglose";
@@ -966,11 +966,13 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const iniLetra = contratoRow?.fecha_inicio_letra?.trim() ?? "";
   const letraNoEmpieza = Boolean(iniLetra && fecha < iniLetra);
   const acuerdos = (acuerdosData ?? []) as AcuerdoActivo[];
-  const cuotaBase = (enPausa || devuelto || inactivo || letraNoEmpieza) && !esDomingo(fecha)
+  const letraDom = letraDiariaEnDomingo(terminos);
+  const sinLetra = enPausa || devuelto || inactivo || letraNoEmpieza;
+  const cuotaBase = sinLetra && (!esDomingo(fecha) || letraDom)
     ? 0
     : cuotaDeFecha(terminos, fecha);
   const cuotaHoy = Math.max(
-    Math.round((cuotaBase - (esDomingo(fecha) ? 0 : descuentoLetra)) * 100) / 100,
+    Math.round((cuotaBase - (esDomingo(fecha) && !letraDom ? 0 : descuentoLetra)) * 100) / 100,
     0,
   );
   const multaHoy = (multaRes.data?.length ?? 0) > 0;
@@ -1006,7 +1008,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     Number(terminos.cuota_domingo) || 0,
   );
   const pausaDomingo = Boolean(planCobro && acuerdoCobraDomingo(planCobro, fecha));
-  const domingoHoy = pausaDomingo ? 0 : domingoAbierto.tajada;
+  const domingoHoy = pausaDomingo || letraDom ? 0 : domingoAbierto.tajada;
   // Multa de “no pago” = solo letra; el acuerdo no entra a la meta puntual.
   const meta = cuotaHoy;
   const pagoPuntualAntes = cubrioCuotaDelDia(pagadoPuntualAntes, meta);
@@ -1025,8 +1027,8 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     multaHoyRegistrada: multaHoy,
     hoyYaDevengado,
     pendiente: false,
-    diaLibre: (enPausa || devuelto || inactivo || letraNoEmpieza) && !hoyEsDomingo,
-    descuentoLetraHoy: hoyEsDomingo ? 0 : descuentoLetra,
+    diaLibre: sinLetra && (!hoyEsDomingo || letraDom),
+    descuentoLetraHoy: hoyEsDomingo && !letraDom ? 0 : descuentoLetra,
     cargosFuturos: extrasNoLetra.futuro,
     cargosExtraEnSaldo: extrasNoLetra.debido,
   });
@@ -1041,7 +1043,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     cifras.cuenta - cifras.faltaAcuerdo - cifras.pendienteAnterior - cifras.recargo,
     0,
   ));
-  const cuotaArbol = hoyEsDomingo ? 0 : Math.min(cuotaHoy, letraHoyNeta);
+  const cuotaArbol = hoyEsDomingo && !letraDom ? 0 : Math.min(cuotaHoy, letraHoyNeta);
   const letraSinRecargo = partirRecargoDeLaLetra({
     pendienteAnterior: cifras.pendienteAnterior,
     cuotaHoy: cuotaArbol,

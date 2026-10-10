@@ -9,7 +9,7 @@
 // sobre $30 NO es puntual: pierde los $5 y el resto se arrastra a mañana.
 
 import { sumarDias, esDomingo } from "./fecha";
-import { cuotaDeFecha, penalidadDe, type TerminosCuota } from "./cuota";
+import { cuotaDeFecha, letraDiariaEnDomingo, penalidadDe, type TerminosCuota } from "./cuota";
 
 export type LineaDesglose = { concepto: string; monto: number };
 
@@ -165,7 +165,8 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   // Al día (nada de eso) → $0: no se abre cuota
   // de domingo nueva. El crédito de letra no achica la tajada
   // (G51: pot $55 = $90−$35 → se pide la tajada, no $55).
-  if (hoyEsDomingo) {
+  // Letra diaria el domingo (sin cuota de domingo): se cobra como un día de semana.
+  if (hoyEsDomingo && !letraDiariaEnDomingo(e.terminos)) {
     // Una sola tajada por domingo. Lo ya pagado hoy a ese concepto no abre otra.
     const tajada = tajadaDomingoQueFalta({
       bucketNeto: domingoEnSaldo,
@@ -222,12 +223,13 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   // no un abono al domingo. El domingo solo baja si el pago viene
   // marcado a ese concepto (rubro), y eso ya viene descontado en domingoEnSaldo.
   const domingoSaldo = domingoEnSaldo; // hoy no es domingo con balde (ramo de arriba)
-  const saldoLetraRaw = saldoVista - (hoyEsDomingo ? 0 : domingoSaldo);
+  const apartaBalde = !hoyEsDomingo || letraDiariaEnDomingo(e.terminos);
+  const saldoLetraRaw = saldoVista - (apartaBalde ? domingoSaldo : 0);
   // Si reservar el domingo deja la letra en negativo, eso NO es crédito real
   // (G51: $55 − $90 = −$35). El crédito real (pagó de más, saldo negativo
   // sin domingo pendiente) sí debe cancelar la cuota.
   const saldoLetra =
-    !hoyEsDomingo && domingoEnSaldo > 0.009 && saldoLetraRaw < -0.009
+    apartaBalde && domingoEnSaldo > 0.009 && saldoLetraRaw < -0.009
       ? 0
       : saldoLetraRaw;
   // Lo que todavía no vence sale del saldo de la letra. Si no, un exceso
@@ -288,7 +290,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     recargo,
     pagadoHoy,
     // Lun–sáb: línea informativa. Domingo sin balde: va en cuotaHoy.
-    domingoSaldo: hoyEsDomingo ? 0 : domingoSaldo,
+    domingoSaldo: apartaBalde ? domingoSaldo : 0,
   });
 
   return {
@@ -310,7 +312,7 @@ export function calcularCifras(e: EntradaCifras): Cifras {
     totalManana,
     domingo,
     domingoDia: domingo ? Number(manana.slice(8, 10)) : null,
-    domingoSaldo: hoyEsDomingo ? 0 : domingoSaldo,
+    domingoSaldo: apartaBalde ? domingoSaldo : 0,
     extrasEnSaldo: Math.max(Number(e.cargosExtraEnSaldo) || 0, 0),
     lineas,
   };

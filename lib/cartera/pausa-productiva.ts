@@ -4,7 +4,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { esDomingo, hoyPanama, sumarDias } from "./fecha";
-import { cuotaDeFecha, type TerminosCuota } from "./cuota";
+import { correLetraNueva, cuotaDeFecha, type TerminosCuota } from "./cuota";
 
 export const ESTADOS_PAUSA = ["mantenimiento", "chapisteria", "colision"] as const;
 export type EstadoPausa = (typeof ESTADOS_PAUSA)[number];
@@ -64,11 +64,12 @@ export function ajustarCobroPausa<T extends {
   acuerdoHoy: number;
   faltaAcuerdo: number;
   hoy: string;
+  terminos?: TerminosCuota;
 }>(entrada: T, pausa: PausaAbierta | null | undefined): T {
   if (!pausaVigente(pausa, entrada.hoy)) return entrada;
   return {
     ...entrada,
-    diaLibre: Boolean(entrada.diaLibre) || !esDomingo(entrada.hoy),
+    diaLibre: Boolean(entrada.diaLibre) || correLetraNueva(entrada.terminos, entrada.hoy),
     acuerdoHoy: 0,
     faltaAcuerdo: 0,
   };
