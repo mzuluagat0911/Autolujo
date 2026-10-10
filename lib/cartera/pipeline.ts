@@ -291,7 +291,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         : `- Este cliente abonó hoy ${m(est.pagadoHoy)} pero NO cubrió el TOTAL A PAGAR HOY. Pierde el descuento de $${est.penalidad} de ESE día. El resto se arrastra. No armes otra cifra.`
       : est.pendiente
         ? `- Este cliente mandó comprobante hoy por ${m(est.pendienteMonto)} y está EN VALIDACIÓN. AÚN NO está descontado del saldo. NO le digas que ya pagó ni que queda al día.`
-        : `- Hoy NO tiene ningún pago validado todavía.`,
+        : `- HOY (${fechaConDia(hoy)}) no tiene un pago validado con fecha de hoy. Eso no borra ayer ni antier. Si dice que pagó otro día, obedece CONSULTA DE PAGO: confirma ese día si la base lo tiene y separa lo de hoy.`,
   ];
 
   // Contrato CERRADO (entregó el carro debiendo): solo se le cobra la deuda.
@@ -522,15 +522,18 @@ export async function resumenContrato(contratoId: string): Promise<string | null
   }
 
   if (pagos.length > 0) {
-    lineas.push(``, `PAGOS RECIENTES DE ESTE CONTRATO (para si pregunta por un comprobante):`);
+    const ayer = sumarDias(hoy, -1);
+    const antier = sumarDias(hoy, -2);
+    lineas.push(``, `PAGOS RECIENTES DE ESTE CONTRATO (ayer y antier cuentan; no los niegues si el cliente los nombra):`);
     for (const p of pagos) {
       const dia = fechaContable(p.pagado_at);
       const hora = horaPanama(new Date(p.pagado_at));
+      const marca = dia === hoy ? "HOY" : dia === ayer ? "AYER" : dia === antier ? "ANTIER" : "";
       const extra = p.asignaciones.length
         ? ` · ${textoComoSeAplico({ asignaciones: p.asignaciones, sobrante: 0, totalAplicado: p.asignaciones.reduce((s, a) => s + a.aplicado, 0) }, m)}`
         : "";
       lineas.push(
-        `- ${dia} ${hora}: ${m(p.monto)} · ${etiquetaPago(p.estado)}${p.origen ? ` (${p.origen})` : ""}${extra}`,
+        `- ${marca ? `${marca} · ` : ""}${dia} ${hora}: ${m(p.monto)} · ${etiquetaPago(p.estado)}${p.origen ? ` (${p.origen})` : ""}${extra}`,
       );
     }
   }

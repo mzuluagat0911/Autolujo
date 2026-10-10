@@ -35,6 +35,7 @@ import {
 } from "@/lib/comercial/chats";
 import { revisarRespuesta } from "@/lib/ai/guard";
 import { respuestaSalidaEstricta } from "@/lib/cartera/salidas-interior";
+import { consultarPagoMencionado, corregirRespuestaPago } from "@/lib/cartera/consulta-pago";
 import { destinarCharla } from "@/lib/ai/filtro-charla";
 import { transcribirAudio } from "@/lib/ai/transcribir";
 import { FRASE_PEDIR_CONFIRMACION } from "@/lib/cartera/comprobante-validacion";
@@ -440,12 +441,19 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
         .map((n) => `- ${n}`)
         .join("\n")}`.trim();
     }
+    const consulta = conv.contrato_id
+      ? await consultarPagoMencionado(conv.contrato_id, textoCliente)
+      : null;
+    if (consulta) contexto = `${contexto ?? ""}\n\n${consulta.bloque}`.trim();
     const bruta = await responderAgente({ historial, contexto });
 
     // El prompt pide; el guard verifica. Nada sale sin pasar por aquí.
     const revisada = revisarRespuesta(bruta, contexto);
     const { intervino, detalle } = revisada;
-    const r = respuestaSalidaEstricta(textoCliente, revisada.respuesta);
+    const mensajePago = consulta && intervino
+      ? consulta.frase
+      : corregirRespuestaPago(revisada.respuesta.mensaje, consulta);
+    const r = respuestaSalidaEstricta(textoCliente, { ...revisada.respuesta, mensaje: mensajePago });
     if (intervino) {
       console.warn(`[whatsapp/webhook] guard (${intervino}): ${detalle}`);
       await registrarMensaje({
