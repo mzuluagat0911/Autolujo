@@ -264,8 +264,8 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `- Hoy es ${fechaConDia(hoy)}. Son las ${horaPanama()}.`,
     `- Mañana es ${fechaConDia(manana)}.`,
     yaCorte
-      ? `- El corte de las 7:00 p.m. YA PASÓ hoy: si paga ahora, es sin descuento.`
-      : `- Todavía NO son las 7:00 p.m.: si paga hoy antes de esa hora, conserva el descuento.`,
+      ? `- El corte de las 7:00 p.m. YA PASÓ hoy: si paga ahora, ese día lleva el recargo de ${m(est.penalidad)}. Llámalo recargo, nunca descuento.`
+      : `- Todavía NO son las 7:00 p.m.: si paga hoy antes de esa hora, ese día no se le cobra el recargo de ${m(est.penalidad)}. Llámalo recargo, nunca descuento.`,
     `- EMERGENCIAS DEL CARRO: si reporta colisión/daño/seguro → Santiago +507 6929-1946; si es`,
     `  mecánica / no funciona → Néstor +507 6330-3437. Dale el número SIEMPRE (dentro o fuera de`,
     `  horario). Ahora son las ${horaPanama()}${fueraHorarioOperativo() ? " (fuera de 8:00–19:00)" : " (dentro de 8:00–19:00)"}.`,
@@ -277,8 +277,8 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `- Cliente: ${est.clienteNombre}. Tratamiento: ${est.clienteTratamiento || est.clienteNombre.split(" ")[0] || "cliente"} (usa Sr./Sra. SOLO si viene en este tratamiento; si es solo el nombre, no inventes género).`,
     `- Carro: ${est.vehiculoNumero}`,
     `- Cuota diaria pagando PUNTUAL (antes de las 7:00 p.m.): ${m(est.letra)}.`,
-    `- Si paga después del corte se le suman ${m(est.penalidad)} (pierde el descuento de ESE día).`,
-    `- Días atrasados sin pagar quedan a tarifa plena (${m(tarifaPlenaDia)} por día, no ${m(est.letra)}).`,
+    `- Si paga después de las 7:00 p.m. se le cobra un recargo de ${m(est.penalidad)} ESE día. Nunca lo llames descuento.`,
+    `- Días atrasados sin pagar quedan en la letra más el recargo (${m(tarifaPlenaDia)} por día, no solo ${m(est.letra)}).`,
     `- Domingos: ${domingos}.`,
     esDomingo(hoyPanama())
       ? `- Hoy es domingo: NO corre letra nueva. La tarifa (${m(est.cuotaHoy)}) es el precio del día, no se suma.`
@@ -288,7 +288,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     est.pagoHoy
       ? est.pagoPuntual
         ? `- Este cliente YA cubrió lo de hoy PUNTUAL (antes de las 7:00 p.m.), posiblemente en varios abonos. Eso YA está descontado del saldo.`
-        : `- Este cliente abonó hoy ${m(est.pagadoHoy)} pero NO cubrió el TOTAL A PAGAR HOY. Pierde el descuento de $${est.penalidad} de ESE día. El resto se arrastra. No armes otra cifra.`
+        : `- Este cliente abonó hoy ${m(est.pagadoHoy)} pero NO cubrió el TOTAL A PAGAR HOY. Se le cobra el recargo de ${m(est.penalidad)} de ESE día. El resto se arrastra. No armes otra cifra. Nunca lo llames descuento.`
       : est.pendiente
         ? `- Este cliente mandó comprobante hoy por ${m(est.pendienteMonto)} y está EN VALIDACIÓN. AÚN NO está descontado del saldo. NO le digas que ya pagó ni que queda al día.`
         : `- HOY (${fechaConDia(hoy)}) no tiene un pago validado con fecha de hoy. Eso no borra ayer ni antier. Si dice que pagó otro día, obedece CONSULTA DE PAGO: confirma ese día si la base lo tiene y separa lo de hoy.`,
@@ -300,7 +300,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
       ``,
       `⚠️ CONTRATO CERRADO (estado: ${est.estadoContrato}). Este cliente YA ENTREGÓ el carro ${est.vehiculoNumero}.`,
       `- NO corre cuota diaria y NO hay "cuota de hoy": no le hables de cuota del día, de "hoy", de corte`,
-      `  de las 7 p.m. ni de descuento por pago puntual. Nada de eso aplica ya.`,
+      `  de las 7 p.m. ni del recargo. Nada de eso aplica ya.`,
       `- Solo tiene una DEUDA PENDIENTE de ${m(est.cuenta)} de cuando tenía el carro. Cóbrale ÚNICAMENTE`,
       `  ese saldo; puede pagarlo de una vez o en abonos. Cada pago validado baja esa deuda.`,
       `- Si pregunta cuánto debe: dile que su saldo pendiente es ${m(est.cuenta)} (deuda del carro que entregó).`,
@@ -341,7 +341,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
           : `- DOMINGO PENDIENTE: ${m(est.domingoSaldo)}. Si ya pagó la tajada del domingo, esto es el próximo domingo: menciónalo y NO lo sumes. Hoy, si está al día, solo va la letra. Lun–vie solo entra al total la tajada que el domingo pasado quedó sin pagar, y solo si el desglose la trae con $.`
         : `- DOMINGO PENDIENTE: $0.`,
       `- Puede pagar en 2 o 3 abonos el mismo día: la SUMA es la que cuenta. Si a las 7 p.m.`,
-      `  no cubrió lo del extracto de hoy (letra + el un ítem adicional del día), pierde el descuento de ese día y el resto se va a mañana.`,
+      `  no cubrió lo del extracto de hoy (letra + el un ítem adicional del día), se le cobra el recargo de ese día y el resto se va a mañana. Nunca lo llames descuento.`,
       yaCorte || est.pagoPuntual || est.pendiente
         ? `- Ese monto ya considera la situación de hoy.`
         : `- Si a las 7 p.m. no ha cubierto lo de hoy (aprox. ledger): ${m(est.totalHoyTarde)}. El cobro oficial sigue siendo ${m(cobro.totalCobrarHoy)} hasta nuevo extracto.`,
