@@ -19,7 +19,10 @@ export const TARIFAS_SALIDA_INTERIOR: DestinoInterior[] = [
 ];
 
 const CONTEXTO_SALIDA =
-  /\b(interior|permiso|salida|viaj|voy para|voy pa\b|voy a|irme a|ir a|me voy|autoriz|aval)\b/i;
+  /\b(interior|permiso|salida|viaj|voy para|voy pa\b|voy a|irme a|ir a|me voy|autoriz|aval|tarifa|cuesta|precio|cobran)\b/i;
+
+const PAGO_SALIDA_YA_CREADO =
+  /ya\s+(le\s+)?(qued[oó]|cargu[eé]|cre[eé]|asign[eé]|registr)|se\s+(le\s+)?(cre[oó]|carg[oó]|asign[oó])\s+(el\s+)?pago|pago\s+(de\s+la\s+salida\s+)?(ya\s+)?(est[aá]|qued[oó]|fue)\s+(cargado|creado|asignado|registrado)|qued[oó]\s+asignad[oa]\s+a\s+la\s+salida/i;
 
 export function foldTexto(s: string): string {
   return (s ?? "")
@@ -111,13 +114,31 @@ export function partirMontoInterior(
   return { interior: t, resto: Math.round((m - t) * 100) / 100 };
 }
 
+/** Preguntar o pedir la salida no crea el pago. El equipo lo carga a mano. */
+export function respuestaSalidaEstricta<T extends { mensaje: string; pasar_a_humano: boolean; motivo: string | null }>(
+  textoCliente: string,
+  respuesta: T,
+): T {
+  const dest = detectarDestinoInterior(textoCliente);
+  if (!dest) return respuesta;
+  const motivo = `Salida a ${dest.nombre} ($${dest.monto}). El equipo asigna el pago a mano.`;
+  const tieneMonto = new RegExp(`\\$\\s*${dest.monto}\\b`).test(respuesta.mensaje);
+  const afirmaPago = PAGO_SALIDA_YA_CREADO.test(respuesta.mensaje);
+  const mensaje =
+    tieneMonto && !afirmaPago
+      ? respuesta.mensaje
+      : `La salida a ${dest.nombre} es $${dest.monto}. El equipo lo revisa y asigna ese pago.`;
+  return { ...respuesta, mensaje, pasar_a_humano: true, motivo };
+}
+
 export function textoTarifasInterior(): string {
   const filas = TARIFAS_SALIDA_INTERIOR.map((d) => `- ${d.nombre}: $${d.monto}`).join("\n");
   return [
-    `SALIDAS AL INTERIOR AUTORIZADAS (pago PREVIO; este dinero NO es la cuota del día):`,
+    `SALIDAS AL INTERIOR (la tarifa se dice; el pago NO se crea solo):`,
     filas,
-    `- El cliente paga ANTES, se asigna al rubro "salida al interior" y el equipo da el aval.`,
-    `- Sin ese pago no hay permiso. Si pide un destino que NO está en la lista, o un viaje de MÁS DE UN DÍA: no inventes tarifa ni fechas; dile que el equipo le cotiza y marca pasar_a_humano = true.`,
+    `- Si pregunta la tarifa o pide salir: dile el monto EXACTO de esta tabla y marca pasar_a_humano = true con motivo "Salida a {destino}. El equipo asigna el pago a mano."`,
+    `- REGLA ESTRICTA: preguntar o pedir la salida NO crea ni asigna el pago. Ese pago lo carga el equipo a mano. Tú no digas que ya quedó cargado, creado ni asignado.`,
+    `- Si el destino NO está en la lista, o el viaje es de MÁS DE UN DÍA: no inventes tarifa. Dile que el equipo lo cotiza y marca pasar_a_humano = true.`,
     `- Salir SIN permiso es OTRA cosa (multa 127), no estas tarifas.`,
   ].join("\n");
 }

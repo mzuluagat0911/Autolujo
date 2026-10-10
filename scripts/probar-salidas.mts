@@ -7,6 +7,7 @@ import {
   detectarDiasViaje,
   inferirDestinoPorMonto,
   partirMontoInterior,
+  respuestaSalidaEstricta,
   TARIFAS_SALIDA_INTERIOR,
 } from "@/lib/cartera/salidas-interior";
 import { cruzarPuntoConSalida, enInterior, enMetroPanama, haversineKm, destinoTarifaCercano } from "@/lib/cartera/salidas-geo";
@@ -34,6 +35,29 @@ check("permiso a David", detectarDestinoInterior("necesito permiso para ir a Dav
 check("salida Las Tablas", detectarDestinoInterior("salida a las tablas")?.id, "las_tablas");
 check("David gana a Chiriquí", detectarDestinoInterior("salida a David, Chiriquí")?.id, "david");
 check("llamen a Santiago no es viaje", detectarDestinoInterior("llamen a Santiago por la colisión"), null);
+check("tarifa de Penonomé", detectarDestinoInterior("cuál es la tarifa de penonomé")?.id, "penonome");
+
+console.log("\n· Preguntar no crea el pago");
+const pregunta = respuestaSalidaEstricta("cuánto es la salida a penonomé", {
+  mensaje: "Hoy le toca $30.",
+  pasar_a_humano: false,
+  motivo: null,
+});
+check("dice la tarifa", pregunta.mensaje, "La salida a Penonomé es $25. El equipo lo revisa y asigna ese pago.");
+check("avisa al equipo", pregunta.pasar_a_humano, true);
+const yaDijo = respuestaSalidaEstricta("voy para Penonomé", {
+  mensaje: "La salida a Penonomé es $25. El equipo lo revisa.",
+  pasar_a_humano: false,
+  motivo: null,
+});
+check("conserva si ya dijo el monto", /\$25/.test(yaDijo.mensaje) && yaDijo.pasar_a_humano, true);
+const invento = respuestaSalidaEstricta("salida a penonome", {
+  mensaje: "Ya le creé el pago de la salida, $25.",
+  pasar_a_humano: false,
+  motivo: null,
+});
+check("no confirma un pago creado", /cre[eé]/.test(invento.mensaje), false);
+check("igual dice $25", /\$25/.test(invento.mensaje), true);
 
 console.log("\n· Inferir por monto");
 check(

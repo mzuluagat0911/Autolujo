@@ -16,13 +16,8 @@ import { cobroHoyContrato, MARCA_EXCEDENTE_SIN_CONCEPTO } from "./cobro-hoy";
 import { validarComprobante, resumirAlertas, FRASE_PEDIR_CONFIRMACION, MARCA_REVISION_DOS_PAGOS, type Veredicto } from "@/lib/cartera/comprobante-validacion";
 import { carroCompatibleConChat } from "@/lib/cartera/cruce";
 import { observarImagenComprobante } from "./aprendizaje-datos";
-import { detectarDiasViaje, textoTarifasInterior, type DestinoInterior } from "./salidas-interior";
-import {
-  inferirSalidaDelChat,
-  idsVehiculoYCliente,
-  registrarSalidaPendiente,
-  salidasDelContrato,
-} from "./salidas-aplicar";
+import { textoTarifasInterior } from "./salidas-interior";
+import { salidasDelContrato } from "./salidas-aplicar";
 
 const BUCKET = "comprobantes";
 
@@ -554,7 +549,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `- La recogida y los planes de atrás NO entran mientras el de adelante tenga saldo.`,
     `- Si el CONTEXTO dice cómo se partió un pago, repítelo tal cual. No armes otro reparto.`,
     `- Si el cliente pide otro destino, no lo cambies. Marca pasar_a_humano = true para que el equipo lo reasigne.`,
-    `- Salida al interior: la confirma el equipo y NO cubre la cuota del día.`,
+    `- Salida al interior: si pregunta la tarifa, dile el monto y marca pasar_a_humano. El pago lo asigna el equipo a mano. Preguntar no lo crea. No cubre la cuota del día.`,
     ``,
     textoTarifasInterior(),
   );
@@ -1340,42 +1335,7 @@ export async function procesarPagoComprobante(opts: {
   } catch (e) {
     console.error("[pipeline] imagen", e);
   }
-  let salida: DestinoInterior | null = null;
-  try {
-    const hist = await historialReciente(conversacion.id, 16);
-    const textos = hist.map((m) => m.texto);
-    salida = await inferirSalidaDelChat({
-      pagoId,
-      monto: comprobante.monto ?? 0,
-      textos,
-    });
-    if (salida && resolucion.contratoId) {
-      await registrarMensaje({
-        conversacionId: conversacion.id,
-        direccion: "out",
-        tipo: "system",
-        texto: `Pago asignado a salida al interior: ${salida.nombre} ($${salida.monto}). Aval pendiente del equipo.`,
-      });
-      const ids = await idsVehiculoYCliente(resolucion.contratoId);
-      const dias = detectarDiasViaje(textos);
-      const fechaHasta = dias && dias > 1 ? sumarDias(fechaPago, dias - 1) : null;
-      if (estadoConciliacion === "pendiente") {
-        await registrarSalidaPendiente({
-          contratoId: resolucion.contratoId,
-          vehiculoId: resolucion.vehiculoId ?? ids.vehiculoId,
-          clienteId: resolucion.clienteId ?? conversacion.cliente_id ?? ids.clienteId,
-          pagoId,
-          dest: salida,
-          monto: comprobante.monto ?? 0,
-          pagadoAt,
-          fechaHasta,
-        });
-      }
-    }
-  } catch (e) {
-    console.error("[pipeline] salida interior", e);
-  }
-
+  // Preguntar la salida no asigna el pago. El equipo lo carga a mano.
   if (resolucion.contratoId) await invalidarLecturaEstados(resolucion.contratoId);
 
   return {
@@ -1384,6 +1344,6 @@ export async function procesarPagoComprobante(opts: {
     resolucion,
     estadoConciliacion,
     veredicto,
-    salida: salida ? { destino: salida.nombre, monto: salida.monto } : null,
+    salida: null,
   };
 }

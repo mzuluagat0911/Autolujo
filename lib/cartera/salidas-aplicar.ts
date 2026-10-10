@@ -6,7 +6,6 @@ import {
   DESTINO_OTRO_ID,
   destinoPorId,
   destinoPorNombre,
-  inferirDestinoPorMonto,
   partirMontoInterior,
   type DestinoInterior,
 } from "./salidas-interior";
@@ -102,15 +101,13 @@ export async function etiquetarPagoSalida(
   }
 }
 
-export async function inferirSalidaDelChat(opts: {
+/** Preguntar la salida no asigna el pago. El equipo lo carga a mano. */
+export async function inferirSalidaDelChat(_opts: {
   pagoId: string;
   monto: number;
   textos: string[];
 }): Promise<DestinoInterior | null> {
-  const dest = inferirDestinoPorMonto(opts.monto, opts.textos);
-  if (!dest) return null;
-  await etiquetarPagoSalida(opts.pagoId, dest);
-  return dest;
+  return null;
 }
 
 export async function upsertSalidaAutorizada(opts: {

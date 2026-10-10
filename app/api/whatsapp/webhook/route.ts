@@ -34,6 +34,7 @@ import {
   registrarSalidaComercial,
 } from "@/lib/comercial/chats";
 import { revisarRespuesta } from "@/lib/ai/guard";
+import { respuestaSalidaEstricta } from "@/lib/cartera/salidas-interior";
 import { destinarCharla } from "@/lib/ai/filtro-charla";
 import { transcribirAudio } from "@/lib/ai/transcribir";
 import { FRASE_PEDIR_CONFIRMACION } from "@/lib/cartera/comprobante-validacion";
@@ -442,7 +443,9 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
     const bruta = await responderAgente({ historial, contexto });
 
     // El prompt pide; el guard verifica. Nada sale sin pasar por aquí.
-    const { respuesta: r, intervino, detalle } = revisarRespuesta(bruta, contexto);
+    const revisada = revisarRespuesta(bruta, contexto);
+    const { intervino, detalle } = revisada;
+    const r = respuestaSalidaEstricta(textoCliente, revisada.respuesta);
     if (intervino) {
       console.warn(`[whatsapp/webhook] guard (${intervino}): ${detalle}`);
       await registrarMensaje({
