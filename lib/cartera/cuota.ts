@@ -45,6 +45,15 @@ export function correLetraNueva(c: TerminosCuota | undefined, fecha: string): bo
   return Boolean(c && letraDiariaEnDomingo(c));
 }
 
+/**
+ * Domingo viejo que ya no se rellena. Si después de ese domingo ya hay letra,
+ * el hueco se dejó vacío a propósito. Si el cron de ese domingo no corrió y
+ * todavía no hay letra posterior, sí se carga.
+ */
+export function omiteDomingoYaCerrado(fecha: string, hoy: string, hayLetraPosterior: boolean): boolean {
+  return diaSemana(fecha) === 0 && fecha < hoy && hayLetraPosterior;
+}
+
 /** El recargo que se cobra por no pagar antes del corte de las 7:00 p.m. */
 export function penalidadDe(c: TerminosCuota): number {
   return Math.max(Number(c.descuento_puntual ?? 0), 0);

@@ -21,7 +21,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, sumarDias, pasoCorte, diasEntre, esDomingo } from "./fecha";
-import { cuotaDeFecha, letraDiariaEnDomingo, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
+import { cuotaDeFecha, letraDiariaEnDomingo, omiteDomingoYaCerrado, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
 import { descuentosLetraDelDia } from "./descuento-letra";
 import { devolucionesAbiertas, devolucionVigente } from "./devolucion";
 import { inactivacionesAbiertas, inactivacionVigente } from "./inactivo";
@@ -160,6 +160,21 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     descuentosLetraDelDia(fecha),
   ]);
 
+  const hoy = hoyPanama();
+  const domingoPasado = esDomingo(fecha) && fecha < hoy;
+  const conLetraPosterior = new Set<string>();
+  if (domingoPasado && idsActivos.length) {
+    const { data: posteriores, error: errPost } = await sb
+      .from("cargos")
+      .select("contrato_id")
+      .in("contrato_id", idsActivos)
+      .eq("tipo", "renta")
+      .gt("fecha", fecha)
+      .gt("monto", 0);
+    if (errPost) throw errPost;
+    for (const r of (posteriores ?? []) as { contrato_id: string }[]) conLetraPosterior.add(r.contrato_id);
+  }
+
   const res: ResultadoDevengo = { fecha, creados: 0, yaEstaban: 0, sinCuota: 0 };
   const filas: Record<string, unknown>[] = [];
 
@@ -180,6 +195,11 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     // Domingo normal: no abre letra. La excepción (cobra domingo y sin cuota
     // de domingo) sí abre la letra diaria.
     if (esDomingo(fecha) && !letraDiariaEnDomingo(c)) {
+      res.sinCuota++;
+      continue;
+    }
+    // Hueco de un domingo viejo: la semana ya siguió con letra, no se rellena.
+    if (letraDiariaEnDomingo(c) && omiteDomingoYaCerrado(fecha, hoy, conLetraPosterior.has(c.id))) {
       res.sinCuota++;
       continue;
     }

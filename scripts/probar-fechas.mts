@@ -10,7 +10,7 @@ import {
   fechaContable, pagadoAtDesdeForm, instantePanama, rangoDiaPanama,
   diaSemana, sumarDias, diasEntre, esDomingo,
 } from "@/lib/cartera/fecha";
-import { cuotaDeFecha, tarifaPlena, penalidadDe, type TerminosCuota } from "@/lib/cartera/cuota";
+import { cuotaDeFecha, omiteDomingoYaCerrado, tarifaPlena, penalidadDe, type TerminosCuota } from "@/lib/cartera/cuota";
 import { calcularCifras, cubrioCuotaDelDia, type EntradaCifras } from "@/lib/cartera/cifras";
 import { inactivacionVigente } from "@/lib/cartera/inactivo";
 
@@ -81,6 +81,9 @@ check("domingo libre no cobra", cuotaDeFecha(sinDomingo, "2026-09-06"), 0);
 check("domingo pactado cobra su cuota", cuotaDeFecha(conDomingo, "2026-09-06"), 15);
 const letraDomingo: TerminosCuota = { letra_diaria: 25, descuento_puntual: 5, cobra_domingo: true, cuota_domingo: 0 };
 check("domingo sin cuota: corre la letra diaria", cuotaDeFecha(letraDomingo, "2026-10-11"), 25);
+check("domingo viejo con letra posterior no se rellena", omiteDomingoYaCerrado("2026-10-04", "2026-10-11", true), true);
+check("domingo perdido sin letra posterior sí se carga", omiteDomingoYaCerrado("2026-10-04", "2026-10-11", false), false);
+check("el domingo de hoy sí abre letra", omiteDomingoYaCerrado("2026-10-11", "2026-10-11", true), false);
 check("la penalidad es el descuento perdido", penalidadDe(sinDomingo), 5);
 check("tarifa plena = cuota + penalidad", tarifaPlena(sinDomingo, "2026-09-01"), 35);
 check("sin cuota no hay tarifa plena", tarifaPlena(sinDomingo, "2026-09-06"), 0);
