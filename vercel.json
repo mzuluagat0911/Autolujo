@@ -54,7 +54,19 @@
     },
     {
       "path": "/api/cron/seguimientos-comercial",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/cron/seguimientos-comercial",
+      "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/cron/seguimientos-comercial",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/cron/seguimientos-comercial",
+      "schedule": "0 22 * * *"
     },
     {
       "path": "/api/cron/aviso-temblor",
