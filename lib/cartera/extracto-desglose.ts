@@ -530,25 +530,44 @@ export function partirCargosNoLetra(lineas: LineaExtracto[]): { debido: number; 
   return { debido: centavos(debido), futuro: centavos(futuro) };
 }
 
+/**
+ * Trae todas las filas. Una sola consulta se corta en 1.000 y lo que sobra
+ * desaparece sin aviso: así el extracto volvió a cobrar domingos y
+ * mantenimientos ya pagos. Se lee por tandas de contratos, y cada tanda
+ * sigue de página en página hasta que la página viene corta.
+ *
+ * El total de la letra no sale de aquí. Sale del saldo que ya está en la
+ * base. Aquí solo entran los carros que todavía tienen un cargo abierto
+ * (mantenimiento, domingo, recargo…), no el historial de toda la flota.
+ */
+async function leerPorPaginas<T>(
+  ids: string[],
+  pedir: (
+    lote: string[],
+    desde: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  const TAMANO = 20;
+  for (let i = 0; i < ids.length; i += TAMANO) {
+    const lote = ids.slice(i, i + TAMANO);
+    for (let desde = 0; ; desde += 1000) {
+      const { data, error } = await pedir(lote, desde);
+      if (error) throw new Error(error.message);
+      const chunk = data ?? [];
+      rows.push(...chunk);
+      if (chunk.length < 1000) break;
+    }
+  }
+  return rows;
+}
+
 /** Recargo de las 7 p.m. que todavía no está pagado, por contrato. */
 async function recargoAbiertoPorContrato(ids: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
-  const [{ data: cargos }, { data: pagos }] = await Promise.all([
-    sb
-      .from("cargos")
-      .select("id, contrato_id, fecha, monto, tipo, concepto, concepto_codigo, pago_id")
-      .eq("tipo", "multa")
-      .in("contrato_id", ids),
-    sb
-      .from("pagos")
-      .select("id, contrato_id, fecha, monto, rubro, asignaciones")
-      .in("contrato_id", ids)
-      .in("estado_conciliacion", ["conciliado", "manual"]),
-  ]);
-  const cargosPor = new Map<string, Parameters<typeof atribuirRecargos>[0]>();
-  for (const c of (cargos ?? []) as {
+  const cargos = await leerPorPaginas<{
     id: string;
     contrato_id: string;
     fecha: string | null;
@@ -557,7 +576,38 @@ async function recargoAbiertoPorContrato(ids: string[]): Promise<Map<string, num
     concepto: string | null;
     concepto_codigo: string | null;
     pago_id: string | null;
-  }[]) {
+  }>(ids, (lote, desde) =>
+    sb
+      .from("cargos")
+      .select("id, contrato_id, fecha, monto, tipo, concepto, concepto_codigo, pago_id")
+      .eq("tipo", "multa")
+      .in("contrato_id", lote)
+      .order("id", { ascending: true })
+      .range(desde, desde + 999),
+  );
+  const conRecargoAbierto = [
+    ...new Set(
+      cargos.filter((c) => !c.pago_id).map((c) => c.contrato_id).filter(Boolean),
+    ),
+  ];
+  const pagos = await leerPorPaginas<{
+    id: string;
+    contrato_id: string | null;
+    fecha: string | null;
+    monto: number;
+    rubro: string | null;
+    asignaciones: unknown;
+  }>(conRecargoAbierto, (lote, desde) =>
+    sb
+      .from("pagos")
+      .select("id, contrato_id, fecha, monto, rubro, asignaciones")
+      .in("contrato_id", lote)
+      .in("estado_conciliacion", ["conciliado", "manual"])
+      .order("id", { ascending: true })
+      .range(desde, desde + 999),
+  );
+  const cargosPor = new Map<string, Parameters<typeof atribuirRecargos>[0]>();
+  for (const c of cargos) {
     const lista = cargosPor.get(c.contrato_id) ?? [];
     lista.push({
       id: c.id,
@@ -571,14 +621,7 @@ async function recargoAbiertoPorContrato(ids: string[]): Promise<Map<string, num
     cargosPor.set(c.contrato_id, lista);
   }
   const pagosPor = new Map<string, Parameters<typeof atribuirRecargos>[1]>();
-  for (const p of (pagos ?? []) as {
-    id: string;
-    contrato_id: string | null;
-    fecha: string | null;
-    monto: number;
-    rubro: string | null;
-    asignaciones: unknown;
-  }[]) {
+  for (const p of pagos) {
     if (!p.contrato_id) continue;
     const lineas = lineasAsignadas(p.asignaciones);
     if (lineas.length === 0 && (p.rubro ?? "").toLowerCase() === "recargo") {
@@ -603,7 +646,7 @@ export async function cargosExtraPorContrato(
   const ids = contratoIds.filter(Boolean);
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
-  const data: {
+  const data = await leerPorPaginas<{
     contrato_id: string;
     tipo: string;
     concepto: string | null;
@@ -611,20 +654,15 @@ export async function cargosExtraPorContrato(
     monto: number;
     pago_id: string | null;
     fecha: string | null;
-  }[] = [];
-  for (let desde = 0; desde < 20000; desde += 1000) {
-    const { data: chunk, error } = await sb
+  }>(ids, (lote, desde) =>
+    sb
       .from("cargos")
       .select("contrato_id, tipo, concepto, concepto_codigo, monto, pago_id, fecha")
-      .in("contrato_id", ids)
+      .in("contrato_id", lote)
       .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)")
-      .order("fecha", { ascending: false })
-      .range(desde, desde + 999);
-    if (error) break;
-    const filas = (chunk ?? []) as typeof data;
-    data.push(...filas);
-    if (filas.length < 1000) break;
-  }
+      .order("id", { ascending: true })
+      .range(desde, desde + 999),
+  );
 
   const maps = new Map<string, Map<string, AcumExtra>>();
   for (const f of data) {
@@ -680,7 +718,7 @@ export async function cargosExtraPorContrato(
   // El recargo de las 7 p.m. que ya se pagó (aunque el pago diga “saldo anterior”)
   // no vuelve al estado de cuenta: solo queda el que sigue abierto.
   const [abonos, abiertoRecargo] = await Promise.all([
-    abonosExtraPorContrato(ids),
+    abonosExtraPorContrato([...maps.keys()]),
     recargoAbiertoPorContrato(ids),
   ]);
   for (const [id, m] of maps) {
@@ -753,12 +791,16 @@ async function abonosExtraPorContrato(ids: string[]): Promise<Map<string, Map<st
   const out = new Map<string, Map<string, number>>();
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
-  const { data } = await sb
-    .from("pagos")
-    .select("contrato_id, asignaciones")
-    .in("contrato_id", ids)
-    .in("estado_conciliacion", ["conciliado", "manual"]);
-  for (const p of (data ?? []) as { contrato_id: string | null; asignaciones: unknown }[]) {
+  const data = await leerPorPaginas<{ contrato_id: string | null; asignaciones: unknown }>(ids, (lote, desde) =>
+    sb
+      .from("pagos")
+      .select("contrato_id, asignaciones")
+      .in("contrato_id", lote)
+      .in("estado_conciliacion", ["conciliado", "manual"])
+      .order("id", { ascending: true })
+      .range(desde, desde + 999),
+  );
+  for (const p of data) {
     if (!p.contrato_id) continue;
     const cubetas = out.get(p.contrato_id) ?? new Map<string, number>();
     for (const a of lineasDeAsignaciones(p.asignaciones)) {

@@ -557,6 +557,7 @@ async function cuotasPorContrato(
         .select("contrato_id, monto")
         .in("contrato_id", ids)
         .in("estado_conciliacion", ["conciliado", "manual"])
+        .order("id", { ascending: true })
         .range(desde, desde + 999),
     ),
     filasPorPagina<{ contrato_id: string; monto: number }>((desde) =>
@@ -779,14 +780,24 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
       },
   );
   const cifras = cumple.cifras;
-  const { data: pagosRecargo } = await sb
-    .from("pagos")
-    .select("id, fecha, monto, rubro, asignaciones")
-    .eq("contrato_id", contratoId)
-    .in("estado_conciliacion", ["conciliado", "manual"]);
+  const pagosRecargo = await filasPorPagina<{
+    id: string;
+    fecha: string | null;
+    monto: number;
+    rubro: string | null;
+    asignaciones: unknown;
+  }>((desde) =>
+    sb
+      .from("pagos")
+      .select("id, fecha, monto, rubro, asignaciones")
+      .eq("contrato_id", contratoId)
+      .in("estado_conciliacion", ["conciliado", "manual"])
+      .order("id", { ascending: true })
+      .range(desde, desde + 999),
+  );
   const recargoCruzado = atribuirRecargos(
     cargosRecargoDe(multasTodas.data ?? []),
-    pagosRecargoDe(pagosRecargo ?? []),
+    pagosRecargoDe(pagosRecargo.rows),
   ).abierto;
   const recargosAcumulados = Math.max(
     recargoCruzado + (cifras.recargo > 0.009 && !(multa.data?.length ?? 0) ? cifras.recargo : 0),
@@ -955,6 +966,7 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
         .select("id, contrato_id, fecha, monto, rubro, asignaciones")
         .in("contrato_id", ids)
         .in("estado_conciliacion", ["conciliado", "manual"])
+        .order("id", { ascending: true })
         .range(desde, desde + 999),
     ),
   ]);
@@ -1056,7 +1068,7 @@ async function filasPorPagina<T>(
   pedir: (desde: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<{ rows: T[]; error: boolean }> {
   const rows: T[] = [];
-  for (let desde = 0; desde < 20000; desde += 1000) {
+  for (let desde = 0; ; desde += 1000) {
     const { data, error } = await pedir(desde);
     if (error) return { rows, error: true };
     const chunk = data ?? [];
@@ -1108,6 +1120,7 @@ async function domingoPorContrato(
       .select("contrato_id, monto, rubro, asignaciones")
       .in("contrato_id", ids)
       .in("estado_conciliacion", ["conciliado", "manual"])
+      .order("id", { ascending: true })
       .range(desde, desde + 999),
   );
   for (const g of cargos) {
