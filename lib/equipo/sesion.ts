@@ -5,7 +5,8 @@ import type { RolEquipo, SesionEquipo } from "./tipos";
 
 function fila(r: { id: string; email: string; nombre: string; rol: string; activo: boolean }): SesionEquipo | null {
   if (!r.activo) return null;
-  const rol: RolEquipo = r.rol === "admin" ? "admin" : "cartera";
+  const rol: RolEquipo =
+    r.rol === "admin" ? "admin" : r.rol === "comercial" ? "comercial" : "cartera";
   return { id: r.id, email: r.email, nombre: r.nombre, rol };
 }
 

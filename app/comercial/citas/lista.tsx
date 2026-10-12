@@ -5,7 +5,7 @@ import { EmptyState, StatusChip } from "@/components/kit";
 import { fechaConDia } from "@/lib/cartera/fecha";
 import { sedePorId } from "@/lib/comercial/sedes";
 import type { CitaComercial } from "@/lib/comercial/citas";
-import { marcarCitaConfirmadaPorLlamada } from "../actions";
+import { marcarAsistencia, marcarCitaConfirmadaPorLlamada } from "../actions";
 
 function telefono(n: string): string {
   const d = n.replace(/\D/g, "");
@@ -17,7 +17,20 @@ function telefono(n: string): string {
 export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: string | null }) {
   const [aviso, setAviso] = useState<string | null>(error);
   const [hechas, setHechas] = useState<Record<string, true>>({});
+  const [visitas, setVisitas] = useState<Record<string, "asistio" | "no_asistio" | "cancelada">>({});
   const [pending, start] = useTransition();
+
+  function marcar(id: string, asistencia: "asistio" | "no_asistio" | "cancelada") {
+    setAviso(null);
+    start(async () => {
+      const r = await marcarAsistencia(id, asistencia);
+      if (!r.ok) {
+        setAviso(r.error ?? "No pude actualizar la visita.");
+        return;
+      }
+      setVisitas((prev) => ({ ...prev, [id]: asistencia }));
+    });
+  }
 
   if (error && citas.length === 0) {
     return <EmptyState title="Las citas no cargaron" hint={error} />;
@@ -39,10 +52,12 @@ export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: st
               <th className="px-4 py-3 font-medium">Lugar</th>
               <th className="px-4 py-3 font-medium">Campaña</th>
               <th className="px-4 py-3 font-medium">Confirmación</th>
+              <th className="px-4 py-3 font-medium">Visita</th>
             </tr>
           </thead>
           <tbody>
             {citas.map((c) => {
+              const visita = visitas[c.id] ?? (c.estado === "cancelada" ? "cancelada" : c.asistencia);
               const confirmada = c.confirmacion !== "pendiente" || hechas[c.id];
               const porLlamada = c.confirmacion === "llamada" || hechas[c.id];
               return (
@@ -50,7 +65,7 @@ export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: st
                   <td className="px-4 py-3">
                     <p className="font-medium">{fechaConDia(c.fecha)}</p>
                     <p className="tabular-nums text-muted">{c.hora}</p>
-                    {c.estado === "cancelada" && <p className="text-xs text-rojo">Cancelada</p>}
+                    {visita === "cancelada" && <p className="text-xs text-rojo">Cancelada</p>}
                   </td>
                   <td className="px-4 py-3">
                     <p>{c.nombre}</p>
@@ -60,7 +75,7 @@ export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: st
                   <td className="px-4 py-3 text-muted">{c.lugar || "—"}</td>
                   <td className="px-4 py-3 text-muted">{c.anuncio || c.campanaId || "—"}</td>
                   <td className="px-4 py-3">
-                    {c.estado === "cancelada" ? (
+                    {visita === "cancelada" ? (
                       <StatusChip tone="neutral">Cancelada</StatusChip>
                     ) : confirmada ? (
                       <StatusChip tone="good">{porLlamada ? "Confirmó por llamada" : "Confirmó por chat"}</StatusChip>
@@ -84,6 +99,42 @@ export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: st
                           className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
                         >
                           Confirmó por llamada
+                        </button>
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {visita === "cancelada" ? (
+                      <StatusChip tone="neutral">Cancelada</StatusChip>
+                    ) : visita === "asistio" ? (
+                      <StatusChip tone="good">Asistió</StatusChip>
+                    ) : visita === "no_asistio" ? (
+                      <StatusChip tone="crit">No asistió</StatusChip>
+                    ) : (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => marcar(c.id, "asistio")}
+                          className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                        >
+                          Asistió
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => marcar(c.id, "no_asistio")}
+                          className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+                        >
+                          No asistió
+                        </button>
+                        <button
+                          type="button"
+                          disabled={pending}
+                          onClick={() => marcar(c.id, "cancelada")}
+                          className="rounded-lg bg-white px-3 py-2 text-xs font-medium text-rojo ring-1 ring-rojo/30 disabled:opacity-50"
+                        >
+                          Cancelar
                         </button>
                       </div>
                     )}

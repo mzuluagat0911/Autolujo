@@ -419,7 +419,7 @@ export type AlertaEscalada = {
   preview: string | null;
   /** Cambia si hay un mensaje nuevo o se vuelve a escalar → la campana suena otra vez. */
   huella: string;
-  clase?: "chat" | "gps" | "salida";
+  clase?: "chat" | "comercial" | "gps" | "salida";
   href?: string;
 };
 
@@ -456,6 +456,39 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       clase: "chat" as const,
       href: `/cartera/conversaciones/${c.id}`,
     }));
+    let consultaComercial = sb
+      .from("conversaciones_comercial")
+      .select("id, nombre, wa_numero, motivo, ultimo_texto, ultimo_mensaje_at, asesor_id")
+      .eq("necesita_humano", true)
+      .is("asesor_id", null)
+      .order("ultimo_mensaje_at", { ascending: true, nullsFirst: false });
+    const comercialesRes = await consultaComercial;
+    let comercialesData = comercialesRes.data as unknown as Record<string, unknown>[] | null;
+    if (comercialesRes.error && /asesor_id/i.test(comercialesRes.error.message)) {
+      const retry = await sb
+        .from("conversaciones_comercial")
+        .select("id, wa_numero, motivo, ultimo_texto, ultimo_mensaje_at")
+        .eq("necesita_humano", true)
+        .order("ultimo_mensaje_at", { ascending: true, nullsFirst: false });
+      comercialesData = retry.data as unknown as Record<string, unknown>[] | null;
+    }
+    const comerciales: AlertaEscalada[] = ((comercialesData ?? []) as unknown as {
+      id: string;
+      nombre?: string | null;
+      wa_numero: string;
+      motivo: string | null;
+      ultimo_texto: string | null;
+      ultimo_mensaje_at: string | null;
+    }[]).map((c) => ({
+      id: `comercial:${c.id}`,
+      titulo: c.nombre || c.wa_numero || "Lead comercial",
+      motivo: c.motivo,
+      desde: c.ultimo_mensaje_at,
+      preview: c.ultimo_texto,
+      huella: [`comercial:${c.id}`, c.motivo ?? "", c.ultimo_mensaje_at ?? ""].join("|"),
+      clase: "comercial" as const,
+      href: `/comercial?chat=${encodeURIComponent(c.id)}`,
+    }));
     const gps = await alertasGpsPendientes();
     const extras: AlertaEscalada[] = gps.map((g) => ({
       id: g.id,
@@ -489,7 +522,7 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       clase: s.tipo.startsWith("gps_") ? ("gps" as const) : ("salida" as const),
       href: s.tipo.startsWith("gps_") ? hrefRastreo(s.titulo) : "/cartera/pagos",
     }));
-    return [...extrasOps, ...extrasSalida, ...extras, ...chats];
+    return [...comerciales, ...extrasOps, ...extrasSalida, ...extras, ...chats];
   } catch {
     return [];
   }

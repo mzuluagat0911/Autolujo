@@ -103,17 +103,21 @@ export function sendTemplate(
   templateName: string,
   languageCode = "es",
   components?: unknown[],
+  phoneId?: string,
 ) {
-  return post({
-    messaging_product: "whatsapp",
-    to,
-    type: "template",
-    template: {
-      name: templateName,
-      language: { code: languageCode },
-      ...(components ? { components } : {}),
+  return post(
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "template",
+      template: {
+        name: templateName,
+        language: { code: languageCode },
+        ...(components ? { components } : {}),
+      },
     },
-  });
+    phoneId,
+  );
 }
 
 /** Descarga un archivo (comprobante) por su media_id. Devuelve los bytes. */

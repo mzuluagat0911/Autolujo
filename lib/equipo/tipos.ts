@@ -1,4 +1,4 @@
-export type RolEquipo = "admin" | "cartera";
+export type RolEquipo = "admin" | "cartera" | "comercial";
 
 export type SesionEquipo = {
   id: string;

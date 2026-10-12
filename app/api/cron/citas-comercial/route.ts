@@ -4,7 +4,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
-// 7:00 a.m. Panamá: aviso el día antes y, el mismo día, el enlace de la sede.
+// 8:00 a.m. Panamá: recordatorio del día. La confirmación de 24 h también
+// se revisa cada 15 minutos desde el cron de seguimientos.
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (secret) {

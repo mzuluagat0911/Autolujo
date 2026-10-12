@@ -25,14 +25,23 @@ import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoInventario } from "@/lib/comercial/inventario";
 import { textoSedes } from "@/lib/comercial/sedes";
 import { aplicarPedidoCita, citaAbierta } from "@/lib/comercial/citas";
+import { esSolicitudNoContacto, lecturaLeadConReglas } from "@/lib/comercial/lead";
 import { fechaConDia, hoyPanama, fueraHorarioOperativo } from "@/lib/cartera/fecha";
 import {
+  cerrarLeadSinContacto,
+  guardarAnalisisComercial,
   historialParaLucia,
   hiloComercial,
+  luciaPuedeResponder,
   marcarEscaladaComercial,
+  programarSiguienteSeguimiento,
+  guardarBorradorComercial,
   registrarEntradaComercial,
+  registrarEntregasComercial,
   registrarSalidaComercial,
 } from "@/lib/comercial/chats";
+import { idMensajeEnviado } from "@/lib/comercial/entrega";
+import { decisionPiloto } from "@/lib/comercial/piloto";
 import { revisarRespuesta } from "@/lib/ai/guard";
 import { respuestaSalidaEstricta } from "@/lib/cartera/salidas-interior";
 import { consultarPagoMencionado, corregirRespuestaPago } from "@/lib/cartera/consulta-pago";
@@ -130,13 +139,13 @@ function verificarFirma(raw: string, signature: string | null): boolean {
 
 async function procesar(payload: WebhookPayload) {
   const value = payload?.entry?.[0]?.changes?.[0]?.value;
-  const messages = value?.messages;
-  if (!Array.isArray(messages)) return; // estados de entrega, etc. — ignorar por ahora
-
-  // ¿A qué número ENTRÓ el mensaje? Eso decide el agente: comercial (Lucía) vs
-  // cartera (Claudia). Misma app y mismo webhook, dos WABAs/números distintos.
   const phoneIdEntrante = value?.metadata?.phone_number_id;
   const esComercial = !!PHONE_ID_COMERCIAL && phoneIdEntrante === PHONE_ID_COMERCIAL;
+  if (esComercial && Array.isArray(value?.statuses)) {
+    await registrarEntregasComercial(value.statuses);
+  }
+  const messages = value?.messages;
+  if (!Array.isArray(messages)) return;
 
   for (const msg of messages) {
     if (!msg.from) continue;
@@ -172,8 +181,17 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
       campanaUrl: campana.campanaUrl,
     });
     if (!guardado.repetido) {
-      const enviado = await enviarComercial(from, aviso);
-      if (enviado && guardado.conversacionId) await registrarSalidaComercial(guardado.conversacionId, aviso);
+      const decision = decisionPiloto(from);
+      if (decision.envia) {
+        const enviado = await enviarComercial(from, aviso);
+        if (enviado && guardado.conversacionId) {
+          await registrarSalidaComercial(guardado.conversacionId, aviso, {
+            waMessageId: enviado === "ok" ? null : enviado,
+          });
+        }
+      } else if (decision.responde && guardado.conversacionId) {
+        await guardarBorradorComercial(guardado.conversacionId, aviso);
+      }
     }
     return;
   }
@@ -192,6 +210,11 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
   });
   if (guardado.repetido) return;
   if (guardado.error) console.error("[whatsapp/webhook] chat comercial:", guardado.error);
+  if (guardado.conversacionId && !(await luciaPuedeResponder(guardado.conversacionId))) {
+    return;
+  }
+  const decision = decisionPiloto(from);
+  if (!decision.responde) return;
 
   try {
     const historial = guardado.conversacionId
@@ -202,6 +225,27 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
       historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
       contexto,
     });
+    const lectura = lecturaLeadConReglas(
+      historial.map((m) => m.texto),
+      {
+        temperatura: r.lead.temperatura,
+        score: r.lead.score,
+        motivo: r.lead.motivo,
+      },
+    );
+    const optOut = esSolicitudNoContacto(historial.map((m) => m.texto));
+    if (guardado.conversacionId) {
+      await guardarAnalisisComercial({
+        conversacionId: guardado.conversacionId,
+        temperatura: lectura.temperatura,
+        score: lectura.score,
+        motivo: lectura.motivo,
+        resumen: r.lead.resumen,
+        interes: r.lead.interes,
+        lugar: r.lead.lugar,
+        proximaAccion: r.lead.proxima_accion,
+      });
+    }
     let salida = r.mensaje;
     if (guardado.conversacionId && r.cita && r.cita.accion !== "ninguna") {
       const hilo = await hiloComercial(guardado.conversacionId);
@@ -214,16 +258,45 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
       });
       if (aplicada.mensaje) salida = aplicada.mensaje;
     }
+    if (!decision.envia) {
+      if (guardado.conversacionId) {
+        await guardarBorradorComercial(guardado.conversacionId, salida);
+        if (r.pasar_a_humano) await marcarEscaladaComercial(guardado.conversacionId, r.motivo);
+        if (optOut) await cerrarLeadSinContacto(guardado.conversacionId);
+      }
+      return;
+    }
     const enviado = await enviarComercial(from, salida);
     if (guardado.conversacionId) {
-      if (enviado) await registrarSalidaComercial(guardado.conversacionId, salida);
+      if (enviado) {
+        await registrarSalidaComercial(guardado.conversacionId, salida, {
+          waMessageId: enviado === "ok" ? null : enviado,
+        });
+      }
       if (r.pasar_a_humano) await marcarEscaladaComercial(guardado.conversacionId, r.motivo);
+      if (optOut) await cerrarLeadSinContacto(guardado.conversacionId);
+      if (
+        enviado &&
+        !optOut &&
+        !r.pasar_a_humano &&
+        (!r.cita || r.cita.accion === "ninguna")
+      ) {
+        await programarSiguienteSeguimiento(guardado.conversacionId, lectura.temperatura);
+      }
     }
   } catch (e) {
     console.error("[whatsapp/webhook] agente comercial falló:", e);
     const fallo = "Deme un momento, le escribo ya.";
+    if (!decision.envia && guardado.conversacionId) {
+      await guardarBorradorComercial(guardado.conversacionId, fallo);
+      return;
+    }
     const enviado = await enviarComercial(from, fallo);
-    if (enviado && guardado.conversacionId) await registrarSalidaComercial(guardado.conversacionId, fallo);
+    if (enviado && guardado.conversacionId) {
+      await registrarSalidaComercial(guardado.conversacionId, fallo, {
+        waMessageId: enviado === "ok" ? null : enviado,
+      });
+    }
   }
 }
 
@@ -267,13 +340,13 @@ async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMes
 }
 
 /** Manda un texto DESDE el número comercial (no el de cartera). */
-async function enviarComercial(to: string, texto: string): Promise<boolean> {
+async function enviarComercial(to: string, texto: string): Promise<string | null> {
   try {
-    await sendText(to, texto, PHONE_ID_COMERCIAL);
-    return true;
+    const json = await sendText(to, texto, PHONE_ID_COMERCIAL);
+    return idMensajeEnviado(json) ?? "ok";
   } catch (e) {
     console.error("[whatsapp/webhook] sendText comercial falló:", e);
-    return false;
+    return null;
   }
 }
 
@@ -772,6 +845,7 @@ type WebhookPayload = {
       value?: {
         messages?: WhatsAppMessage[];
         metadata?: { phone_number_id?: string; display_phone_number?: string };
+        statuses?: { id?: string; status?: string }[];
       };
     }>;
   }>;

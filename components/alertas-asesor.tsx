@@ -17,6 +17,7 @@ import {
   cargarAlertasEscalada,
   type AlertaEscalada,
 } from "@/app/cartera/conversaciones/actions";
+import { tomarChat as tomarChatComercial } from "@/app/comercial/actions";
 import {
   desbloquearAudio,
   lanzarNotificacionEscritorio,
@@ -58,7 +59,7 @@ export function useAlertasCount(): number {
 /** Solo chats que nadie ha tomado. GPS y salidas viven en la campana. */
 export function useChatsEsperandoCount(): number {
   const items = useContext(AlertasCtx)?.items ?? [];
-  return items.filter((a) => a.clase === "chat" || a.clase == null).length;
+  return items.filter((a) => a.clase === "chat" || a.clase === "comercial" || a.clase == null).length;
 }
 
 export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
@@ -102,7 +103,7 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
       for (const a of nuevas) {
         lanzarNotificacionEscritorio({
           titulo: a.clase === "gps" ? a.titulo : `${a.titulo} espera a un asesor`,
-          cuerpo: a.motivo ?? a.preview ?? "Marcela pasó este chat a una persona.",
+          cuerpo: a.motivo ?? a.preview ?? "Este chat espera a una persona.",
           tag: `escalada-${a.huella}`,
           onClick: () => {
             if (opts?.prueba || a.id === "__prueba__") return;
@@ -206,7 +207,9 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
     router.push(dest);
 
     try {
-      if (id.startsWith("salerta:") || id.startsWith("gps:") || item?.clase === "gps") {
+      if (id.startsWith("comercial:") || item?.clase === "comercial") {
+        await tomarChatComercial(id.replace(/^comercial:/, ""));
+      } else if (id.startsWith("salerta:") || id.startsWith("gps:") || item?.clase === "gps") {
         await accionVerAlertaGps(id);
       } else if (item?.clase === "salida" || id.startsWith("salida:")) {
         // Solo abre Comprobantes; el aval se da ahí.

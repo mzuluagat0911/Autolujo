@@ -43,12 +43,18 @@ export default async function UsuariosPage() {
         <Kpi label="Administradores" value={admins} />
       </div>
 
-      <div className="mt-8 grid gap-4 lg:grid-cols-2">
+      <div className="mt-8 grid gap-4 lg:grid-cols-3">
         <div className="rounded-xl bg-surface p-5 ring-1 ring-line">
           <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">Rol cartera</p>
           <p className="mt-2 text-sm text-ink">
             Panel, estados de cuenta, conversaciones, pagos, conciliación, carros, rastreo, clientes
             y tarifario.
+          </p>
+        </div>
+        <div className="rounded-xl bg-surface p-5 ring-1 ring-line">
+          <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">Rol comercial</p>
+          <p className="mt-2 text-sm text-ink">
+            Leads, conversaciones de ventas, seguimientos y citas.
           </p>
         </div>
         <div className="rounded-xl bg-surface p-5 ring-1 ring-line">
@@ -105,6 +111,7 @@ export default async function UsuariosPage() {
                         className="rounded-lg bg-paper px-2 py-1.5 text-sm ring-1 ring-line"
                       >
                         <option value="cartera">cartera</option>
+                        <option value="comercial">comercial</option>
                         <option value="admin">admin</option>
                       </select>
                       <button

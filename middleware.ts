@@ -59,6 +59,13 @@ export async function middleware(req: NextRequest) {
   if ((path === "/admin/metas" || path.startsWith("/admin/metas/")) && eq.rol !== "admin") {
     return NextResponse.redirect(new URL("/admin", req.url));
   }
+  if (
+    eq.rol === "comercial" &&
+    path !== "/comercial" &&
+    !path.startsWith("/comercial/")
+  ) {
+    return NextResponse.redirect(new URL("/comercial", req.url));
+  }
 
   return res;
 }

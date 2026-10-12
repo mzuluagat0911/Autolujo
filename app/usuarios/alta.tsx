@@ -32,6 +32,7 @@ export function AltaUsuario() {
           defaultValue="cartera"
           options={[
             { value: "cartera", label: "Cartera — panel, pagos, GPS, chats" },
+            { value: "comercial", label: "Comercial — leads, chats y citas" },
             { value: "admin", label: "Admin — lo anterior + dar accesos" },
           ]}
         />

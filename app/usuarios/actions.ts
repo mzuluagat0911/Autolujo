@@ -21,7 +21,9 @@ export async function crearUsuarioEquipo(
   const nombre = String(formData.get("nombre") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const clave = String(formData.get("clave") ?? "");
-  const rol = String(formData.get("rol") ?? "cartera") === "admin" ? "admin" : "cartera";
+  const rolRaw = String(formData.get("rol") ?? "cartera");
+  const rol: RolEquipo =
+    rolRaw === "admin" ? "admin" : rolRaw === "comercial" ? "comercial" : "cartera";
   if (!nombre || !email || clave.length < 8) {
     return { ok: false, msg: "Nombre, correo y clave de al menos 8 caracteres." };
   }
@@ -60,7 +62,9 @@ export async function cambiarActivo(formData: FormData): Promise<void> {
 export async function cambiarRol(formData: FormData): Promise<void> {
   const yo = await soloAdmin();
   const id = String(formData.get("id") ?? "");
-  const rol = (String(formData.get("rol") ?? "cartera") === "admin" ? "admin" : "cartera") as RolEquipo;
+  const rolRaw = String(formData.get("rol") ?? "cartera");
+  const rol: RolEquipo =
+    rolRaw === "admin" ? "admin" : rolRaw === "comercial" ? "comercial" : "cartera";
   if (!id || id === yo.id) return;
   const sb = createServerSupabase();
   await sb.from("equipo").update({ rol }).eq("id", id);

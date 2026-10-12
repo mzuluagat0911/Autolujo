@@ -1,9 +1,14 @@
 // Visitas del comercial. Una cita abierta por chat: reagendar actualiza esa fila.
 
+import { ventanaAbierta } from "@/lib/cartera/pipeline";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { fechaConDia, hoyPanama, sumarDias } from "@/lib/cartera/fecha";
+import { avisoCitaPendiente } from "./avisos-cita";
 import { sedePorId, validarHorario, type SedeId } from "./sedes";
-import { sendText } from "@/lib/whatsapp/client";
+import { sendTemplate, sendText } from "@/lib/whatsapp/client";
+import { idMensajeEnviado } from "./entrega";
+import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
+import { plantillaCita } from "./plantillas";
 
 export type ConfirmacionCita = "pendiente" | "chat" | "llamada";
 
@@ -19,12 +24,13 @@ export type CitaComercial = {
   lugar: string | null;
   confirmacion: ConfirmacionCita;
   estado: "programada" | "cancelada";
+  asistencia: "pendiente" | "asistio" | "no_asistio";
   anuncio: string | null;
   campanaId: string | null;
 };
 
 export type PedidoCita = {
-  accion: "ninguna" | "agendar" | "reagendar" | "confirmar" | "no_puede";
+  accion: "ninguna" | "agendar" | "reagendar" | "confirmar" | "no_puede" | "cancelar";
   nombre: string | null;
   sede: SedeId | null;
   fecha: string | null;
@@ -52,6 +58,7 @@ function fila(row: Record<string, unknown>): CitaComercial {
     lugar: (row.lugar as string | null) ?? null,
     confirmacion,
     estado: row.estado === "cancelada" ? "cancelada" : "programada",
+    asistencia: row.asistencia === "asistio" || row.asistencia === "no_asistio" ? row.asistencia : "pendiente",
     anuncio: (row.anuncio as string | null) ?? null,
     campanaId: (row.campana_id as string | null) ?? null,
   };
@@ -136,6 +143,23 @@ export async function aplicarPedidoCita(opts: {
     return { mensaje: `Quedó confirmada, ${abierta.nombre}. Lo esperamos el ${fechaConDia(abierta.fecha)} a las ${abierta.hora}.` };
   }
 
+  if (pedido.accion === "cancelar") {
+    if (!abierta) return { mensaje: "No le veo una cita abierta para cancelar." };
+    const sb = createServerSupabase();
+    const ahora = new Date().toISOString();
+    await sb.from("citas_comercial").update({ estado: "cancelada", updated_at: ahora }).eq("id", abierta.id);
+    await sb
+      .from("conversaciones_comercial")
+      .update({
+        etapa: "conversacion",
+        proxima_accion: "Ofrecer otra fecha",
+        seguimiento_at: null,
+        updated_at: ahora,
+      })
+      .eq("id", opts.conversacionId);
+    return { mensaje: `Listo, ${abierta.nombre}. Cancelé la cita del ${fechaConDia(abierta.fecha)}. Si quiere, le busco otro día.` };
+  }
+
   if (pedido.accion === "no_puede" && !pedido.fecha && !pedido.hora) {
     return {
       mensaje: abierta
@@ -161,6 +185,18 @@ export async function aplicarPedidoCita(opts: {
   if (lugar.length < 2) return { mensaje: "¿De qué lugar es usted? Con eso le confirmo si la zona está dentro del alcance." };
 
   const sb = createServerSupabase();
+  const ocupada = await sb
+    .from("citas_comercial")
+    .select("id")
+    .eq("sede", sede)
+    .eq("fecha", fecha)
+    .eq("hora", hora)
+    .eq("estado", "programada")
+    .neq("id", abierta?.id ?? "00000000-0000-0000-0000-000000000000")
+    .limit(1);
+  if (!ocupada.error && (ocupada.data?.length ?? 0) > 0) {
+    return { mensaje: `Esa hora en ${sedePorId(sede)?.nombre ?? "la sede"} ya está ocupada. ¿Le sirve la media hora siguiente?` };
+  }
   const ahora = new Date().toISOString();
   const campos = {
     nombre,
@@ -194,6 +230,24 @@ export async function aplicarPedidoCita(opts: {
     return { mensaje: null };
   }
   const cita = fila(guardado.data as Record<string, unknown>);
+  await sb
+    .from("conversaciones_comercial")
+    .update({
+      etapa: "cita",
+      seguimiento_at: null,
+      proxima_accion: `Confirmar asistencia el ${cita.fecha}`,
+      updated_at: ahora,
+    })
+    .eq("id", opts.conversacionId);
+  await sb
+    .from("seguimientos_comercial")
+    .update({
+      estado: "cancelado",
+      motivo_cancelado: "El lead agendó una cita.",
+      updated_at: ahora,
+    })
+    .eq("conversacion_id", opts.conversacionId)
+    .eq("estado", "pendiente");
   return {
     mensaje: textoConfirmacion({
       nombre: cita.nombre,
@@ -206,17 +260,40 @@ export async function aplicarPedidoCita(opts: {
   };
 }
 
-export async function confirmarCitaPorLlamada(id: string): Promise<{ ok: boolean; error?: string }> {
+export async function confirmarCitaPorLlamada(
+  id: string,
+  actorId?: string | null,
+): Promise<{ ok: boolean; error?: string }> {
   const sb = createServerSupabase();
-  const { error } = await sb
+  const { data, error } = await sb
     .from("citas_comercial")
     .update({ confirmacion: "llamada", updated_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .select("conversacion_id")
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
+  if (data?.conversacion_id) {
+    await sb.from("eventos_comercial").insert({
+      conversacion_id: data.conversacion_id,
+      actor_id: actorId ?? null,
+      tipo: "cita_confirmada_llamada",
+      detalle: { cita_id: id },
+    });
+  }
   return { ok: true };
 }
 
+function textoAviso(cita: CitaComercial, tipo: "24h" | "dia"): string {
+  const sede = sedePorId(cita.sede);
+  const lugar = `${sede?.nombre ?? "la sede"}. ${sede?.direccion ?? ""} ${sede?.maps ?? ""}`.trim();
+  if (tipo === "dia") {
+    return `${cita.nombre}, hoy lo esperamos a las ${cita.hora} en ${lugar}`;
+  }
+  return `${cita.nombre}, le confirmo la cita de mañana ${fechaConDia(cita.fecha)} a las ${cita.hora} en ${lugar}. Responda SÍ para confirmarla. Si no puede, dígame otro día o si desea cancelarla.`;
+}
+
 export async function enviarAvisosCitas(): Promise<{ vispera: number; dia: number; fallos: number }> {
+  if (!enviosAutomaticos() || modoAgente() !== "on") return { vispera: 0, dia: 0, fallos: 0 };
   const sb = createServerSupabase();
   const hoy = hoyPanama();
   const manana = sumarDias(hoy, 1);
@@ -228,30 +305,63 @@ export async function enviarAvisosCitas(): Promise<{ vispera: number; dia: numbe
     .in("fecha", [hoy, manana]);
   if (error || !data) return { vispera: 0, dia: 0, fallos: 0 };
 
+  const ids = [...new Set((data as { conversacion_id?: string | null }[]).map((c) => c.conversacion_id).filter(Boolean))] as string[];
+  const entradas = new Map<string, string | null>();
+  if (ids.length) {
+    const conv = await sb.from("conversaciones_comercial").select("id, ultimo_entrante_at").in("id", ids);
+    for (const row of (conv.data ?? []) as { id: string; ultimo_entrante_at: string | null }[]) {
+      entradas.set(row.id, row.ultimo_entrante_at);
+    }
+  }
+
   let vispera = 0;
   let dia = 0;
   let fallos = 0;
   for (const raw of data as Record<string, unknown>[]) {
     const cita = fila(raw);
-    const sede = sedePorId(cita.sede);
-    const esHoy = cita.fecha === hoy;
-    const ya = esHoy ? raw.aviso_dia_at : raw.aviso_vispera_at;
-    if (ya) continue;
-    const texto = esHoy
-      ? `${cita.nombre}, hoy lo esperamos a las ${cita.hora} en ${sede?.nombre ?? "la sede"}. Cómo llegar: ${sede?.maps ?? ""}`
-      : `${cita.nombre}, le confirmo la cita de mañana ${fechaConDia(cita.fecha)} a las ${cita.hora} en ${sede?.nombre ?? "la sede"}. Responda SÍ para dejarla confirmada. Si no puede, dígame otro día y la movemos.`;
+    const tipo = avisoCitaPendiente({
+      fecha: cita.fecha,
+      hora: cita.hora,
+      aviso24hAt: (raw.aviso_vispera_at as string | null) ?? null,
+      avisoDiaAt: (raw.aviso_dia_at as string | null) ?? null,
+    });
+    if (!tipo || !numeroEnPiloto(cita.waNumero)) continue;
+    const ventanaCerrada = cita.conversacionId
+      ? !ventanaAbierta(entradas.get(cita.conversacionId) ?? null)
+      : true;
+    const toque = raw.updated_at ? new Date(String(raw.updated_at)).getTime() : 0;
+    if (ventanaCerrada && raw.aviso_error && Date.now() - toque < 6 * 60 * 60 * 1000) continue;
+
+    const modelo = plantillaCita(tipo, {
+      nombre: cita.nombre,
+      fechaTexto: fechaConDia(cita.fecha),
+      hora: cita.hora,
+      sede: sedePorId(cita.sede)?.nombre ?? "la sede",
+    });
+    const texto = ventanaCerrada ? modelo.texto : textoAviso(cita, tipo);
     let avisoError: string | null = null;
     try {
       if (!phoneId) throw new Error("Falta el número comercial.");
-      await sendText(cita.waNumero, texto, phoneId);
+      const json = ventanaCerrada
+        ? await sendTemplate(cita.waNumero, modelo.name, "es", modelo.componentes, phoneId)
+        : await sendText(cita.waNumero, texto, phoneId);
       if (cita.conversacionId) {
-        await sb.from("mensajes_comercial").insert({
+        const espejo = await sb.from("mensajes_comercial").insert({
           conversacion_id: cita.conversacionId,
           direccion: "out",
+          autor: "sistema",
           texto,
+          ...(idMensajeEnviado(json) ? { wa_message_id: idMensajeEnviado(json) } : {}),
         });
+        if (espejo.error && /autor|wa_message_id|schema cache/i.test(espejo.error.message)) {
+          await sb.from("mensajes_comercial").insert({
+            conversacion_id: cita.conversacionId,
+            direccion: "out",
+            texto,
+          });
+        }
       }
-      if (esHoy) dia += 1;
+      if (tipo === "dia") dia += 1;
       else vispera += 1;
     } catch (e) {
       avisoError = e instanceof Error ? e.message : "No pude enviar el aviso.";
@@ -262,7 +372,7 @@ export async function enviarAvisosCitas(): Promise<{ vispera: number; dia: numbe
       .update({
         ...(avisoError
           ? {}
-          : esHoy
+          : tipo === "dia"
             ? { aviso_dia_at: new Date().toISOString() }
             : { aviso_vispera_at: new Date().toISOString() }),
         aviso_error: avisoError,
@@ -271,4 +381,51 @@ export async function enviarAvisosCitas(): Promise<{ vispera: number; dia: numbe
       .eq("id", cita.id);
   }
   return { vispera, dia, fallos };
+}
+
+export async function marcarAsistenciaCita(
+  id: string,
+  asistencia: "asistio" | "no_asistio" | "cancelada",
+  actorId: string | null,
+): Promise<{ ok: boolean; error?: string }> {
+  const sb = createServerSupabase();
+  const ahora = new Date().toISOString();
+  const patch =
+    asistencia === "cancelada"
+      ? { estado: "cancelada", updated_at: ahora }
+      : { asistencia, updated_at: ahora };
+  const { data, error } = await sb
+    .from("citas_comercial")
+    .update(patch)
+    .eq("id", id)
+    .select("conversacion_id, nombre, fecha")
+    .maybeSingle();
+  if (error && /asistencia/i.test(error.message)) {
+    return { ok: false, error: "Falta aplicar la migración 0040 para registrar la asistencia." };
+  }
+  if (error) return { ok: false, error: error.message };
+  if (data?.conversacion_id) {
+    const manana = new Date(`${sumarDias(hoyPanama(), 1)}T10:00:00-05:00`).toISOString();
+    await sb
+      .from("conversaciones_comercial")
+      .update({
+        etapa: asistencia === "asistio" ? "visito" : "conversacion",
+        proxima_accion:
+          asistencia === "asistio"
+            ? "Dar seguimiento a la visita"
+            : asistencia === "no_asistio"
+              ? "Reagendar: no asistió"
+              : "Ofrecer otra fecha",
+        seguimiento_at: asistencia === "cancelada" ? null : manana,
+        updated_at: ahora,
+      })
+      .eq("id", data.conversacion_id);
+    await sb.from("eventos_comercial").insert({
+      conversacion_id: data.conversacion_id,
+      actor_id: actorId,
+      tipo: `cita_${asistencia}`,
+      detalle: { cita_id: id },
+    });
+  }
+  return { ok: true };
 }

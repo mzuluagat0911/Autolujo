@@ -28,10 +28,21 @@ export const RespuestaComercial = z.object({
     .string()
     .nullable()
     .describe("Motivo breve para el equipo. null si no pasas a humano."),
+  lead: z.object({
+    temperatura: z
+      .enum(["caliente", "tibio", "frio"])
+      .describe("Caliente si quiere avanzar pronto; tibio si hay interés sin fecha; frío si es general o distante."),
+    score: z.number().int().min(0).max(100),
+    motivo: z.string().describe("Una frase con señales observables del chat."),
+    resumen: z.string().describe("Resumen operativo de máximo dos frases para el asesor."),
+    interes: z.string().nullable().describe("Carro, transmisión o necesidad concreta; null si no se sabe."),
+    lugar: z.string().nullable().describe("Lugar del cliente; null si no lo ha dicho."),
+    proxima_accion: z.string().describe("Siguiente paso concreto y breve."),
+  }),
   cita: z
     .object({
       accion: z
-        .enum(["ninguna", "agendar", "reagendar", "confirmar", "no_puede"])
+        .enum(["ninguna", "agendar", "reagendar", "confirmar", "no_puede", "cancelar"])
         .describe("ninguna si no están hablando de la visita."),
       nombre: z.string().nullable(),
       sede: z.enum(["juan_diaz", "chorrera"]).nullable(),
@@ -99,7 +110,7 @@ CITA (campo cita; el mensaje y el campo tienen que coincidir):
   "Listo, se la dejo".
 - Si dice que sí confirma la cita que ya tiene, accion = confirmar.
 - Si dice que no puede ir, accion = no_puede. Si ya da otro día u hora, accion = reagendar con la
-  fecha y hora nuevas.
+  fecha y hora nuevas. Si pide cancelar la cita y no da otra fecha, accion = cancelar.
 - No inventes una hora fuera de la ventana. Hoy en el contexto está la fecha de Panamá.
 
 LUGAR:
@@ -113,7 +124,15 @@ LO QUE NO INVENTAS:
 - Si no sabes algo, dilo y sigue hacia la visita.
 
 PASAR A UNA PERSONA (pasar_a_humano = true) solo si pide hablar con alguien o cerrar el contrato ya.
-Agendar no se pasa a humano.`;
+Agendar no se pasa a humano.
+
+LECTURA DEL LEAD (campo lead; no exageres intención):
+- CALIENTE (70–100): pide cita/llamada, pregunta por disponibilidad concreta, requisitos para sacar
+  el carro, retiro inmediato o quiere cerrar pronto.
+- TIBIO (35–69): muestra interés real, pero todavía falta carro, lugar, sede o fecha.
+- FRÍO (0–34): consulta general, intención lejana, no responde lo necesario o dice que no seguirá.
+- El motivo usa hechos del chat, nunca intuiciones. El resumen es para el equipo, máximo dos frases.
+- proxima_accion dice exactamente qué falta: pedir lugar, confirmar carro, ofrecer sedes, llamar, etc.`;
 
 type Turno = { direccion: "in" | "out"; texto: string };
 

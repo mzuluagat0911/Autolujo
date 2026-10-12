@@ -64,6 +64,7 @@ const NAV: Group[] = [
     items: [
       { label: "Chats", href: "/comercial", status: "active" },
       { label: "Citas", href: "/comercial/citas", status: "active" },
+      { label: "Resultados", href: "/comercial/resultados", status: "active" },
     ],
   },
   {
@@ -189,7 +190,9 @@ export function Shell({
             const items =
               equipo?.rol === "admin"
                 ? group.items
-                : group.items.filter((i) => i.href !== "/usuarios" && i.href !== "/admin/metas");
+                : equipo?.rol === "comercial"
+                  ? group.items.filter((i) => i.href === "/comercial" || i.href.startsWith("/comercial/"))
+                  : group.items.filter((i) => i.href !== "/usuarios" && i.href !== "/admin/metas");
             if (items.length === 0) return null;
 
             // Resumen y links sueltos: siempre visibles.
