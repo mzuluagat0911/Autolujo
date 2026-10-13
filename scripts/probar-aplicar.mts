@@ -11,6 +11,7 @@ import {
   textoComoSeAplico,
 } from "@/lib/cartera/aplicar-pago";
 import type { Obligacion } from "@/lib/cartera/types";
+import { debeCobrarCierreSemana } from "@/lib/cartera/cierre-semana";
 
 let fallos = 0;
 function check(nombre: string, obtenido: unknown, esperado: unknown) {
@@ -176,6 +177,29 @@ check("el pago de $79 muestra el recargo", visto[0], {
 });
 check("y el resto del saldo sigue siendo la letra", visto[1]?.aplicado, 37);
 check("la cuota de hoy no se mueve", visto[2]?.aplicado, 37);
+
+console.log("\n· cierre de semana");
+check("saldo de mantenimiento al día no cobra", debeCobrarCierreSemana({
+  pendienteAnterior: 25,
+  extrasEnSaldo: 25,
+  atrasoAcuerdo: 0,
+}), false);
+check("letra de ayer sí cobra", debeCobrarCierreSemana({
+  pendienteAnterior: 30,
+  extrasEnSaldo: 0,
+  atrasoAcuerdo: 0,
+}), true);
+check("cuota de acuerdo vencida sí cobra", debeCobrarCierreSemana({
+  pendienteAnterior: 25,
+  extrasEnSaldo: 25,
+  atrasoAcuerdo: 5,
+}), true);
+check("el $10 ya cargado no se cuenta como letra", debeCobrarCierreSemana({
+  pendienteAnterior: 35,
+  extrasEnSaldo: 35,
+  atrasoAcuerdo: 0,
+  yaTieneCierre: true,
+}), false);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

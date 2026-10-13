@@ -7,10 +7,10 @@
 // hubiera pagado, o se le cobra un recargo por dinero que ya envió.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { rangoDiaPanama, esPagoPuntual, partesPagoPanama, HORA_EXTRACTO, sumarDias } from "./fecha";
+import { rangoDiaPanama, esPagoPuntual, esDomingo, partesPagoPanama, HORA_EXTRACTO, sumarDias } from "./fecha";
 import { cuotaDeFecha, type TerminosCuota } from "./cuota";
 import { cubrioCuotaDelDia } from "./cifras";
-import { acuerdoHoyDe, type AcuerdoActivo } from "./acuerdo";
+import { acuerdoHoyDe, cuotaAcuerdoHoy, type AcuerdoActivo } from "./acuerdo";
 import type { AsignacionPago, ResultadoPago } from "./types";
 import { montoQueCubreCuota } from "./salidas-aplicar";
 
@@ -285,6 +285,120 @@ export async function atrasoAcuerdoPorContrato(
 
 const ETIQUETA_ACUERDO_DIA = /^acuerdo (\d{4}-\d{2}-\d{2})$/;
 const DIAS_ATRAS_ACUERDO = 14;
+
+/**
+ * Cuota que ya debió cobrarse ese día, sin toparla con el saldo de hoy.
+ * En un acuerdo diario el domingo no abre cuota: el 30 que quedó en
+ * cuota_domingo es el relleno del corte cuando la hoja venía vacía.
+ * Un acuerdo de frecuencia domingo sí cobra ese día.
+ */
+function cuotaVencidaDeAcuerdo(a: AcuerdoActivo, fecha: string): number {
+  const freq = (a.frecuencia ?? "dia") as string;
+  if (freq === "dia" && esDomingo(fecha)) {
+    const q = Number(a.cuota_domingo) || 0;
+    if (q <= 0.009 || Math.abs(q - 30) < 0.01) return 0;
+  }
+  return cuotaAcuerdoHoy({ ...a, saldo: 1_000_000 }, fecha);
+}
+
+/**
+ * Cuotas de acuerdo ya vencidas (ayer y hasta 14 días atrás) que siguen
+ * sin pagar. El saldo que el plan todavía tiene no cuenta: solo lo programado
+ * de esos días, menos lo ya abonado al acuerdo. Un pago de hoy antes de las 9
+ * cubre ese hueco. Lo de hoy después de las 9 es la cuota de hoy.
+ */
+export async function atrasoAcuerdoAcumuladoPorContrato(
+  fecha: string,
+  contratoIds?: string[],
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const sb = createServerSupabase();
+  const sel =
+    "id, contrato_id, saldo, cuota_diaria, cuota_domingo, descripcion, frecuencia, fecha_especifica, created_at";
+  let q = sb.from("acuerdos").select(sel).eq("activo", true).gt("saldo", 0);
+  if (contratoIds?.length) q = q.in("contrato_id", contratoIds);
+  const { data, error } = await q;
+  if (error) return out;
+  const acuerdos = new Map<string, AcuerdoActivo[]>();
+  const filas = ((data ?? []) as (AcuerdoActivo & { contrato_id: string; created_at?: string })[])
+    .slice()
+    .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
+  for (const a of filas) {
+    const list = acuerdos.get(a.contrato_id) ?? [];
+    list.push({
+      id: a.id,
+      saldo: Number(a.saldo) || 0,
+      cuota_diaria: Number(a.cuota_diaria) || 0,
+      cuota_domingo: a.cuota_domingo != null ? Number(a.cuota_domingo) : null,
+      descripcion: a.descripcion ?? null,
+      frecuencia: a.frecuencia ?? "dia",
+      fecha_especifica: a.fecha_especifica ?? null,
+    });
+    acuerdos.set(a.contrato_id, list);
+  }
+  const nace = new Map<string, string>();
+  for (const a of filas) {
+    const dia = String(a.created_at ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dia)) continue;
+    const prev = nace.get(a.contrato_id);
+    if (!prev || dia < prev) nace.set(a.contrato_id, dia);
+  }
+  if (acuerdos.size === 0) return out;
+
+  const desdeDia = sumarDias(fecha, -DIAS_ATRAS_ACUERDO);
+  const { desde } = rangoDiaPanama(desdeDia);
+  const { hasta } = rangoDiaPanama(fecha);
+  const { data: pagos, error: ep } = await sb
+    .from("pagos")
+    .select("contrato_id, pagado_at, asignaciones")
+    .in("contrato_id", [...acuerdos.keys()])
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .gte("pagado_at", desde.toISOString())
+    .lt("pagado_at", hasta.toISOString());
+  if (ep) return out;
+
+  const movimientos = new Map<string, { fecha: string; hora: number; generico: number; porFecha: Map<string, number> }[]>();
+  for (const p of (pagos ?? []) as {
+    contrato_id: string | null;
+    pagado_at: string;
+    asignaciones: unknown;
+  }[]) {
+    if (!p.contrato_id) continue;
+    const parte = partirAcuerdo(p.asignaciones);
+    if (parte.generico <= 0.009 && parte.porFecha.size === 0) continue;
+    const cuando = partesPagoPanama(p.pagado_at);
+    const lista = movimientos.get(p.contrato_id) ?? [];
+    lista.push({ fecha: cuando.fecha, hora: cuando.hora, generico: parte.generico, porFecha: parte.porFecha });
+    movimientos.set(p.contrato_id, lista);
+  }
+
+  for (const [id, lista] of acuerdos) {
+    const plan = lista.find((a) => a.saldo > 0.009);
+    if (!plan) continue;
+    const alta = nace.get(id);
+    const pisoAlta = alta ? sumarDias(alta, 1) : desdeDia;
+    const piso = pisoAlta > desdeDia ? pisoAlta : desdeDia;
+    if (piso >= fecha) continue;
+    let programado = 0;
+    for (let dia = piso; dia < fecha; dia = sumarDias(dia, 1)) {
+      programado += cuotaVencidaDeAcuerdo(plan, dia);
+    }
+    programado = Math.round(programado * 100) / 100;
+    let abono = 0;
+    for (const m of movimientos.get(id) ?? []) {
+      const enVentana = m.fecha >= piso && m.fecha < fecha;
+      const cubreHoyTemprano = m.fecha === fecha && m.hora < HORA_EXTRACTO;
+      if ((enVentana || cubreHoyTemprano) && m.generico > 0.009) abono += m.generico;
+      for (const [tag, monto] of m.porFecha) {
+        if (tag >= piso && tag < fecha) abono += monto;
+      }
+    }
+    const hueco = Math.round((programado - abono) * 100) / 100;
+    const atraso = Math.min(Math.max(hueco, 0), plan.saldo);
+    if (atraso > 0.009) out.set(id, Math.round(atraso * 100) / 100);
+  }
+  return out;
+}
 
 /** Acuerdo genérico (sin fecha en la etiqueta) contra líneas ya puestas a un día. */
 function partirAcuerdo(raw: unknown): { generico: number; porFecha: Map<string, number> } {
