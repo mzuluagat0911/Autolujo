@@ -56,8 +56,10 @@ export const CONCEPTOS_PAGO = [
   { value: "ajuste", label: "Negociación / ajuste", cubeta: "ajuste" },
   { value: "recogida", label: "Recogida de vehículo", cubeta: "recogida de vehículo" },
   { value: "cobro_presencial", label: "Cobro presencial", cubeta: "cobro presencial" },
-  { value: "salida_interior", label: "Salida al interior", cubeta: null },
+  { value: "salida_interior", label: "Salida al interior", cubeta: "salida al interior" },
 ] as const;
+
+export const CUBETA_SALIDA = "salida al interior";
 
 export type ConceptoPago = (typeof CONCEPTOS_PAGO)[number]["value"];
 
@@ -83,9 +85,11 @@ export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string
   if (t === "abono" || t === "afiliacion") return "abono inicial";
   if (t === "prepago_domingo") return "domingo";
   if (t === "prepago_letra") return null; // es letra, no un extra
+  if (t === "salida_interior") return CUBETA_SALIDA;
   const hit = CONCEPTOS_PAGO.find((c) => c.value === t);
   if (hit?.cubeta) return hit.cubeta;
   const et = (etiqueta ?? "").trim().toLowerCase();
+  if (/salida/.test(et) && !/sin autoriz/.test(et)) return CUBETA_SALIDA;
   if (/cierre(\s+de)?\s+semana/.test(et)) return "cierre de semana";
   if (/recargo|por no pagar/.test(et)) return "por no pagar";
   if (/abono\s*inicial|afiliaci[oó]n/.test(et)) return "abono inicial";

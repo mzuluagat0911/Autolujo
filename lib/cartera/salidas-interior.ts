@@ -35,6 +35,11 @@ export function esContextoSalidaInterior(texto: string): boolean {
   return CONTEXTO_SALIDA.test(foldTexto(texto));
 }
 
+/** Pueblo nombrado en el texto, aunque no diga “salida”. */
+export function destinoNombradoEn(texto: string): DestinoInterior | null {
+  return matchDestinoEn(foldTexto(texto));
+}
+
 function matchDestinoEn(t: string): DestinoInterior | null {
   const hits: { d: DestinoInterior; i: number; n: number }[] = [];
   for (const d of TARIFAS_SALIDA_INTERIOR) {

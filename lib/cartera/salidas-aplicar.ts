@@ -4,9 +4,12 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { fechaContable, hoyPanama } from "./fecha";
 import {
   DESTINO_OTRO_ID,
+  destinoLibre,
+  destinoNombradoEn,
   destinoPorId,
   destinoPorNombre,
   partirMontoInterior,
+  TARIFAS_SALIDA_INTERIOR,
   type DestinoInterior,
 } from "./salidas-interior";
 import type { AsignacionPago, ResultadoPago } from "./types";
@@ -253,6 +256,62 @@ export async function upsertAlertaSalida(opts: {
   }
 }
 
+export type CargoSalidaPlan = {
+  id: string;
+  monto: number;
+  pagoId: string | null;
+};
+
+/**
+ * Si ya hay un cargo de salida abierto por el mismo monto, se amarra.
+ * No se crea otro. Solo se crea la diferencia que ningún cargo cubre.
+ */
+export function planCargoSalida(
+  cargos: CargoSalidaPlan[],
+  pagoId: string,
+  monto: number,
+): { linkId: string | null; crear: number } {
+  const pedido = Math.round(Math.max(monto, 0) * 100) / 100;
+  const propios = cargos.filter((c) => c.pagoId === pagoId);
+  const cubierto = Math.round(propios.reduce((s, c) => s + c.monto, 0) * 100) / 100;
+  if (cubierto >= pedido - 0.05) return { linkId: null, crear: 0 };
+  const falta = Math.round((pedido - cubierto) * 100) / 100;
+  const abiertos = cargos.filter((c) => !c.pagoId);
+  const libre = Math.round(abiertos.reduce((s, c) => s + c.monto, 0) * 100) / 100;
+  if (libre >= falta - 0.05) {
+    const exact = abiertos.find((c) => Math.abs(c.monto - falta) < 0.05);
+    return { linkId: exact?.id ?? null, crear: 0 };
+  }
+  return { linkId: null, crear: Math.round((falta - libre) * 100) / 100 };
+}
+
+/** Pueblo de la reasignación: la etiqueta, si no el cargo abierto, si no el monto único. */
+export function destinoParaReasignacion(
+  etiquetas: string[],
+  cargos: { concepto: string | null; monto: number; pagoId: string | null }[],
+  monto: number,
+  pagoId?: string,
+): DestinoInterior {
+  for (const e of etiquetas) {
+    const d = destinoNombradoEn(e);
+    if (d) return d;
+  }
+  const abiertos = cargos.filter((c) => !c.pagoId || c.pagoId === pagoId);
+  const nombrados = abiertos
+    .map((c) => ({ c, d: destinoNombradoEn(c.concepto ?? "") }))
+    .filter((x): x is { c: (typeof abiertos)[number]; d: DestinoInterior } => Boolean(x.d));
+  const exact = nombrados.find((x) => Math.abs(x.c.monto - monto) < 0.05);
+  if (exact) return exact.d;
+  if (nombrados.length === 1) return nombrados[0]!.d;
+  const porMonto = TARIFAS_SALIDA_INTERIOR.filter((d) => Math.abs(d.monto - monto) < 0.02);
+  if (porMonto.length === 1) return porMonto[0]!;
+  const suelto = etiquetas
+    .map((e) => e.replace(/^salida\s+(al interior|a)\s*[—-]?\s*/i, "").trim())
+    .find((e) => e.length > 0 && !/^salida(\s+al\s+interior)?$/i.test(e));
+  const nombre = nombrados[0]?.d.nombre ?? suelto ?? "Otro destino";
+  return destinoLibre(nombre, monto);
+}
+
 export async function asegurarCargoSalida(opts: {
   contratoId: string;
   pagoId: string;
@@ -263,23 +322,112 @@ export async function asegurarCargoSalida(opts: {
   const sb = createServerSupabase();
   const { data: ya } = await sb
     .from("cargos")
-    .select("id")
-    .eq("pago_id", opts.pagoId)
-    .eq("concepto_codigo", "SALIDA_INT")
-    .limit(1);
-  if ((ya ?? []).length > 0) return;
+    .select("id, monto, pago_id")
+    .eq("contrato_id", opts.contratoId)
+    .eq("concepto_codigo", "SALIDA_INT");
+  const cargos = ((ya ?? []) as { id: string; monto: number; pago_id: string | null }[]).map((c) => ({
+    id: c.id,
+    monto: Number(c.monto) || 0,
+    pagoId: c.pago_id,
+  }));
+  const plan = planCargoSalida(cargos, opts.pagoId, opts.monto);
+  if (plan.linkId) {
+    await sb.from("cargos").update({ pago_id: opts.pagoId }).eq("id", plan.linkId);
+  }
+  if (plan.crear <= 0.009) return;
   const { error } = await sb.from("cargos").insert({
     contrato_id: opts.contratoId,
     fecha: opts.fecha,
     tipo: "acuerdo",
     concepto_codigo: "SALIDA_INT",
     concepto: `Salida al interior — ${opts.dest.nombre}`,
-    monto: opts.monto,
+    monto: plan.crear,
     pago_id: opts.pagoId,
   });
   if (error && /pago_id|SALIDA_INT|concepto_codigo/i.test(error.message)) {
     console.error("[salidas] cargo no creado (¿migración 0019?)", error.message);
   }
+}
+
+/**
+ * La reasignación manual a salida cubre el cargo que ya existe.
+ * Si no había cargo, crea solo la diferencia. Si la quitan, suelta ese cargo.
+ */
+export async function sincronizarSalidaReasignada(opts: {
+  pagoId: string;
+  contratoId: string;
+  lineas: { tipo: string; aplicado: number; etiqueta?: string }[];
+  fecha: string;
+  avalPor?: string;
+}): Promise<void> {
+  const sb = createServerSupabase();
+  const lineas = opts.lineas.filter((l) => l.tipo === "salida_interior" && l.aplicado > 0.009);
+  const monto = Math.round(lineas.reduce((s, l) => s + l.aplicado, 0) * 100) / 100;
+  if (monto <= 0.009) {
+    await soltarSalidaReasignada(opts.pagoId);
+    await sb
+      .from("pagos")
+      .update({ rubro: null, destino_interior: null })
+      .eq("id", opts.pagoId)
+      .eq("rubro", "salida_interior");
+    return;
+  }
+  const { data } = await sb
+    .from("cargos")
+    .select("concepto, monto, pago_id")
+    .eq("contrato_id", opts.contratoId)
+    .eq("concepto_codigo", "SALIDA_INT");
+  const cargos = ((data ?? []) as { concepto: string | null; monto: number; pago_id: string | null }[]).map(
+    (c) => ({
+      concepto: c.concepto,
+      monto: Number(c.monto) || 0,
+      pagoId: c.pago_id,
+    }),
+  );
+  const dest = destinoParaReasignacion(
+    lineas.map((l) => l.etiqueta ?? ""),
+    cargos,
+    monto,
+    opts.pagoId,
+  );
+  await sb
+    .from("pagos")
+    .update({ rubro: "salida_interior", destino_interior: dest.id })
+    .eq("id", opts.pagoId);
+  const ids = await idsVehiculoYCliente(opts.contratoId);
+  await asegurarCargoSalida({
+    contratoId: opts.contratoId,
+    pagoId: opts.pagoId,
+    dest,
+    monto,
+    fecha: opts.fecha,
+  });
+  await upsertSalidaAutorizada({
+    contratoId: opts.contratoId,
+    vehiculoId: ids.vehiculoId,
+    clienteId: ids.clienteId,
+    pagoId: opts.pagoId,
+    dest,
+    monto,
+    fecha: opts.fecha,
+    estado: "autorizada",
+    avalPor: opts.avalPor ?? "reasignacion",
+  });
+}
+
+async function soltarSalidaReasignada(pagoId: string): Promise<void> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("cargos")
+    .select("id, tipo")
+    .eq("pago_id", pagoId)
+    .eq("concepto_codigo", "SALIDA_INT");
+  const filas = (data ?? []) as { id: string; tipo: string }[];
+  const offset = filas.filter((c) => c.tipo === "acuerdo").map((c) => c.id);
+  const delEquipo = filas.filter((c) => c.tipo !== "acuerdo").map((c) => c.id);
+  if (offset.length > 0) await sb.from("cargos").delete().in("id", offset);
+  if (delEquipo.length > 0) await sb.from("cargos").update({ pago_id: null }).in("id", delEquipo);
+  await sb.from("salidas_autorizadas").update({ estado: "rechazada" }).eq("pago_id", pagoId);
 }
 
 export async function borrarCargoSalidaDelPago(pagoId: string): Promise<void> {

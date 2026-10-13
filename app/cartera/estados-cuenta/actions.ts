@@ -15,6 +15,7 @@ import {
   aplicarPagoEnObligaciones,
   revertirPagoEnObligaciones,
 } from "@/lib/cartera/aplicar-pago";
+import { sincronizarSalidaReasignada } from "@/lib/cartera/salidas-aplicar";
 import { recalcularRecargo } from "@/lib/cartera/devengo";
 import type { EstadoCuentaFila } from "./types";
 import { etiquetaCargo } from "@/lib/cartera/extracto-desglose";
@@ -851,6 +852,13 @@ export async function guardarAsignacionesHistorial(opts: {
     pagoId,
     fecha: fechaPago,
     asignaciones: lineasPago,
+  });
+  await sincronizarSalidaReasignada({
+    pagoId,
+    contratoId,
+    lineas: asignaciones,
+    fecha: fechaPago,
+    avalPor: "reasignacion",
   });
 
   try {

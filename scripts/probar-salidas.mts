@@ -11,7 +11,8 @@ import {
   TARIFAS_SALIDA_INTERIOR,
 } from "@/lib/cartera/salidas-interior";
 import { cruzarPuntoConSalida, enInterior, enMetroPanama, haversineKm, destinoTarifaCercano } from "@/lib/cartera/salidas-geo";
-import { montoQueCubreCuota } from "@/lib/cartera/salidas-aplicar";
+import { destinoParaReasignacion, montoQueCubreCuota, planCargoSalida } from "@/lib/cartera/salidas-aplicar";
+import { cubetaDeConcepto } from "@/lib/cartera/rubros-pago";
 import { armarPagoCombinado } from "@/lib/cartera/partida-pago";
 import { textoComoSeAplico, PRIORIDAD } from "@/lib/cartera/aplicar-pago";
 import { distribuirPago } from "@/lib/cartera/rules";
@@ -76,6 +77,52 @@ console.log("\n· Partir monto");
 check("solo tarifa", partirMontoInterior(45, 45), { interior: 45, resto: 0 });
 check("tarifa + cuota", partirMontoInterior(75, 45), { interior: 45, resto: 30 });
 check("faltante", partirMontoInterior(20, 45), { interior: 20, resto: 0 });
+
+console.log("\n· Reasignación manual");
+check(
+  "la etiqueta de salida entra a la cubeta",
+  cubetaDeConcepto("salida_interior", "Salida al interior"),
+  "salida al interior",
+);
+check(
+  "el cargo de Penonomé es la misma cubeta",
+  cubetaDeConcepto("", "Salida al interior — Penonomé"),
+  "salida al interior",
+);
+check(
+  "la multa sin permiso no es esa cubeta",
+  cubetaDeConcepto("", "multa salida sin autorización"),
+  null,
+);
+check(
+  "amarra el cargo abierto del mismo monto",
+  planCargoSalida([{ id: "c1", monto: 25, pagoId: null }], "p1", 25),
+  { linkId: "c1", crear: 0 },
+);
+check(
+  "no duplica si el cargo ya cubre",
+  planCargoSalida([{ id: "c1", monto: 60, pagoId: null }], "p1", 25).crear,
+  0,
+);
+check(
+  "crea la salida si no había cargo",
+  planCargoSalida([], "p1", 25),
+  { linkId: null, crear: 25 },
+);
+check(
+  "el cargo de Penonomé nombra el destino",
+  destinoParaReasignacion(
+    ["Salida al interior"],
+    [{ concepto: "Salida al interior — Penonomé", monto: 25, pagoId: null }],
+    25,
+  ).id,
+  "penonome",
+);
+check(
+  "Los Santos a $45 queda como excepción",
+  destinoParaReasignacion(["salida a Los Santos"], [], 45).nombre,
+  "Los Santos",
+);
 
 console.log("\n· No cubre la cuota");
 check(
