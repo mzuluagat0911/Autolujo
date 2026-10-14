@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { partirArchivo, textoConArchivo } from "../lib/comercial/archivo.ts";
+import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "../lib/comercial/bienvenida.ts";
 import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
 import { validarHorario } from "../lib/comercial/sedes.ts";
 import { entregaNueva } from "../lib/comercial/entrega.ts";
@@ -109,5 +110,19 @@ assert.equal(validarHorario("chorrera", "2026-10-18", "10:00") !== null, true);
 const marcado = textoConArchivo("📷 Documento para preaprobado", "comercial/2026/a.jpg");
 assert.equal(partirArchivo(marcado).archivo, "comercial/2026/a.jpg");
 assert.equal(partirArchivo(marcado).texto, "📷 Documento para preaprobado");
+assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Hola, buenas" }]), true);
+assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Buenas, quiero información" }]), true);
+assert.equal(
+  esSaludoDeClienteNuevo([
+    { direccion: "in", texto: "Hola" },
+    { direccion: "out", texto: MENSAJE_BIENVENIDA },
+    { direccion: "in", texto: "Hola" },
+  ]),
+  false,
+);
+assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Hola, ¿cuánto es la letra?" }]), false);
+assert.ok(MENSAJE_BIENVENIDA.includes("https://bit.ly/tratamientodedatosautolujopanama"));
+assert.ok(MENSAJE_BIENVENIDA.includes("desde $25"));
+assert.ok(MENSAJE_BIENVENIDA.includes("desde $350"));
 
 console.log("CRM comercial: clasificación, citas, piloto y resultados OK");

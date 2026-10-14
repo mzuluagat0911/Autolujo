@@ -23,6 +23,7 @@ import {
 import { responderAgente } from "@/lib/ai/agente";
 import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoConArchivo } from "@/lib/comercial/archivo";
+import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "@/lib/comercial/bienvenida";
 import { esDocumentoRequisito, guardarFotoComercial } from "@/lib/comercial/documento";
 import { textoInventario } from "@/lib/comercial/inventario";
 import { textoSedes } from "@/lib/comercial/sedes";
@@ -216,6 +217,23 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     const historial = guardado.conversacionId
       ? await historialParaLucia(guardado.conversacionId)
       : [{ direccion: "in" as const, texto: texto.trim() }];
+    if (esSaludoDeClienteNuevo(historial)) {
+      if (guardado.conversacionId) {
+        await guardarAnalisisComercial({
+          conversacionId: guardado.conversacionId,
+          temperatura: "tibio",
+          score: 45,
+          motivo: "Cliente nuevo: solo saludó.",
+          resumen: "Llegó el saludo. Se dejó la bienvenida con la oferta vigente.",
+          proximaAccion: "Esperar si pide requisitos o cita.",
+        });
+      }
+      await entregarRespuestaComercial(from, guardado.conversacionId, MENSAJE_BIENVENIDA, decision.envia);
+      if (decision.envia && guardado.conversacionId) {
+        await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
+      }
+      return;
+    }
     const base = await contextoParaLucia(guardado.conversacionId, msg);
     const contexto = nota ? `${base}\n${nota}` : base;
     const r = await responderComercial({
@@ -466,6 +484,24 @@ async function enviarComercial(to: string, texto: string): Promise<string | null
   } catch (e) {
     console.error("[whatsapp/webhook] sendText comercial falló:", e);
     return null;
+  }
+}
+
+async function entregarRespuestaComercial(
+  to: string,
+  conversacionId: string | null,
+  texto: string,
+  envia: boolean,
+) {
+  if (!envia) {
+    if (conversacionId) await guardarBorradorComercial(conversacionId, texto);
+    return;
+  }
+  const enviado = await enviarComercial(to, texto);
+  if (enviado && conversacionId) {
+    await registrarSalidaComercial(conversacionId, texto, {
+      waMessageId: enviado === "ok" ? null : enviado,
+    });
   }
 }
 
