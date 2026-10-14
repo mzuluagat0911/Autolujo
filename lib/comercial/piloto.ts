@@ -5,28 +5,21 @@ export type DecisionPiloto = {
   envia: boolean;
 };
 
-/** Sin variable, Lucía responde sola. `recomendacion` deja borradores. `off` no llama al modelo. */
+/** Pruebas: responde sola. Solo `off` la apaga. `recomendacion` también envía. */
 export function modoAgente(valor = process.env.COMERCIAL_AGENTE): ModoAgente {
   const modo = (valor ?? "on").trim().toLowerCase();
-  if (modo === "on" || modo === "off" || modo === "recomendacion") return modo;
-  return "recomendacion";
+  if (modo === "off") return "off";
+  return "on";
 }
 
-/** Sin variable, seguimientos y avisos de cita no salen. `on` los activa. */
+/** Pruebas: seguimientos y avisos de cita salen. Solo `off` los detiene. */
 export function enviosAutomaticos(valor = process.env.COMERCIAL_ENVIOS): boolean {
-  return (valor ?? "").trim().toLowerCase() === "on";
+  return (valor ?? "on").trim().toLowerCase() !== "off";
 }
 
-/** Lista vacía: entran todos. Con números, solo esos reciben el modo activo. */
-export function numeroEnPiloto(wa: string, lista = process.env.COMERCIAL_PILOTO_NUMEROS): boolean {
-  const raw = (lista ?? "").trim();
-  if (!raw) return true;
-  const destino = wa.replace(/\D/g, "");
-  if (destino.length < 8) return false;
-  return raw.split(/[,;\s]+/).some((item) => {
-    const digitos = item.replace(/\D/g, "");
-    return digitos.length >= 8 && (destino.endsWith(digitos) || digitos.endsWith(destino));
-  });
+/** Pruebas: entran todos los números, aunque haya una lista de piloto. */
+export function numeroEnPiloto(_wa: string, _lista = process.env.COMERCIAL_PILOTO_NUMEROS): boolean {
+  return true;
 }
 
 export function decisionPiloto(wa: string, entorno?: {
@@ -42,15 +35,7 @@ export function decisionPiloto(wa: string, entorno?: {
 
 export function resumenPiloto(): { etiqueta: string } {
   const modo = modoAgente();
-  const acotado = Boolean((process.env.COMERCIAL_PILOTO_NUMEROS ?? "").trim());
-  const agente =
-    modo === "off"
-      ? "Lucía está apagada."
-      : modo === "recomendacion"
-        ? "Lucía deja borradores y no responde sola."
-        : acotado
-          ? "Lucía responde solo a los números del piloto."
-          : "Lucía responde a todos los chats.";
+  const agente = modo === "off" ? "Lucía está apagada." : "Lucía responde a todos los chats.";
   const envios = enviosAutomaticos()
     ? "Los seguimientos y avisos de cita están activos."
     : "Los envíos automáticos están apagados.";

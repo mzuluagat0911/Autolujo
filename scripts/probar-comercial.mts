@@ -80,7 +80,7 @@ assert.equal(medianaMinutos([]), null);
 
 assert.deepEqual(decisionPiloto("50760001111", { agente: "recomendacion" }), {
   responde: true,
-  envia: false,
+  envia: true,
 });
 assert.deepEqual(decisionPiloto("50760001111", { agente: "off" }), {
   responde: false,
@@ -88,9 +88,10 @@ assert.deepEqual(decisionPiloto("50760001111", { agente: "off" }), {
 });
 assert.deepEqual(decisionPiloto("50760001111", { agente: "on", numeros: "50769998888" }), {
   responde: true,
-  envia: false,
+  envia: true,
 });
 assert.equal(numeroEnPiloto("50760001111", "6000-1111"), true);
+assert.equal(numeroEnPiloto("50760001111", "50769998888"), true);
 assert.equal(entregaNueva("enviado", "delivered"), "entregado");
 assert.equal(entregaNueva("leido", "delivered"), null);
 assert.equal(entregaNueva("entregado", "failed"), "fallido");
