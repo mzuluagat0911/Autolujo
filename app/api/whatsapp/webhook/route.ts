@@ -28,6 +28,7 @@ import { esDocumentoRequisito, guardarFotoComercial } from "@/lib/comercial/docu
 import { textoInventario } from "@/lib/comercial/inventario";
 import { textoSedes } from "@/lib/comercial/sedes";
 import { aplicarPedidoCita, citaAbierta } from "@/lib/comercial/citas";
+import { enviarVideoSede, pideUbicacion, sedesParaVideo } from "@/lib/comercial/video-sede";
 import { esSolicitudNoContacto, lecturaLeadConReglas } from "@/lib/comercial/lead";
 import { fechaConDia, hoyPanama, fueraHorarioOperativo } from "@/lib/cartera/fecha";
 import {
@@ -284,6 +285,16 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       return;
     }
     const enviado = await enviarComercial(from, salida);
+    if (enviado && PHONE_ID_COMERCIAL && pideUbicacion(texto)) {
+      const cita = guardado.conversacionId ? await citaAbierta(guardado.conversacionId).catch(() => null) : null;
+      for (const sede of sedesParaVideo(texto, cita?.sede ?? null)) {
+        try {
+          await enviarVideoSede(from, sede, PHONE_ID_COMERCIAL, guardado.conversacionId);
+        } catch (e) {
+          console.error("[whatsapp/webhook] video sede:", e instanceof Error ? e.message : e);
+        }
+      }
+    }
     if (guardado.conversacionId) {
       if (enviado) {
         await registrarSalidaComercial(guardado.conversacionId, salida, {

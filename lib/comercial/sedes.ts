@@ -78,6 +78,6 @@ export function textoSedes(): string {
     "- La Chorrera: lunes a viernes 8:00 a.m. a 4:00 p.m. Sábado 8:00 a.m. a 12:00 m. El domingo no se agenda.",
     `  Dirección: ${SEDES[1].direccion}.`,
     "La cita es cada 30 minutos. No ofrezcas una hora fuera de esa ventana.",
-    "No hay video de la sede para enviar. Da la dirección y no prometas un video.",
+    "Si preguntan cómo llegar, da la dirección. El sistema manda el video de esa sede.",
   ].join("\n");
 }

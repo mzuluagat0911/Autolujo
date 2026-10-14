@@ -9,6 +9,7 @@ import { sendTemplate, sendText } from "@/lib/whatsapp/client";
 import { idMensajeEnviado } from "./entrega";
 import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
 import { pedidoRepiteCita, textoEsConfirmacion } from "./cita-pedido";
+import { enviarVideoSede } from "./video-sede";
 import { plantillaCita } from "./plantillas";
 
 export type ConfirmacionCita = "pendiente" | "chat" | "llamada";
@@ -360,6 +361,13 @@ export async function enviarAvisosCitas(): Promise<{ vispera: number; dia: numbe
       const json = ventanaCerrada
         ? await sendTemplate(cita.waNumero, modelo.name, "es", modelo.componentes, phoneId)
         : await sendText(cita.waNumero, texto, phoneId);
+      if (!ventanaCerrada && tipo === "dia" && phoneId) {
+        try {
+          await enviarVideoSede(cita.waNumero, cita.sede, phoneId, cita.conversacionId);
+        } catch (e) {
+          console.error("[citas] video del día:", e instanceof Error ? e.message : e);
+        }
+      }
       if (cita.conversacionId) {
         const espejo = await sb.from("mensajes_comercial").insert({
           conversacion_id: cita.conversacionId,

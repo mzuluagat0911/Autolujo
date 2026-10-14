@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { partirArchivo, textoConArchivo } from "../lib/comercial/archivo.ts";
+import { pideUbicacion, sedesParaVideo } from "../lib/comercial/video-sede.ts";
 import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "../lib/comercial/bienvenida.ts";
 import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
 import { pedidoRepiteCita, textoEsConfirmacion } from "../lib/comercial/cita-pedido.ts";
@@ -145,5 +146,10 @@ assert.equal(textoEsConfirmacion("sí"), true);
 assert.equal(textoEsConfirmacion("me peudes decir que carros hay disponibles ?"), false);
 assert.equal(textoEsConfirmacion("como puedo llegar me dices ?"), false);
 assert.equal(textoEsConfirmacion("algo que deba llevar para ese día ?"), false);
+assert.equal(pideUbicacion("como puedo llegar me dices ?"), true);
+assert.equal(pideUbicacion("qué carros hay disponibles"), false);
+assert.deepEqual(sedesParaVideo("donde queda la de panama", null), ["juan_diaz"]);
+assert.deepEqual(sedesParaVideo("como llegar", "chorrera"), ["chorrera"]);
+assert.deepEqual(sedesParaVideo("donde quedan", null), ["juan_diaz", "chorrera"]);
 
 console.log("CRM comercial: clasificación, citas, piloto y resultados OK");

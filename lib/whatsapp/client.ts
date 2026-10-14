@@ -97,6 +97,19 @@ export async function sendAudioBytes(
   return sendAudio(to, id, voz);
 }
 
+/** Video dentro de la ventana de 24h. `link` tiene que ser HTTPS y bajar el mp4 directo. */
+export function sendVideo(to: string, link: string, caption?: string, phoneId?: string) {
+  return post(
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "video",
+      video: { link, ...(caption ? { caption } : {}) },
+    },
+    phoneId,
+  );
+}
+
 /** Mensaje de plantilla (para iniciar conversación, ej. estado de cuenta 8am). */
 export function sendTemplate(
   to: string,
