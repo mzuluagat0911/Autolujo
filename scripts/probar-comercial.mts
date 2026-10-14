@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { partirArchivo, textoConArchivo } from "../lib/comercial/archivo.ts";
 import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "../lib/comercial/bienvenida.ts";
 import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
+import { pedidoRepiteCita, textoEsConfirmacion } from "../lib/comercial/cita-pedido.ts";
 import { validarHorario } from "../lib/comercial/sedes.ts";
 import { entregaNueva } from "../lib/comercial/entrega.ts";
 import { decisionPiloto, numeroEnPiloto, ordenarPorReciente } from "../lib/comercial/piloto.ts";
@@ -127,5 +128,22 @@ assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Hola, ¿cuánto 
 assert.ok(MENSAJE_BIENVENIDA.includes("https://bit.ly/tratamientodedatosautolujopanama"));
 assert.ok(MENSAJE_BIENVENIDA.includes("desde $25"));
 assert.ok(MENSAJE_BIENVENIDA.includes("desde $350"));
+const citaJueves = { sede: "juan_diaz", fecha: "2026-10-15", hora: "11:00", nombre: "Mateo" };
+assert.equal(
+  pedidoRepiteCita(citaJueves, { accion: "agendar", sede: "juan_diaz", fecha: "2026-10-15", hora: "11:00", nombre: "Mateo" }),
+  true,
+);
+assert.equal(
+  pedidoRepiteCita(citaJueves, { accion: "reagendar", sede: "juan_diaz", fecha: "2026-10-16", hora: "11:00", nombre: "Mateo" }),
+  false,
+);
+assert.equal(
+  pedidoRepiteCita(citaJueves, { accion: "confirmar", sede: null, fecha: null, hora: null, nombre: null }),
+  false,
+);
+assert.equal(textoEsConfirmacion("sí"), true);
+assert.equal(textoEsConfirmacion("me peudes decir que carros hay disponibles ?"), false);
+assert.equal(textoEsConfirmacion("como puedo llegar me dices ?"), false);
+assert.equal(textoEsConfirmacion("algo que deba llevar para ese día ?"), false);
 
 console.log("CRM comercial: clasificación, citas, piloto y resultados OK");

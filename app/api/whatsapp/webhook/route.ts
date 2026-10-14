@@ -271,6 +271,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         pedido: r.cita,
         anuncio: anuncio ?? hilo.chat?.anuncio ?? null,
         campanaId: campana.campanaId ?? hilo.chat?.campanaId ?? null,
+        textoCliente: texto,
       });
       if (aplicada.mensaje) salida = aplicada.mensaje;
     }

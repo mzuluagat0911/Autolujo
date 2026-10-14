@@ -8,6 +8,7 @@ import { sedePorId, validarHorario, type SedeId } from "./sedes";
 import { sendTemplate, sendText } from "@/lib/whatsapp/client";
 import { idMensajeEnviado } from "./entrega";
 import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
+import { pedidoRepiteCita, textoEsConfirmacion } from "./cita-pedido";
 import { plantillaCita } from "./plantillas";
 
 export type ConfirmacionCita = "pendiente" | "chat" | "llamada";
@@ -127,6 +128,7 @@ export async function aplicarPedidoCita(opts: {
   pedido: PedidoCita | null;
   anuncio: string | null;
   campanaId: string | null;
+  textoCliente?: string | null;
 }): Promise<{ mensaje: string | null }> {
   const pedido = opts.pedido;
   if (!pedido || pedido.accion === "ninguna") return { mensaje: null };
@@ -134,6 +136,8 @@ export async function aplicarPedidoCita(opts: {
 
   if (pedido.accion === "confirmar") {
     if (!abierta) return { mensaje: "No le veo una cita abierta. ¿En qué sede y a qué hora quiere pasar?" };
+    if (abierta.confirmacion === "chat" || abierta.confirmacion === "llamada") return { mensaje: null };
+    if (opts.textoCliente && !textoEsConfirmacion(opts.textoCliente)) return { mensaje: null };
     const sb = createServerSupabase();
     const { error } = await sb
       .from("citas_comercial")
@@ -183,6 +187,17 @@ export async function aplicarPedidoCita(opts: {
   if (horario) return { mensaje: horario };
   if (nombre.length < 2) return { mensaje: "¿Con qué nombre dejo la cita?" };
   if (lugar.length < 2) return { mensaje: "¿De qué lugar es usted? Con eso le confirmo si la zona está dentro del alcance." };
+  if (
+    pedidoRepiteCita(abierta, {
+      accion: pedido.accion,
+      sede,
+      fecha,
+      hora,
+      nombre,
+    })
+  ) {
+    return { mensaje: null };
+  }
 
   const sb = createServerSupabase();
   const ocupada = await sb
