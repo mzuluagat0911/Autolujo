@@ -20,6 +20,15 @@ import { envioPausadoContrato } from "./envio-pausa";
 
 const TEMPLATE_CONFIRMACION = "pago_confirmado";
 
+/** El título viejo del chat no es un número de carro. */
+export function numeroCarroAviso(numero: string | null | undefined): string | null {
+  const t = String(numero ?? "")
+    .replace(/\s*\(número anterior\)\s*/gi, "")
+    .replace(/^carro\s+/i, "")
+    .trim();
+  return t || null;
+}
+
 function componentesConfirmacion(nombre: string, monto: string, carro: string) {
   return [
     { type: "body", parameters: [nombre, monto, carro].map((t) => ({ type: "text", text: t })) },
@@ -64,33 +73,42 @@ export async function avisarPagoConciliado(
     .eq("id", pagoId)
     .maybeSingle();
 
+  type Persona = { nombre?: string; whatsapp?: string | null; telefono?: string | null };
   const pago = data as {
     monto: number;
     numero_carro: string | null;
     contrato_id: string | null;
     estado_conciliacion: string;
-    cliente: { nombre?: string; whatsapp?: string | null; telefono?: string | null } | null;
+    cliente: Persona | null;
   } | null;
 
   if (!pago || pago.estado_conciliacion !== "conciliado") return false;
   if (await envioPausadoContrato(pago.contrato_id)) return false;
 
-  let cliente = pago.cliente;
-  if (!cliente && pago.contrato_id) {
+  // El aviso sale al dueño de la cuenta, no a la persona que quedó pegada en el
+  // pago. Un chat cruzado guardaba a Edgar en un pago del G30 y el mensaje
+  // se iba al otro teléfono.
+  let cliente: Persona | null = null;
+  let numeroCuenta: string | null = null;
+  if (pago.contrato_id) {
     const { data: c } = await sb
       .from("contratos")
-      .select("cliente:clientes(nombre, whatsapp, telefono)")
+      .select("cliente:clientes(nombre, whatsapp, telefono), vehiculo:vehiculos(numero)")
       .eq("id", pago.contrato_id)
       .maybeSingle();
-    cliente = (c as { cliente?: typeof cliente } | null)?.cliente ?? null;
+    const row = c as { cliente?: Persona | null; vehiculo?: { numero?: string | null } | null } | null;
+    cliente = row?.cliente ?? null;
+    numeroCuenta = row?.vehiculo?.numero ?? null;
   }
+  if (!cliente) cliente = pago.cliente;
 
   const waNumero = normalizarTelefono(cliente?.whatsapp ?? cliente?.telefono);
   if (!waNumero) return false;
 
   const nombre = cliente?.nombre?.split(" ")[0] ?? "";
   const montoTxt = money(Number(pago.monto));
-  const carroTxt = pago.numero_carro ? `carro ${pago.numero_carro}` : "su cuenta";
+  const carroAviso = numeroCuenta || numeroCarroAviso(pago.numero_carro);
+  const carroTxt = carroAviso ? `carro ${carroAviso}` : "su cuenta";
   // Trato de usted, directo, y con las palabras que pidió el negocio: "validado y recibido".
   const texto = nombre
     ? `${nombre}, confirmamos que su pago de ${montoTxt} (${carroTxt}) ya fue validado y recibido. Gracias.`

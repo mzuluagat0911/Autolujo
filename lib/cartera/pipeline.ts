@@ -1306,16 +1306,38 @@ export async function procesarPagoComprobante(opts: {
     pagadoAt = instantePanama(fechaPago, 12, 0).toISOString();
   }
 
+  // La persona y el número salen del contrato. El chat puede tener pegada
+  // a otra persona (el G30 guardaba a Edgar y el título "325").
+  let clientePago = resolucion.clienteId ?? conversacion.cliente_id;
+  let numeroDelContrato: string | null = null;
+  if (resolucion.contratoId) {
+    const { data: dueño } = await sb
+      .from("contratos")
+      .select("cliente_id, vehiculo:vehiculos(numero)")
+      .eq("id", resolucion.contratoId)
+      .maybeSingle();
+    const row = dueño as {
+      cliente_id: string | null;
+      vehiculo: { numero?: string | null } | null;
+    } | null;
+    if (row?.cliente_id) clientePago = row.cliente_id;
+    numeroDelContrato = row?.vehiculo?.numero ?? null;
+  }
+
+  const etiquetaChat = resolucion.etiqueta
+    ? resolucion.etiqueta.replace(/^carro\s+/i, "").replace(/\s*\(número anterior\)\s*/gi, "").trim()
+    : "";
   const numeroCarroPago =
+    numeroDelContrato ??
     comprobante.numero_carro ??
     sugerenciaCarro ??
-    (resolucion.etiqueta ? resolucion.etiqueta.replace(/^carro\s+/i, "") : null);
+    (etiquetaChat || null);
 
   const { data: pago, error } = await sb
     .from("pagos")
     .insert({
       contrato_id: resolucion.contratoId,
-      cliente_id: resolucion.clienteId ?? conversacion.cliente_id,
+      cliente_id: clientePago,
       fecha: fechaPago,
       pagado_at: pagadoAt,
       monto: comprobante.monto ?? 0,

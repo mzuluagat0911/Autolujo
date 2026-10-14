@@ -244,6 +244,22 @@ export async function guardarIdentidadCarro(input: {
       });
     }
 
+    let convNuevaRow: { id: string; cliente_id: string | null } | null = null;
+    if (clienteContrato && nombre && telefonos) {
+      const { data: convNueva } = await sb
+        .from("conversaciones")
+        .select("id, cliente_id")
+        .eq("wa_numero", telefonos.waNorm)
+        .maybeSingle();
+      convNuevaRow = convNueva as { id: string; cliente_id: string | null } | null;
+      if (convNuevaRow && convNuevaRow.cliente_id && convNuevaRow.cliente_id !== clienteContrato) {
+        return {
+          ok: false,
+          msg: "Ese celular ya tiene un chat de otro cliente. Revisá en Conversaciones.",
+        };
+      }
+    }
+
     const { error: vErr } = await sb.from("vehiculos").update({ numero }).eq("id", id);
     if (vErr) {
       if (/unique|duplicate|23505/i.test(vErr.message)) {
@@ -253,6 +269,9 @@ export async function guardarIdentidadCarro(input: {
     }
 
     if (clienteContrato && nombre && telefonos) {
+      // Reenganchar el chat al número nuevo para que inbox y espejo coincidan.
+      const etiqueta = `Carro ${numero}`;
+
       const { error: nErr } = await sb
         .from("clientes")
         .update({
@@ -262,22 +281,6 @@ export async function guardarIdentidadCarro(input: {
         })
         .eq("id", clienteContrato);
       if (nErr) return { ok: false, msg: nErr.message };
-
-      // Reenganchar el chat al número nuevo para que inbox y espejo coincidan.
-      const etiqueta = `Carro ${numero}`;
-      const { data: convNueva } = await sb
-        .from("conversaciones")
-        .select("id, cliente_id")
-        .eq("wa_numero", telefonos.waNorm)
-        .maybeSingle();
-      const convNuevaRow = convNueva as { id: string; cliente_id: string | null } | null;
-
-      if (convNuevaRow && convNuevaRow.cliente_id && convNuevaRow.cliente_id !== clienteContrato) {
-        return {
-          ok: false,
-          msg: "Ese celular ya tiene un chat de otro cliente. Revisá en Conversaciones.",
-        };
-      }
 
       if (convNuevaRow) {
         await sb
@@ -289,12 +292,12 @@ export async function guardarIdentidadCarro(input: {
             etiqueta,
           })
           .eq("id", convNuevaRow.id);
-        // Chats viejos del mismo cliente/carro: dejar de apuntar al vehículo
-        // para no duplicar la ficha en el inbox.
+        // Solo los chats que apuntaban a ESTE carro. No se le cambia el título
+        // a otro chat de la misma persona: así el G30 quedó como "325 (número anterior)".
         await sb
           .from("conversaciones")
           .update({ vehiculo_id: null, etiqueta: `${etiqueta} (número anterior)` })
-          .eq("cliente_id", clienteContrato)
+          .eq("vehiculo_id", id)
           .neq("id", convNuevaRow.id);
       } else {
         const { data: convVieja } = await sb

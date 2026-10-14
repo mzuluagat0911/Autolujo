@@ -170,9 +170,27 @@ export async function enviarYRegistrar(
 async function registrarExtractoEnChat(waNumero: string, preview: string, e: EstadoCuenta) {
   try {
     const conv = await obtenerConversacion(waNumero);
+    const sb = createServerSupabase();
+    // El extracto no se pega en un chat de otra persona. Eso juntó el G30
+    // de Jose con el chat que tenía a Edgar.
+    if (conv.cliente_id && e.contratoId) {
+      const { data: dueño } = await sb
+        .from("contratos")
+        .select("cliente_id")
+        .eq("id", e.contratoId)
+        .maybeSingle();
+      const clienteCuenta = (dueño as { cliente_id: string | null } | null)?.cliente_id ?? null;
+      if (clienteCuenta && clienteCuenta !== conv.cliente_id) {
+        console.error(
+          "[envios] no pego el extracto:",
+          e.vehiculoNumero,
+          "el chat de este teléfono es de otro cliente.",
+        );
+        return;
+      }
+    }
     // Asegura vínculo al contrato del extracto si el chat aún no lo tenía.
     if ((!conv.contrato_id || !conv.vehiculo_id) && e.contratoId) {
-      const sb = createServerSupabase();
       const patch: Record<string, unknown> = {};
       if (!conv.contrato_id) patch.contrato_id = e.contratoId;
       if (!conv.etiqueta && e.vehiculoNumero) patch.etiqueta = `Carro ${e.vehiculoNumero}`;
