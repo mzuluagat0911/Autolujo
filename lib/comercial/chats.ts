@@ -279,7 +279,7 @@ export async function textoEstadoLead(conversacionId: string): Promise<string> {
   const sb = createServerSupabase();
   const { data } = await sb
     .from("conversaciones_comercial")
-    .select("temperatura, temperatura_motivo, resumen, interes, lugar, proxima_accion, etapa")
+    .select("temperatura, temperatura_motivo, resumen, interes, lugar, proxima_accion, etapa, necesita_humano, motivo")
     .eq("id", conversacionId)
     .maybeSingle();
   if (!data) return "";
@@ -299,6 +299,9 @@ export async function textoEstadoLead(conversacionId: string): Promise<string> {
     data.resumen ? `Resumen: ${data.resumen}` : "",
     data.temperatura_motivo ? `Por qué: ${data.temperatura_motivo}` : "",
     data.proxima_accion ? `Falta: ${data.proxima_accion}.` : "",
+    data.necesita_humano
+      ? `Ya pediste ayuda al equipo${data.motivo ? `: ${data.motivo}` : ""}. Sigues en el chat hasta que lo tomen.`
+      : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -548,7 +551,6 @@ export async function marcarEscaladaComercial(conversacionId: string, motivo: st
     .update({
       necesita_humano: true,
       motivo: motivo ?? "Pasar a ventas",
-      modo_atencion: "humano",
       proxima_accion: motivo ?? "Atender este lead",
       updated_at: new Date().toISOString(),
     })

@@ -397,7 +397,7 @@ async function atenderFotoComercial(msg: WhatsAppMessage) {
   if (yaEnEquipo) return;
   await avisarMedioComercial(
     msg,
-    "Recibí su documento. Lo dejo con el equipo para la preaprobación.",
+    "Recibí su documento. El equipo lo revisa para la preaprobación. Yo sigo aquí: si quiere, adelantamos la cita.",
     guardado.conversacionId,
   );
 }
