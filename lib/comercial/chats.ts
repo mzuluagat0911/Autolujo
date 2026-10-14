@@ -274,6 +274,36 @@ export async function mensajesNuevosComercial(
   return Promise.all(filas.map((fila) => conFoto(sb, filaMensaje(fila))));
 }
 
+/** Lo que Lucía tiene que leer antes de contestar: interés, resumen y qué falta. */
+export async function textoEstadoLead(conversacionId: string): Promise<string> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("conversaciones_comercial")
+    .select("temperatura, temperatura_motivo, resumen, interes, lugar, proxima_accion, etapa")
+    .eq("id", conversacionId)
+    .maybeSingle();
+  if (!data) return "";
+  const temperatura = String(data.temperatura ?? "tibio");
+  const nivel =
+    temperatura === "caliente"
+      ? "CALIENTE, muy interesado"
+      : temperatura === "frio"
+        ? "FRÍO, poco interesado"
+        : "TIBIO, interesado a medias";
+  return [
+    "ESTADO DEL LEAD (léelo antes de responder; no se lo leas al cliente):",
+    `Interés: ${nivel}.`,
+    data.etapa ? `Etapa: ${data.etapa}.` : "",
+    data.interes ? `Busca: ${data.interes}.` : "",
+    data.lugar ? `Lugar: ${data.lugar}.` : "",
+    data.resumen ? `Resumen: ${data.resumen}` : "",
+    data.temperatura_motivo ? `Por qué: ${data.temperatura_motivo}` : "",
+    data.proxima_accion ? `Falta: ${data.proxima_accion}.` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export async function historialParaLucia(conversacionId: string): Promise<{ direccion: "in" | "out"; texto: string }[]> {
   const sb = createServerSupabase();
   const { data } = await sb
@@ -281,7 +311,7 @@ export async function historialParaLucia(conversacionId: string): Promise<{ dire
     .select("direccion, texto")
     .eq("conversacion_id", conversacionId)
     .order("created_at", { ascending: false })
-    .limit(16);
+    .limit(40);
   return ((data ?? []) as { direccion: string; texto: string | null }[])
     .reverse()
     .map((m) => ({ ...m, texto: partirArchivo(m.texto).texto }))

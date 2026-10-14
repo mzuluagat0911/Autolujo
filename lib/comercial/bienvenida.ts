@@ -19,13 +19,10 @@ export const MENSAJE_BIENVENIDA = [
   "¿Le gustaría que le enviemos los requisitos y el paso a paso para separar su vehículo?",
 ].join("\n");
 
-const CONSULTA =
-  /\?|cu[aá]nto|precio|letra|abono|requisit|cita|disponible|autom[aá]tic|manual|d[oó]nde|horario|a[nñ]os?|chiriqu|chitr[eé]|david|menor|familiar|plataforma|licencia|kia|hyundai|soluto|i-?10|picanto|sed[aá]n|carro|veh[ií]culo/i;
+const PREGUNTA_CONCRETA =
+  /\?|cu[aá]nto|precio|letra|abono|requisit|cita|disponible|autom[aá]tic|manual|d[oó]nde|horario|a[nñ]os?|chiriqu|chitr[eé]|david|menor|familiar|plataforma|licencia|kia|hyundai|soluto|i-?10|picanto|sed[aá]n/i;
 
-const SALUDO =
-  /\b(hola|buenas(?:\s+tardes|\s+noches|\s+d[ií]as)?|buen(?:os)?\s+d[ií]as|hey|hello|hi|saludos|informaci[oó]n|info|me interesa)\b/i;
-
-/** Primer contacto que solo saluda. Si ya preguntó algo, Lucía responde esa pregunta. */
+/** Primer contacto sin una pregunta concreta. «Hola» y «quiero carro» reciben la oferta. */
 export function esSaludoDeClienteNuevo(
   historial: { direccion: "in" | "out"; texto: string }[],
 ): boolean {
@@ -34,8 +31,8 @@ export function esSaludoDeClienteNuevo(
     .filter((m) => m.direccion === "in")
     .map((m) => m.texto.replace(/^🎤\s*/, "").trim())
     .filter(Boolean);
-  if (textos.length === 0 || textos.length > 2) return false;
+  if (textos.length === 0 || textos.length > 3) return false;
   const junto = textos.join(" ");
-  if (junto.length > 160 || CONSULTA.test(junto)) return false;
-  return textos.some((texto) => SALUDO.test(texto));
+  if (junto.length > 180 || PREGUNTA_CONCRETA.test(junto)) return false;
+  return true;
 }

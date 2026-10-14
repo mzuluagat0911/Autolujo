@@ -111,6 +111,8 @@ assert.equal(validarHorario("chorrera", "2026-10-18", "10:00") !== null, true);
 const marcado = textoConArchivo("📷 Documento para preaprobado", "comercial/2026/a.jpg");
 assert.equal(partirArchivo(marcado).archivo, "comercial/2026/a.jpg");
 assert.equal(partirArchivo(marcado).texto, "📷 Documento para preaprobado");
+assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Quiero carro" }]), true);
+assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Hello" }]), true);
 assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Hola, buenas" }]), true);
 assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Buenas, quiero información" }]), true);
 assert.equal(

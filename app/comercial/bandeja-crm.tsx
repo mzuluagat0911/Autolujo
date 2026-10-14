@@ -288,9 +288,6 @@ export function BandejaCrmComercial({
                 ...c,
                 ultimoTexto: texto,
                 ultimoMensajeAt: r.mensaje?.createdAt ?? temp.createdAt,
-                modoAtencion: "humano",
-                asesorId: sesion?.id ?? c.asesorId,
-                asesorNombre: sesion?.nombre ?? c.asesorNombre,
               }
             : c,
         ),

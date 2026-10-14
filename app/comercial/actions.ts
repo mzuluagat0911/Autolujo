@@ -149,8 +149,6 @@ export async function enviarRespuestaComercial(
   try {
     const sesion = await sesionEquipo();
     if (!sesion) return { ok: false, error: "La sesión venció." };
-    const tomado = await tomarChatComercial(id, sesion.id);
-    if (!tomado.ok) return tomado;
     const { chat } = await hiloComercial(id);
     if (!chat) return { ok: false, error: "No encontré ese chat de ventas." };
     if (!ventanaAbierta(chat.ultimoEntranteAt)) {

@@ -36,6 +36,7 @@ import {
   historialParaLucia,
   hiloComercial,
   luciaPuedeResponder,
+  textoEstadoLead,
   marcarEscaladaComercial,
   programarSiguienteSeguimiento,
   guardarBorradorComercial,
@@ -466,6 +467,8 @@ async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMes
     );
   }
   if (conversacionId) {
+    const estado = await textoEstadoLead(conversacionId);
+    if (estado) partes.push(estado);
     const cita = await citaAbierta(conversacionId).catch(() => null);
     if (cita) {
       partes.push(
