@@ -63,6 +63,19 @@ export function esSolicitudNoContacto(textos: string[]): boolean {
   return NEGATIVO.test(textos.join("\n").slice(-5000));
 }
 
+/** Solo lo que escribió la persona. Lo que mandó Lucía no sube ni baja el interés. */
+export function textosDelCliente(historial: { direccion: "in" | "out"; texto: string }[]): string[] {
+  return historial.filter((m) => m.direccion === "in").map((m) => m.texto);
+}
+
+/** Nombre del perfil de WhatsApp. Vacío si es un emoji, un número o basura. */
+export function nombreDeWhatsApp(valor: string | null | undefined): string | null {
+  const limpio = (valor ?? "").replace(/\s+/g, " ").trim();
+  if (limpio.length < 2 || limpio.length > 80) return null;
+  if (!/[A-Za-zÁÉÍÓÚÜáéíóúüÑñ]/.test(limpio)) return null;
+  return limpio;
+}
+
 export function horasHastaSeguimiento(
   temperatura: TemperaturaLead,
   intento: number,

@@ -279,7 +279,7 @@ export async function textoEstadoLead(conversacionId: string): Promise<string> {
   const sb = createServerSupabase();
   const { data } = await sb
     .from("conversaciones_comercial")
-    .select("temperatura, temperatura_motivo, resumen, interes, lugar, proxima_accion, etapa, necesita_humano, motivo")
+    .select("nombre, temperatura, temperatura_motivo, resumen, interes, lugar, proxima_accion, etapa, necesita_humano, motivo")
     .eq("id", conversacionId)
     .maybeSingle();
   if (!data) return "";
@@ -294,6 +294,9 @@ export async function textoEstadoLead(conversacionId: string): Promise<string> {
     "ESTADO DEL LEAD (léelo antes de responder; no se lo leas al cliente):",
     `Interés: ${nivel}.`,
     data.etapa ? `Etapa: ${data.etapa}.` : "",
+    data.nombre
+      ? `Nombre en WhatsApp y en la ficha: ${data.nombre}. Si no dictó otro, úsalo en la cita y confírmalo.`
+      : "",
     data.interes ? `Busca: ${data.interes}.` : "",
     data.lugar ? `Lugar: ${data.lugar}.` : "",
     data.resumen ? `Resumen: ${data.resumen}` : "",
@@ -305,6 +308,22 @@ export async function textoEstadoLead(conversacionId: string): Promise<string> {
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/** True si ya entró otro mensaje de la persona después de este. La respuesta la da el más nuevo. */
+export async function entradaFueSuperada(conversacionId: string, waMessageId: string | null): Promise<boolean> {
+  if (!waMessageId) return false;
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("mensajes_comercial")
+    .select("wa_message_id")
+    .eq("conversacion_id", conversacionId)
+    .eq("direccion", "in")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const ultimo = (data as { wa_message_id?: string | null } | null)?.wa_message_id;
+  return Boolean(ultimo && ultimo !== waMessageId);
 }
 
 export async function historialParaLucia(conversacionId: string): Promise<{ direccion: "in" | "out"; texto: string }[]> {
@@ -331,6 +350,7 @@ export async function registrarEntradaComercial(opts: {
   campanaId?: string | null;
   ctwaClid?: string | null;
   campanaUrl?: string | null;
+  nombre?: string | null;
 }): Promise<{ conversacionId: string | null; repetido: boolean; error: string | null }> {
   try {
     const sb = createServerSupabase();
@@ -345,7 +365,7 @@ export async function registrarEntradaComercial(opts: {
 
     let previaRes = await sb
       .from("conversaciones_comercial")
-      .select("id, anuncio, no_leidos, campana_id, etapa, modo_atencion")
+      .select("id, anuncio, no_leidos, campana_id, etapa, modo_atencion, nombre")
       .eq("wa_numero", opts.waNumero)
       .maybeSingle();
     if (previaRes.error && /campana_id|etapa|modo_atencion/i.test(previaRes.error.message)) {
@@ -361,6 +381,7 @@ export async function registrarEntradaComercial(opts: {
     if (!conversacionId) {
       const nuevo = {
         wa_numero: opts.waNumero,
+        nombre: opts.nombre ?? null,
         anuncio: opts.anuncio ?? null,
         campana_id: opts.campanaId ?? null,
         ctwa_clid: opts.ctwaClid ?? null,
@@ -375,17 +396,44 @@ export async function registrarEntradaComercial(opts: {
         const { campana_id: _c, ctwa_clid: _t, campana_url: _u, ...sinCampana } = nuevo;
         ins = await sb.from("conversaciones_comercial").insert(sinCampana).select("id").single();
       }
-      if (ins.error) {
+      if (ins.error && /duplicate|23505/i.test(ins.error.message)) {
+        const otra = await sb
+          .from("conversaciones_comercial")
+          .select("id, no_leidos, nombre")
+          .eq("wa_numero", opts.waNumero)
+          .maybeSingle();
+        if (!otra.data) return { conversacionId: null, repetido: false, error: ins.error.message };
+        conversacionId = (otra.data as { id: string }).id;
+        const yaNombre = (otra.data as { nombre?: string | null }).nombre;
+        await sb
+          .from("conversaciones_comercial")
+          .update({
+            ultimo_mensaje_at: ahora,
+            ultimo_entrante_at: ahora,
+            ultimo_texto: (partirArchivo(opts.texto).texto ?? opts.texto).slice(0, 240),
+            no_leidos: ((otra.data as { no_leidos?: number }).no_leidos ?? 0) + 1,
+            ...(!yaNombre && opts.nombre ? { nombre: opts.nombre } : {}),
+            updated_at: ahora,
+          })
+          .eq("id", conversacionId);
+      } else if (ins.error) {
         return { conversacionId: null, repetido: false, error: ins.error.message };
+      } else {
+        conversacionId = (ins.data as { id: string }).id;
       }
-      conversacionId = (ins.data as { id: string }).id;
     } else {
-      const prev = previa as { anuncio: string | null; no_leidos: number; campana_id?: string | null };
+      const prev = previa as {
+        anuncio: string | null;
+        no_leidos: number;
+        campana_id?: string | null;
+        nombre?: string | null;
+      };
       const patch = {
         ultimo_mensaje_at: ahora,
         ultimo_entrante_at: ahora,
         ultimo_texto: (partirArchivo(opts.texto).texto ?? opts.texto).slice(0, 240),
         no_leidos: (prev.no_leidos ?? 0) + 1,
+        ...(!prev.nombre && opts.nombre ? { nombre: opts.nombre } : {}),
         anuncio: prev.anuncio ?? opts.anuncio ?? null,
         campana_id: prev.campana_id ?? opts.campanaId ?? null,
         ctwa_clid: opts.ctwaClid ?? undefined,

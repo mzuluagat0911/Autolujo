@@ -8,7 +8,7 @@ import { sedePorId, validarHorario, type SedeId } from "./sedes";
 import { sendTemplate, sendText } from "@/lib/whatsapp/client";
 import { idMensajeEnviado } from "./entrega";
 import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
-import { pedidoRepiteCita, textoEsConfirmacion } from "./cita-pedido";
+import { pedidoRepiteCita, telefonoVisible, textoEsConfirmacion } from "./cita-pedido";
 import { enviarVideoSede } from "./video-sede";
 import { plantillaCita } from "./plantillas";
 
@@ -104,13 +104,6 @@ export async function citaAbierta(conversacionId: string): Promise<CitaComercial
   return fila(data[0] as Record<string, unknown>);
 }
 
-function telefonoVisible(wa: string, celular: string | null): string {
-  const raw = (celular || wa).replace(/\D/g, "");
-  const d = raw.startsWith("507") ? raw.slice(3) : raw;
-  if (d.length === 8) return `${d.slice(0, 4)}-${d.slice(4)}`;
-  return celular || wa;
-}
-
 export function textoConfirmacion(cita: {
   nombre: string;
   sede: SedeId;
@@ -176,7 +169,16 @@ export async function aplicarPedidoCita(opts: {
   const sede = pedido.sede ?? abierta?.sede ?? null;
   const fecha = pedido.fecha ?? (pedido.accion === "reagendar" ? null : abierta?.fecha ?? null);
   const hora = pedido.hora ?? (pedido.accion === "reagendar" ? null : abierta?.hora ?? null);
-  const nombre = (pedido.nombre ?? abierta?.nombre ?? "").trim();
+  let nombre = (pedido.nombre ?? abierta?.nombre ?? "").trim();
+  if (nombre.length < 2) {
+    const ficha = await createServerSupabase()
+      .from("conversaciones_comercial")
+      .select("nombre")
+      .eq("id", opts.conversacionId)
+      .maybeSingle();
+    const deFicha = String(ficha.data?.nombre ?? "").trim();
+    if (deFicha.length >= 2) nombre = deFicha;
+  }
   const lugar = (pedido.lugar ?? abierta?.lugar ?? "").trim();
   const celular = (pedido.celular ?? abierta?.celular ?? "").trim() || null;
 
@@ -250,6 +252,7 @@ export async function aplicarPedidoCita(opts: {
     .from("conversaciones_comercial")
     .update({
       etapa: "cita",
+      nombre: cita.nombre,
       seguimiento_at: null,
       proxima_accion: `Confirmar asistencia el ${cita.fecha}`,
       updated_at: ahora,

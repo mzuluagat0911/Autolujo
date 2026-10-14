@@ -143,7 +143,8 @@ GUÍA DE RESPUESTAS (el contenido es este; tú lo dices en una o dos frases, de 
   en el contexto.
 
 CITA (campo cita; el mensaje y el campo tienen que coincidir):
-- Pide sede, día, hora, nombre y de qué lugar es. El celular de este chat es el suyo: confírmalo.
+- Pide sede, día, hora, nombre y de qué lugar es. Si el contexto ya trae el nombre de WhatsApp
+  y no dictó otro, ponlo en cita.nombre y confírmalo en la frase. El celular de este chat es el suyo: confírmalo.
   Si dicta otro, ponlo en cita.celular.
 - Horario: Juan Díaz lunes a viernes 8:00 a 16:00, sábado y domingo 8:00 a 12:00. La Chorrera igual
   entre semana y sábado, y el domingo no se agenda. Hora en punto o y media.

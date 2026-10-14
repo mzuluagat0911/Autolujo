@@ -3,7 +3,7 @@ import { partirArchivo, textoConArchivo } from "../lib/comercial/archivo.ts";
 import { pideUbicacion, sedesParaVideo } from "../lib/comercial/video-sede.ts";
 import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "../lib/comercial/bienvenida.ts";
 import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
-import { pedidoRepiteCita, textoEsConfirmacion } from "../lib/comercial/cita-pedido.ts";
+import { pedidoRepiteCita, telefonoVisible, textoEsConfirmacion } from "../lib/comercial/cita-pedido.ts";
 import { validarHorario } from "../lib/comercial/sedes.ts";
 import { entregaNueva } from "../lib/comercial/entrega.ts";
 import { decisionPiloto, numeroEnPiloto, ordenarPorReciente } from "../lib/comercial/piloto.ts";
@@ -12,6 +12,8 @@ import {
   esSolicitudNoContacto,
   horasHastaSeguimiento,
   lecturaLeadConReglas,
+  nombreDeWhatsApp,
+  textosDelCliente,
 } from "../lib/comercial/lead.ts";
 
 const base = {
@@ -34,6 +36,20 @@ const noContactar = lecturaLeadConReglas(
 assert.equal(noContactar.temperatura, "frio");
 assert.ok(noContactar.score <= 15);
 assert.equal(esSolicitudNoContacto(["No me contacten más, por favor."]), true);
+const soloHola = lecturaLeadConReglas(["Hola"], { temperatura: "frio", score: 20, motivo: "Saludó." });
+const conOferta = lecturaLeadConReglas(
+  ["Hola", "Ya tenemos carros para separar su vehículo."],
+  { temperatura: "frio", score: 20, motivo: "Saludó." },
+);
+assert.ok(conOferta.score > soloHola.score);
+assert.deepEqual(textosDelCliente([
+  { direccion: "in", texto: "Hola" },
+  { direccion: "out", texto: "Ya tenemos carros para separar su vehículo." },
+]), ["Hola"]);
+assert.equal(nombreDeWhatsApp("Mateo Zuluaga"), "Mateo Zuluaga");
+assert.equal(nombreDeWhatsApp("12345"), null);
+assert.equal(telefonoVisible("50766432422", null), "6643-2422");
+assert.equal(telefonoVisible("573135076319", null), "+57 313 507 6319");
 assert.equal(esSolicitudNoContacto(["No me interesa ese Kia, ¿tienen otro?"]), false);
 
 assert.equal(horasHastaSeguimiento("caliente", 1), 3);

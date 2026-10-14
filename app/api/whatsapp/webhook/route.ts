@@ -29,11 +29,12 @@ import { textoInventario } from "@/lib/comercial/inventario";
 import { textoSedes } from "@/lib/comercial/sedes";
 import { aplicarPedidoCita, citaAbierta } from "@/lib/comercial/citas";
 import { enviarVideoSede, pideUbicacion, sedesParaVideo } from "@/lib/comercial/video-sede";
-import { esSolicitudNoContacto, lecturaLeadConReglas } from "@/lib/comercial/lead";
+import { esSolicitudNoContacto, lecturaLeadConReglas, nombreDeWhatsApp, textosDelCliente } from "@/lib/comercial/lead";
 import { fechaConDia, hoyPanama, fueraHorarioOperativo } from "@/lib/cartera/fecha";
 import {
   cerrarLeadSinContacto,
   guardarAnalisisComercial,
+  entradaFueSuperada,
   historialParaLucia,
   hiloComercial,
   luciaPuedeResponder,
@@ -151,15 +152,29 @@ async function procesar(payload: WebhookPayload) {
   }
   const messages = value?.messages;
   if (!Array.isArray(messages)) return;
+  const perfiles = new Map(
+    (value?.contacts ?? []).map((c) => [String(c.wa_id ?? ""), c.profile?.name ?? ""]),
+  );
+
+  if (esComercial) {
+    await Promise.all(
+      messages.map(async (msg) => {
+        if (!msg.from) return;
+        msg.nombrePerfil = perfiles.get(msg.from) || null;
+        try {
+          await manejarMensajeComercial(msg);
+        } catch (e) {
+          console.error("[whatsapp/webhook] error en mensaje:", e);
+        }
+      }),
+    );
+    return;
+  }
 
   for (const msg of messages) {
     if (!msg.from) continue;
     try {
-      if (esComercial) {
-        await manejarMensajeComercial(msg);
-      } else {
-        await manejarMensaje(msg);
-      }
+      await manejarMensaje(msg);
     } catch (e) {
       console.error("[whatsapp/webhook] error en mensaje:", e);
     }
@@ -206,6 +221,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     campanaId: campana.campanaId,
     ctwaClid: campana.ctwaClid,
     campanaUrl: campana.campanaUrl,
+    nombre: nombreDeWhatsApp(msg.nombrePerfil),
   });
   if (guardado.repetido) return;
   if (guardado.error) console.error("[whatsapp/webhook] chat comercial:", guardado.error);
@@ -214,6 +230,10 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
   }
   const decision = decisionPiloto(from);
   if (!decision.responde) return;
+  await new Promise((resolver) => setTimeout(resolver, 2000));
+  if (guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))) {
+    return;
+  }
 
   try {
     const historial = guardado.conversacionId
@@ -242,15 +262,13 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
       contexto,
     });
-    const lectura = lecturaLeadConReglas(
-      historial.map((m) => m.texto),
-      {
-        temperatura: r.lead.temperatura,
-        score: r.lead.score,
-        motivo: r.lead.motivo,
-      },
-    );
-    const optOut = esSolicitudNoContacto(historial.map((m) => m.texto));
+    const dichos = textosDelCliente(historial);
+    const lectura = lecturaLeadConReglas(dichos, {
+      temperatura: r.lead.temperatura,
+      score: r.lead.score,
+      motivo: r.lead.motivo,
+    });
+    const optOut = esSolicitudNoContacto(dichos);
     if (guardado.conversacionId) {
       await guardarAnalisisComercial({
         conversacionId: guardado.conversacionId,
@@ -314,17 +332,21 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     }
   } catch (e) {
     console.error("[whatsapp/webhook] agente comercial falló:", e);
-    const fallo = "Deme un momento, le escribo ya.";
-    if (!decision.envia && guardado.conversacionId) {
-      await guardarBorradorComercial(guardado.conversacionId, fallo);
-      return;
-    }
-    const enviado = await enviarComercial(from, fallo);
-    if (enviado && guardado.conversacionId) {
-      await registrarSalidaComercial(guardado.conversacionId, fallo, {
-        waMessageId: enviado === "ok" ? null : enviado,
+    try {
+      const historial = guardado.conversacionId
+        ? await historialParaLucia(guardado.conversacionId)
+        : [{ direccion: "in" as const, texto: texto.trim() }];
+      const r = await responderComercial({
+        historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
+        contexto: await contextoParaLucia(guardado.conversacionId, msg),
       });
+      await entregarRespuestaComercial(from, guardado.conversacionId, r.mensaje, decision.envia);
+      return;
+    } catch (reintento) {
+      console.error("[whatsapp/webhook] reintento comercial falló:", reintento);
     }
+    const fallo = "No le entendí bien. ¿Me lo escribe de nuevo?";
+    await entregarRespuestaComercial(from, guardado.conversacionId, fallo, decision.envia);
   }
 }
 
@@ -394,6 +416,7 @@ async function atenderFotoComercial(msg: WhatsAppMessage) {
     campanaId: datosCampana(msg).campanaId,
     ctwaClid: datosCampana(msg).ctwaClid,
     campanaUrl: datosCampana(msg).campanaUrl,
+    nombre: nombreDeWhatsApp(msg.nombrePerfil),
   });
   if (guardado.repetido) return;
   if (guardado.error) console.error("[whatsapp/webhook] documento comercial:", guardado.error);
@@ -432,6 +455,7 @@ async function avisarMedioComercial(
       campanaId: campana.campanaId,
       ctwaClid: campana.ctwaClid,
       campanaUrl: campana.campanaUrl,
+      nombre: nombreDeWhatsApp(msg.nombrePerfil),
     });
     if (guardado.repetido) return;
     conversacionId = guardado.conversacionId;
@@ -995,6 +1019,7 @@ type WhatsAppMessage = {
   audio?: { id?: string; mime_type?: string; voice?: boolean };
   // Click-to-WhatsApp: Meta adjunta de qué anuncio vino el lead (solo en el
   // primer mensaje tras tocar el anuncio). Oro para ventas: qué carro/campaña vio.
+  nombrePerfil?: string | null;
   referral?: {
     source_url?: string;
     source_id?: string;
@@ -1014,6 +1039,7 @@ type WebhookPayload = {
     changes?: Array<{
       value?: {
         messages?: WhatsAppMessage[];
+        contacts?: { wa_id?: string; profile?: { name?: string } }[];
         metadata?: { phone_number_id?: string; display_phone_number?: string };
         statuses?: { id?: string; status?: string }[];
       };

@@ -1,3 +1,19 @@
+/** Celular legible. Panamá en 8 dígitos; el resto con su código de país. */
+export function telefonoVisible(wa: string, celular: string | null): string {
+  const raw = (celular || wa).replace(/\D/g, "");
+  if (raw.startsWith("507") && raw.length === 11) {
+    const d = raw.slice(3);
+    return `${d.slice(0, 4)}-${d.slice(4)}`;
+  }
+  if (raw.length === 8) return `${raw.slice(0, 4)}-${raw.slice(4)}`;
+  if (raw.startsWith("57") && raw.length === 12) {
+    const d = raw.slice(2);
+    return `+57 ${d.slice(0, 3)} ${d.slice(3, 6)} ${d.slice(6)}`;
+  }
+  if (raw.length > 8) return `+${raw}`;
+  return celular || wa;
+}
+
 /** Un sí a la cita. Una pregunta de carros, llegada o requisitos no confirma. */
 export function textoEsConfirmacion(texto: string): boolean {
   const t = texto.trim().toLowerCase().replace(/[!.,]+$/g, "");
