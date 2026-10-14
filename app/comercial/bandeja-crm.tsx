@@ -263,6 +263,7 @@ export function BandejaCrmComercial({
       createdAt: new Date().toISOString(),
       autor: "humano",
       actorNombre: sesion?.nombre ?? null,
+      archivoUrl: null,
     };
     setMensajes((prev) => [...prev, temp]);
     setTexto("");
@@ -647,7 +648,16 @@ function Mensajes({ mensajes }: { mensajes: MensajeComercial[] }) {
                   m.direccion === "out" ? "bg-ink text-white" : "bg-gris-wash text-ink"
                 } ${m.id.startsWith("temp-") ? "opacity-60" : ""}`}
               >
-                <p className="whitespace-pre-wrap">{m.texto}</p>
+                {m.archivoUrl && (
+                  <a href={m.archivoUrl} target="_blank" rel="noreferrer">
+                    <img
+                      src={m.archivoUrl}
+                      alt="Documento enviado"
+                      className="mb-2 max-h-64 w-full rounded-lg object-contain"
+                    />
+                  </a>
+                )}
+                {m.texto && <p className="whitespace-pre-wrap">{m.texto}</p>}
                 <p className={`mt-1 text-[10px] ${m.direccion === "out" ? "text-white/60" : "text-muted"}`}>
                   {m.autor === "cliente"
                     ? "Cliente"

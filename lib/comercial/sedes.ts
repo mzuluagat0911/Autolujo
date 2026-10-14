@@ -1,6 +1,6 @@
 // Sedes de visita comercial. El horario de pago en oficina es otro.
-// Panamá (Juan Díaz): lunes a viernes 8:00–15:30, sábado y domingo 8:00–12:00.
-// La Chorrera: lunes a viernes 8:00–15:30, sábado 8:00–12:00. Domingo cerrado.
+// Panamá (Juan Díaz): lunes a viernes 8:00–16:00, sábado y domingo 8:00–12:00.
+// La Chorrera: lunes a viernes 8:00–16:00, sábado 8:00–12:00. Domingo cerrado.
 
 import { diaSemana } from "@/lib/cartera/fecha";
 
@@ -38,7 +38,7 @@ export function ventanaCita(sede: SedeId, fecha: string): { desde: number; hasta
   const dia = diaSemana(fecha);
   if (sede === "chorrera" && dia === 0) return null;
   if (dia === 0 || dia === 6) return { desde: 8 * 60, hasta: 12 * 60 };
-  return { desde: 8 * 60, hasta: 15 * 60 + 30 };
+  return { desde: 8 * 60, hasta: 16 * 60 };
 }
 
 export function horaAMinutos(hora: string): number | null {
@@ -73,8 +73,11 @@ export function validarHorario(sede: SedeId, fecha: string, hora: string): strin
 export function textoSedes(): string {
   return [
     "SEDES PARA LA VISITA:",
-    "- Juan Díaz: lunes a viernes 8:00 a.m. a 3:30 p.m. Sábado y domingo 8:00 a.m. a 12:00 m.",
-    "- La Chorrera: lunes a viernes 8:00 a.m. a 3:30 p.m. Sábado 8:00 a.m. a 12:00 m. El domingo no se agenda.",
+    "- Juan Díaz: lunes a viernes 8:00 a.m. a 4:00 p.m. Sábado y domingo 8:00 a.m. a 12:00 m.",
+    `  Dirección: ${SEDES[0].direccion}.`,
+    "- La Chorrera: lunes a viernes 8:00 a.m. a 4:00 p.m. Sábado 8:00 a.m. a 12:00 m. El domingo no se agenda.",
+    `  Dirección: ${SEDES[1].direccion}.`,
     "La cita es cada 30 minutos. No ofrezcas una hora fuera de esa ventana.",
+    "No hay video de la sede para enviar. Da la dirección y no prometas un video.",
   ].join("\n");
 }

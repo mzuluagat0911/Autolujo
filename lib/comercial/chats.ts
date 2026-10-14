@@ -1,6 +1,7 @@
 // Bandeja del WhatsApp de ventas. No lee ni escribe `conversaciones` de cartera.
 
 import { createServerSupabase } from "@/lib/supabase/server";
+import { partirArchivo } from "./archivo";
 import { entregaNueva } from "./entrega";
 import { horasHastaSeguimiento } from "./lead";
 
@@ -56,6 +57,7 @@ export type MensajeComercial = {
   createdAt: string;
   autor: "cliente" | "lucia" | "humano" | "sistema";
   actorNombre: string | null;
+  archivoUrl: string | null;
 };
 
 export type PaginaChatsComercial = {
@@ -236,9 +238,10 @@ export async function hiloComercial(
   }
   const hayMas = filas.length > limite;
   const pagina = (hayMas ? filas.slice(0, limite) : filas).reverse();
+  const mensajes = await Promise.all(pagina.map((fila) => conFoto(sb, filaMensaje(fila))));
   return {
     chat: filaChat(raw as Record<string, unknown>),
-    mensajes: pagina.map(filaMensaje),
+    mensajes,
     hayMas,
   };
 }
@@ -268,7 +271,7 @@ export async function mensajesNuevosComercial(
       .limit(100);
     filas = (retry.data ?? []) as unknown as Record<string, unknown>[];
   }
-  return filas.map(filaMensaje);
+  return Promise.all(filas.map((fila) => conFoto(sb, filaMensaje(fila))));
 }
 
 export async function historialParaLucia(conversacionId: string): Promise<{ direccion: "in" | "out"; texto: string }[]> {
@@ -281,6 +284,7 @@ export async function historialParaLucia(conversacionId: string): Promise<{ dire
     .limit(16);
   return ((data ?? []) as { direccion: string; texto: string | null }[])
     .reverse()
+    .map((m) => ({ ...m, texto: partirArchivo(m.texto).texto }))
     .filter((m) => (m.texto ?? "").trim())
     .map((m) => ({ direccion: m.direccion === "out" ? "out" : "in", texto: m.texto!.trim() }));
 }
@@ -330,7 +334,7 @@ export async function registrarEntradaComercial(opts: {
         campana_url: opts.campanaUrl ?? null,
         ultimo_mensaje_at: ahora,
         ultimo_entrante_at: ahora,
-        ultimo_texto: opts.texto.slice(0, 240),
+        ultimo_texto: (partirArchivo(opts.texto).texto ?? opts.texto).slice(0, 240),
         no_leidos: 1,
       };
       let ins = await sb.from("conversaciones_comercial").insert(nuevo).select("id").single();
@@ -347,7 +351,7 @@ export async function registrarEntradaComercial(opts: {
       const patch = {
         ultimo_mensaje_at: ahora,
         ultimo_entrante_at: ahora,
-        ultimo_texto: opts.texto.slice(0, 240),
+        ultimo_texto: (partirArchivo(opts.texto).texto ?? opts.texto).slice(0, 240),
         no_leidos: (prev.no_leidos ?? 0) + 1,
         anuncio: prev.anuncio ?? opts.anuncio ?? null,
         campana_id: prev.campana_id ?? opts.campanaId ?? null,
@@ -744,7 +748,7 @@ export async function programarSiguienteSeguimiento(
   }
 }
 
-function filaMensaje(row: Record<string, unknown>): MensajeComercial {
+function filaMensaje(row: Record<string, unknown>): MensajeComercial & { archivoPath: string | null } {
   const actorRaw = row.actor;
   const actor = Array.isArray(actorRaw) ? actorRaw[0] : actorRaw;
   const direccion = row.direccion === "out" ? "out" : "in";
@@ -755,17 +759,30 @@ function filaMensaje(row: Record<string, unknown>): MensajeComercial {
       : autorRaw === "humano" || autorRaw === "sistema"
         ? autorRaw
         : "lucia";
+  const partes = partirArchivo((row.texto as string | null) ?? null);
   return {
     id: String(row.id),
     direccion,
-    texto: (row.texto as string | null) ?? null,
+    texto: partes.texto,
     createdAt: String(row.created_at ?? ""),
     autor,
     actorNombre:
       actor && typeof actor === "object"
         ? ((actor as { nombre?: string | null }).nombre ?? null)
         : null,
+    archivoUrl: null,
+    archivoPath: partes.archivo,
   };
+}
+
+async function conFoto(
+  sb: ReturnType<typeof createServerSupabase>,
+  mensaje: MensajeComercial & { archivoPath?: string | null },
+): Promise<MensajeComercial> {
+  const { archivoPath, ...resto } = mensaje;
+  if (!archivoPath) return resto;
+  const { data } = await sb.storage.from("comprobantes").createSignedUrl(archivoPath, 60 * 60);
+  return { ...resto, archivoUrl: data?.signedUrl ?? null };
 }
 
 function filaChat(row: Record<string, unknown>): ChatComercial {

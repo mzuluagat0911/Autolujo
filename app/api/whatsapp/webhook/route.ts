@@ -22,6 +22,8 @@ import {
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
 import { responderComercial } from "@/lib/ai/agente-comercial";
+import { textoConArchivo } from "@/lib/comercial/archivo";
+import { esDocumentoRequisito, guardarFotoComercial } from "@/lib/comercial/documento";
 import { textoInventario } from "@/lib/comercial/inventario";
 import { textoSedes } from "@/lib/comercial/sedes";
 import { aplicarPedidoCita, citaAbierta } from "@/lib/comercial/citas";
@@ -164,41 +166,35 @@ async function procesar(payload: WebhookPayload) {
 // Agente COMERCIAL (Lucía). El mensaje entra al número de ventas y se guarda
 // en conversaciones_comercial. No abre un hilo en la bandeja de cobranza.
 async function manejarMensajeComercial(msg: WhatsAppMessage) {
-  const from = msg.from as string;
   const tipo = tipoMensaje(msg);
-  const campana = datosCampana(msg);
-  const anuncio = campana.anuncio;
 
+  if (tipo === "audio") {
+    const dicho = await textoDeAudioComercial(msg);
+    if (!dicho) return;
+    await atenderTextoComercial(msg, dicho);
+    return;
+  }
+  if (tipo === "image") {
+    await atenderFotoComercial(msg);
+    return;
+  }
   if (tipo !== "text") {
-    const aviso = "Por aquí le atiendo mejor por escrito. Cuénteme qué está buscando y le ayudo.";
-    const guardado = await registrarEntradaComercial({
-      waNumero: from,
-      texto: "[Mensaje que no es texto]",
-      waMessageId: msg.id ?? null,
-      anuncio,
-      campanaId: campana.campanaId,
-      ctwaClid: campana.ctwaClid,
-      campanaUrl: campana.campanaUrl,
-    });
-    if (!guardado.repetido) {
-      const decision = decisionPiloto(from);
-      if (decision.envia) {
-        const enviado = await enviarComercial(from, aviso);
-        if (enviado && guardado.conversacionId) {
-          await registrarSalidaComercial(guardado.conversacionId, aviso, {
-            waMessageId: enviado === "ok" ? null : enviado,
-          });
-        }
-      } else if (decision.responde && guardado.conversacionId) {
-        await guardarBorradorComercial(guardado.conversacionId, aviso);
-      }
-    }
+    await avisarMedioComercial(
+      msg,
+      "Por aquí le atiendo mejor por escrito o con una foto del documento. Cuénteme qué está buscando.",
+    );
     return;
   }
 
   const texto = msg.text?.body ?? "";
   if (!texto.trim()) return;
+  await atenderTextoComercial(msg, texto.trim());
+}
 
+async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?: string) {
+  const from = msg.from as string;
+  const campana = datosCampana(msg);
+  const anuncio = campana.anuncio;
   const guardado = await registrarEntradaComercial({
     waNumero: from,
     texto: texto.trim(),
@@ -220,7 +216,8 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
     const historial = guardado.conversacionId
       ? await historialParaLucia(guardado.conversacionId)
       : [{ direccion: "in" as const, texto: texto.trim() }];
-    const contexto = await contextoParaLucia(guardado.conversacionId, msg);
+    const base = await contextoParaLucia(guardado.conversacionId, msg);
+    const contexto = nota ? `${base}\n${nota}` : base;
     const r = await responderComercial({
       historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
       contexto,
@@ -297,6 +294,128 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
         waMessageId: enviado === "ok" ? null : enviado,
       });
     }
+  }
+}
+
+async function textoDeAudioComercial(msg: WhatsAppMessage): Promise<string | null> {
+  const mediaId = msg.audio?.id;
+  if (!mediaId) {
+    await avisarMedioComercial(msg, "Recibí su audio pero no pude abrirlo. ¿Me lo escribe?", null, "🎤 Nota de voz");
+    return null;
+  }
+  try {
+    const bytes = await downloadMedia(mediaId);
+    const dicho = (await transcribirAudio(bytes, msg.audio?.mime_type))?.trim();
+    if (!dicho) {
+      await avisarMedioComercial(msg, "Lo escuché, pero no entendí bien el audio. ¿Me lo escribe?", null, "🎤 Nota de voz");
+      return null;
+    }
+    return `🎤 ${dicho}`;
+  } catch (e) {
+    console.error("[whatsapp/webhook] audio comercial:", e instanceof Error ? e.message : e);
+    await avisarMedioComercial(msg, "Lo escuché, pero no entendí bien el audio. ¿Me lo escribe?", null, "🎤 Nota de voz");
+    return null;
+  }
+}
+
+async function atenderFotoComercial(msg: WhatsAppMessage) {
+  const image = msg.image;
+  const mediaId = image?.id;
+  if (!mediaId) {
+    await avisarMedioComercial(msg, "No pude abrir esa foto. ¿Me la reenvía?");
+    return;
+  }
+  let bytes: Buffer;
+  try {
+    bytes = await downloadMedia(mediaId);
+  } catch (e) {
+    console.error("[whatsapp/webhook] foto comercial:", e instanceof Error ? e.message : e);
+    await avisarMedioComercial(msg, "No pude abrir esa foto. ¿Me la reenvía?");
+    return;
+  }
+  const mime = image?.mime_type ?? "image/jpeg";
+  const lectura = await esDocumentoRequisito(bytes, mime);
+  let path: string | null = null;
+  try {
+    path = await guardarFotoComercial(bytes, mime);
+  } catch (e) {
+    console.error("[whatsapp/webhook] guardar foto comercial:", e instanceof Error ? e.message : e);
+  }
+  const caption = image?.caption?.trim();
+  if (!lectura.esDocumento) {
+    const visible = caption ? `📷 Foto. ${caption}` : "📷 Foto";
+    await atenderTextoComercial(
+      msg,
+      textoConArchivo(visible, path),
+      "El cliente mandó una foto que no es un documento de requisito. No la trates como preaprobado.",
+    );
+    return;
+  }
+  const que = lectura.que ? ` (${lectura.que})` : "";
+  const visible = caption
+    ? `📷 Documento para preaprobado${que}. ${caption}`
+    : `📷 Documento para preaprobado${que}`;
+  const guardado = await registrarEntradaComercial({
+    waNumero: msg.from as string,
+    texto: textoConArchivo(visible, path),
+    waMessageId: msg.id ?? null,
+    anuncio: datosCampana(msg).anuncio,
+    campanaId: datosCampana(msg).campanaId,
+    ctwaClid: datosCampana(msg).ctwaClid,
+    campanaUrl: datosCampana(msg).campanaUrl,
+  });
+  if (guardado.repetido) return;
+  if (guardado.error) console.error("[whatsapp/webhook] documento comercial:", guardado.error);
+  const yaEnEquipo = guardado.conversacionId
+    ? !(await luciaPuedeResponder(guardado.conversacionId))
+    : false;
+  if (guardado.conversacionId) {
+    await marcarEscaladaComercial(
+      guardado.conversacionId,
+      `Preaprobado: llegó un documento${que}. El equipo valida historial y récord.`,
+    );
+  }
+  if (yaEnEquipo) return;
+  await avisarMedioComercial(
+    msg,
+    "Recibí su documento. Lo dejo con el equipo para la preaprobación.",
+    guardado.conversacionId,
+  );
+}
+
+async function avisarMedioComercial(
+  msg: WhatsAppMessage,
+  aviso: string,
+  conversacionYaGuardada?: string | null,
+  entrada?: string,
+) {
+  const from = msg.from as string;
+  let conversacionId = conversacionYaGuardada ?? null;
+  if (!conversacionId) {
+    const campana = datosCampana(msg);
+    const guardado = await registrarEntradaComercial({
+      waNumero: from,
+      texto: entrada ?? aviso,
+      waMessageId: msg.id ?? null,
+      anuncio: campana.anuncio,
+      campanaId: campana.campanaId,
+      ctwaClid: campana.ctwaClid,
+      campanaUrl: campana.campanaUrl,
+    });
+    if (guardado.repetido) return;
+    conversacionId = guardado.conversacionId;
+  }
+  const decision = decisionPiloto(from);
+  if (!conversacionId) return;
+  if (!decision.envia) {
+    if (decision.responde) await guardarBorradorComercial(conversacionId, aviso);
+    return;
+  }
+  const enviado = await enviarComercial(from, aviso);
+  if (enviado) {
+    await registrarSalidaComercial(conversacionId, aviso, {
+      waMessageId: enviado === "ok" ? null : enviado,
+    });
   }
 }
 
@@ -821,7 +940,7 @@ type WhatsAppMessage = {
   from?: string;
   type?: string | "text" | "image" | "audio" | "voice" | "ptt" | "sticker" | "reaction";
   text?: { body?: string };
-  image?: { id?: string; mime_type?: string };
+  image?: { id?: string; mime_type?: string; caption?: string };
   audio?: { id?: string; mime_type?: string; voice?: boolean };
   // Click-to-WhatsApp: Meta adjunta de qué anuncio vino el lead (solo en el
   // primer mensaje tras tocar el anuncio). Oro para ventas: qué carro/campaña vio.

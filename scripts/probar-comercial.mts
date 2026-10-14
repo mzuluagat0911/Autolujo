@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { partirArchivo, textoConArchivo } from "../lib/comercial/archivo.ts";
 import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
+import { validarHorario } from "../lib/comercial/sedes.ts";
 import { entregaNueva } from "../lib/comercial/entrega.ts";
 import { decisionPiloto, numeroEnPiloto, ordenarPorReciente } from "../lib/comercial/piloto.ts";
 import { medianaMinutos } from "../lib/comercial/resultados.ts";
@@ -100,5 +102,12 @@ const ordenados = ordenarPorReciente(muchos);
 const ms = performance.now() - inicio;
 assert.equal(ordenados[0]?.ultimoMensajeAt, muchos[0]?.ultimoMensajeAt);
 assert.ok(ms < 80, `ordenar 10.000 chats tardó ${ms.toFixed(1)} ms`);
+
+assert.equal(validarHorario("juan_diaz", "2026-10-14", "16:00"), null);
+assert.equal(validarHorario("chorrera", "2026-10-14", "16:30") !== null, true);
+assert.equal(validarHorario("chorrera", "2026-10-18", "10:00") !== null, true);
+const marcado = textoConArchivo("📷 Documento para preaprobado", "comercial/2026/a.jpg");
+assert.equal(partirArchivo(marcado).archivo, "comercial/2026/a.jpg");
+assert.equal(partirArchivo(marcado).texto, "📷 Documento para preaprobado");
 
 console.log("CRM comercial: clasificación, citas, piloto y resultados OK");
