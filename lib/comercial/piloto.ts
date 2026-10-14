@@ -5,9 +5,9 @@ export type DecisionPiloto = {
   envia: boolean;
 };
 
-/** Sin variable, Lucía solo deja borradores. `on` responde sola. `off` no llama al modelo. */
+/** Sin variable, Lucía responde sola. `recomendacion` deja borradores. `off` no llama al modelo. */
 export function modoAgente(valor = process.env.COMERCIAL_AGENTE): ModoAgente {
-  const modo = (valor ?? "recomendacion").trim().toLowerCase();
+  const modo = (valor ?? "on").trim().toLowerCase();
   if (modo === "on" || modo === "off" || modo === "recomendacion") return modo;
   return "recomendacion";
 }
