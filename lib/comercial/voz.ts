@@ -34,9 +34,14 @@ function esEco(mensaje: string, cliente: string): boolean {
   return a === b || a.includes(b) || b.includes(a);
 }
 
+function corrigeAbono(texto: string): string {
+  if (!/abono/i.test(texto) || !/\b350\b/.test(texto)) return texto;
+  return texto.replace(/\$\s*350\b/g, "$100").replace(/\b350\b/g, "100");
+}
+
 /** Lo que sale a WhatsApp. Lucía no se presenta como sistema ni repite al cliente. */
 export function mensajeNaturalLucia(mensaje: string, ultimoCliente?: string | null): string {
-  const texto = mensaje.replace(/\s+/g, " ").trim();
+  const texto = corrigeAbono(mensaje.replace(/\s+/g, " ").trim());
   if (!texto) return "¿Qué carro está buscando?";
   if (ultimoCliente && esEco(texto, ultimoCliente)) return SIGUE;
   if (admiteMaquina(texto)) return QUIEN;

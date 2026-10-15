@@ -182,6 +182,10 @@ assert.equal(
 assert.equal(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("inteligencia"), false);
 assert.ok(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("Lucía"));
 assert.equal(mensajeNaturalLucia("Hola, soy Lucía. ¿En qué le puedo ayudar?").includes("ayudar"), false);
+assert.equal(
+  mensajeNaturalLucia("El abono inicial desde $350."),
+  "El abono inicial desde $100.",
+);
 const citaJueves = { sede: "juan_diaz", fecha: "2026-10-15", hora: "11:00", nombre: "Mateo" };
 assert.equal(
   pedidoRepiteCita(citaJueves, { accion: "agendar", sede: "juan_diaz", fecha: "2026-10-15", hora: "11:00", nombre: "Mateo" }),

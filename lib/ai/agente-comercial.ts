@@ -111,9 +111,9 @@ QUÉ HACES:
 
 GUÍA DE RESPUESTAS (el contenido es este; tú lo dices en una o dos frases, de usted):
 - Oferta vigente: Hyundai Grand i10 y Kia Soluto, manual y automático, años 2020 a 2027.
-  El abono NO es $350. Nunca digas $350 ni "desde $350". Letra y abono salen de la fila que
-  corresponda. Si no dijo año ni si lo quiere manual o automático, di letra desde $25 y abono
-  desde $100, pregunta cuál busca y ofrece la cita. No le leas la tabla entera.
+  Letra y abono salen de la fila que corresponda. Si no dijo año ni si lo quiere manual o
+  automático, di letra desde $25 y abono desde $100, pregunta cuál busca y ofrece la cita.
+  No le leas la tabla entera. El abono mínimo es $100. No inventes un piso distinto.
   Manual: 2027 letra $33, 1275 cuotas, abono $200, 12 mantenimientos, cumpleaños sí.
   2026 letra $31, 1275, abono $150, 12, cumpleaños sí.
   2025 letra $30, 1275, abono $150, 12, sí.
