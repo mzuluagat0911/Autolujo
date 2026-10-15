@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { armarTextoContrato } from "@/lib/cartera/contrato-documento";
+import { armarDocxContrato } from "@/lib/cartera/contrato-word";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 
 export const dynamic = "force-dynamic";
@@ -137,10 +138,11 @@ export async function GET(
     color: tec?.color || "—",
   });
 
-  const nombreArchivo = `contrato-${etiquetaCarroUi(empresa?.codigo ?? null, carro).replace(/\s+/g, "")}.txt`;
-  return new NextResponse(texto, {
+  const docx = await armarDocxContrato(texto);
+  const nombreArchivo = `contrato-${etiquetaCarroUi(empresa?.codigo ?? null, carro).replace(/\s+/g, "")}.docx`;
+  return new NextResponse(new Uint8Array(docx), {
     headers: {
-      "Content-Type": "text/plain; charset=utf-8",
+      "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "Content-Disposition": `attachment; filename="${nombreArchivo}"`,
     },
   });
