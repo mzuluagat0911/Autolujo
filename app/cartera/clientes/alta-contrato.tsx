@@ -142,6 +142,36 @@ export function AltaContratoForm({
   const [prepagoLetras, setPrepagoLetras] = useState("0");
   const [prepagoDomingos, setPrepagoDomingos] = useState("0");
   const [letra, setLetra] = useState("");
+  const [vehiculoId, setVehiculoId] = useState("");
+  const [ficha, setFicha] = useState({
+    placa: "",
+    marca: "",
+    chasis: "",
+    motor: "",
+    tipo: "",
+    modelo: "",
+    anio: "",
+    color: "",
+  });
+
+  function elegirCarro(id: string) {
+    setVehiculoId(id);
+    const carro = carros.find((c) => c.id === id);
+    setFicha({
+      placa: carro?.placa ?? "",
+      marca: carro?.marca ?? "",
+      chasis: carro?.chasis ?? "",
+      motor: carro?.numeroMotor ?? "",
+      tipo: carro?.tipo ?? "",
+      modelo: carro?.modelo ?? "",
+      anio: carro?.anio != null ? String(carro.anio) : "",
+      color: carro?.color ?? "",
+    });
+  }
+
+  function setFichaCampo(campo: keyof typeof ficha, valor: string) {
+    setFicha((prev) => ({ ...prev, [campo]: valor }));
+  }
 
   const abonoP = Math.max(Number(String(abonoPactado).replace(",", ".")) || 0, 0);
   const abonoPay = Math.max(Number(String(abonoPagado).replace(",", ".")) || 0, 0);
@@ -244,9 +274,26 @@ export function AltaContratoForm({
           label="Carro libre *"
           name="vehiculo_id"
           required
+          value={vehiculoId}
+          onChange={(e) => elegirCarro(e.target.value)}
           placeholder={carros.length ? "Elegí carro…" : "No hay carros libres"}
           options={carros.map((c) => ({ value: c.id, label: c.label }))}
         />
+        {vehiculoId && (
+          <div className="grid grid-cols-1 gap-3 rounded-lg bg-paper p-4 ring-1 ring-line sm:col-span-2 sm:grid-cols-2 lg:col-span-3 lg:grid-cols-4">
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted sm:col-span-2 lg:col-span-4">
+              Datos del carro
+            </p>
+            <Field label="Placa *" name="carro_placa" required value={ficha.placa} onChange={(e) => setFichaCampo("placa", e.target.value)} />
+            <Field label="Marca *" name="carro_marca" required value={ficha.marca} onChange={(e) => setFichaCampo("marca", e.target.value)} />
+            <Field label="Nº de chasis *" name="carro_chasis" required value={ficha.chasis} onChange={(e) => setFichaCampo("chasis", e.target.value)} />
+            <Field label="Nº de motor *" name="carro_motor" required value={ficha.motor} onChange={(e) => setFichaCampo("motor", e.target.value)} />
+            <Field label="Tipo *" name="carro_tipo" required placeholder="SEDAN" value={ficha.tipo} onChange={(e) => setFichaCampo("tipo", e.target.value)} />
+            <Field label="Modelo *" name="carro_modelo" required value={ficha.modelo} onChange={(e) => setFichaCampo("modelo", e.target.value)} />
+            <Field label="Año *" name="carro_anio" required type="number" value={ficha.anio} onChange={(e) => setFichaCampo("anio", e.target.value)} />
+            <Field label="Color *" name="carro_color" required value={ficha.color} onChange={(e) => setFichaCampo("color", e.target.value)} />
+          </div>
+        )}
         <Field
           label="Fecha inicio contrato *"
           name="fecha_inicio"

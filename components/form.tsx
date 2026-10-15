@@ -59,6 +59,8 @@ export function Select({
   placeholder,
   options,
   defaultValue = "",
+  value,
+  onChange,
 }: {
   label: string;
   name: string;
@@ -66,11 +68,18 @@ export function Select({
   placeholder?: string;
   options: { value: string; label: string }[];
   defaultValue?: string;
+  value?: string;
+  onChange?: (e: ChangeEvent<HTMLSelectElement>) => void;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
       <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">{label}</span>
-      <select name={name} required={required} defaultValue={defaultValue} className={INPUT}>
+      <select
+        name={name}
+        required={required}
+        {...(value !== undefined ? { value, onChange } : { defaultValue })}
+        className={INPUT}
+      >
         {placeholder && (
           <option value="" disabled>
             {placeholder}

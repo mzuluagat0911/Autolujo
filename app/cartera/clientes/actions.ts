@@ -62,6 +62,56 @@ function datosDeResidencia(
   return { direccion, provincia, referencias: refs.texto };
 }
 
+function fichaDelFormulario(formData: FormData): {
+  placa: string;
+  marca: string;
+  chasis: string;
+  numero_motor: string;
+  tipo: string;
+  modelo: string;
+  anio: number;
+  color: string;
+} | { error: string } {
+  const placa = str(formData.get("carro_placa"));
+  const marca = str(formData.get("carro_marca"));
+  const chasis = str(formData.get("carro_chasis"));
+  const motor = str(formData.get("carro_motor"));
+  const tipo = str(formData.get("carro_tipo"));
+  const modelo = str(formData.get("carro_modelo"));
+  const anio = num(formData.get("carro_anio"));
+  const color = str(formData.get("carro_color"));
+  if (!placa || !marca || !chasis || !motor || !tipo || !modelo || !color) {
+    return { error: "El carro necesita placa, marca, chasis, motor, tipo, modelo, año y color." };
+  }
+  if (anio == null || anio < 1990 || anio > 2035) return { error: "El año del carro no es válido." };
+  return {
+    placa: placa.toUpperCase(),
+    marca,
+    chasis: chasis.toUpperCase(),
+    numero_motor: motor.toUpperCase(),
+    tipo: tipo.toUpperCase(),
+    modelo: modelo.toUpperCase(),
+    anio: Math.round(anio),
+    color: color.toUpperCase(),
+  };
+}
+
+async function guardarFichaVehiculo(
+  sb: ReturnType<typeof createServerSupabase>,
+  vehiculoId: string,
+  ficha: Exclude<ReturnType<typeof fichaDelFormulario>, { error: string }>,
+) {
+  const { error } = await sb.from("vehiculos").update(ficha).eq("id", vehiculoId);
+  if (!error) return { ok: true as const };
+  if (/chasis|numero_motor|\btipo\b|color/i.test(error.message)) {
+    return {
+      ok: false as const,
+      error: "Faltan en la base las columnas del carro (chasis, motor, tipo y color). Corré la migración 0044 y volvé a guardar.",
+    };
+  }
+  return { ok: false as const, error: error.message };
+}
+
 function datosDeIdentidad(
   formData: FormData,
 ): { fecha_nacimiento: string; numero_licencia: string; fecha_vencimiento_licencia: string } | { error: string } {
@@ -273,6 +323,10 @@ export async function createClienteConContrato(
   if ("error" in residencia) return { ok: false, error: residencia.error };
   const identidad = datosDeIdentidad(formData);
   if ("error" in identidad) return { ok: false, error: identidad.error };
+  const ficha = fichaDelFormulario(formData);
+  if ("error" in ficha) return { ok: false, error: ficha.error };
+  const fichaGuardada = await guardarFichaVehiculo(sb, vehiculoId, ficha);
+  if (!fichaGuardada.ok) return { ok: false, error: fichaGuardada.error };
 
   const { data: cliente, error: cErr } = await insertarCliente(sb, {
     nombre,
@@ -520,6 +574,29 @@ export async function createClienteConContrato(
 export type CarroLibre = {
   id: string;
   label: string;
+  placa: string | null;
+  marca: string | null;
+  modelo: string | null;
+  anio: number | null;
+  chasis: string | null;
+  numeroMotor: string | null;
+  tipo: string | null;
+  color: string | null;
+};
+
+type FilaCarro = {
+  id: string;
+  numero: string;
+  placa: string | null;
+  marca: string | null;
+  modelo: string | null;
+  anio: number | null;
+  estado: string;
+  empresa: { codigo: string } | null;
+  chasis?: string | null;
+  numero_motor?: string | null;
+  tipo?: string | null;
+  color?: string | null;
 };
 
 /** Carros sin contrato activo (disponibles para alta). */
@@ -527,25 +604,47 @@ export async function listarCarrosLibres(): Promise<CarroLibre[]> {
   const sb = createServerSupabase();
   const { data: veh } = await sb
     .from("vehiculos")
-    .select("id, numero, placa, estado, empresa:empresas(codigo)")
+    .select("id, numero, placa, marca, modelo, anio, estado, empresa:empresas(codigo)")
     .neq("estado", "entregado")
     .order("numero");
+  const extra = await sb
+    .from("vehiculos")
+    .select("id, chasis, numero_motor, tipo, color")
+    .neq("estado", "entregado");
+  const ficha = new Map<string, { chasis: string | null; numero_motor: string | null; tipo: string | null; color: string | null }>();
+  if (!extra.error) {
+    for (const row of (extra.data ?? []) as {
+      id: string;
+      chasis: string | null;
+      numero_motor: string | null;
+      tipo: string | null;
+      color: string | null;
+    }[]) {
+      ficha.set(row.id, row);
+    }
+  }
   const { data: activos } = await sb.from("contratos").select("vehiculo_id").eq("estado", "activo");
   const ocupados = new Set(
     ((activos ?? []) as { vehiculo_id: string }[]).map((c) => c.vehiculo_id),
   );
-  return ((veh ?? []) as unknown as {
-    id: string;
-    numero: string;
-    placa: string | null;
-    estado: string;
-    empresa: { codigo: string } | null;
-  }[])
+  return ((veh ?? []) as unknown as FilaCarro[])
     .filter((v) => !ocupados.has(v.id))
     .map((v) => {
       const sigla = v.empresa?.codigo ? siglaEmpresa(v.empresa.codigo) : "";
       const base = sigla ? `${sigla} · ${v.numero}` : v.numero;
       const placa = v.placa ? ` · ${v.placa}` : "";
-      return { id: v.id, label: `${base}${placa} (${v.estado})` };
+      const tec = ficha.get(v.id);
+      return {
+        id: v.id,
+        label: `${base}${placa} (${v.estado})`,
+        placa: v.placa,
+        marca: v.marca,
+        modelo: v.modelo,
+        anio: v.anio,
+        chasis: tec?.chasis ?? null,
+        numeroMotor: tec?.numero_motor ?? null,
+        tipo: tec?.tipo ?? null,
+        color: tec?.color ?? null,
+      };
     });
 }

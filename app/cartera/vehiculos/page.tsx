@@ -380,6 +380,10 @@ export default async function VehiculosPage({
           <Field label="Marca" name="marca" placeholder="Hyundai" />
           <Field label="Modelo" name="modelo" placeholder="Grand i10" />
           <Field label="Año" name="anio" type="number" placeholder="2020" />
+          <Field label="Nº de chasis" name="chasis" placeholder="MALB241..." />
+          <Field label="Nº de motor" name="numero_motor" placeholder="G4LA..." />
+          <Field label="Tipo" name="tipo" placeholder="SEDAN" />
+          <Field label="Color" name="color" placeholder="PLATEADO" />
           <Field label="Km actual" name="km_actual" type="number" placeholder="0" />
           <Field label="ID GPS Diacor" name="gps_id" placeholder="34287" />
           <Field label="PanaPass" name="panapass" placeholder="Opcional" />

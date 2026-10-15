@@ -53,22 +53,29 @@ export async function createVehiculo(formData: FormData): Promise<void> {
   }
 
   const sb = createServerSupabase();
-  const { data: creado, error } = await sb
-    .from("vehiculos")
-    .insert({
-      empresa_id,
-      numero,
-      placa: str(formData.get("placa")),
-      marca: str(formData.get("marca")),
-      modelo: str(formData.get("modelo")),
-      anio: num(formData.get("anio")),
-      km_actual: num(formData.get("km_actual")) ?? 0,
-      gps_id: str(formData.get("gps_id")),
-      panapass: str(formData.get("panapass")),
-      estado: String(formData.get("estado") ?? "activo"),
-    })
-    .select("id, empresa:empresas(codigo)")
-    .single();
+  const filaVehiculo: Record<string, unknown> = {
+    empresa_id,
+    numero,
+    placa: str(formData.get("placa")),
+    marca: str(formData.get("marca")),
+    modelo: str(formData.get("modelo")),
+    anio: num(formData.get("anio")),
+    chasis: str(formData.get("chasis")),
+    numero_motor: str(formData.get("numero_motor")),
+    tipo: str(formData.get("tipo")),
+    color: str(formData.get("color")),
+    km_actual: num(formData.get("km_actual")) ?? 0,
+    gps_id: str(formData.get("gps_id")),
+    panapass: str(formData.get("panapass")),
+    estado: String(formData.get("estado") ?? "activo"),
+  };
+  let creadoIns = await sb.from("vehiculos").insert(filaVehiculo).select("id, empresa:empresas(codigo)").single();
+  if (creadoIns.error && /chasis|numero_motor|\btipo\b|color/i.test(creadoIns.error.message)) {
+    const { chasis: _c, numero_motor: _m, tipo: _t, color: _o, ...sinFicha } = filaVehiculo;
+    creadoIns = await sb.from("vehiculos").insert(sinFicha).select("id, empresa:empresas(codigo)").single();
+  }
+  const creado = creadoIns.data;
+  const error = creadoIns.error;
   if (error || !creado) {
     if (error && /unique|duplicate|23505/i.test(error.message)) {
       volverVehiculos(`El carro ${numero} ya existe en esa empresa. No hace falta crearlo otra vez.`);

@@ -9,6 +9,7 @@ const nextConfig = {
   serverExternalPackages: ["opusscript"],
   outputFileTracingIncludes: {
     "/app/cartera/conversaciones/**": ["./node_modules/opusscript/**/*"],
+    "/app/cartera/clientes/**": ["./lib/cartera/contratos/plantillas/**/*"],
   },
 };
 

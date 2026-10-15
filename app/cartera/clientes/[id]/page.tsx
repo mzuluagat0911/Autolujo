@@ -180,6 +180,12 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
             </div>
             <p className="mt-1 text-xs text-muted">{c.vehiculo?.empresa?.nombre ?? "—"} · letra <Money amount={Number(c.letra_diaria)} /></p>
             <p className="mt-2 text-sm">Saldo: <span className="font-semibold tabular-nums"><Money amount={saldoMap.get(c.id) ?? 0} /></span></p>
+            <a
+              href={`/cartera/clientes/${id}/contrato/${c.id}`}
+              className="mt-3 inline-flex rounded-lg px-3 py-2 text-sm font-medium text-ink ring-1 ring-line transition hover:bg-surface-2"
+            >
+              Descargar contrato
+            </a>
           </div>
         ))}
       </div>
