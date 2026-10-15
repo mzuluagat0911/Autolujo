@@ -38,6 +38,8 @@ import {
   historialParaLucia,
   hiloComercial,
   luciaPuedeResponder,
+  reabrirSiArchivadoPorSilencio,
+  reiniciarCadenciaSeguimiento,
   textoEstadoLead,
   marcarEscaladaComercial,
   programarSiguienteSeguimiento,
@@ -225,9 +227,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
   });
   if (guardado.repetido) return;
   if (guardado.error) console.error("[whatsapp/webhook] chat comercial:", guardado.error);
-  if (guardado.conversacionId && !(await luciaPuedeResponder(guardado.conversacionId))) {
-    return;
-  }
+  if (guardado.conversacionId && !(await retomarCadencia(guardado.conversacionId))) return;
   const decision = decisionPiloto(from);
   if (!decision.responde) return;
   await new Promise((resolver) => setTimeout(resolver, 2000));
@@ -341,13 +341,26 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         contexto: await contextoParaLucia(guardado.conversacionId, msg),
       });
       await entregarRespuestaComercial(from, guardado.conversacionId, r.mensaje, decision.envia);
+      if (decision.envia && guardado.conversacionId) {
+        await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
+      }
       return;
     } catch (reintento) {
       console.error("[whatsapp/webhook] reintento comercial falló:", reintento);
     }
     const fallo = "No le entendí bien. ¿Me lo escribe de nuevo?";
     await entregarRespuestaComercial(from, guardado.conversacionId, fallo, decision.envia);
+    if (decision.envia && guardado.conversacionId) {
+      await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
+    }
   }
+}
+
+async function retomarCadencia(conversacionId: string): Promise<boolean> {
+  await reabrirSiArchivadoPorSilencio(conversacionId);
+  if (!(await luciaPuedeResponder(conversacionId))) return false;
+  await reiniciarCadenciaSeguimiento(conversacionId);
+  return true;
 }
 
 async function textoDeAudioComercial(msg: WhatsAppMessage): Promise<string | null> {
@@ -420,21 +433,22 @@ async function atenderFotoComercial(msg: WhatsAppMessage) {
   });
   if (guardado.repetido) return;
   if (guardado.error) console.error("[whatsapp/webhook] documento comercial:", guardado.error);
-  const yaEnEquipo = guardado.conversacionId
-    ? !(await luciaPuedeResponder(guardado.conversacionId))
-    : false;
+  const sigue = guardado.conversacionId ? await retomarCadencia(guardado.conversacionId) : false;
   if (guardado.conversacionId) {
     await marcarEscaladaComercial(
       guardado.conversacionId,
       `Preaprobado: llegó un documento${que}. El equipo valida historial y récord.`,
     );
   }
-  if (yaEnEquipo) return;
+  if (!sigue) return;
   await avisarMedioComercial(
     msg,
     "Recibí su documento. El equipo lo revisa para la preaprobación. Yo sigo aquí: si quiere, adelantamos la cita.",
     guardado.conversacionId,
   );
+  if (guardado.conversacionId) {
+    await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
+  }
 }
 
 async function avisarMedioComercial(
@@ -445,6 +459,7 @@ async function avisarMedioComercial(
 ) {
   const from = msg.from as string;
   let conversacionId = conversacionYaGuardada ?? null;
+  const registroNuevo = !conversacionYaGuardada;
   if (!conversacionId) {
     const campana = datosCampana(msg);
     const guardado = await registrarEntradaComercial({
@@ -462,6 +477,7 @@ async function avisarMedioComercial(
   }
   const decision = decisionPiloto(from);
   if (!conversacionId) return;
+  if (registroNuevo && !(await retomarCadencia(conversacionId))) return;
   if (!decision.envia) {
     if (decision.responde) await guardarBorradorComercial(conversacionId, aviso);
     return;
@@ -471,6 +487,7 @@ async function avisarMedioComercial(
     await registrarSalidaComercial(conversacionId, aviso, {
       waMessageId: enviado === "ok" ? null : enviado,
     });
+    if (registroNuevo) await programarSiguienteSeguimiento(conversacionId, "tibio");
   }
 }
 

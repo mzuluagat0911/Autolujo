@@ -5,6 +5,9 @@ import { partirArchivo } from "./archivo";
 import { entregaNueva } from "./entrega";
 import { horasHastaSeguimiento } from "./lead";
 
+const ETAPA_SIN_SEGUIMIENTO = new Set(["cita", "visito", "ganado", "perdido"]);
+export const MOTIVO_ARCHIVO_SILENCIO = "No respondió después de los seguimientos.";
+
 export type EtapaComercial = "nuevo" | "conversacion" | "cita" | "visito" | "ganado" | "perdido";
 export type TemperaturaLead = "caliente" | "tibio" | "frio";
 export type ModoAtencionComercial = "lucia" | "humano";
@@ -725,21 +728,24 @@ export async function guardarAnalisisComercial(opts: {
   proximaAccion: string;
 }): Promise<void> {
   const sb = createServerSupabase();
-  await sb
+  const { data: actual } = await sb
     .from("conversaciones_comercial")
-    .update({
-      temperatura: opts.temperatura,
-      temperatura_score: Math.min(Math.max(Math.round(opts.score), 0), 100),
-      temperatura_motivo: opts.motivo.slice(0, 500),
-      resumen: opts.resumen.slice(0, 1000),
-      interes: opts.interes?.slice(0, 240) || null,
-      lugar: opts.lugar?.slice(0, 160) || null,
-      proxima_accion: opts.proximaAccion.slice(0, 300),
-      etapa: "conversacion",
-      updated_at: new Date().toISOString(),
-    })
+    .select("etapa")
     .eq("id", opts.conversacionId)
-    .not("etapa", "in", "(cita,visito,ganado,perdido)");
+    .maybeSingle();
+  const etapa = String(actual?.etapa ?? "");
+  const patch: Record<string, unknown> = {
+    temperatura: opts.temperatura,
+    temperatura_score: Math.min(Math.max(Math.round(opts.score), 0), 100),
+    temperatura_motivo: opts.motivo.slice(0, 500),
+    resumen: opts.resumen.slice(0, 1000),
+    interes: opts.interes?.slice(0, 240) || null,
+    lugar: opts.lugar?.slice(0, 160) || null,
+    proxima_accion: opts.proximaAccion.slice(0, 300),
+    updated_at: new Date().toISOString(),
+  };
+  if (!ETAPA_SIN_SEGUIMIENTO.has(etapa)) patch.etapa = "conversacion";
+  await sb.from("conversaciones_comercial").update(patch).eq("id", opts.conversacionId);
 }
 
 export async function luciaPuedeResponder(conversacionId: string): Promise<boolean> {
@@ -792,6 +798,74 @@ export async function cerrarLeadSinContacto(conversacionId: string): Promise<voi
   await registrarEventoComercial(conversacionId, "opt_out", null);
 }
 
+export async function reabrirSiArchivadoPorSilencio(conversacionId: string): Promise<boolean> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("conversaciones_comercial")
+    .select("cerrado_at, motivo_perdida, modo_atencion")
+    .eq("id", conversacionId)
+    .maybeSingle();
+  if (!data?.cerrado_at) return true;
+  if (data.modo_atencion === "humano" || data.motivo_perdida !== MOTIVO_ARCHIVO_SILENCIO) return false;
+  await sb
+    .from("conversaciones_comercial")
+    .update({
+      etapa: "conversacion",
+      resultado: null,
+      motivo_perdida: null,
+      cerrado_at: null,
+      intentos_seguimiento: 0,
+      seguimiento_at: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", conversacionId);
+  return true;
+}
+
+export async function reiniciarCadenciaSeguimiento(conversacionId: string): Promise<void> {
+  const sb = createServerSupabase();
+  await cancelarSeguimientosComercial(
+    conversacionId,
+    "El cliente escribió. La cadencia vuelve a empezar.",
+  );
+  await sb
+    .from("conversaciones_comercial")
+    .update({ intentos_seguimiento: 0, updated_at: new Date().toISOString() })
+    .eq("id", conversacionId);
+}
+
+export async function archivarLeadSinRespuesta(conversacionId: string): Promise<void> {
+  const sb = createServerSupabase();
+  const ahora = new Date().toISOString();
+  await cancelarSeguimientosComercial(conversacionId, "Se archivó el chat: no respondió.");
+  await sb
+    .from("conversaciones_comercial")
+    .update({
+      etapa: "perdido",
+      resultado: "Sin respuesta",
+      motivo_perdida: MOTIVO_ARCHIVO_SILENCIO,
+      cerrado_at: ahora,
+      seguimiento_at: null,
+      updated_at: ahora,
+    })
+    .eq("id", conversacionId);
+  await registrarEventoComercial(conversacionId, "archivado_sin_respuesta", null);
+}
+
+async function tieneCitaAbierta(
+  sb: ReturnType<typeof createServerSupabase>,
+  conversacionId: string,
+): Promise<boolean> {
+  const { data, error } = await sb
+    .from("citas_comercial")
+    .select("id")
+    .eq("conversacion_id", conversacionId)
+    .eq("estado", "programada")
+    .limit(1);
+  if (error) return false;
+  return Boolean(data?.length);
+}
+
 export async function programarSiguienteSeguimiento(
   conversacionId: string,
   temperatura: TemperaturaLead,
@@ -799,10 +873,12 @@ export async function programarSiguienteSeguimiento(
   const sb = createServerSupabase();
   const { data } = await sb
     .from("conversaciones_comercial")
-    .select("intentos_seguimiento, modo_atencion, cerrado_at")
+    .select("intentos_seguimiento, modo_atencion, cerrado_at, etapa")
     .eq("id", conversacionId)
     .maybeSingle();
   if (!data || data.modo_atencion === "humano" || data.cerrado_at) return;
+  if (ETAPA_SIN_SEGUIMIENTO.has(String(data.etapa ?? ""))) return;
+  if (await tieneCitaAbierta(sb, conversacionId)) return;
   const intento = Number(data.intentos_seguimiento ?? 0) + 1;
   const horas = horasHastaSeguimiento(temperatura, intento);
   if (horas == null) return;
@@ -814,12 +890,15 @@ export async function programarSiguienteSeguimiento(
       programado_at: programado,
       estado: "pendiente",
       intento,
+      texto: null,
+      enviado_at: null,
       motivo_cancelado: null,
       error: null,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "conversacion_id,intento" },
   );
+  if (error) console.error("[seguimiento] no programé el siguiente:", error.message);
   if (!error) {
     await sb
       .from("conversaciones_comercial")

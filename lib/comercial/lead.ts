@@ -76,12 +76,60 @@ export function nombreDeWhatsApp(valor: string | null | undefined): string | nul
   return limpio;
 }
 
+/** 1–3 van cerca. 4–7 son un día, tres días, una semana y diez días. El 8 archiva. */
+export const INTENTO_ARCHIVO = 8;
+
 export function horasHastaSeguimiento(
   temperatura: TemperaturaLead,
   intento: number,
 ): number | null {
-  if (intento < 1 || intento > 3) return null;
+  if (intento === INTENTO_ARCHIVO) return 48;
+  if (intento < 1 || intento > 7) return null;
+  if (intento === 4) return 24;
+  if (intento === 5) return 72;
+  if (intento === 6) return 24 * 7;
+  if (intento === 7) return 24 * 10;
   if (temperatura === "caliente") return intento === 1 ? 3 : 24;
   if (temperatura === "tibio") return intento === 1 ? 24 : 48;
   return 48;
+}
+
+/** El primer seguimiento retoma el paso pendiente. Los demás tienen texto fijo. */
+export function textoSeguimientoLead(opts: {
+  nombre: string | null;
+  proximaAccion: string | null;
+  intento: number;
+}): string {
+  const nombre = opts.nombre?.trim();
+  const saludo = nombre ? `Hola, ${nombre}.` : "Hola.";
+  const paso = pasoPendiente(opts.proximaAccion);
+  if (opts.intento <= 1) {
+    return paso
+      ? `${saludo} ${paso}`
+      : `${saludo} Quedé pendiente de su mensaje. ¿Seguimos con el carro?`;
+  }
+  if (opts.intento === 2) {
+    return `${saludo} Si le queda bien, le dejo una cita en Juan Díaz o en La Chorrera. ¿Cuál le sirve?`;
+  }
+  if (opts.intento === 3) {
+    return `${saludo} Lo dejo por aquí por si todavía quiere ver el carro. Cuando quiera, me escribe.`;
+  }
+  if (opts.intento === 4) {
+    return `${saludo} Le escribo de nuevo por si quedó con ganas de ver el carro. ¿Le busco un horario?`;
+  }
+  if (opts.intento === 5) {
+    return `${saludo} Sigo por aquí. Si quiere, le dejo la cita esta semana en Juan Díaz o en La Chorrera.`;
+  }
+  if (opts.intento === 6) {
+    return `${saludo} Pasó una semana. Si todavía busca carro, le aparto la visita.`;
+  }
+  return `${saludo} Este es el último mensaje. Si quiere el carro, respóndame y le dejo la cita. Si no, cierro el chat.`;
+}
+
+function pasoPendiente(accion: string | null | undefined): string | null {
+  const texto = accion?.replace(/\s+/g, " ").trim() ?? "";
+  if (texto.length < 8 || texto.length > 180) return null;
+  if (/^(pedir|confirmar|ofrecer|esperar|llamar|dar seguimiento|revisar)\b/i.test(texto)) return null;
+  if (/confirmar asistencia|no contactar|no desea/i.test(texto)) return null;
+  return /[.?!]$/.test(texto) ? texto : `${texto}.`;
 }

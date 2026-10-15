@@ -11,6 +11,7 @@ import { medianaMinutos } from "../lib/comercial/resultados.ts";
 import {
   esSolicitudNoContacto,
   horasHastaSeguimiento,
+  textoSeguimientoLead,
   lecturaLeadConReglas,
   nombreDeWhatsApp,
   textosDelCliente,
@@ -54,9 +55,33 @@ assert.equal(esSolicitudNoContacto(["No me interesa ese Kia, ¿tienen otro?"]), 
 
 assert.equal(horasHastaSeguimiento("caliente", 1), 3);
 assert.equal(horasHastaSeguimiento("caliente", 2), 24);
+assert.equal(horasHastaSeguimiento("caliente", 3), 24);
 assert.equal(horasHastaSeguimiento("tibio", 1), 24);
+assert.equal(horasHastaSeguimiento("tibio", 2), 48);
 assert.equal(horasHastaSeguimiento("frio", 1), 48);
-assert.equal(horasHastaSeguimiento("frio", 4), null);
+assert.equal(horasHastaSeguimiento("frio", 3), 48);
+assert.equal(horasHastaSeguimiento("frio", 4), 24);
+assert.equal(horasHastaSeguimiento("caliente", 5), 72);
+assert.equal(horasHastaSeguimiento("caliente", 6), 24 * 7);
+assert.equal(horasHastaSeguimiento("caliente", 7), 24 * 10);
+assert.equal(horasHastaSeguimiento("caliente", 8), 48);
+assert.equal(horasHastaSeguimiento("caliente", 9), null);
+assert.match(
+  textoSeguimientoLead({ nombre: "Ana", proximaAccion: "¿De qué lugar nos escribe?", intento: 1 }),
+  /¿De qué lugar nos escribe\?/,
+);
+assert.match(
+  textoSeguimientoLead({ nombre: "Ana", proximaAccion: "Esperar si pide cita.", intento: 1 }),
+  /Quedé pendiente/,
+);
+assert.match(
+  textoSeguimientoLead({ nombre: null, proximaAccion: null, intento: 2 }),
+  /Juan Díaz o en La Chorrera/,
+);
+assert.match(
+  textoSeguimientoLead({ nombre: "Ana", proximaAccion: null, intento: 7 }),
+  /último mensaje/,
+);
 
 assert.equal(
   avisoCitaPendiente({

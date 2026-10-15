@@ -4,7 +4,9 @@ import { sendTemplate, sendText } from "@/lib/whatsapp/client";
 import { idMensajeEnviado } from "./entrega";
 import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
 import { plantillaSeguimiento } from "./plantillas";
+import { INTENTO_ARCHIVO, textoSeguimientoLead } from "./lead";
 import {
+  archivarLeadSinRespuesta,
   programarSiguienteSeguimiento,
   registrarSalidaComercial,
   type TemperaturaLead,
@@ -21,33 +23,25 @@ type ConversacionSeguimiento = {
   wa_numero: string;
   nombre: string | null;
   interes: string | null;
+  proxima_accion: string | null;
+  etapa: string | null;
   temperatura: TemperaturaLead;
   ultimo_entrante_at: string | null;
   modo_atencion: string;
   cerrado_at: string | null;
 };
 
-function textoSeguimiento(c: ConversacionSeguimiento, intento: number): string {
-  const nombre = c.nombre?.trim();
-  const saludo = nombre ? `Hola, ${nombre}.` : "Hola.";
-  const interes = c.interes ? ` sobre ${c.interes}` : "";
-  if (c.temperatura === "caliente" && intento === 1) {
-    return `${saludo} Le escribo para continuar${interes}. ¿Quiere que le deje una cita en Juan Díaz o La Chorrera?`;
-  }
-  if (intento >= 3) {
-    return `${saludo} Quedo pendiente por si todavía desea avanzar${interes}. Si quiere, le ayudo a dejar una cita.`;
-  }
-  return `${saludo} Le doy seguimiento${interes}. ¿Todavía desea que le ayude a avanzar?`;
-}
+const ETAPA_SIN_SEGUIMIENTO = new Set(["cita", "visito", "ganado", "perdido"]);
 
 export async function ejecutarSeguimientosComercial(): Promise<{
   enviados: number;
   cancelados: number;
+  archivados: number;
   fallidos: number;
   pausado?: boolean;
 }> {
   if (!enviosAutomaticos() || modoAgente() !== "on") {
-    return { enviados: 0, cancelados: 0, fallidos: 0, pausado: true };
+    return { enviados: 0, cancelados: 0, archivados: 0, fallidos: 0, pausado: true };
   }
   const sb = createServerSupabase();
   const ahora = new Date().toISOString();
@@ -58,13 +52,13 @@ export async function ejecutarSeguimientosComercial(): Promise<{
     .lte("programado_at", ahora)
     .order("programado_at", { ascending: true })
     .limit(25);
-  if (error || !data?.length) return { enviados: 0, cancelados: 0, fallidos: error ? 1 : 0 };
+  if (error || !data?.length) return { enviados: 0, cancelados: 0, archivados: 0, fallidos: error ? 1 : 0 };
 
   const seguimientos = data as Seguimiento[];
   const ids = [...new Set(seguimientos.map((s) => s.conversacion_id))];
   const { data: conversaciones } = await sb
     .from("conversaciones_comercial")
-    .select("id, wa_numero, nombre, interes, temperatura, ultimo_entrante_at, modo_atencion, cerrado_at")
+    .select("id, wa_numero, nombre, interes, proxima_accion, etapa, temperatura, ultimo_entrante_at, modo_atencion, cerrado_at")
     .in("id", ids);
   const porId = new Map(
     ((conversaciones ?? []) as ConversacionSeguimiento[]).map((c) => [c.id, c]),
@@ -72,13 +66,29 @@ export async function ejecutarSeguimientosComercial(): Promise<{
 
   let enviados = 0;
   let cancelados = 0;
+  let archivados = 0;
   let fallidos = 0;
+  const conCita = new Set<string>();
+  if (ids.length > 0) {
+    const abiertas = await sb
+      .from("citas_comercial")
+      .select("conversacion_id")
+      .in("conversacion_id", ids)
+      .eq("estado", "programada");
+    if (!abiertas.error) {
+      for (const row of (abiertas.data ?? []) as { conversacion_id: string | null }[]) {
+        if (row.conversacion_id) conCita.add(row.conversacion_id);
+      }
+    }
+  }
   const phoneId = process.env.WHATSAPP_COMERCIAL_PHONE_NUMBER_ID;
 
   for (const seguimiento of seguimientos) {
     const c = porId.get(seguimiento.conversacion_id);
     if (c && !numeroEnPiloto(c.wa_numero)) continue;
-    if (!c || c.modo_atencion === "humano" || c.cerrado_at || seguimiento.intento > 3) {
+    const sinSeguimiento =
+      ETAPA_SIN_SEGUIMIENTO.has(c?.etapa ?? "") || conCita.has(seguimiento.conversacion_id);
+    if (!c || c.modo_atencion === "humano" || c.cerrado_at || sinSeguimiento || seguimiento.intento > INTENTO_ARCHIVO) {
       await sb
         .from("seguimientos_comercial")
         .update({
@@ -88,6 +98,12 @@ export async function ejecutarSeguimientosComercial(): Promise<{
         })
         .eq("id", seguimiento.id)
         .eq("estado", "pendiente");
+      if (c) {
+        await sb
+          .from("conversaciones_comercial")
+          .update({ seguimiento_at: null, updated_at: new Date().toISOString() })
+          .eq("id", c.id);
+      }
       cancelados += 1;
       continue;
     }
@@ -101,7 +117,25 @@ export async function ejecutarSeguimientosComercial(): Promise<{
       .maybeSingle();
     if (!reclamado.data) continue;
 
-    const textoLibre = textoSeguimiento(c, seguimiento.intento);
+    if (seguimiento.intento === INTENTO_ARCHIVO) {
+      await archivarLeadSinRespuesta(c.id);
+      await sb
+        .from("seguimientos_comercial")
+        .update({
+          estado: "cancelado",
+          motivo_cancelado: "Se archivó el chat: no respondió.",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", seguimiento.id);
+      archivados += 1;
+      continue;
+    }
+
+    const textoLibre = textoSeguimientoLead({
+      nombre: c.nombre,
+      proximaAccion: c.proxima_accion,
+      intento: seguimiento.intento,
+    });
     const plantilla = plantillaSeguimiento(c.nombre, c.interes);
     const texto = ventanaAbierta(c.ultimo_entrante_at) ? textoLibre : plantilla.texto;
     try {
@@ -129,7 +163,7 @@ export async function ejecutarSeguimientosComercial(): Promise<{
         })
         .eq("id", c.id);
       enviados += 1;
-      if (seguimiento.intento < 3) {
+      if (seguimiento.intento < INTENTO_ARCHIVO) {
         await programarSiguienteSeguimiento(c.id, c.temperatura);
       }
     } catch (e) {
@@ -150,5 +184,5 @@ export async function ejecutarSeguimientosComercial(): Promise<{
     }
   }
 
-  return { enviados, cancelados, fallidos };
+  return { enviados, cancelados, archivados, fallidos };
 }
