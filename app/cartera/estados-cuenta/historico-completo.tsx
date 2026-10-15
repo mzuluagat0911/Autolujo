@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { Money } from "@/components/kit";
-import { CONCEPTOS_PAGO } from "@/lib/cartera/rubros-pago";
+import { CONCEPTOS_PAGO, conceptoCanonico } from "@/lib/cartera/rubros-pago";
 import { guardarHistoricoDia, historicoCompleto, movimientosHistoricoDia } from "./actions";
 import type { CargoDelDia, FilaHistorico, PagoDelDia } from "@/lib/cartera/historico-cuenta";
 
@@ -82,7 +82,7 @@ export function HistoricoCompleto({
         ...p,
         lineas:
           p.lineas.length > 0
-            ? p.lineas
+            ? p.lineas.map((l) => ({ ...l, tipo: conceptoCanonico(l.tipo) ?? l.tipo }))
             : [{ tipo: "cuenta_diaria", aplicado: p.monto }],
       })),
     );

@@ -4,7 +4,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { sesionEquipo } from "@/lib/equipo/sesion";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
-import { CONCEPTOS_PAGO } from "@/lib/cartera/rubros-pago";
+import { CONCEPTOS_PAGO, conceptoCanonico } from "@/lib/cartera/rubros-pago";
 import { lineasAsignadas } from "@/lib/cartera/recargo-cubierto";
 import { esMarcaQc, historicoDeContrato, MARCA_QC, type FilaHistorico } from "@/lib/cartera/historico-cuenta";
 
@@ -96,7 +96,7 @@ export async function guardarDiaHistorico(input: {
     const monto = r2(p.monto);
     if (monto < 0) return { ok: false, error: "Un pago no puede quedar en negativo." };
     const lineas = (p.lineas ?? [])
-      .map((l) => ({ tipo: l.tipo, aplicado: r2(l.aplicado) }))
+      .map((l) => ({ tipo: conceptoCanonico(l.tipo) ?? l.tipo, aplicado: r2(l.aplicado) }))
       .filter((l) => l.aplicado > 0.009);
     if (monto > 0.009 && lineas.length === 0) {
       return { ok: false, error: "Indicá a qué se aplicó el pago." };

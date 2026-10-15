@@ -63,6 +63,21 @@ export const CUBETA_SALIDA = "salida al interior";
 
 export type ConceptoPago = (typeof CONCEPTOS_PAGO)[number]["value"];
 
+/** El alta guarda la letra y el domingo adelantados con otro nombre. */
+const ALIAS_CONCEPTO: Record<string, ConceptoPago> = {
+  prepago_letra: "cuenta_diaria",
+  prepago_domingo: "domingo",
+  afiliacion: "abono",
+  cuenta: "cuenta_diaria",
+};
+
+export function conceptoCanonico(tipo: string | null | undefined): ConceptoPago | null {
+  const t = (tipo ?? "").trim().toLowerCase();
+  const directo = CONCEPTOS_PAGO.find((c) => c.value === t);
+  if (directo) return directo.value;
+  return ALIAS_CONCEPTO[t] ?? null;
+}
+
 /** Cargo que se crea si asignan el concepto y no había uno pendiente que lo cubra. */
 export const CARGO_DE_CONCEPTO: Record<
   string,

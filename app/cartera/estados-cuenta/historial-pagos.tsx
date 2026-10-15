@@ -5,7 +5,7 @@ import { Money, StatusChip } from "@/components/kit";
 import { Field, Select } from "@/components/form";
 import { money } from "@/lib/cartera/estado-cuenta";
 import { fechaConDia, hoyPanama } from "@/lib/cartera/fecha";
-import { CONCEPTOS_PAGO } from "@/lib/cartera/rubros-pago";
+import { CONCEPTOS_PAGO, conceptoCanonico } from "@/lib/cartera/rubros-pago";
 import type { PagoHistorial } from "./actions";
 import {
   cargarHistorialPagos,
@@ -194,11 +194,14 @@ function EditorAsignaciones({
   const [err, setErr] = useState<string | null>(null);
   const [lineas, setLineas] = useState<Linea[]>(() => {
     if (pago.asignaciones?.length) {
-      return pago.asignaciones.map((a) => ({
-        tipo: a.tipo,
-        etiqueta: a.etiqueta,
-        aplicado: a.aplicado,
-      }));
+      return pago.asignaciones.map((a) => {
+        const tipo = conceptoCanonico(a.tipo) ?? a.tipo;
+        return {
+          tipo,
+          etiqueta: labelConcepto(tipo),
+          aplicado: a.aplicado,
+        };
+      });
     }
     return [{ tipo: "cuenta_diaria", etiqueta: "Cuota / letra", aplicado: pago.monto }];
   });

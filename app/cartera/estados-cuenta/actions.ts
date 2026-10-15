@@ -26,7 +26,7 @@ import {
   marcarConceptoRecargo,
   marcarFechaEspecifica,
 } from "@/lib/cartera/recargo-montos";
-import { CONCEPTOS_PAGO, cubetaDeConcepto } from "@/lib/cartera/rubros-pago";
+import { CONCEPTOS_PAGO, conceptoCanonico, cubetaDeConcepto } from "@/lib/cartera/rubros-pago";
 import { historicoDeContrato, movimientosDelDia } from "@/lib/cartera/historico-cuenta";
 import { guardarDiaHistorico } from "@/lib/cartera/historico-editar";
 import { atribuirRecargos, lineasAsignadas } from "@/lib/cartera/recargo-cubierto";
@@ -760,8 +760,8 @@ export async function guardarAsignacionesHistorial(opts: {
   const monto = Number((p as { monto: number }).monto) || 0;
   const lineas = (opts.lineas ?? [])
     .map((l) => ({
-      tipo: String(l.tipo ?? "").trim(),
-      aplicado: r2(Number(l.aplicado) || 0),
+      tipo: conceptoCanonico(l.tipo) ?? "",
+      aplicado: r2(Number(String(l.aplicado).replace(",", ".")) || 0),
       etiqueta: (l.etiqueta ?? "").trim() || undefined,
     }))
     .filter((l) => l.aplicado > 0.009 && TIPOS_ASIG.has(l.tipo));
