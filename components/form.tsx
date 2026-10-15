@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 
 const INPUT =
   "rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none transition placeholder:text-faint focus:ring-2 focus:ring-ink/20";
@@ -15,6 +15,8 @@ export function Field({
   autoComplete,
   step,
   min,
+  value,
+  onChange,
 }: {
   label: string;
   name: string;
@@ -27,6 +29,8 @@ export function Field({
   autoComplete?: string;
   step?: string | number;
   min?: string | number;
+  value?: string;
+  onChange?: (e: ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -36,7 +40,7 @@ export function Field({
         required={required}
         placeholder={placeholder}
         type={type}
-        defaultValue={defaultValue}
+        {...(value !== undefined ? { value, onChange } : { defaultValue })}
         minLength={minLength}
         autoComplete={autoComplete}
         step={step}
@@ -78,6 +82,36 @@ export function Select({
           </option>
         ))}
       </select>
+    </label>
+  );
+}
+
+export function Textarea({
+  label,
+  name,
+  required,
+  placeholder,
+  rows = 3,
+  hint,
+}: {
+  label: string;
+  name: string;
+  required?: boolean;
+  placeholder?: string;
+  rows?: number;
+  hint?: string;
+}) {
+  return (
+    <label className="flex flex-col gap-1.5">
+      <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">{label}</span>
+      <textarea
+        name={name}
+        required={required}
+        placeholder={placeholder}
+        rows={rows}
+        className={`${INPUT} resize-y`}
+      />
+      {hint && <span className="text-xs text-muted">{hint}</span>}
     </label>
   );
 }

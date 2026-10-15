@@ -8,6 +8,8 @@ import { normalizarGenero } from "@/lib/cartera/tratamiento";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { enlazarChatDelContrato, telefonosDeAlta } from "@/lib/cartera/enlazar-alta";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
+import { provinciaValida } from "@/lib/cartera/provincias-panama";
+import { referenciasPersonales } from "@/lib/cartera/referencias-alta";
 
 const PANAPASS_ENTRADA = 20;
 const CUOTA_DOMINGO_DEFAULT = 30;
@@ -30,6 +32,76 @@ function r2(n: number): number {
 
 function volverClientes(msg: string): never {
   redirect(`/cartera/clientes?aviso=${encodeURIComponent(msg)}`);
+}
+
+function fechaIso(v: FormDataEntryValue | null): string | null {
+  const s = str(v);
+  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const [y, m, d] = s.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return s;
+}
+
+function unirNota(prev: unknown, linea: string): string {
+  const base = typeof prev === "string" && prev.trim() ? prev.trim() : "";
+  return base ? `${base}\n${linea}` : linea;
+}
+
+function datosDeResidencia(
+  formData: FormData,
+): { direccion: string; provincia: string; referencias: string } | { error: string } {
+  const provincia = str(formData.get("provincia"));
+  if (!provincia || !provinciaValida(provincia)) return { error: "Elegí la provincia." };
+  const direccion = str(formData.get("direccion"));
+  if (!direccion) return { error: "La dirección es obligatoria." };
+  const refs = referenciasPersonales(formData);
+  if (refs.error || !refs.texto) {
+    return { error: refs.error ?? "Hacen falta 4 referencias completas para guardar el contrato." };
+  }
+  return { direccion, provincia, referencias: refs.texto };
+}
+
+function datosDeIdentidad(
+  formData: FormData,
+): { fecha_nacimiento: string; numero_licencia: string; fecha_vencimiento_licencia: string } | { error: string } {
+  const nacimiento = fechaIso(formData.get("fecha_nacimiento"));
+  if (!nacimiento) return { error: "La fecha de nacimiento es obligatoria." };
+  if (nacimiento > hoyPanama()) return { error: "La fecha de nacimiento no puede ser futura." };
+  const numero = str(formData.get("numero_licencia"));
+  if (!numero || numero.length < 4) return { error: "El número de licencia es obligatorio." };
+  const vence = fechaIso(formData.get("fecha_vencimiento_licencia"));
+  if (!vence) return { error: "La fecha de vencimiento de la licencia es obligatoria." };
+  return { fecha_nacimiento: nacimiento, numero_licencia: numero, fecha_vencimiento_licencia: vence };
+}
+
+async function insertarCliente(
+  sb: ReturnType<typeof createServerSupabase>,
+  fila: Record<string, unknown>,
+) {
+  let actual: Record<string, unknown> = { ...fila };
+  if (!actual.referencias) delete actual.referencias;
+  let ultimo = await sb.from("clientes").insert(actual).select("id").single();
+  for (let i = 0; i < 3 && ultimo.error; i++) {
+    const msg = ultimo.error.message;
+    if (/referencias/i.test(msg) && actual.referencias) {
+      const { referencias, ...resto } = actual;
+      actual = { ...resto, notas: unirNota(resto.notas, String(referencias)) };
+    } else if (/numero_licencia/i.test(msg) && actual.numero_licencia) {
+      const nro = String(actual.numero_licencia);
+      const { numero_licencia: _n, ...resto } = actual;
+      actual = { ...resto, notas: unirNota(resto.notas, `Licencia: ${nro}`) };
+    } else if (/provincia/i.test(msg) && actual.provincia) {
+      const prov = String(actual.provincia);
+      const { provincia: _p, ...resto } = actual;
+      const dir = resto.direccion ? String(resto.direccion) : "";
+      actual = { ...resto, direccion: dir ? `${prov} — ${dir}` : prov };
+    } else {
+      break;
+    }
+    ultimo = await sb.from("clientes").insert(actual).select("id").single();
+  }
+  return ultimo;
 }
 
 export async function createCliente(formData: FormData): Promise<void> {
@@ -197,20 +269,26 @@ export async function createClienteConContrato(
   if ((str(formData.get("whatsapp")) || str(formData.get("telefono"))) && !tels) {
     return { ok: false, error: "Celular inválido. Usa 8 dígitos o +507XXXXXXXX." };
   }
+  const residencia = datosDeResidencia(formData);
+  if ("error" in residencia) return { ok: false, error: residencia.error };
+  const identidad = datosDeIdentidad(formData);
+  if ("error" in identidad) return { ok: false, error: identidad.error };
 
-  const { data: cliente, error: cErr } = await sb
-    .from("clientes")
-    .insert({
-      nombre,
-      genero,
-      cedula: str(formData.get("cedula")),
-      telefono: tels?.telefono ?? str(formData.get("telefono")),
-      whatsapp: tels?.whatsapp ?? str(formData.get("whatsapp")),
-      mayor_de_25: formData.get("mayor_de_25") === "on",
-      codigo: str(formData.get("codigo")),
-    })
-    .select("id")
-    .single();
+  const { data: cliente, error: cErr } = await insertarCliente(sb, {
+    nombre,
+    genero,
+    cedula: str(formData.get("cedula")),
+    telefono: tels?.telefono ?? str(formData.get("telefono")),
+    whatsapp: tels?.whatsapp ?? str(formData.get("whatsapp")),
+    mayor_de_25: formData.get("mayor_de_25") === "on",
+    codigo: str(formData.get("codigo")),
+    direccion: residencia.direccion,
+    provincia: residencia.provincia,
+    referencias: residencia.referencias,
+    fecha_nacimiento: identidad.fecha_nacimiento,
+    numero_licencia: identidad.numero_licencia,
+    fecha_vencimiento_licencia: identidad.fecha_vencimiento_licencia,
+  });
   if (cErr || !cliente) {
     return { ok: false, error: cErr?.message ?? "No pude crear el cliente." };
   }

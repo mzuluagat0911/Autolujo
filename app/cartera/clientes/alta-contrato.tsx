@@ -1,12 +1,116 @@
 "use client";
 
 import { useMemo, useState, useTransition } from "react";
-import { Field, Select } from "@/components/form";
+import { Field, Select, Textarea } from "@/components/form";
+import { PROVINCIAS_PANAMA } from "@/lib/cartera/provincias-panama";
+import { REFERENCIAS_MAX, REFERENCIAS_MIN } from "@/lib/cartera/referencias-alta";
 import type { CarroLibre } from "./actions";
 
 const PANAPASS = 20;
 const CUOTA_DOMINGO = 30;
 const DIAS_DOMINGO = 3;
+
+type RefFila = { nombre: string; parentesco: string; telefono: string };
+
+function filaVacia(): RefFila {
+  return { nombre: "", parentesco: "", telefono: "" };
+}
+
+function DatosDelContrato() {
+  const [refs, setRefs] = useState<RefFila[]>(() =>
+    Array.from({ length: REFERENCIAS_MIN }, filaVacia),
+  );
+
+  function setCampo(i: number, campo: keyof RefFila, valor: string) {
+    setRefs((prev) => prev.map((fila, idx) => (idx === i ? { ...fila, [campo]: valor } : fila)));
+  }
+
+  return (
+    <>
+      <div className="flex flex-col gap-4 sm:col-span-2 lg:col-span-3">
+        <div className="max-w-sm">
+          <Select
+            label="Provincia *"
+            name="provincia"
+            required
+            placeholder="Elegí la provincia…"
+            options={PROVINCIAS_PANAMA.map((p) => ({ value: p, label: p }))}
+          />
+        </div>
+        <Textarea
+          label="Dirección *"
+          name="direccion"
+          required
+          rows={6}
+          placeholder="Barrio, calle, número de casa, color de la fachada y cómo llegar"
+          hint="Campo amplio: es la dirección que queda escrita en el contrato."
+        />
+      </div>
+      <div className="flex flex-col gap-3 sm:col-span-2 lg:col-span-3">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              Referencias personales *
+            </p>
+            <p className="mt-1 text-xs text-muted">
+              Mínimo 4 para poder guardar. Podés sumar hasta 10.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={refs.length >= REFERENCIAS_MAX}
+            onClick={() => setRefs((prev) => (prev.length >= REFERENCIAS_MAX ? prev : [...prev, filaVacia()]))}
+            className="shrink-0 rounded-lg bg-surface px-3 py-2 text-sm font-medium text-ink ring-1 ring-line transition hover:bg-surface-2 disabled:opacity-50"
+          >
+            + Referencia
+          </button>
+        </div>
+        {refs.map((fila, i) => (
+          <div key={i} className="flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-medium text-muted">Referencia {i + 1}</p>
+              {i >= REFERENCIAS_MIN && (
+                <button
+                  type="button"
+                  onClick={() => setRefs((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="text-xs text-rojo hover:underline"
+                >
+                  Quitar
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <Field
+                label="Nombre *"
+                name={`ref_nombre_${i + 1}`}
+                required
+                placeholder="Nombre"
+                value={fila.nombre}
+                onChange={(e) => setCampo(i, "nombre", e.target.value)}
+              />
+              <Field
+                label="Parentesco *"
+                name={`ref_parentesco_${i + 1}`}
+                required
+                placeholder="Hermano, esposa…"
+                value={fila.parentesco}
+                onChange={(e) => setCampo(i, "parentesco", e.target.value)}
+              />
+              <Field
+                label="Teléfono *"
+                name={`ref_telefono_${i + 1}`}
+                required
+                placeholder="6000-0000"
+                value={fila.telefono}
+                onChange={(e) => setCampo(i, "telefono", e.target.value)}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
 
 function money(n: number) {
   const v = Math.round(n * 100) / 100;
@@ -116,6 +220,14 @@ export function AltaContratoForm({
         <Field label="Cédula" name="cedula" placeholder="8-888-8888" />
         <Field label="Teléfono" name="telefono" placeholder="6000-0000" />
         <Field label="WhatsApp" name="whatsapp" placeholder="+50760000000" />
+        <Field label="Fecha de nacimiento *" name="fecha_nacimiento" type="date" required />
+        <Field label="Nº de licencia *" name="numero_licencia" required placeholder="8-888-8888" />
+        <Field
+          label="Vencimiento de licencia *"
+          name="fecha_vencimiento_licencia"
+          type="date"
+          required
+        />
         <label className="flex items-center gap-2 text-sm text-muted sm:col-span-2 lg:col-span-3">
           <input type="checkbox" name="mayor_de_25" className="h-4 w-4" defaultChecked />
           Mayor de 25 años
@@ -127,6 +239,7 @@ export function AltaContratoForm({
         <h3 className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted sm:col-span-2 lg:col-span-3">
           Contrato
         </h3>
+        <DatosDelContrato />
         <Select
           label="Carro libre *"
           name="vehiculo_id"

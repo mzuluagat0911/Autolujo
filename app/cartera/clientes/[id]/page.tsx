@@ -10,7 +10,29 @@ export const dynamic = "force-dynamic";
 type Cliente = {
   id: string; nombre: string; genero: string | null; cedula: string | null;
   telefono: string | null; whatsapp: string | null; score_financiero: number;
+  direccion: string | null; notas: string | null;
+  fecha_nacimiento: string | null; fecha_vencimiento_licencia: string | null;
 };
+
+function fechaCorta(iso: string | null): string | null {
+  if (!iso) return null;
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return new Date(y, m - 1, d).toLocaleDateString("es-PA", {
+    day: "2-digit", month: "short", year: "numeric",
+  });
+}
+
+function notasDeAlta(notas: string | null): { referencias: string | null; licencia: string | null } {
+  if (!notas) return { referencias: null, licencia: null };
+  const lineas = notas.split("\n");
+  const lic = lineas.find((l) => l.startsWith("Licencia: "));
+  const resto = lineas.filter((l) => !l.startsWith("Licencia: ")).join("\n").trim();
+  return {
+    referencias: /^1\. /m.test(resto) ? resto : null,
+    licencia: lic ? lic.slice("Licencia: ".length).trim() : null,
+  };
+}
 type Contrato = {
   id: string; estado: string; letra_diaria: number;
   vehiculo: { numero: string; empresa: { codigo: string; nombre: string } | null } | null;
@@ -39,11 +61,23 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
 
   const { data: cliente } = await sb
     .from("clientes")
-    .select("id, nombre, genero, cedula, telefono, whatsapp, score_financiero")
+    .select("id, nombre, genero, cedula, telefono, whatsapp, score_financiero, direccion, notas, fecha_nacimiento, fecha_vencimiento_licencia")
     .eq("id", id)
     .maybeSingle();
   if (!cliente) notFound();
   const cli = cliente as Cliente;
+  const refsCol = await sb.from("clientes").select("referencias").eq("id", id).maybeSingle();
+  const extraCol = await sb.from("clientes").select("numero_licencia, provincia").eq("id", id).maybeSingle();
+  const deNotas = notasDeAlta(cli.notas);
+  const referenciasCol = refsCol.error
+    ? null
+    : ((refsCol.data as { referencias?: string | null } | null)?.referencias ?? null);
+  const referencias = referenciasCol ?? deNotas.referencias;
+  const extra = extraCol.error
+    ? null
+    : (extraCol.data as { numero_licencia?: string | null; provincia?: string | null } | null);
+  const numeroLicencia = extra?.numero_licencia ?? deNotas.licencia;
+  const provincia = extra?.provincia ?? null;
 
   const { data: contratosData } = await sb
     .from("contratos")
@@ -97,6 +131,38 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
           </div>
         }
       />
+
+      {(cli.direccion || provincia || referencias || cli.fecha_nacimiento || numeroLicencia || cli.fecha_vencimiento_licencia) && (
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {(cli.fecha_nacimiento || numeroLicencia || cli.fecha_vencimiento_licencia) && (
+            <div className="rounded-xl bg-surface p-4 ring-1 ring-line">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Identidad</p>
+              {cli.fecha_nacimiento && (
+                <p className="mt-2 text-sm">Nacimiento {fechaCorta(cli.fecha_nacimiento)}</p>
+              )}
+              {(numeroLicencia || cli.fecha_vencimiento_licencia) && (
+                <p className="mt-1 text-sm">
+                  Licencia {numeroLicencia ?? "—"}
+                  {cli.fecha_vencimiento_licencia ? ` · vence ${fechaCorta(cli.fecha_vencimiento_licencia)}` : ""}
+                </p>
+              )}
+            </div>
+          )}
+          {(cli.direccion || provincia) && (
+            <div className="rounded-xl bg-surface p-4 ring-1 ring-line sm:col-span-2">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Dirección</p>
+              {provincia && <p className="mt-2 text-sm font-medium">{provincia}</p>}
+              {cli.direccion && <p className="mt-1 whitespace-pre-wrap text-sm">{cli.direccion}</p>}
+            </div>
+          )}
+          {referencias && (
+            <div className="rounded-xl bg-surface p-4 ring-1 ring-line sm:col-span-2">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Referencias personales</p>
+              <p className="mt-2 whitespace-pre-wrap text-sm">{referencias}</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Contratos del cliente */}
       <h2 className="mt-8 text-[11px] font-medium uppercase tracking-[0.16em] text-muted">Contratos</h2>
