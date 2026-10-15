@@ -1,7 +1,6 @@
-const SIGUE =
-  "Sigo yo por aquí. ¿De qué lugar nos escribe? Le dejo la cita en Juan Díaz o en La Chorrera.";
+const SIGUE = "¿Le queda mejor Juan Díaz o La Chorrera? Le dejo la visita y el equipo le cierra allá.";
 
-const QUIEN = "Soy Lucía, de Auto Lujo. ¿Qué carro está buscando?";
+const QUIEN = "Soy Lucía, de Auto Lujo. ¿Le queda mejor la visita en Juan Díaz o en La Chorrera?";
 
 function plano(texto: string): string {
   return texto

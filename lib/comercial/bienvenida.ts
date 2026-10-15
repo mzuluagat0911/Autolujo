@@ -16,7 +16,7 @@ export const MENSAJE_BIENVENIDA = [
   "",
   "Con gusto le brindamos toda la información y le ayudamos con el proceso 🙌",
   "",
-  "¿Le gustaría que le enviemos los requisitos y el paso a paso para separar su vehículo?",
+  "¿Le dejo la visita en Juan Díaz o en La Chorrera? El equipo le cierra allá el carro.",
 ].join("\n");
 
 const PREGUNTA_CONCRETA =
