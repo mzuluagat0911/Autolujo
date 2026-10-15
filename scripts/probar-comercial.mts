@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { partirArchivo, textoConArchivo } from "../lib/comercial/archivo.ts";
 import { pideUbicacion, sedesParaVideo } from "../lib/comercial/video-sede.ts";
 import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "../lib/comercial/bienvenida.ts";
+import { mensajeNaturalLucia } from "../lib/comercial/voz.ts";
 import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
 import { pedidoRepiteCita, telefonoVisible, textoEsConfirmacion } from "../lib/comercial/cita-pedido.ts";
 import { validarHorario } from "../lib/comercial/sedes.ts";
@@ -171,6 +172,16 @@ assert.ok(MENSAJE_BIENVENIDA.includes("https://bit.ly/tratamientodedatosautolujo
 assert.ok(MENSAJE_BIENVENIDA.includes("desde $25"));
 assert.ok(MENSAJE_BIENVENIDA.includes("desde $100"));
 assert.equal(MENSAJE_BIENVENIDA.includes("$350"), false);
+const eco =
+  "Por aquí le atiendo mejor por escrito o con una foto del documento. Cuénteme qué está buscando.";
+assert.equal(mensajeNaturalLucia(eco, eco).includes("Por aquí le atiendo"), false);
+assert.equal(
+  mensajeNaturalLucia("Claro, le paso con un compañero. Enseguida le escriben por aquí.").includes("compañero"),
+  false,
+);
+assert.equal(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("inteligencia"), false);
+assert.ok(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("Lucía"));
+assert.equal(mensajeNaturalLucia("Hola, soy Lucía. ¿En qué le puedo ayudar?").includes("ayudar"), false);
 const citaJueves = { sede: "juan_diaz", fecha: "2026-10-15", hora: "11:00", nombre: "Mateo" };
 assert.equal(
   pedidoRepiteCita(citaJueves, { accion: "agendar", sede: "juan_diaz", fecha: "2026-10-15", hora: "11:00", nombre: "Mateo" }),

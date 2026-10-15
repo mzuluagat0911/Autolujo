@@ -24,6 +24,7 @@ import { responderAgente } from "@/lib/ai/agente";
 import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoConArchivo } from "@/lib/comercial/archivo";
 import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "@/lib/comercial/bienvenida";
+import { mensajeNaturalLucia } from "@/lib/comercial/voz";
 import { esDocumentoRequisito, guardarFotoComercial } from "@/lib/comercial/documento";
 import { textoInventario } from "@/lib/comercial/inventario";
 import { textoSedes } from "@/lib/comercial/sedes";
@@ -198,10 +199,13 @@ async function manejarMensajeComercial(msg: WhatsAppMessage) {
     await atenderFotoComercial(msg);
     return;
   }
+  if (tipo === "ack") return;
   if (tipo !== "text") {
     await avisarMedioComercial(
       msg,
-      "Por aquí le atiendo mejor por escrito o con una foto del documento. Cuénteme qué está buscando.",
+      "Mándemelo por escrito y le cuento. ¿Qué carro está buscando?",
+      null,
+      etiquetaDeMedio(msg.type),
     );
     return;
   }
@@ -281,7 +285,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         proximaAccion: r.lead.proxima_accion,
       });
     }
-    let salida = r.mensaje;
+    let salida = mensajeNaturalLucia(r.mensaje, texto);
     if (guardado.conversacionId && r.cita && r.cita.accion !== "ninguna") {
       const hilo = await hiloComercial(guardado.conversacionId);
       const aplicada = await aplicarPedidoCita({
@@ -340,7 +344,12 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
         contexto: await contextoParaLucia(guardado.conversacionId, msg),
       });
-      await entregarRespuestaComercial(from, guardado.conversacionId, r.mensaje, decision.envia);
+      await entregarRespuestaComercial(
+        from,
+        guardado.conversacionId,
+        mensajeNaturalLucia(r.mensaje, texto),
+        decision.envia,
+      );
       if (decision.envia && guardado.conversacionId) {
         await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
       }
@@ -464,7 +473,7 @@ async function avisarMedioComercial(
     const campana = datosCampana(msg);
     const guardado = await registrarEntradaComercial({
       waNumero: from,
-      texto: entrada ?? aviso,
+      texto: entrada?.trim() || "Mensaje",
       waMessageId: msg.id ?? null,
       anuncio: campana.anuncio,
       campanaId: campana.campanaId,
@@ -673,6 +682,14 @@ function pareceCaptionDeAdjunto(texto: string): boolean {
   if (t.length === 0 || t.length > 80) return false; // largo = conversación real
   if (/[?¿]/.test(t)) return false;                  // si pregunta algo, hay que responder
   return ANUNCIA_ADJUNTO.test(t);
+}
+
+function etiquetaDeMedio(tipo: string | undefined): string {
+  if (tipo === "video") return "🎥 Video";
+  if (tipo === "document") return "📄 Documento";
+  if (tipo === "location") return "📍 Ubicación";
+  if (tipo === "contacts") return "👤 Contacto";
+  return "Mensaje";
 }
 
 function tipoMensaje(msg: WhatsAppMessage): "text" | "image" | "audio" | "ack" | "otro" {
