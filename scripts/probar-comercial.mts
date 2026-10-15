@@ -169,7 +169,8 @@ assert.equal(
 assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Hola, ¿cuánto es la letra?" }]), false);
 assert.ok(MENSAJE_BIENVENIDA.includes("https://bit.ly/tratamientodedatosautolujopanama"));
 assert.ok(MENSAJE_BIENVENIDA.includes("desde $25"));
-assert.ok(MENSAJE_BIENVENIDA.includes("desde $350"));
+assert.ok(MENSAJE_BIENVENIDA.includes("desde $100"));
+assert.equal(MENSAJE_BIENVENIDA.includes("$350"), false);
 const citaJueves = { sede: "juan_diaz", fecha: "2026-10-15", hora: "11:00", nombre: "Mateo" };
 assert.equal(
   pedidoRepiteCita(citaJueves, { accion: "agendar", sede: "juan_diaz", fecha: "2026-10-15", hora: "11:00", nombre: "Mateo" }),
