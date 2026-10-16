@@ -4,7 +4,15 @@ import { pideUbicacion, sedesParaVideo } from "../lib/comercial/video-sede.ts";
 import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "../lib/comercial/bienvenida.ts";
 import { mensajeNaturalLucia } from "../lib/comercial/voz.ts";
 import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
-import { pedidoRepiteCita, telefonoVisible, textoEsConfirmacion } from "../lib/comercial/cita-pedido.ts";
+import {
+  ajustarMensajeDeCita,
+  esDudaSuelta,
+  pedidoRepiteCita,
+  preguntaPorElDiaDeLaCita,
+  telefonoVisible,
+  textoDeLaCitaAbierta,
+  textoEsConfirmacion,
+} from "../lib/comercial/cita-pedido.ts";
 import { validarHorario } from "../lib/comercial/sedes.ts";
 import { entregaNueva } from "../lib/comercial/entrega.ts";
 import { decisionPiloto, numeroEnPiloto, ordenarPorReciente } from "../lib/comercial/piloto.ts";
@@ -50,6 +58,7 @@ assert.deepEqual(textosDelCliente([
 ]), ["Hola"]);
 assert.equal(nombreDeWhatsApp("Mateo Zuluaga"), "Mateo Zuluaga");
 assert.equal(nombreDeWhatsApp("12345"), null);
+assert.equal(nombreDeWhatsApp("❤#Adorada❤#"), "Adorada");
 assert.equal(telefonoVisible("50766432422", null), "6643-2422");
 assert.equal(telefonoVisible("573135076319", null), "+57 313 507 6319");
 assert.equal(esSolicitudNoContacto(["No me interesa ese Kia, ¿tienen otro?"]), false);
@@ -185,6 +194,28 @@ assert.equal(mensajeNaturalLucia("Hola, soy Lucía. ¿En qué le puedo ayudar?")
 assert.equal(
   mensajeNaturalLucia("El abono inicial desde $350."),
   "El abono inicial desde $100.",
+);
+assert.equal(mensajeNaturalLucia("Perfecto, ❤#Adorada❤#. La esperamos."), "Perfecto, Adorada. La esperamos.");
+assert.equal(textoEsConfirmacion("ok"), true);
+assert.equal(textoEsConfirmacion("Ok me interesa un Grand i 10 del año tienen❓"), false);
+assert.equal(preguntaPorElDiaDeLaCita("Mi cita es hoy 16"), true);
+assert.equal(esDudaSuelta("❓"), true);
+assert.equal(
+  textoDeLaCitaAbierta({
+    nombre: "❤#Adorada❤#",
+    fecha: "2026-10-16",
+    hora: "13:00",
+    sede: "chorrera",
+    hoy: "2026-10-16",
+  }),
+  "Adorada, su cita queda hoy, viernes 16 de octubre, a las 1 p. m., en La Chorrera. Ahí lo esperamos.",
+);
+assert.equal(
+  ajustarMensajeDeCita(
+    "Disculpe, me confundí. ¿Le gustaría confirmar su cita para mañana, viernes 16 de octubre, a la 1 p.m. en La Chorrera, o prefiere agendarla en Juan Díaz?",
+    { hoy: "2026-10-16", fechaCita: "2026-10-16", cliente: "Mi cita es hoy 16" },
+  ),
+  "Disculpe, me confundí. ¿Le gustaría confirmar su cita para hoy, viernes 16 de octubre, a la 1 p.m. en La Chorrera.",
 );
 const citaJueves = { sede: "juan_diaz", fecha: "2026-10-15", hora: "11:00", nombre: "Mateo" };
 assert.equal(

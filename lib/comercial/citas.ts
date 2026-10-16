@@ -8,6 +8,7 @@ import { sedePorId, validarHorario, type SedeId } from "./sedes";
 import { sendTemplate, sendText } from "@/lib/whatsapp/client";
 import { idMensajeEnviado } from "./entrega";
 import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
+import { nombreDeWhatsApp } from "./lead";
 import { pedidoRepiteCita, telefonoVisible, textoEsConfirmacion } from "./cita-pedido";
 import { enviarVideoSede } from "./video-sede";
 import { plantillaCita } from "./plantillas";
@@ -113,7 +114,9 @@ export function textoConfirmacion(cita: {
   celular: string | null;
 }): string {
   const sede = sedePorId(cita.sede);
-  return `Listo, ${cita.nombre}. Queda el ${fechaConDia(cita.fecha)} a las ${cita.hora} en ${sede?.nombre ?? "la sede"}. El celular queda ${telefonoVisible(cita.waNumero, cita.celular)}. El día antes le escribo para confirmar, y el mismo día le mando cómo llegar.`;
+  const nombre = nombreDeWhatsApp(cita.nombre);
+  const cabeza = nombre ? `Listo, ${nombre}.` : "Listo.";
+  return `${cabeza} Queda el ${fechaConDia(cita.fecha)} a las ${cita.hora} en ${sede?.nombre ?? "la sede"}. El celular queda ${telefonoVisible(cita.waNumero, cita.celular)}. El día antes le escribo para confirmar, y el mismo día le mando cómo llegar.`;
 }
 
 export async function aplicarPedidoCita(opts: {
@@ -138,7 +141,9 @@ export async function aplicarPedidoCita(opts: {
       .update({ confirmacion: "chat", updated_at: new Date().toISOString() })
       .eq("id", abierta.id);
     if (error) return { mensaje: null };
-    return { mensaje: `Quedó confirmada, ${abierta.nombre}. Lo esperamos el ${fechaConDia(abierta.fecha)} a las ${abierta.hora}.` };
+    const nombre = nombreDeWhatsApp(abierta.nombre);
+    const cabeza = nombre ? `Quedó confirmada, ${nombre}.` : "Quedó confirmada.";
+    return { mensaje: `${cabeza} Lo esperamos el ${fechaConDia(abierta.fecha)} a las ${abierta.hora}.` };
   }
 
   if (pedido.accion === "cancelar") {

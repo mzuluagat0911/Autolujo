@@ -25,13 +25,19 @@ import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoConArchivo } from "@/lib/comercial/archivo";
 import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "@/lib/comercial/bienvenida";
 import { mensajeNaturalLucia } from "@/lib/comercial/voz";
+import {
+  ajustarMensajeDeCita,
+  esDudaSuelta,
+  preguntaPorElDiaDeLaCita,
+  textoDeLaCitaAbierta,
+} from "@/lib/comercial/cita-pedido";
 import { esDocumentoRequisito, guardarFotoComercial } from "@/lib/comercial/documento";
 import { textoInventario } from "@/lib/comercial/inventario";
-import { textoSedes } from "@/lib/comercial/sedes";
+import { sedePorId, textoSedes } from "@/lib/comercial/sedes";
 import { aplicarPedidoCita, citaAbierta } from "@/lib/comercial/citas";
 import { enviarVideoSede, pideUbicacion, sedesParaVideo } from "@/lib/comercial/video-sede";
 import { esSolicitudNoContacto, lecturaLeadConReglas, nombreDeWhatsApp, textosDelCliente } from "@/lib/comercial/lead";
-import { fechaConDia, hoyPanama, fueraHorarioOperativo } from "@/lib/cartera/fecha";
+import { fechaConDia, hoyPanama, fueraHorarioOperativo, sumarDias } from "@/lib/cartera/fecha";
 import {
   cerrarLeadSinContacto,
   guardarAnalisisComercial,
@@ -239,6 +245,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     return;
   }
 
+  let yaSalio = false;
   try {
     const historial = guardado.conversacionId
       ? await historialParaLucia(guardado.conversacionId)
@@ -258,6 +265,27 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       if (decision.envia && guardado.conversacionId) {
         await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
       }
+      return;
+    }
+    const citaPrevia = guardado.conversacionId
+      ? await citaAbierta(guardado.conversacionId).catch(() => null)
+      : null;
+    if (citaPrevia && (preguntaPorElDiaDeLaCita(texto) || esDudaSuelta(texto))) {
+      if (guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))) {
+        return;
+      }
+      await entregarRespuestaComercial(
+        from,
+        guardado.conversacionId,
+        textoDeLaCitaAbierta({
+          nombre: citaPrevia.nombre,
+          fecha: citaPrevia.fecha,
+          hora: citaPrevia.hora,
+          sede: citaPrevia.sede,
+          hoy: hoyPanama(),
+        }),
+        decision.envia,
+      );
       return;
     }
     const base = await contextoParaLucia(guardado.conversacionId, msg);
@@ -285,7 +313,11 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         proximaAccion: r.lead.proxima_accion,
       });
     }
-    let salida = mensajeNaturalLucia(r.mensaje, texto);
+    let salida = ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, texto), {
+      hoy: hoyPanama(),
+      fechaCita: citaPrevia?.fecha ?? null,
+      cliente: texto,
+    });
     if (guardado.conversacionId && r.cita && r.cita.accion !== "ninguna") {
       const hilo = await hiloComercial(guardado.conversacionId);
       const aplicada = await aplicarPedidoCita({
@@ -306,7 +338,11 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       }
       return;
     }
+    if (guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))) {
+      return;
+    }
     const enviado = await enviarComercial(from, salida);
+    if (enviado) yaSalio = true;
     if (enviado && PHONE_ID_COMERCIAL && pideUbicacion(texto)) {
       const cita = guardado.conversacionId ? await citaAbierta(guardado.conversacionId).catch(() => null) : null;
       for (const sede of sedesParaVideo(texto, cita?.sede ?? null)) {
@@ -336,6 +372,10 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     }
   } catch (e) {
     console.error("[whatsapp/webhook] agente comercial falló:", e);
+    if (yaSalio) return;
+    if (guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))) {
+      return;
+    }
     try {
       const historial = guardado.conversacionId
         ? await historialParaLucia(guardado.conversacionId)
@@ -533,8 +573,17 @@ async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMes
     if (estado) partes.push(estado);
     const cita = await citaAbierta(conversacionId).catch(() => null);
     if (cita) {
+      const cuando =
+        cita.fecha === hoy
+          ? `HOY, ${fechaConDia(cita.fecha)}. Di "hoy". Prohibido decir que es mañana.`
+          : cita.fecha === sumarDias(hoy, 1)
+            ? `MAÑANA, ${fechaConDia(cita.fecha)}.`
+            : `el ${fechaConDia(cita.fecha)} (${cita.fecha}).`;
+      const nombre = nombreDeWhatsApp(cita.nombre);
       partes.push(
-        `CITA ABIERTA: ${cita.nombre}, ${cita.fecha} a las ${cita.hora}, sede ${cita.sede}, lugar ${cita.lugar ?? "sin decir"}, confirmación ${cita.confirmacion}.`,
+        `CITA ABIERTA: ${cuando} Hora ${cita.hora}. Sede ${sedePorId(cita.sede)?.nombre ?? cita.sede}. Lugar ${cita.lugar ?? "sin decir"}. Confirmación ${cita.confirmacion}.`,
+        nombre ? `Nombre para decirle: ${nombre}. Sin emojis ni símbolos.` : "No uses el apodo de WhatsApp.",
+        "Esa visita sigue en esa sede. Si preguntan otra cosa, responde eso y no ofrezcas moverla.",
       );
     }
   }

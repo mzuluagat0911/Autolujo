@@ -3,7 +3,7 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { partirArchivo } from "./archivo";
 import { entregaNueva } from "./entrega";
-import { horasHastaSeguimiento } from "./lead";
+import { horasHastaSeguimiento, nombreDeWhatsApp } from "./lead";
 
 const ETAPA_SIN_SEGUIMIENTO = new Set(["cita", "visito", "ganado", "perdido"]);
 export const MOTIVO_ARCHIVO_SILENCIO = "No respondió después de los seguimientos.";
@@ -297,8 +297,8 @@ export async function textoEstadoLead(conversacionId: string): Promise<string> {
     "ESTADO DEL LEAD (léelo antes de responder; no se lo leas al cliente):",
     `Interés: ${nivel}.`,
     data.etapa ? `Etapa: ${data.etapa}.` : "",
-    data.nombre
-      ? `Nombre en WhatsApp y en la ficha: ${data.nombre}. Si no dictó otro, úsalo en la cita y confírmalo.`
+    nombreDeWhatsApp(String(data.nombre ?? ""))
+      ? `Nombre para decirle: ${nombreDeWhatsApp(String(data.nombre ?? ""))}. Sin emojis ni símbolos.`
       : "",
     data.interes ? `Busca: ${data.interes}.` : "",
     data.lugar ? `Lugar: ${data.lugar}.` : "",

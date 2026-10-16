@@ -68,11 +68,14 @@ export function textosDelCliente(historial: { direccion: "in" | "out"; texto: st
   return historial.filter((m) => m.direccion === "in").map((m) => m.texto);
 }
 
-/** Nombre del perfil de WhatsApp. Vacío si es un emoji, un número o basura. */
+/** Nombre del perfil de WhatsApp. Sin emojis ni símbolos. Vacío si queda un número o basura. */
 export function nombreDeWhatsApp(valor: string | null | undefined): string | null {
-  const limpio = (valor ?? "").replace(/\s+/g, " ").trim();
+  const limpio = (valor ?? "")
+    .replace(/[^\p{L}\p{N}\s.'-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   if (limpio.length < 2 || limpio.length > 80) return null;
-  if (!/[A-Za-zÁÉÍÓÚÜáéíóúüÑñ]/.test(limpio)) return null;
+  if (!/\p{L}/u.test(limpio)) return null;
   return limpio;
 }
 

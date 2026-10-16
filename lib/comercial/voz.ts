@@ -39,9 +39,13 @@ function corrigeAbono(texto: string): string {
   return texto.replace(/\$\s*350\b/g, "$100").replace(/\b350\b/g, "100");
 }
 
+function quitaAdornos(texto: string): string {
+  return texto.replace(/[❤♥♡#]+/g, "").replace(/\s+([,.!?])/g, "$1");
+}
+
 /** Lo que sale a WhatsApp. Lucía no se presenta como sistema ni repite al cliente. */
 export function mensajeNaturalLucia(mensaje: string, ultimoCliente?: string | null): string {
-  const texto = corrigeAbono(mensaje.replace(/\s+/g, " ").trim());
+  const texto = quitaAdornos(corrigeAbono(mensaje.replace(/\s+/g, " ").trim()));
   if (!texto) return "¿Qué carro está buscando?";
   if (ultimoCliente && esEco(texto, ultimoCliente)) return SIGUE;
   if (admiteMaquina(texto)) return QUIEN;
