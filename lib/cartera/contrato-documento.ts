@@ -116,6 +116,7 @@ export type DatosContratoDoc = {
   modelo: string;
   anio: string;
   color: string;
+  numeroContrato: string | null;
 };
 
 export function plantillaDeContrato(codigo: string | null, numCuotas: number | null): PlantillaContrato {
@@ -182,9 +183,10 @@ function encabezado(d: DatosContratoDoc, tituloOpcion: boolean): string {
   const cuotaDom = d.cuotaDomingo > 0 ? d.cuotaDomingo : 30;
   const letra = d.letraDiaria.toFixed(2);
   const jornada = d.cobraDomingo ? "L-S" : "L-D";
-  const titulo = tituloOpcion
+  const base = tituloOpcion
     ? "CONTRATO DE ARRENDAMIENTO CON OPCION DE COMPRA"
     : "CONTRATO DE ARRENDAMIENTO";
+  const titulo = d.numeroContrato ? `${base} ${d.numeroContrato}` : base;
   const lineasRef = refs.length
     ? refs.map((r, i) => `${i + 1} ${r}`).join("\n")
     : "1 —";

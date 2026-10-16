@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { armarTextoContrato } from "@/lib/cartera/contrato-documento";
+import { numeroDeContrato } from "@/lib/cartera/contrato-numero";
 import { armarDocxContrato } from "@/lib/cartera/contrato-word";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 
@@ -110,6 +111,7 @@ export async function GET(
     extraCli?.referencias ??
     (cli.notas && /^1\. /m.test(cli.notas) ? cli.notas : null);
   const carro = veh?.numero ?? "—";
+  const numeroContrato = await numeroDeContrato(sb, contratoId);
   const texto = armarTextoContrato({
     empresaCodigo: empresa?.codigo ?? null,
     numCuotas: con.num_cuotas_total,
@@ -136,6 +138,7 @@ export async function GET(
     modelo: veh?.modelo || "—",
     anio: veh?.anio != null ? String(veh.anio) : "—",
     color: tec?.color || "—",
+    numeroContrato,
   });
 
   const docx = await armarDocxContrato(texto);

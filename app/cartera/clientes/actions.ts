@@ -10,6 +10,7 @@ import { enlazarChatDelContrato, telefonosDeAlta } from "@/lib/cartera/enlazar-a
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { provinciaValida } from "@/lib/cartera/provincias-panama";
 import { referenciasPersonales } from "@/lib/cartera/referencias-alta";
+import { numeroDeContrato } from "@/lib/cartera/contrato-numero";
 
 const PANAPASS_ENTRADA = 20;
 const CUOTA_DOMINGO_DEFAULT = 30;
@@ -385,6 +386,7 @@ export async function createClienteConContrato(
     };
   }
   const contratoId = (contratoInsert.data as { id: string }).id;
+  await numeroDeContrato(sb, contratoId);
 
   if ((veh as { estado: string }).estado !== "activo") {
     await sb.from("vehiculos").update({ estado: "activo" }).eq("id", vehiculoId);
