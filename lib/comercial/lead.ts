@@ -107,9 +107,11 @@ export function textoSeguimientoLead(opts: {
   const saludo = nombre ? `Hola, ${nombre}.` : "Hola.";
   const paso = pasoPendiente(opts.proximaAccion);
   if (opts.intento <= 1) {
-    return paso
-      ? `${saludo} ${paso}`
-      : `${saludo} Quedé pendiente de su mensaje. ¿Seguimos con el carro?`;
+    if (paso) return `${saludo} ${paso}`;
+    if (esOrdenInterna(opts.proximaAccion)) {
+      return `${saludo} ¿Le queda mejor Juan Díaz o La Chorrera? Si ya sabe el día, dígamelo y le dejo la visita.`;
+    }
+    return `${saludo} Quedé pendiente de su mensaje. ¿Seguimos con el carro?`;
   }
   if (opts.intento === 2) {
     return `${saludo} Si le queda bien, le dejo una cita en Juan Díaz o en La Chorrera. ¿Cuál le sirve?`;
@@ -129,10 +131,17 @@ export function textoSeguimientoLead(opts: {
   return `${saludo} Este es el último mensaje. Si quiere el carro, respóndame y le dejo la cita. Si no, cierro el chat.`;
 }
 
+function esOrdenInterna(accion: string | null | undefined): boolean {
+  const texto = accion?.replace(/\s+/g, " ").trim() ?? "";
+  return /^(pedir|confirmar|ofrecer|esperar|llamar|dar seguimiento|revisar|preguntar|agendar|decir|responder|indicar)\b/i.test(
+    texto,
+  );
+}
+
 function pasoPendiente(accion: string | null | undefined): string | null {
   const texto = accion?.replace(/\s+/g, " ").trim() ?? "";
   if (texto.length < 8 || texto.length > 180) return null;
-  if (/^(pedir|confirmar|ofrecer|esperar|llamar|dar seguimiento|revisar)\b/i.test(texto)) return null;
+  if (esOrdenInterna(texto)) return null;
   if (/confirmar asistencia|no contactar|no desea/i.test(texto)) return null;
   return /[.?!]$/.test(texto) ? texto : `${texto}.`;
 }

@@ -27,8 +27,8 @@ import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "@/lib/comercial/bien
 import { mensajeNaturalLucia } from "@/lib/comercial/voz";
 import {
   ajustarMensajeDeCita,
-  esDudaSuelta,
   preguntaPorElDiaDeLaCita,
+  repiteCitaPorDuda,
   textoDeLaCitaAbierta,
 } from "@/lib/comercial/cita-pedido";
 import { esDocumentoRequisito, guardarFotoComercial } from "@/lib/comercial/documento";
@@ -42,6 +42,9 @@ import {
   cerrarLeadSinContacto,
   guardarAnalisisComercial,
   entradaFueSuperada,
+  reclamarTurnoLucia,
+  salidaRecienteIgual,
+  soltarTurnoLucia,
   historialParaLucia,
   hiloComercial,
   luciaPuedeResponder,
@@ -246,10 +249,27 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
   }
 
   let yaSalio = false;
+  let turnoMio = false;
+  const marca = msg.id ?? "";
   try {
+    if (guardado.conversacionId && marca) {
+      const turno = await reclamarTurnoLucia(guardado.conversacionId, marca);
+      if (turno === "mio") turnoMio = true;
+      if (turno === "ocupado") return;
+    }
+  try {
+    for (let vuelta = 0; vuelta < 3; vuelta++) {
     const historial = guardado.conversacionId
       ? await historialParaLucia(guardado.conversacionId)
       : [{ direccion: "in" as const, texto: texto.trim() }];
+    const entradas = historial.filter((m) => m.direccion === "in");
+    const ultimo = entradas[entradas.length - 1]?.texto?.trim() || texto;
+    const anterior = entradas.length >= 2 ? entradas[entradas.length - 2].texto : null;
+    const hayMas = Boolean(
+      guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null)),
+    );
+    const cierra = !hayMas || vuelta === 2;
+    if (!cierra) continue;
     if (esSaludoDeClienteNuevo(historial)) {
       if (guardado.conversacionId) {
         await guardarAnalisisComercial({
@@ -261,6 +281,9 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
           proximaAccion: "Esperar si pide requisitos o cita.",
         });
       }
+      if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, MENSAJE_BIENVENIDA))) {
+        return;
+      }
       await entregarRespuestaComercial(from, guardado.conversacionId, MENSAJE_BIENVENIDA, decision.envia);
       if (decision.envia && guardado.conversacionId) {
         await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
@@ -270,22 +293,25 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     const citaPrevia = guardado.conversacionId
       ? await citaAbierta(guardado.conversacionId).catch(() => null)
       : null;
-    if (citaPrevia && (preguntaPorElDiaDeLaCita(texto) || esDudaSuelta(texto))) {
-      if (guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))) {
+    if (citaPrevia && (preguntaPorElDiaDeLaCita(ultimo) || repiteCitaPorDuda(ultimo, anterior))) {
+      if (
+        vuelta < 2 &&
+        guardado.conversacionId &&
+        (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))
+      ) {
+        continue;
+      }
+      const tarjeta = textoDeLaCitaAbierta({
+        nombre: citaPrevia.nombre,
+        fecha: citaPrevia.fecha,
+        hora: citaPrevia.hora,
+        sede: citaPrevia.sede,
+        hoy: hoyPanama(),
+      });
+      if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, tarjeta))) {
         return;
       }
-      await entregarRespuestaComercial(
-        from,
-        guardado.conversacionId,
-        textoDeLaCitaAbierta({
-          nombre: citaPrevia.nombre,
-          fecha: citaPrevia.fecha,
-          hora: citaPrevia.hora,
-          sede: citaPrevia.sede,
-          hoy: hoyPanama(),
-        }),
-        decision.envia,
-      );
+      await entregarRespuestaComercial(from, guardado.conversacionId, tarjeta, decision.envia);
       return;
     }
     const base = await contextoParaLucia(guardado.conversacionId, msg);
@@ -313,23 +339,11 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         proximaAccion: r.lead.proxima_accion,
       });
     }
-    let salida = ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, texto), {
+    let salida = ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, ultimo), {
       hoy: hoyPanama(),
       fechaCita: citaPrevia?.fecha ?? null,
-      cliente: texto,
+      cliente: ultimo,
     });
-    if (guardado.conversacionId && r.cita && r.cita.accion !== "ninguna") {
-      const hilo = await hiloComercial(guardado.conversacionId);
-      const aplicada = await aplicarPedidoCita({
-        conversacionId: guardado.conversacionId,
-        waNumero: from,
-        pedido: r.cita,
-        anuncio: anuncio ?? hilo.chat?.anuncio ?? null,
-        campanaId: campana.campanaId ?? hilo.chat?.campanaId ?? null,
-        textoCliente: texto,
-      });
-      if (aplicada.mensaje) salida = aplicada.mensaje;
-    }
     if (!decision.envia) {
       if (guardado.conversacionId) {
         await guardarBorradorComercial(guardado.conversacionId, salida);
@@ -338,14 +352,34 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       }
       return;
     }
-    if (guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))) {
+    if (
+      vuelta < 2 &&
+      guardado.conversacionId &&
+      (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))
+    ) {
+      continue;
+    }
+    if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, salida))) {
       return;
+    }
+    if (guardado.conversacionId && r.cita && r.cita.accion !== "ninguna") {
+      const hilo = await hiloComercial(guardado.conversacionId);
+      const aplicada = await aplicarPedidoCita({
+        conversacionId: guardado.conversacionId,
+        waNumero: from,
+        pedido: r.cita,
+        anuncio: anuncio ?? hilo.chat?.anuncio ?? null,
+        campanaId: campana.campanaId ?? hilo.chat?.campanaId ?? null,
+        textoCliente: ultimo,
+      });
+      if (aplicada.mensaje) salida = aplicada.mensaje;
     }
     const enviado = await enviarComercial(from, salida);
     if (enviado) yaSalio = true;
-    if (enviado && PHONE_ID_COMERCIAL && pideUbicacion(texto)) {
+    const pedidoVideo = pideUbicacion(ultimo) ? ultimo : texto;
+    if (enviado && PHONE_ID_COMERCIAL && pideUbicacion(pedidoVideo)) {
       const cita = guardado.conversacionId ? await citaAbierta(guardado.conversacionId).catch(() => null) : null;
-      for (const sede of sedesParaVideo(texto, cita?.sede ?? null)) {
+      for (const sede of sedesParaVideo(pedidoVideo, cita?.sede ?? null)) {
         try {
           await enviarVideoSede(from, sede, PHONE_ID_COMERCIAL, guardado.conversacionId);
         } catch (e) {
@@ -369,6 +403,8 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       ) {
         await programarSiguienteSeguimiento(guardado.conversacionId, lectura.temperatura);
       }
+    }
+    break;
     }
   } catch (e) {
     console.error("[whatsapp/webhook] agente comercial falló:", e);
@@ -401,6 +437,11 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     await entregarRespuestaComercial(from, guardado.conversacionId, fallo, decision.envia);
     if (decision.envia && guardado.conversacionId) {
       await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
+    }
+  }
+  } finally {
+    if (turnoMio && guardado.conversacionId && marca) {
+      await soltarTurnoLucia(guardado.conversacionId, marca);
     }
   }
 }

@@ -9,6 +9,7 @@ import {
   esDudaSuelta,
   pedidoRepiteCita,
   preguntaPorElDiaDeLaCita,
+  repiteCitaPorDuda,
   telefonoVisible,
   textoDeLaCitaAbierta,
   textoEsConfirmacion,
@@ -82,7 +83,23 @@ assert.match(
 );
 assert.match(
   textoSeguimientoLead({ nombre: "Ana", proximaAccion: "Esperar si pide cita.", intento: 1 }),
-  /Quedé pendiente/,
+  /Juan Díaz o La Chorrera/,
+);
+assert.match(
+  textoSeguimientoLead({
+    nombre: "Shaggo",
+    proximaAccion: "Preguntar día y hora para la cita en Juan Díaz o La Chorrera.",
+    intento: 1,
+  }),
+  /Juan Díaz o La Chorrera/,
+);
+assert.equal(
+  textoSeguimientoLead({
+    nombre: "Shaggo",
+    proximaAccion: "Preguntar día y hora para la cita en Juan Díaz o La Chorrera.",
+    intento: 1,
+  }).includes("Preguntar"),
+  false,
 );
 assert.match(
   textoSeguimientoLead({ nombre: null, proximaAccion: null, intento: 2 }),
@@ -196,6 +213,44 @@ assert.equal(
   "El abono inicial desde $100.",
 );
 assert.equal(mensajeNaturalLucia("Perfecto, ❤#Adorada❤#. La esperamos."), "Perfecto, Adorada. La esperamos.");
+assert.equal(
+  mensajeNaturalLucia("El Grand i10 automático 2027 queda en $33."),
+  "El Grand i10 automático 2027 queda en $35.",
+);
+assert.equal(
+  mensajeNaturalLucia("El Grand i10 manual 2027 queda en $33."),
+  "El Grand i10 manual 2027 queda en $33.",
+);
+assert.equal(
+  mensajeNaturalLucia("El Grand i10 manual 2027 es $33, y el automático 2027 es $33."),
+  "El Grand i10 manual 2027 es $33, y el automático 2027 es $35.",
+);
+assert.equal(
+  mensajeNaturalLucia("El Grand i10 automático 2026 queda en $33. El Grand i10 automático 2027 queda en $33."),
+  "El Grand i10 automático 2026 queda en $33. El Grand i10 automático 2027 queda en $35.",
+);
+assert.ok(
+  mensajeNaturalLucia("Eso se ve en la visita.", "¿Quién asume las llantas?").includes("asume usted"),
+);
+assert.ok(
+  mensajeNaturalLucia("Eso lo ve el equipo en la visita.", "¿Y si me colisiono?").includes("avíseme"),
+);
+assert.equal(
+  mensajeNaturalLucia("El recibo puede estar a nombre de un familiar directo.").includes("familiar"),
+  false,
+);
+assert.ok(
+  mensajeNaturalLucia("Cuando sepa, me avisa y le agendo.").includes("sábado"),
+);
+assert.equal(
+  mensajeNaturalLucia("Avíseme cuando llegue y le confirmo.").includes("sábado"),
+  false,
+);
+assert.ok(
+  mensajeNaturalLucia("Le dejo La Chorrera a las 9.", "Quiero ir el domingo.").includes("solo abre Juan Díaz"),
+);
+assert.equal(repiteCitaPorDuda("?", "El paz y salvo es del tránsito?"), false);
+assert.equal(repiteCitaPorDuda("?", "ok"), true);
 assert.equal(textoEsConfirmacion("ok"), true);
 assert.equal(textoEsConfirmacion("Ok me interesa un Grand i 10 del año tienen❓"), false);
 assert.equal(preguntaPorElDiaDeLaCita("Mi cita es hoy 16"), true);

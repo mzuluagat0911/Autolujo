@@ -990,3 +990,56 @@ function esEtapa(value: unknown): value is EtapaComercial {
 function esTemperatura(value: unknown): value is TemperaturaLead {
   return ["caliente", "tibio", "frio"].includes(String(value));
 }
+
+function sinColumnaTurno(mensaje: string): boolean {
+  return /lucia_turno|schema cache/i.test(mensaje);
+}
+
+/** Una sola respuesta en curso por chat. El segundo mensaje espera este turno. */
+export async function reclamarTurnoLucia(
+  conversacionId: string,
+  marca: string,
+): Promise<"mio" | "ocupado" | "sin_candado"> {
+  const sb = createServerSupabase();
+  const ahora = new Date().toISOString();
+  const hasta = new Date(Date.now() + 30_000).toISOString();
+  const { data, error } = await sb
+    .from("conversaciones_comercial")
+    .update({ lucia_turno: marca, lucia_turno_hasta: hasta })
+    .eq("id", conversacionId)
+    .or(`lucia_turno_hasta.is.null,lucia_turno_hasta.lt."${ahora}",lucia_turno.eq."${marca}"`)
+    .select("id");
+  if (error) {
+    if (!sinColumnaTurno(error.message)) console.error("[comercial] turno", error.message);
+    return "sin_candado";
+  }
+  return data?.length ? "mio" : "ocupado";
+}
+
+export async function soltarTurnoLucia(conversacionId: string, marca: string): Promise<void> {
+  const sb = createServerSupabase();
+  const { error } = await sb
+    .from("conversaciones_comercial")
+    .update({ lucia_turno: null, lucia_turno_hasta: null })
+    .eq("id", conversacionId)
+    .eq("lucia_turno", marca);
+  if (error && !sinColumnaTurno(error.message)) console.error("[comercial] soltar turno", error.message);
+}
+
+/** El mismo texto ya salió hace menos de un minuto y medio. */
+export async function salidaRecienteIgual(conversacionId: string, texto: string): Promise<boolean> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("mensajes_comercial")
+    .select("texto, created_at")
+    .eq("conversacion_id", conversacionId)
+    .eq("direccion", "out")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const ultimo = (data as { texto?: string | null; created_at?: string | null } | null)?.texto ?? "";
+  const cuando = (data as { created_at?: string | null } | null)?.created_at;
+  if (!ultimo || !cuando) return false;
+  const igual = ultimo.replace(/\s+/g, " ").trim() === texto.replace(/\s+/g, " ").trim();
+  return igual && Date.now() - new Date(cuando).getTime() < 90_000;
+}

@@ -59,6 +59,16 @@ export function esDudaSuelta(texto: string): boolean {
   return /^[\s?¿!¡.❓❔]+$/.test(texto.trim());
 }
 
+/** Un "?" repite la cita solo si lo anterior no era una pregunta concreta. */
+export function repiteCitaPorDuda(texto: string, anterior: string | null): boolean {
+  if (!esDudaSuelta(texto)) return false;
+  if (!anterior?.trim()) return true;
+  const t = plano(anterior);
+  return !/paz|transit|historial|llanta|colision|choque|recibo|abono|letra|cuanto|precio|donde|horario|requisit|autom|manual/.test(
+    t,
+  );
+}
+
 export function pideMoverLaCita(texto: string): boolean {
   const t = plano(texto);
   return /cambi|reagend|mover|pasala|pasarla|cancel|mejor en/.test(t);
