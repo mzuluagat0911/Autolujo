@@ -18,18 +18,11 @@ import type { ConversacionDetalle, ConversacionLista, Mensaje, VigiaChat } from 
 import { alertasGpsPendientes, marcarAlertaGpsVista } from "@/lib/gps/revisar-dia";
 import { marcarAlertaSalidaVista, salidasAlertasPendientes, salidasPendientesAval } from "@/lib/cartera/salidas-aplicar";
 
-function revalidar(id?: string) {
-  revalidatePath("/cartera/conversaciones");
-  if (id) revalidatePath(`/cartera/conversaciones/${id}`);
-}
-
 export async function accionTomarChat(formData: FormData): Promise<{ ok: boolean; error?: string }> {
   const id = String(formData.get("conversacion_id") ?? "");
   if (!id) return { ok: false, error: "Falta la conversación." };
   try {
     await tomarChat(id);
-    await marcarLeida(id);
-    revalidar(id);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "No se pudo tomar el chat." };
@@ -43,7 +36,6 @@ export async function accionDevolverAgente(
   if (!id) return { ok: false, error: "Falta la conversación." };
   try {
     await devolverAlAgente(id);
-    revalidar(id);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "No se pudo devolver el chat." };
@@ -53,7 +45,6 @@ export async function accionDevolverAgente(
 export async function accionMarcarLeida(conversacionId: string): Promise<void> {
   if (!conversacionId) return;
   await marcarLeida(conversacionId);
-  revalidar(conversacionId);
 }
 
 /** Envía una respuesta escrita por una persona del equipo (mismo hilo de WhatsApp). */
@@ -101,7 +92,6 @@ export async function enviarRespuestaHumana(
       .update({ necesita_humano: false, no_leidos: 0, escalada_at: null })
       .eq("id", id);
 
-    revalidar(id);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "No se pudo enviar." };
@@ -156,7 +146,6 @@ export async function enviarPlantillaMora(
       .from("conversaciones")
       .update({ necesita_humano: false, no_leidos: 0, escalada_at: null })
       .eq("id", id);
-    revalidar(id);
     return { ok: true, texto: plantilla };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "No se pudo enviar la plantilla." };
@@ -232,7 +221,6 @@ export async function enviarAudioHumano(
       .update({ necesita_humano: false, no_leidos: 0, escalada_at: null })
       .eq("id", id);
 
-    revalidar(id);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : "No se pudo enviar el audio." };
@@ -357,6 +345,28 @@ export async function cargarHilo(
     return { detalle, error: null };
   } catch (e) {
     return { detalle: null, error: e instanceof Error ? e.message : "Error" };
+  }
+}
+
+/** Mensajes desde una fecha, inclusive. Sirve para sumar lo nuevo sin recargar el hilo. */
+export async function cargarMensajesDesde(
+  id: string,
+  desde: string,
+): Promise<{ mensajes: Mensaje[]; error: string | null }> {
+  if (!id || !desde) return { mensajes: [], error: null };
+  try {
+    const sb = createServerSupabase();
+    const { data, error } = await sb
+      .from("mensajes")
+      .select("id, direccion, tipo, texto, media_url, enviado_por, created_at")
+      .eq("conversacion_id", id)
+      .gte("created_at", desde)
+      .order("created_at", { ascending: true })
+      .limit(80);
+    if (error) throw error;
+    return { mensajes: await firmarMedios(sb, (data ?? []) as FilaMensaje[]), error: null };
+  } catch (e) {
+    return { mensajes: [], error: e instanceof Error ? e.message : "No pude cargar los mensajes nuevos." };
   }
 }
 

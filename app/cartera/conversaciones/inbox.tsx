@@ -17,6 +17,7 @@ import {
   cargarBandeja,
   cargarHilo,
   cargarMensajesAnteriores,
+  cargarMensajesDesde,
   cargarSaldoChat,
   vigilarBandeja,
   enviarAudioHumano,
@@ -119,6 +120,28 @@ function conservarSignedUrls(prev: Mensaje[] | undefined, next: Mensaje[]): Mens
   });
 }
 
+function fundirMensajes(prev: Mensaje[], incoming: Mensaje[]): Mensaje[] {
+  const porId = new Map<string, Mensaje>();
+  for (const m of prev) porId.set(m.id, m);
+  for (const m of incoming) {
+    const viejo = porId.get(m.id);
+    if (viejo?.signedUrl && viejo.media_url === m.media_url && !m.signedUrl) {
+      porId.set(m.id, { ...m, signedUrl: viejo.signedUrl });
+    } else if (viejo?.signedUrl && viejo.media_url === m.media_url && m.signedUrl) {
+      porId.set(m.id, m);
+    } else {
+      porId.set(m.id, m);
+    }
+  }
+  const reales = [...porId.values()].filter((m) => !m.id.startsWith("tmp-"));
+  const lista = [...porId.values()].filter((m) => {
+    if (!m.id.startsWith("tmp-")) return true;
+    return !reales.some((r) => r.direccion === m.direccion && r.texto === m.texto);
+  });
+  lista.sort((a, b) => (a.created_at < b.created_at ? -1 : a.created_at > b.created_at ? 1 : 0));
+  return lista;
+}
+
 function aplicarDetalle(
   prev: ConversacionDetalle | null,
   next: ConversacionDetalle,
@@ -160,6 +183,10 @@ export function InboxConversaciones({
   const [toast, setToast] = useState<{ tone: "good" | "crit"; text: string } | null>(null);
   const listaRef = useRef<HTMLDivElement>(null);
   const listaScrollRef = useRef(0);
+  const borradoresRef = useRef(new Map<string, string>());
+  /** Si el equipo acaba de tomar o devolver, un poll viejo no pisa ese modo. */
+  const pollGenRef = useRef(0);
+  const modoLocalRef = useRef<{ id: string; modo: "humano" | "agente" } | null>(null);
   /** Si el usuario bajó en la lista, no reordenamos filas en el poll (como WhatsApp). */
   const listaOrdenFijoRef = useRef<string[] | null>(null);
   const selectedIdRef = useRef(selectedId);
@@ -259,6 +286,7 @@ export function InboxConversaciones({
         schedule();
         return;
       }
+      const gen = pollGenRef.current;
       const { filas, error: err } = await vigilarBandeja();
       if (cancelled || err) {
         schedule();
@@ -298,18 +326,55 @@ export function InboxConversaciones({
             cur.necesita_humano !== row.necesita_humano ||
             (cur.motivo_escalada ?? "") !== (row.motivo_escalada ?? "") ||
             (cur.ultimo_entrante_at ?? "") !== (row.ultimo_entrante_at ?? ""));
-        if (!cur || cur.id !== sid || textoNuevo) {
+        if (!cur || cur.id !== sid) {
           const { detalle: d } = await cargarHilo(sid);
           if (!cancelled && d && selectedIdRef.current === sid) {
             setDetalle((p) => aplicarDetalle(p, d));
             setConvs((p) => p.map((c) => (c.id === sid ? { ...c, no_leidos: 0 } : c)));
           }
-        } else if (metaNueva && row) {
+        } else if (textoNuevo) {
+          const desde = cur.mensajes.at(-1)?.created_at;
+          if (!desde) {
+            const { detalle: d } = await cargarHilo(sid);
+            if (!cancelled && d && selectedIdRef.current === sid) {
+              setDetalle((p) => aplicarDetalle(p, d));
+            }
+          } else {
+            const { mensajes } = await cargarMensajesDesde(sid, desde);
+            if (!cancelled && selectedIdRef.current === sid && mensajes.length) {
+              setDetalle((p) => {
+                if (!p || p.id !== sid) return p;
+                const next = fundirMensajes(p.mensajes, mensajes);
+                const igual =
+                  next.length === p.mensajes.length &&
+                  next.every(
+                    (m, i) =>
+                      m.id === p.mensajes[i]?.id &&
+                      m.texto === p.mensajes[i]?.texto &&
+                      m.media_url === p.mensajes[i]?.media_url,
+                  );
+                return {
+                  ...p,
+                  mensajes: igual ? p.mensajes : next,
+                  ultimo_texto: row?.ultimo_texto ?? p.ultimo_texto,
+                  ultimo_mensaje_at: row?.ultimo_mensaje_at ?? p.ultimo_mensaje_at,
+                };
+              });
+            }
+          }
+          if (!cancelled) {
+            setConvs((p) => p.map((c) => (c.id === sid ? { ...c, no_leidos: 0 } : c)));
+          }
+        }
+        if (metaNueva && row && pollGenRef.current === gen && cur && cur.id === sid) {
+          const local = modoLocalRef.current;
+          if (local && local.id === sid && row.modo === local.modo) modoLocalRef.current = null;
+          const modo = local && local.id === sid && row.modo !== local.modo ? local.modo : row.modo;
           setDetalle((p) =>
             p && p.id === sid
               ? {
                   ...p,
-                  modo: row.modo,
+                  modo,
                   necesita_humano: row.necesita_humano,
                   motivo_escalada: row.motivo_escalada,
                   ultimo_entrante_at: row.ultimo_entrante_at,
@@ -526,6 +591,11 @@ export function InboxConversaciones({
               key={detalle.id}
               detalle={detalle}
               demo={demo}
+              borradores={borradoresRef.current}
+              onAccionLocal={(modo) => {
+                pollGenRef.current += 1;
+                modoLocalRef.current = modo ? { id: detalle.id, modo } : null;
+              }}
               onBack={cerrarDetalle}
               onRefresh={async () => {
                 if (demo) {
@@ -533,13 +603,19 @@ export function InboxConversaciones({
                   if (d) setDetalle(d);
                   return;
                 }
-                const [{ detalle: d }, { convs: next }] = await Promise.all([
-                  cargarHilo(detalle.id),
-                  cargarBandeja(),
-                ]);
-                if (d) setDetalle((prev) => (prev ? aplicarDetalle(prev, d) : d));
-                guardarScrollLista();
-                setConvs((prev) => aplicarBandeja(prev, next));
+                const id = detalle.id;
+                const desde = detalleRef.current?.mensajes.at(-1)?.created_at;
+                if (!desde) {
+                  const { detalle: d } = await cargarHilo(id);
+                  if (d && selectedIdRef.current === id) setDetalle((prev) => (prev ? aplicarDetalle(prev, d) : d));
+                  return;
+                }
+                const { mensajes } = await cargarMensajesDesde(id, desde);
+                if (selectedIdRef.current === id && mensajes.length) {
+                  setDetalle((prev) =>
+                    prev && prev.id === id ? { ...prev, mensajes: fundirMensajes(prev.mensajes, mensajes) } : prev,
+                  );
+                }
               }}
               onFlash={(msg) => showToast("good", msg)}
               onLocalPatch={(patch) => {
@@ -704,6 +780,8 @@ function ConvRow({
 function ChatPanel({
   detalle,
   demo,
+  borradores,
+  onAccionLocal,
   onBack,
   onRefresh,
   onFlash,
@@ -712,6 +790,8 @@ function ChatPanel({
 }: {
   detalle: ConversacionDetalle;
   demo?: boolean;
+  borradores: Map<string, string>;
+  onAccionLocal: (modo: "humano" | "agente" | null) => void;
   onBack: () => void;
   onRefresh: () => Promise<void>;
   onFlash: (msg: string) => void;
@@ -735,17 +815,36 @@ function ChatPanel({
       onFlash(labelOk);
       return;
     }
+    const tomar = fn === accionTomarChat;
+    const devolver = fn === accionDevolverAgente;
+    const antes = {
+      modo: detalle.modo,
+      necesita_humano: detalle.necesita_humano,
+      motivo_escalada: detalle.motivo_escalada,
+    };
+    if (tomar || devolver) onAccionLocal(tomar ? "humano" : "agente");
+    if (tomar || devolver) {
+      onLocalPatch({
+        modo: tomar ? "humano" : "agente",
+        necesita_humano: false,
+        motivo_escalada: tomar ? detalle.motivo_escalada : null,
+        no_leidos: 0,
+      });
+    }
     const fd = new FormData();
     fd.set("conversacion_id", detalle.id);
     setAccionError(null);
     startTransition(async () => {
       const r = await fn(fd);
       if (!r.ok) {
+        if (tomar || devolver) {
+          onAccionLocal(null);
+          onLocalPatch(antes);
+        }
         setAccionError(r.error ?? "Algo falló.");
         return;
       }
       onFlash(labelOk);
-      await onRefresh();
     });
   }
 
@@ -921,6 +1020,7 @@ function ChatPanel({
         conversacionId={detalle.id}
         esHumano={esHumano}
         ventanaAbierta={detalle.ventana_abierta}
+        borradores={borradores}
         demo={demo}
         onSent={async (texto) => {
           const ahora = new Date().toISOString();
@@ -963,15 +1063,24 @@ function Thread({
 }) {
   const scrollerRef = useRef<HTMLDivElement>(null);
   const nearBottomRef = useRef(true);
-  const prevLastIdRef = useRef<string | null>(null);
   const prevConvRef = useRef<string | null>(null);
+  const prevFirstRef = useRef<string | null>(null);
+  const prevLastRef = useRef<string | null>(null);
+  const anchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null);
   const cargandoAnterioresRef = useRef(false);
   const [cargandoAnteriores, setCargandoAnteriores] = useState(false);
   const [mostrarIrAbajo, setMostrarIrAbajo] = useState(false);
+  const firstId = mensajes[0]?.id ?? null;
   const lastId = mensajes.at(-1)?.id ?? null;
+
+  function estaAbajo(el: HTMLDivElement) {
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
 
   async function pedirAnteriores() {
     if (!onCargarAnteriores || !hayAnteriores || cargandoAnterioresRef.current) return;
+    const el = scrollerRef.current;
+    if (el) anchorRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop };
     cargandoAnterioresRef.current = true;
     setCargandoAnteriores(true);
     try {
@@ -982,29 +1091,29 @@ function Thread({
     }
   }
 
-  // flex-col-reverse: scrollTop ≈ 0 = abajo (último mensaje).
   function syncNearBottom() {
     const el = scrollerRef.current;
     if (!el) return;
-    const near = el.scrollTop < 80;
+    const near = estaAbajo(el);
     nearBottomRef.current = near;
-    setMostrarIrAbajo(!near && mensajes.length > 0);
-    const overflow = el.scrollHeight > el.clientHeight + 8;
-    const distTop = el.scrollHeight - el.clientHeight - el.scrollTop;
-    if (overflow && distTop < 120) void pedirAnteriores();
+    setMostrarIrAbajo((prev) => {
+      const next = !near && mensajes.length > 0;
+      return prev === next ? prev : next;
+    });
+    if (el.scrollTop < 160 && el.scrollHeight > el.clientHeight + 8) void pedirAnteriores();
   }
 
   function pegarAbajoSiCorresponde() {
     if (!nearBottomRef.current) return;
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollTop = 0;
+    el.scrollTop = el.scrollHeight;
   }
 
   function irAlFinal() {
     const el = scrollerRef.current;
     if (!el) return;
-    el.scrollTop = 0;
+    el.scrollTop = el.scrollHeight;
     nearBottomRef.current = true;
     setMostrarIrAbajo(false);
   }
@@ -1014,30 +1123,28 @@ function Thread({
     if (!el) return;
 
     const switched = prevConvRef.current !== conversacionId;
+    const prepended = !switched && prevFirstRef.current != null && firstId !== prevFirstRef.current;
+    const newTail = !switched && !prepended && prevLastRef.current != null && lastId !== prevLastRef.current;
+
     if (switched) {
-      prevConvRef.current = conversacionId;
-      prevLastIdRef.current = null;
+      el.scrollTop = el.scrollHeight;
       nearBottomRef.current = true;
       setMostrarIrAbajo(false);
-      el.scrollTop = 0;
+    } else if (prepended && anchorRef.current) {
+      const delta = el.scrollHeight - anchorRef.current.scrollHeight;
+      el.scrollTop = anchorRef.current.scrollTop + Math.max(0, delta);
+      anchorRef.current = null;
+    } else if ((newTail || agenteEscribiendo) && nearBottomRef.current) {
+      el.scrollTop = el.scrollHeight;
+      setMostrarIrAbajo(false);
+    } else if (newTail) {
+      setMostrarIrAbajo(true);
     }
 
-    const prev = prevLastIdRef.current;
-    const newTail = lastId != null && lastId !== prev;
-    prevLastIdRef.current = lastId;
-
-    if (switched) return;
-
-    if (newTail || agenteEscribiendo) {
-      if (nearBottomRef.current || agenteEscribiendo) {
-        el.scrollTop = 0;
-        nearBottomRef.current = true;
-        setMostrarIrAbajo(false);
-      } else if (newTail) {
-        setMostrarIrAbajo(true);
-      }
-    }
-  }, [conversacionId, lastId, agenteEscribiendo, mensajes.length]);
+    prevConvRef.current = conversacionId;
+    prevFirstRef.current = firstId;
+    prevLastRef.current = lastId;
+  }, [conversacionId, firstId, lastId, agenteEscribiendo]);
 
   // Si una foto termina de cargar y el alto cambia, re-ancla solo si ya estabas abajo.
   useEffect(() => {
@@ -1053,29 +1160,26 @@ function Thread({
     return () => el.removeEventListener("load", onLoad, true);
   }, [conversacionId]);
 
-  const ordenVisual = [...mensajes].reverse();
-
   return (
     <div className="relative min-h-0 flex-1">
       <div
-        key={conversacionId}
         ref={scrollerRef}
         onScroll={syncNearBottom}
-        className="flex h-full flex-col-reverse gap-2 overflow-y-auto overscroll-contain px-4 py-3 [overflow-anchor:none] sm:px-5"
+        className="flex h-full flex-col gap-2 overflow-y-auto overscroll-contain px-4 py-3 [overflow-anchor:none] sm:px-5"
       >
-        {agenteEscribiendo && (
-          <div className="flex justify-end">
-            <div className="rounded-2xl bg-ink/80 px-4 py-2.5 text-sm text-surface">
-              <span className="inline-flex gap-1">
-                <span className="animate-pulse">●</span>
-                <span className="animate-pulse [animation-delay:150ms]">●</span>
-                <span className="animate-pulse [animation-delay:300ms]">●</span>
-              </span>
-              <span className="ml-2 text-xs text-surface/70">{NOMBRE_AGENTE} escribiendo…</span>
-            </div>
+        {hayAnteriores && (
+          <div className="flex justify-center py-2">
+            <button
+              type="button"
+              onClick={() => void pedirAnteriores()}
+              disabled={cargandoAnteriores}
+              className="rounded-md bg-surface px-3 py-1.5 text-xs text-muted ring-1 ring-line transition hover:text-ink disabled:opacity-50"
+            >
+              {cargandoAnteriores ? "Cargando…" : "Mensajes anteriores"}
+            </button>
           </div>
         )}
-        {ordenVisual.map((m) => {
+        {mensajes.map((m) => {
           const out = m.direccion === "out";
           const system = m.tipo === "system";
           const audio = esNotaDeVoz(m);
@@ -1138,16 +1242,16 @@ function Thread({
         {mensajes.length === 0 && !agenteEscribiendo && (
           <p className="py-16 text-center text-sm text-muted">Sin mensajes todavía.</p>
         )}
-        {hayAnteriores && (
-          <div className="flex justify-center py-2">
-            <button
-              type="button"
-              onClick={() => void pedirAnteriores()}
-              disabled={cargandoAnteriores}
-              className="rounded-md bg-surface px-3 py-1.5 text-xs text-muted ring-1 ring-line transition hover:text-ink disabled:opacity-50"
-            >
-              {cargandoAnteriores ? "Cargando…" : "Mensajes anteriores"}
-            </button>
+        {agenteEscribiendo && (
+          <div className="flex justify-end">
+            <div className="rounded-2xl bg-ink/80 px-4 py-2.5 text-sm text-surface">
+              <span className="inline-flex gap-1">
+                <span className="animate-pulse">●</span>
+                <span className="animate-pulse [animation-delay:150ms]">●</span>
+                <span className="animate-pulse [animation-delay:300ms]">●</span>
+              </span>
+              <span className="ml-2 text-xs text-surface/70">{NOMBRE_AGENTE} escribiendo…</span>
+            </div>
           </div>
         )}
       </div>
@@ -1306,6 +1410,7 @@ function Composer({
   conversacionId,
   esHumano,
   ventanaAbierta,
+  borradores,
   demo,
   onSent,
   onError,
@@ -1313,11 +1418,12 @@ function Composer({
   conversacionId: string;
   esHumano: boolean;
   ventanaAbierta: boolean;
+  borradores: Map<string, string>;
   demo?: boolean;
   onSent: (texto: string) => Promise<void>;
   onError: (msg: string | null) => void;
 }) {
-  const [texto, setTexto] = useState("");
+  const [texto, setTexto] = useState(() => borradores.get(conversacionId) ?? "");
   const [pending, startTransition] = useTransition();
   const [grabando, setGrabando] = useState(false);
   const [secs, setSecs] = useState(0);
@@ -1326,26 +1432,34 @@ function Composer({
   const tickRef = useRef<number | null>(null);
   const puede = esHumano && ventanaAbierta && !pending;
 
+  function guardarBorrador(valor: string) {
+    setTexto(valor);
+    if (valor) borradores.set(conversacionId, valor);
+    else borradores.delete(conversacionId);
+  }
+
   function enviar(raw?: string) {
     const body = (raw ?? texto).trim();
     if (!body || !puede) return;
     onError(null);
     if (demo) {
-      setTexto("");
+      guardarBorrador("");
       void onSent(body);
       return;
     }
     const fd = new FormData();
     fd.set("conversacion_id", conversacionId);
     fd.set("texto", body);
+    borradores.set(conversacionId, body);
     setTexto("");
     startTransition(async () => {
       const r = await enviarRespuestaHumana(fd);
       if (!r.ok) {
         onError(r.error ?? "No se pudo enviar.");
-        setTexto(body);
+        guardarBorrador(body);
         return;
       }
+      borradores.delete(conversacionId);
       await onSent(body);
     });
   }
@@ -1509,7 +1623,7 @@ function Composer({
         </button>
         <textarea
           value={texto}
-          onChange={(e) => setTexto(e.target.value)}
+          onChange={(e) => guardarBorrador(e.target.value)}
           onKeyDown={onKeyDown}
           rows={2}
           placeholder={

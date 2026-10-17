@@ -626,7 +626,7 @@ export async function tomarChat(conversacionId: string): Promise<void> {
   const sb = createServerSupabase();
   await sb
     .from("conversaciones")
-    .update({ modo: "humano", necesita_humano: false, escalada_at: null })
+    .update({ modo: "humano", necesita_humano: false, escalada_at: null, no_leidos: 0 })
     .eq("id", conversacionId);
 }
 
