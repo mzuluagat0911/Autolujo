@@ -14,8 +14,9 @@ import {
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { fechaConDia } from "@/lib/cartera/fecha";
-import { complementoInforme } from "./actions";
-import { csvEstadoCuenta, type UltimoPago } from "@/lib/cartera/estado-csv";
+import { Field } from "@/components/form";
+import { hoyPanama } from "@/lib/cartera/fecha";
+import type { UltimoPago } from "@/lib/cartera/estado-csv";
 import { DetalleEstadoModal } from "./detalle";
 import { BotonPreviewMensaje, PreviewMensajeModal } from "./preview-mensaje";
 import type { EstadoCuentaFila } from "./types";
@@ -55,26 +56,6 @@ function cmpStr(a: string, b: string): number {
   return a.localeCompare(b, "es", { sensitivity: "base", numeric: true });
 }
 
-function descargarLista(
-  filas: EstadoCuentaFila[],
-  ultimos: Record<string, UltimoPago>,
-  extra: EstadoCuentaFila[],
-  improductivos: string[],
-  porEntregar: string[],
-) {
-  const vistos = new Set(filas.map((f) => f.contratoId));
-  const todos = [...filas, ...extra.filter((e) => !vistos.has(e.contratoId))];
-  const dia = (todos[0]?.hoyIso ?? filas[0]?.hoyIso ?? "hoy").slice(0, 10);
-  const csv = `\uFEFF${csvEstadoCuenta(todos, ultimos, improductivos, porEntregar)}`;
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `estado-de-cuenta-${dia}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
 function fechaCorta(iso: string | null | undefined): string | null {
   if (!iso || !/^\d{4}-\d{2}-\d{2}/.test(iso)) return null;
   return fechaConDia(iso.slice(0, 10));
@@ -97,18 +78,35 @@ export function EstadosTabla({
   const [previewTick, setPreviewTick] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [armando, setArmando] = useState(false);
+  const [pedirFecha, setPedirFecha] = useState(false);
+  const [fechaInforme, setFechaInforme] = useState("");
+
+  function abrirDescarga() {
+    setFechaInforme((estados[0]?.hoyIso ?? hoyPanama()).slice(0, 10));
+    setPedirFecha(true);
+  }
 
   async function onDescargar() {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaInforme)) {
+      setToast("Indica la fecha del informe.");
+      return;
+    }
     setArmando(true);
     try {
-      const comp = await complementoInforme(estados.map((e) => e.contratoId));
-      descargarLista(
-        visibles,
-        { ...ultimosPagos, ...comp.ultimos },
-        comp.extra,
-        comp.ids,
-        comp.porEntregarIds,
-      );
+      const res = await fetch(`/cartera/informe?fecha=${fechaInforme}`);
+      if (!res.ok) {
+        const cuerpo = (await res.json().catch(() => null)) as { error?: string } | null;
+        setToast(cuerpo?.error || "No pude armar el archivo.");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `informe-${fechaInforme}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setPedirFecha(false);
     } catch {
       setToast("No pude armar el archivo.");
     } finally {
@@ -264,7 +262,7 @@ export function EstadosTabla({
             <button
               type="button"
               disabled={armando}
-              onClick={() => void onDescargar()}
+              onClick={abrirDescarga}
               className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
             >
               {armando ? "Armando…" : "Descargar"}
@@ -272,6 +270,62 @@ export function EstadosTabla({
           </div>
         }
       />
+
+      {pedirFecha && (
+        <div
+          className="fixed inset-0 z-[60] flex items-end justify-center bg-ink/40 p-0 sm:items-center sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="informe-fecha"
+          onClick={() => {
+            if (!armando) setPedirFecha(false);
+          }}
+        >
+          <form
+            className="w-full max-w-md rounded-t-2xl bg-paper p-5 shadow-xl ring-1 ring-line sm:rounded-2xl"
+            onClick={(ev) => ev.stopPropagation()}
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              void onDescargar();
+            }}
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Informe</p>
+            <h2 id="informe-fecha" className="mt-1 text-base font-semibold text-ink">
+              Fecha del informe
+            </h2>
+            <p className="mt-2 text-sm text-muted">
+              Se arma desde el día 1 de ese mes hasta la fecha que elijas. Las ocho pestañas salen con los datos de la plataforma.
+            </p>
+            <div className="mt-4">
+              <Field
+                label="Hasta"
+                name="fecha"
+                type="date"
+                required
+                value={fechaInforme}
+                onChange={(ev) => setFechaInforme(ev.target.value)}
+              />
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={armando}
+                onClick={() => setPedirFecha(false)}
+                className="rounded-lg px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={armando}
+                className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-50"
+              >
+                {armando ? "Armando…" : "Descargar"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
 
       {visibles.length === 0 ? (
         <EmptyState title="Ningún carro coincide" hint="Probá otro filtro o búsqueda." />
