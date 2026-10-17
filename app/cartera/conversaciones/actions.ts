@@ -15,6 +15,7 @@ import { estadoCuentaContrato } from "@/lib/cartera/estado-cuenta";
 import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta-cache";
 import { revalidatePath } from "next/cache";
 import type { ConversacionDetalle, ConversacionLista, Mensaje, VigiaChat } from "./types";
+import { huellaBandeja } from "./pulso";
 import { alertasGpsPendientes, marcarAlertaGpsVista } from "@/lib/gps/revisar-dia";
 import { marcarAlertaSalidaVista, salidasAlertasPendientes, salidasPendientesAval } from "@/lib/cartera/salidas-aplicar";
 
@@ -306,6 +307,20 @@ export async function cargarBandeja(): Promise<{
 
 /** Marcas livianas de cada chat. Si no cambiaron, la bandeja no se vuelve a armar. */
 export async function vigilarBandeja(): Promise<{ filas: VigiaChat[]; error: string | null }> {
+  const pulso = await pulsoBandeja(null);
+  return { filas: pulso.filas, error: pulso.error };
+}
+
+/**
+ * Un latido de la bandeja. Si la huella coincide, no viajan las filas:
+ * el cliente no redibuja la lista.
+ */
+export async function pulsoBandeja(huella: string | null): Promise<{
+  igual: boolean;
+  huella: string;
+  filas: VigiaChat[];
+  error: string | null;
+}> {
   try {
     const sb = createServerSupabase();
     const { data, error } = await sb
@@ -313,9 +328,87 @@ export async function vigilarBandeja(): Promise<{ filas: VigiaChat[]; error: str
       .select(SEL_VIGIA)
       .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false });
     if (error) throw error;
-    return { filas: (data as unknown as VigiaChat[]) ?? [], error: null };
+    const filas = (data as unknown as VigiaChat[]) ?? [];
+    const marca = huellaBandeja(filas);
+    if (huella && huella === marca) return { igual: true, huella: marca, filas: [], error: null };
+    return { igual: false, huella: marca, filas, error: null };
   } catch (e) {
-    return { filas: [], error: e instanceof Error ? e.message : "Error" };
+    return {
+      igual: false,
+      huella: huella ?? "",
+      filas: [],
+      error: e instanceof Error ? e.message : "Error",
+    };
+  }
+}
+
+export type HiloRapido = {
+  mensajes: Mensaje[];
+  hayAnteriores: boolean;
+  contrato_id: string | null;
+  modo: "agente" | "humano";
+  necesita_humano: boolean;
+  motivo_escalada: string | null;
+  ultimo_entrante_at: string | null;
+  ultimo_texto: string | null;
+  ultimo_mensaje_at: string | null;
+  estado: string;
+  error: string | null;
+};
+
+/** Mensajes del chat, en paralelo con la ficha corta. Sin el join del cliente. */
+export async function cargarMensajesRapido(id: string): Promise<HiloRapido> {
+  const vacio: HiloRapido = {
+    mensajes: [],
+    hayAnteriores: false,
+    contrato_id: null,
+    modo: "agente",
+    necesita_humano: false,
+    motivo_escalada: null,
+    ultimo_entrante_at: null,
+    ultimo_texto: null,
+    ultimo_mensaje_at: null,
+    estado: "",
+    error: null,
+  };
+  if (!id) return { ...vacio, error: "Falta la conversación." };
+  try {
+    const sb = createServerSupabase();
+    const [convRes, msgRes] = await Promise.all([
+      sb
+        .from("conversaciones")
+        .select(
+          "contrato_id, modo, necesita_humano, motivo_escalada, ultimo_entrante_at, ultimo_texto, ultimo_mensaje_at, estado",
+        )
+        .eq("id", id)
+        .maybeSingle(),
+      sb
+        .from("mensajes")
+        .select("id, direccion, tipo, texto, media_url, enviado_por, created_at")
+        .eq("conversacion_id", id)
+        .order("created_at", { ascending: false })
+        .limit(LIMITE_MENSAJES + 1),
+    ]);
+    if (convRes.error) throw convRes.error;
+    if (msgRes.error) throw msgRes.error;
+    if (!convRes.data) return { ...vacio, error: "No se encontró la conversación." };
+    const filas = (msgRes.data ?? []) as FilaMensaje[];
+    const hayAnteriores = filas.length > LIMITE_MENSAJES;
+    const pagina = filas.slice(0, LIMITE_MENSAJES).reverse();
+    const mensajes = await firmarMedios(sb, pagina);
+    const conv = convRes.data as {
+      contrato_id: string | null;
+      modo: "agente" | "humano";
+      necesita_humano: boolean;
+      motivo_escalada: string | null;
+      ultimo_entrante_at: string | null;
+      ultimo_texto: string | null;
+      ultimo_mensaje_at: string | null;
+      estado: string;
+    };
+    return { ...vacio, ...conv, mensajes, hayAnteriores, error: null };
+  } catch (e) {
+    return { ...vacio, error: e instanceof Error ? e.message : "No pude abrir el chat." };
   }
 }
 

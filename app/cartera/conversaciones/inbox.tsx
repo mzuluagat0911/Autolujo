@@ -18,8 +18,10 @@ import {
   cargarHilo,
   cargarMensajesAnteriores,
   cargarMensajesDesde,
+  cargarMensajesRapido,
   cargarSaldoChat,
-  vigilarBandeja,
+  pulsoBandeja,
+  type HiloRapido,
   enviarAudioHumano,
   enviarPlantillaMora,
   enviarRespuestaHumana,
@@ -187,6 +189,9 @@ export function InboxConversaciones({
   /** Si el equipo acaba de tomar o devolver, un poll viejo no pisa ese modo. */
   const pollGenRef = useRef(0);
   const modoLocalRef = useRef<{ id: string; modo: "humano" | "agente" } | null>(null);
+  const huellaRef = useRef<string | null>(null);
+  const cacheHiloRef = useRef(new Map<string, { marca: string | null; promesa: Promise<HiloRapido> }>());
+  const warmEnCursoRef = useRef(0);
   /** Si el usuario bajó en la lista, no reordenamos filas en el poll (como WhatsApp). */
   const listaOrdenFijoRef = useRef<string[] | null>(null);
   const selectedIdRef = useRef(selectedId);
@@ -287,11 +292,17 @@ export function InboxConversaciones({
         return;
       }
       const gen = pollGenRef.current;
-      const { filas, error: err } = await vigilarBandeja();
-      if (cancelled || err) {
+      const pulso = await pulsoBandeja(huellaRef.current);
+      if (cancelled || pulso.error) {
         schedule();
         return;
       }
+      huellaRef.current = pulso.huella;
+      if (pulso.igual) {
+        schedule();
+        return;
+      }
+      const filas = pulso.filas;
       const prev = convsRef.current;
       const idsPrev = new Set(prev.map((c) => c.id));
       const entroOSalio =
@@ -333,7 +344,7 @@ export function InboxConversaciones({
             setConvs((p) => p.map((c) => (c.id === sid ? { ...c, no_leidos: 0 } : c)));
           }
         } else if (textoNuevo) {
-          const desde = cur.mensajes.at(-1)?.created_at;
+          const desde = cur.mensajes.filter((m) => !m.id.startsWith("tmp-")).at(-1)?.created_at;
           if (!desde) {
             const { detalle: d } = await cargarHilo(sid);
             if (!cancelled && d && selectedIdRef.current === sid) {
@@ -409,6 +420,61 @@ export function InboxConversaciones({
     }
   }, [convs]);
 
+  function detalleInmediato(c: ConversacionLista): ConversacionDetalle {
+    return {
+      ...c,
+      no_leidos: 0,
+      contrato_id: null,
+      saldo: null,
+      mensajes: [],
+      hayAnteriores: false,
+      ventana_abierta: ventanaCliente(c.ultimo_entrante_at),
+    };
+  }
+
+  function warm(id: string, marca: string | null, suave = false): Promise<HiloRapido> {
+    const previo = cacheHiloRef.current.get(id);
+    if (previo && previo.marca === marca) return previo.promesa;
+    if (suave && warmEnCursoRef.current >= 1) {
+      return previo?.promesa ?? Promise.resolve({ mensajes: [], hayAnteriores: false, contrato_id: null, modo: "agente", necesita_humano: false, motivo_escalada: null, ultimo_entrante_at: null, ultimo_texto: null, ultimo_mensaje_at: null, estado: "", error: "ocupado" });
+    }
+    warmEnCursoRef.current += 1;
+    const promesa = cargarMensajesRapido(id).finally(() => {
+      warmEnCursoRef.current = Math.max(0, warmEnCursoRef.current - 1);
+    });
+    cacheHiloRef.current.set(id, { marca, promesa });
+    window.setTimeout(() => {
+      const actual = cacheHiloRef.current.get(id);
+      if (actual?.promesa === promesa) cacheHiloRef.current.delete(id);
+    }, 12_000);
+    return promesa;
+  }
+
+  function aplicarRapido(id: string, r: HiloRapido) {
+    const local = modoLocalRef.current;
+    if (local && local.id === id && r.modo === local.modo) modoLocalRef.current = null;
+    const modo = local && local.id === id && r.modo !== local.modo ? local.modo : r.modo;
+    setDetalle((prev) => {
+      if (!prev || prev.id !== id) return prev;
+      const temporales = prev.mensajes.filter((m) => m.id.startsWith("tmp-"));
+      return {
+        ...prev,
+        contrato_id: r.contrato_id,
+        modo,
+        necesita_humano: r.necesita_humano,
+        motivo_escalada: r.motivo_escalada,
+        ultimo_entrante_at: r.ultimo_entrante_at,
+        ultimo_texto: r.ultimo_texto ?? prev.ultimo_texto,
+        ultimo_mensaje_at: r.ultimo_mensaje_at ?? prev.ultimo_mensaje_at,
+        estado: r.estado || prev.estado,
+        saldo: prev.saldo,
+        mensajes: fundirMensajes(r.mensajes, temporales),
+        hayAnteriores: r.hayAnteriores,
+        ventana_abierta: ventanaCliente(r.ultimo_entrante_at),
+      };
+    });
+  }
+
   function showToast(tone: "good" | "crit", text: string) {
     setToast({ tone, text });
     window.setTimeout(() => setToast(null), 3200);
@@ -424,17 +490,23 @@ export function InboxConversaciones({
       setConvs((prev) => prev.map((c) => (c.id === id ? { ...c, no_leidos: 0 } : c)));
       return;
     }
-    // No dejes el chat anterior en pantalla: evita el salto/parpadeo al cambiar.
-    if (detalle?.id !== id) setDetalle(null);
+    const fila = convsRef.current.find((c) => c.id === id) ?? null;
+    if (fila) {
+      setDetalle((prev) => (prev?.id === id && prev.mensajes.length > 0 ? prev : detalleInmediato(fila)));
+      setConvs((prev) => prev.map((c) => (c.id === id ? { ...c, no_leidos: 0 } : c)));
+    } else if (detalleRef.current?.id !== id) {
+      setDetalle(null);
+    }
     setCargandoDetalle(true);
-    const { detalle: d, error: err } = await cargarHilo(id);
+    const r = await warm(id, fila?.ultimo_mensaje_at ?? null);
     if (selectedIdRef.current !== id) return;
     setCargandoDetalle(false);
-    if (err) {
-      showToast("crit", err);
+    if (r.error) {
+      showToast("crit", r.error);
+      cacheHiloRef.current.delete(id);
       return;
     }
-    setDetalle(d);
+    aplicarRapido(id, r);
   }
 
   function cerrarDetalle() {
@@ -541,6 +613,9 @@ export function InboxConversaciones({
                 key={c.id}
                 c={c}
                 active={c.id === selectedId}
+                onWarm={(forzado) => {
+                  void warm(c.id, c.ultimo_mensaje_at, !forzado);
+                }}
                 onSelect={() => void abrir(c.id)}
               />
             ))}
@@ -591,6 +666,7 @@ export function InboxConversaciones({
               key={detalle.id}
               detalle={detalle}
               demo={demo}
+              cargando={cargandoDetalle && detalle.mensajes.length === 0}
               borradores={borradoresRef.current}
               onAccionLocal={(modo) => {
                 pollGenRef.current += 1;
@@ -604,7 +680,7 @@ export function InboxConversaciones({
                   return;
                 }
                 const id = detalle.id;
-                const desde = detalleRef.current?.mensajes.at(-1)?.created_at;
+                const desde = detalleRef.current?.mensajes.filter((m) => !m.id.startsWith("tmp-")).at(-1)?.created_at;
                 if (!desde) {
                   const { detalle: d } = await cargarHilo(id);
                   if (d && selectedIdRef.current === id) setDetalle((prev) => (prev ? aplicarDetalle(prev, d) : d));
@@ -618,6 +694,43 @@ export function InboxConversaciones({
                 }
               }}
               onFlash={(msg) => showToast("good", msg)}
+              onMensajeOptimista={(tmpId, texto) => {
+                const chatId = detalle.id;
+                setDetalle((prev) => {
+                  if (!prev || prev.id !== chatId) return prev;
+                  if (texto == null) return { ...prev, mensajes: prev.mensajes.filter((m) => m.id !== tmpId) };
+                  const ahora = new Date().toISOString();
+                  return {
+                    ...prev,
+                    mensajes: [
+                      ...prev.mensajes.filter((m) => m.id !== tmpId),
+                      {
+                        id: tmpId,
+                        direccion: "out",
+                        tipo: "text",
+                        texto,
+                        media_url: null,
+                        enviado_por: "Equipo",
+                        created_at: ahora,
+                      },
+                    ],
+                    necesita_humano: false,
+                    no_leidos: 0,
+                    ultimo_texto: texto.slice(0, 140),
+                    ultimo_mensaje_at: ahora,
+                  };
+                });
+                if (texto != null) {
+                  const ahora = new Date().toISOString();
+                  setConvs((prev) =>
+                    prev.map((c) =>
+                      c.id === chatId
+                        ? { ...c, ultimo_texto: texto.slice(0, 140), ultimo_mensaje_at: ahora, necesita_humano: false, no_leidos: 0 }
+                        : c,
+                    ),
+                  );
+                }
+              }}
               onLocalPatch={(patch) => {
                 setDetalle((prev) => (prev ? { ...prev, ...patch } : prev));
                 setConvs((prev) =>
@@ -711,11 +824,14 @@ function ConvRow({
   c,
   active,
   onSelect,
+  onWarm,
 }: {
   c: ConversacionLista;
   active: boolean;
   onSelect: () => void;
+  onWarm?: (forzado?: boolean) => void;
 }) {
+  const warmTimer = useRef<number | null>(null);
   const unread = c.no_leidos > 0;
   const rowBg = active
     ? "bg-gris-wash"
@@ -726,6 +842,15 @@ function ConvRow({
     <button
       type="button"
       onClick={onSelect}
+      onPointerDown={() => onWarm?.(true)}
+      onPointerEnter={() => {
+        if (warmTimer.current) window.clearTimeout(warmTimer.current);
+        warmTimer.current = window.setTimeout(() => onWarm?.(false), 120);
+      }}
+      onPointerLeave={() => {
+        if (warmTimer.current) window.clearTimeout(warmTimer.current);
+        warmTimer.current = null;
+      }}
       className={`flex w-full items-start gap-3 border-b border-line px-4 py-3.5 text-left transition ${rowBg} ${
         unread && !active ? "border-l-2 border-l-azul pl-[14px]" : ""
       }`}
@@ -780,22 +905,26 @@ function ConvRow({
 function ChatPanel({
   detalle,
   demo,
+  cargando = false,
   borradores,
   onAccionLocal,
   onBack,
   onRefresh,
   onFlash,
   onLocalPatch,
+  onMensajeOptimista,
   onDemoAgentReply,
 }: {
   detalle: ConversacionDetalle;
   demo?: boolean;
+  cargando?: boolean;
   borradores: Map<string, string>;
   onAccionLocal: (modo: "humano" | "agente" | null) => void;
   onBack: () => void;
   onRefresh: () => Promise<void>;
   onFlash: (msg: string) => void;
   onLocalPatch: (patch: Partial<ConversacionDetalle> & Partial<ConversacionLista>) => void;
+  onMensajeOptimista: (tmpId: string, texto: string | null) => void;
   onDemoAgentReply?: (msgs: Mensaje[], ultimo: string) => void;
 }) {
   const esHumano = detalle.modo === "humano";
@@ -965,6 +1094,7 @@ function ChatPanel({
       <Thread
         conversacionId={detalle.id}
         mensajes={detalle.mensajes}
+        cargando={cargando}
         hayAnteriores={detalle.hayAnteriores}
         agenteEscribiendo={agenteEscribiendo}
         onCargarAnteriores={
@@ -1022,25 +1152,31 @@ function ChatPanel({
         ventanaAbierta={detalle.ventana_abierta}
         borradores={borradores}
         demo={demo}
+        onOptimista={onMensajeOptimista}
         onSent={async (texto) => {
-          const ahora = new Date().toISOString();
-          const optimistic: Mensaje = {
-            id: `tmp-${Date.now()}`,
-            direccion: "out",
-            tipo: "text",
-            texto,
-            media_url: null,
-            enviado_por: "Equipo",
-            created_at: ahora,
-          };
-          onLocalPatch({
-            mensajes: [...detalle.mensajes, optimistic],
-            necesita_humano: false,
-            no_leidos: 0,
-            ultimo_texto: texto.slice(0, 140),
-            ultimo_mensaje_at: ahora,
-          });
-          if (!demo) await onRefresh();
+          if (demo) {
+            const ahora = new Date().toISOString();
+            onLocalPatch({
+              mensajes: [
+                ...detalle.mensajes,
+                {
+                  id: `tmp-${Date.now()}`,
+                  direccion: "out",
+                  tipo: "text",
+                  texto,
+                  media_url: null,
+                  enviado_por: "Equipo",
+                  created_at: ahora,
+                },
+              ],
+              necesita_humano: false,
+              no_leidos: 0,
+              ultimo_texto: texto.slice(0, 140),
+              ultimo_mensaje_at: ahora,
+            });
+            return;
+          }
+          await onRefresh();
         }}
         onError={setAccionError}
       />
@@ -1051,12 +1187,14 @@ function ChatPanel({
 function Thread({
   conversacionId,
   mensajes,
+  cargando = false,
   hayAnteriores = false,
   agenteEscribiendo = false,
   onCargarAnteriores,
 }: {
   conversacionId: string;
   mensajes: Mensaje[];
+  cargando?: boolean;
   hayAnteriores?: boolean;
   agenteEscribiendo?: boolean;
   onCargarAnteriores?: () => Promise<{ mensajes: Mensaje[]; hayAnteriores: boolean }>;
@@ -1123,10 +1261,11 @@ function Thread({
     if (!el) return;
 
     const switched = prevConvRef.current !== conversacionId;
+    const llegaElHilo = !switched && prevLastRef.current == null && lastId != null;
     const prepended = !switched && prevFirstRef.current != null && firstId !== prevFirstRef.current;
-    const newTail = !switched && !prepended && prevLastRef.current != null && lastId !== prevLastRef.current;
+    const newTail = !switched && !prepended && !llegaElHilo && prevLastRef.current != null && lastId !== prevLastRef.current;
 
-    if (switched) {
+    if (switched || llegaElHilo) {
       el.scrollTop = el.scrollHeight;
       nearBottomRef.current = true;
       setMostrarIrAbajo(false);
@@ -1240,7 +1379,9 @@ function Thread({
           );
         })}
         {mensajes.length === 0 && !agenteEscribiendo && (
-          <p className="py-16 text-center text-sm text-muted">Sin mensajes todavía.</p>
+          <p className="py-16 text-center text-sm text-muted">
+            {cargando ? "Cargando mensajes…" : "Sin mensajes todavía."}
+          </p>
         )}
         {agenteEscribiendo && (
           <div className="flex justify-end">
@@ -1412,6 +1553,7 @@ function Composer({
   ventanaAbierta,
   borradores,
   demo,
+  onOptimista,
   onSent,
   onError,
 }: {
@@ -1420,6 +1562,7 @@ function Composer({
   ventanaAbierta: boolean;
   borradores: Map<string, string>;
   demo?: boolean;
+  onOptimista?: (tmpId: string, texto: string | null) => void;
   onSent: (texto: string) => Promise<void>;
   onError: (msg: string | null) => void;
 }) {
@@ -1450,11 +1593,14 @@ function Composer({
     const fd = new FormData();
     fd.set("conversacion_id", conversacionId);
     fd.set("texto", body);
+    const tmpId = `tmp-${Date.now()}`;
     borradores.set(conversacionId, body);
     setTexto("");
+    onOptimista?.(tmpId, body);
     startTransition(async () => {
       const r = await enviarRespuestaHumana(fd);
       if (!r.ok) {
+        onOptimista?.(tmpId, null);
         onError(r.error ?? "No se pudo enviar.");
         guardarBorrador(body);
         return;
