@@ -56,7 +56,7 @@ assert.equal(parte.general, 0);
 assert.equal(parte.pagos.Cuota, 30);
 assert.equal(parte.pagos["Abono inicial financiado"], 50);
 
-const filas = filasDelInforme([carro], cargos, pagos, "2026-10-02");
+const filas = filasDelInforme([carro], cargos, pagos, "2026-10-01", "2026-10-02");
 assert.equal(filas.length, 2);
 const dia1 = filas[0];
 assert.equal(dia1.fecha, "2026-10-01");
@@ -70,11 +70,18 @@ assert.equal(deuda.Cuota, 60);
 assert.equal(deuda["Abono inicial financiado"], 0);
 assert.equal(deuda.total, 60);
 
-const meta = metaDelInforme("2026-10-02", null, null, 1);
+const soloDia = filasDelInforme([carro], cargos, pagos, "2026-10-02", "2026-10-02");
+assert.equal(soloDia.length, 1);
+assert.equal(soloDia[0].fecha, "2026-10-02");
+assert.equal(soloDia[0].deudas.Cuota, 60);
+assert.equal(soloDia[0].deudas["Abono inicial financiado"], 0);
+
+const meta = metaDelInforme("2026-10-01", "2026-10-02", null, null, 1);
 assert.equal(meta.meta, null);
+assert.equal(meta.mes, "2026-10-01");
 assert.match(meta.nota, /Sin meta/);
 
-const buf = await libroInforme(filas, meta, "2026-10-02");
+const buf = await libroInforme(filas, meta, "2026-10-01", "2026-10-02");
 const wb = new ExcelJS.Workbook();
 await wb.xlsx.load(buf as never);
 assert.deepEqual(wb.worksheets.map((w) => w.name), [

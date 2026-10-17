@@ -36,7 +36,12 @@ function rango(col: string, ultima: number): string {
   return `${BASE}!$${col}$2:$${col}$${ultima}`;
 }
 
-export async function libroInforme(filas: FilaInforme[], meta: MetaInforme, hasta: string): Promise<Buffer> {
+export async function libroInforme(
+  filas: FilaInforme[],
+  meta: MetaInforme,
+  desde: string,
+  hasta: string,
+): Promise<Buffer> {
   const wb = new ExcelJS.Workbook();
   wb.creator = "AutoLujo";
   const ultima = Math.max(filas.length + 1, 2);
@@ -44,10 +49,10 @@ export async function libroInforme(filas: FilaInforme[], meta: MetaInforme, hast
   hojaMeta(wb, meta, hasta, ultima, filas.reduce((s, f) => s + pagoDe(f), 0));
   hojaExtracto(wb, filas, ultima);
   hojaCalculo(wb, filas, ultima);
-  hojaRecaudo(wb, filas, hasta, ultima);
-  hojaPago(wb, filas, hasta, ultima);
-  hojaDeuda(wb, filas, hasta, ultima);
-  hojaDiscri(wb, filas, hasta, ultima);
+  hojaRecaudo(wb, filas, desde, hasta, ultima);
+  hojaPago(wb, filas, desde, hasta, ultima);
+  hojaDeuda(wb, filas, desde, hasta, ultima);
+  hojaDiscri(wb, filas, desde, hasta, ultima);
   const out = await wb.xlsx.writeBuffer();
   return Buffer.from(out);
 }
@@ -168,7 +173,7 @@ function hojaMeta(wb: ExcelJS.Workbook, meta: MetaInforme, hasta: string, ultima
   ws.getCell("L2").value = meta.nota || null;
   ws.getCell("M1").value = "Días del mes";
   ws.getCell("O1").value = "Días hábiles del mes";
-  ws.getCell("N1").value = "Corte";
+  ws.getCell("N1").value = "Hasta";
   for (const col of ["C", "D", "E", "F", "I"]) ws.getCell(`${col}2`).numFmt = "#,##0.00";
   for (const col of ["G", "H", "J"]) ws.getCell(`${col}2`).numFmt = "0.00%";
   ws.getColumn(4).width = 16;
@@ -257,11 +262,18 @@ function hojaCalculo(wb: ExcelJS.Workbook, filas: FilaInforme[], ultima: number)
   ws.getColumn(1).width = 36;
 }
 
-function hojaRecaudo(wb: ExcelJS.Workbook, filas: FilaInforme[], hasta: string, ultima: number) {
-  const ws = wb.addWorksheet("TOTAL_RECAUDO");
-  ws.getCell("A1").value = "Corte";
-  ws.getCell("B1").value = fechaCelda(hasta);
+function marcaRango(ws: ExcelJS.Worksheet, desde: string, hasta: string) {
+  ws.getCell("A1").value = "Desde";
+  ws.getCell("B1").value = fechaCelda(desde);
   ws.getCell("B1").numFmt = "yyyy-mm-dd";
+  ws.getCell("C1").value = "Hasta";
+  ws.getCell("D1").value = fechaCelda(hasta);
+  ws.getCell("D1").numFmt = "yyyy-mm-dd";
+}
+
+function hojaRecaudo(wb: ExcelJS.Workbook, filas: FilaInforme[], desde: string, hasta: string, ultima: number) {
+  const ws = wb.addWorksheet("TOTAL_RECAUDO");
+  marcaRango(ws, desde, hasta);
   ws.getCell("A3").value = "Suma de PAGO";
   const empresas = ["AUTOLUJO", "KW", "GOLD"];
   ws.getCell("A4").value = "Etiquetas de fila";
@@ -295,11 +307,9 @@ function hojaRecaudo(wb: ExcelJS.Workbook, filas: FilaInforme[], hasta: string, 
   }
 }
 
-function hojaPago(wb: ExcelJS.Workbook, filas: FilaInforme[], hasta: string, ultima: number) {
+function hojaPago(wb: ExcelJS.Workbook, filas: FilaInforme[], desde: string, hasta: string, ultima: number) {
   const ws = wb.addWorksheet("TOTAL_PAGO_RECAUDO");
-  ws.getCell("A1").value = "Corte";
-  ws.getCell("B1").value = fechaCelda(hasta);
-  ws.getCell("B1").numFmt = "yyyy-mm-dd";
+  marcaRango(ws, desde, hasta);
   ws.getCell("A2").value = "Empresa";
   ws.getCell("B2").value = "(Todas)";
   ws.getCell("A4").value = "Etiquetas de fila";
@@ -327,11 +337,9 @@ function hojaPago(wb: ExcelJS.Workbook, filas: FilaInforme[], hasta: string, ult
   }
 }
 
-function hojaDeuda(wb: ExcelJS.Workbook, filas: FilaInforme[], hasta: string, ultima: number) {
+function hojaDeuda(wb: ExcelJS.Workbook, filas: FilaInforme[], desde: string, hasta: string, ultima: number) {
   const ws = wb.addWorksheet("TOTAL_DEUDA");
-  ws.getCell("A1").value = "Corte";
-  ws.getCell("B1").value = fechaCelda(hasta);
-  ws.getCell("B1").numFmt = "yyyy-mm-dd";
+  marcaRango(ws, desde, hasta);
   ws.getCell("A2").value = "Empresa";
   ws.getCell("B2").value = "(Todas)";
   ws.getCell("A4").value = "Suma de TOTAL DEUDA";
@@ -359,13 +367,11 @@ function hojaDeuda(wb: ExcelJS.Workbook, filas: FilaInforme[], hasta: string, ul
   ws.getColumn(1).width = 22;
 }
 
-function hojaDiscri(wb: ExcelJS.Workbook, filas: FilaInforme[], hasta: string, ultima: number) {
+function hojaDiscri(wb: ExcelJS.Workbook, filas: FilaInforme[], desde: string, hasta: string, ultima: number) {
   const ws = wb.addWorksheet("TOTAL_RECAUDO_DISCRI");
-  ws.getCell("A1").value = "Empresa";
-  ws.getCell("B1").value = "(Varios elementos)";
-  ws.getCell("C1").value = "Corte";
-  ws.getCell("D1").value = fechaCelda(hasta);
-  ws.getCell("D1").numFmt = "yyyy-mm-dd";
+  marcaRango(ws, desde, hasta);
+  ws.getCell("E1").value = "Empresa";
+  ws.getCell("F1").value = "(Varios elementos)";
   const headers = ["Etiquetas de fila", ...CONCEPTOS.map((c) => `Suma de ${c}`), "Suma de PAGO"];
   headers.forEach((h, i) => {
     ws.getCell(3, i + 1).value = h;

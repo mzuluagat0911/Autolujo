@@ -1,9 +1,9 @@
-// Informe mensual con la misma forma que INFORME OCTUBRE.xlsx.
+// Informe con la misma forma que INFORME OCTUBRE.xlsx.
 //
-// Una fila por carro y día, del 1 del mes al corte. El día 1 arrastra el
-// saldo anterior en las columnas de deuda. La letra del día va aparte.
-// El extracto de cada concepto es lo cargado menos lo pagado. En la cuota
-// se suma además la letra del mes.
+// Una fila por carro y día, entre las fechas que elijan. El primer día
+// arrastra el saldo anterior en las columnas de deuda. La letra del día va
+// aparte. El extracto de cada concepto es lo cargado menos lo pagado. En la
+// cuota se suma además la letra del rango.
 
 import { etiquetaCargo } from "./extracto-desglose";
 import { diasHabilesEnRango, finMes, inicioMes, sumarDias } from "./fecha";
@@ -205,9 +205,9 @@ export function filasDelInforme(
   carros: CarroInforme[],
   cargos: CargoInforme[],
   pagos: PagoInforme[],
+  desde: string,
   hasta: string,
 ): FilaInforme[] {
-  const desde = inicioMes(hasta);
   const cargosDe = new Map<string, CargoInforme[]>();
   const pagosDe = new Map<string, PagoInforme[]>();
   for (const c of cargos) {
@@ -316,14 +316,22 @@ export function deudaDeCarro(filas: FilaInforme[], empresa: string, carro: strin
   return { ...neto, total: sumar(neto) };
 }
 
-export function metaDelInforme(hasta: string, meta: number | null, nota: string | null, flota: number): MetaInforme {
+export function metaDelInforme(
+  desde: string,
+  hasta: string,
+  meta: number | null,
+  nota: string | null,
+  flota: number,
+): MetaInforme {
   const mes = inicioMes(hasta);
+  const cruza = inicioMes(desde) !== mes;
+  const base = nota?.trim() || (meta != null && meta > 0 ? "" : "Sin meta cargada en la plataforma");
   return {
-    mes,
-    dias: diasHabilesEnRango(mes, hasta),
+    mes: desde,
+    dias: diasHabilesEnRango(desde, hasta),
     diasMes: diasHabilesEnRango(mes, finMes(hasta)),
     meta: meta != null && meta > 0 ? r2(meta) : null,
-    nota: nota?.trim() || (meta != null && meta > 0 ? "" : "Sin meta cargada en la plataforma"),
+    nota: cruza ? [base, "El rango cruza meses. La meta es la del mes del corte."].filter(Boolean).join(" ") : base,
     flota,
   };
 }

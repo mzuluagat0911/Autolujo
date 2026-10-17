@@ -13,9 +13,8 @@ import {
   type EstadoCuenta,
 } from "@/lib/cartera/estado-cuenta";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
-import { fechaConDia } from "@/lib/cartera/fecha";
+import { fechaConDia, hoyPanama, inicioMes } from "@/lib/cartera/fecha";
 import { Field } from "@/components/form";
-import { hoyPanama } from "@/lib/cartera/fecha";
 import type { UltimoPago } from "@/lib/cartera/estado-csv";
 import { DetalleEstadoModal } from "./detalle";
 import { BotonPreviewMensaje, PreviewMensajeModal } from "./preview-mensaje";
@@ -79,21 +78,28 @@ export function EstadosTabla({
   const [toast, setToast] = useState<string | null>(null);
   const [armando, setArmando] = useState(false);
   const [pedirFecha, setPedirFecha] = useState(false);
-  const [fechaInforme, setFechaInforme] = useState("");
+  const [desdeInforme, setDesdeInforme] = useState("");
+  const [hastaInforme, setHastaInforme] = useState("");
 
   function abrirDescarga() {
-    setFechaInforme((estados[0]?.hoyIso ?? hoyPanama()).slice(0, 10));
+    const hoy = (estados[0]?.hoyIso ?? hoyPanama()).slice(0, 10);
+    setDesdeInforme(inicioMes(hoy));
+    setHastaInforme(hoy);
     setPedirFecha(true);
   }
 
   async function onDescargar() {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(fechaInforme)) {
-      setToast("Indica la fecha del informe.");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(desdeInforme) || !/^\d{4}-\d{2}-\d{2}$/.test(hastaInforme)) {
+      setToast("Indica desde y hasta.");
+      return;
+    }
+    if (desdeInforme > hastaInforme) {
+      setToast("La fecha desde tiene que ser anterior o igual a hasta.");
       return;
     }
     setArmando(true);
     try {
-      const res = await fetch(`/cartera/informe?fecha=${fechaInforme}`);
+      const res = await fetch(`/cartera/informe?desde=${desdeInforme}&hasta=${hastaInforme}`);
       if (!res.ok) {
         const cuerpo = (await res.json().catch(() => null)) as { error?: string } | null;
         setToast(cuerpo?.error || "No pude armar el archivo.");
@@ -103,7 +109,7 @@ export function EstadosTabla({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `informe-${fechaInforme}.xlsx`;
+      a.download = `informe-${desdeInforme}_${hastaInforme}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       setPedirFecha(false);
@@ -291,19 +297,27 @@ export function EstadosTabla({
           >
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Informe</p>
             <h2 id="informe-fecha" className="mt-1 text-base font-semibold text-ink">
-              Fecha del informe
+              Fechas del informe
             </h2>
             <p className="mt-2 text-sm text-muted">
-              Se arma desde el día 1 de ese mes hasta la fecha que elijas. Las ocho pestañas salen con los datos de la plataforma.
+              Entran los días entre las dos fechas. El primer día trae el saldo que ya venía. Las ocho pestañas salen con los datos de la plataforma.
             </p>
-            <div className="mt-4">
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <Field
-                label="Hasta"
-                name="fecha"
+                label="Desde"
+                name="desde"
                 type="date"
                 required
-                value={fechaInforme}
-                onChange={(ev) => setFechaInforme(ev.target.value)}
+                value={desdeInforme}
+                onChange={(ev) => setDesdeInforme(ev.target.value)}
+              />
+              <Field
+                label="Hasta"
+                name="hasta"
+                type="date"
+                required
+                value={hastaInforme}
+                onChange={(ev) => setHastaInforme(ev.target.value)}
               />
             </div>
             <div className="mt-5 flex justify-end gap-2">

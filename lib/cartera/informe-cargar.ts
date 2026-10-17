@@ -1,5 +1,4 @@
 import { createServerSupabase } from "@/lib/supabase/server";
-import { inicioMes } from "./fecha";
 import { metaCobranzaDeMes } from "./metas-cobranza";
 import {
   empresaInforme,
@@ -187,9 +186,8 @@ async function antesDelMes(sb: Sb, ids: string[], desde: string): Promise<{ carg
   return { cargos, pagos };
 }
 
-export async function datosInforme(hasta: string): Promise<{ filas: FilaInforme[]; meta: MetaInforme }> {
+export async function datosInforme(desde: string, hasta: string): Promise<{ filas: FilaInforme[]; meta: MetaInforme }> {
   const sb = createServerSupabase();
-  const desde = inicioMes(hasta);
   const [activos, delMesCargos, delMesPagos, metaRow] = await Promise.all([
     contratosActivos(sb),
     cargosEntre(sb, desde, hasta),
@@ -205,15 +203,21 @@ export async function datosInforme(hasta: string): Promise<{ filas: FilaInforme[
   }
   const carros = [...porId.values()];
   const previo = await antesDelMes(sb, carros.map((c) => c.id), desde);
-  const filas = filasDelInforme(carros, [...previo.cargos, ...delMesCargos], [...previo.pagos, ...delMesPagos], hasta);
+  const filas = filasDelInforme(
+    carros,
+    [...previo.cargos, ...delMesCargos],
+    [...previo.pagos, ...delMesPagos],
+    desde,
+    hasta,
+  );
   const flota = new Set(filas.map((f) => `${f.empresa}|${f.carro}`)).size;
   return {
     filas,
-    meta: metaDelInforme(hasta, metaRow?.meta100 ?? null, metaRow?.nota ?? null, flota),
+    meta: metaDelInforme(desde, hasta, metaRow?.meta100 ?? null, metaRow?.nota ?? null, flota),
   };
 }
 
-export async function archivoInforme(hasta: string): Promise<Buffer> {
-  const { filas, meta } = await datosInforme(hasta);
-  return libroInforme(filas, meta, hasta);
+export async function archivoInforme(desde: string, hasta: string): Promise<Buffer> {
+  const { filas, meta } = await datosInforme(desde, hasta);
+  return libroInforme(filas, meta, desde, hasta);
 }
