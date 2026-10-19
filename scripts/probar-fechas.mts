@@ -13,6 +13,7 @@ import {
 import { cuotaDeFecha, omiteDomingoYaCerrado, tarifaPlena, penalidadDe, type TerminosCuota } from "@/lib/cartera/cuota";
 import { calcularCifras, cubrioCuotaDelDia, type EntradaCifras } from "@/lib/cartera/cifras";
 import { inactivacionVigente } from "@/lib/cartera/inactivo";
+import { armarVentanasSinLetra, fechaCaeEnSinLetra, ventanasAplicables } from "@/lib/cartera/pausa-productiva";
 
 let fallos = 0;
 function check(nombre: string, obtenido: unknown, esperado: unknown) {
@@ -388,6 +389,19 @@ check("el día de cobro ya corre letra", inactivacionVigente(ventana, "2026-10-0
 check("antes de la ventana se cobra", inactivacionVigente(ventana, "2026-10-04"), false);
 const abierta = { vehiculoId: "x", desde: "2026-10-05", hasta: null };
 check("sin fecha de cobro sigue sin letra", inactivacionVigente(abierta, "2026-10-06"), true);
+
+const g03 = armarVentanasSinLetra([
+  { fecha: "2026-10-10", detalle: "inactivo:2026-10-10", created_at: "2026-10-10T16:43:37Z" },
+  { fecha: "2026-10-10", detalle: "pausa-productiva:chapisteria", created_at: "2026-10-10T17:42:55Z" },
+  { fecha: "2026-10-10", detalle: "pausa-productiva:chapisteria:2026-10-19", created_at: "2026-10-17T16:57:38Z" },
+  { fecha: "2026-10-19", detalle: "retorno-productivo", created_at: "2026-10-19T05:32:01Z" },
+]);
+check("chapistería cerrada: el 12 no se vuelve a devengar", fechaCaeEnSinLetra(g03, "2026-10-12"), true);
+check("chapistería cerrada: el día de activación sí corre letra", fechaCaeEnSinLetra(g03, "2026-10-19"), false);
+check("chapistería cerrada: el día anterior al ingreso sí corre letra", fechaCaeEnSinLetra(g03, "2026-10-09"), false);
+const abiertoEnActivo = ventanasAplicables([{ desde: "2026-09-30", hasta: null }], "activo");
+check("improductivo sin fecha y carro ya activo no apaga la letra", fechaCaeEnSinLetra(abiertoEnActivo, "2026-10-12"), false);
+check("la pausa con fecha de activación sí frena esos días", fechaCaeEnSinLetra(ventanasAplicables(g03, "activo"), "2026-10-12"), true);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

@@ -26,7 +26,7 @@ import { descuentosLetraDelDia } from "./descuento-letra";
 import { devolucionesAbiertas, devolucionVigente } from "./devolucion";
 import { inactivacionesAbiertas, inactivacionVigente } from "./inactivo";
 import { filasUltimaLetra } from "./archivo-caso";
-import { pausasAbiertas, pausaVigente } from "./pausa-productiva";
+import { fechaCaeEnSinLetra, pausasAbiertas, pausaVigente, ventanasSinLetraPorVehiculo } from "./pausa-productiva";
 import {
   contratosQueCubrieronElDia,
   contratosConComprobantePendienteEnDia,
@@ -153,12 +153,15 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     saldoMap.set(s.contrato_id, Number(s.saldo_actual ?? 0));
   }
   const nacMap = await nacimientosPorCliente();
+  // Primero el cierre: si hoy es la activación, quita las letras del tramo y
+  // deja la ventana fechada. Después se leen las ventanas, ya cerradas.
   const [pausas, devoluciones, inactivaciones, descuentosLetra] = await Promise.all([
     pausasAbiertas(),
     devolucionesAbiertas(),
     inactivacionesAbiertas(),
     descuentosLetraDelDia(fecha),
   ]);
+  const ventanas = await ventanasSinLetraPorVehiculo();
 
   const hoy = hoyPanama();
   const domingoPasado = esDomingo(fecha) && fecha < hoy;
@@ -206,6 +209,7 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
     // En taller, o devuelto desde la fecha: no se abre letra nueva.
     const vehiculoId = c.vehiculo_id ?? "";
     if (
+      fechaCaeEnSinLetra(ventanas.get(vehiculoId) ?? [], fecha) ||
       pausaVigente(pausas.get(vehiculoId), fecha) ||
       devolucionVigente(devoluciones.get(vehiculoId), fecha) ||
       inactivacionVigente(inactivaciones.get(vehiculoId), fecha)

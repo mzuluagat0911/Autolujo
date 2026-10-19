@@ -97,6 +97,8 @@ export async function inactivacionesAbiertas(): Promise<Map<string, Inactivacion
       const { cupoAlQuedarActivo } = await import("./cliente-telefono");
       const cupo = await cupoAlQuedarActivo(id);
       if (!cupo) {
+        const fin = sumarDias(ventana.hasta, -1);
+        if (ventana.desde <= fin) await quitarLetrasDeLaPausa(id, ventana.desde, fin);
         await sb.from("vehiculos").update({ estado: "activo" }).eq("id", id);
         await reponerLetras(id, ventana.hasta, hoy);
       }
@@ -124,6 +126,30 @@ async function anotar(vehiculoId: string, desde: string, hasta: string | null): 
     origen: "manual",
   });
   return error ? error.message : null;
+}
+
+/**
+ * Cierra el improductivo abierto con la fecha de activación.
+ * No mira el estado del carro: la chapistería también deja esta ventana,
+ * y al volver a activo hay que conservarla para que el devengo no rellene esos días.
+ */
+export async function sellarInactivacion(vehiculoId: string, activacion: string): Promise<void> {
+  if (!fechaOk(activacion)) return;
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("vehiculo_eventos")
+    .select("detalle")
+    .eq("vehiculo_id", vehiculoId)
+    .or(`detalle.like.inactivo:%,detalle.eq.${DETALLE_ANULADA}`)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  const detalle = (data as { detalle?: string } | null)?.detalle ?? "";
+  const ventana = partes(detalle);
+  if (!ventana || ventana.hasta) return;
+  const fin = sumarDias(activacion, -1);
+  if (ventana.desde <= fin) await quitarLetrasDeLaPausa(vehiculoId, ventana.desde, fin);
+  await anotar(vehiculoId, ventana.desde, activacion);
 }
 
 /** Al volver a Activo: la letra corre desde hoy y los días improductivos no se rellenan. */
