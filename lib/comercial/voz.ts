@@ -34,9 +34,34 @@ function esEco(mensaje: string, cliente: string): boolean {
   return a === b || a.includes(b) || b.includes(a);
 }
 
-function corrigeAbono(texto: string): string {
-  if (!/abono/i.test(texto) || !/\b350\b/.test(texto)) return texto;
-  return texto.replace(/\$\s*350\b/g, "$100").replace(/\b350\b/g, "100");
+const RANGO_ABONO =
+  "El abono va de $99.99 a $350, según el año. ¿Le queda mejor Juan Díaz o La Chorrera?";
+const KIA =
+  "La letra de $25 es el Hyundai Grand i10 2020. El Kia Soluto empieza en 2024. ¿Le queda mejor Juan Díaz o La Chorrera?";
+const AUTOMATICO =
+  "El automático se confirma en la visita, porque no siempre hay. ¿Le queda mejor Juan Díaz o La Chorrera?";
+
+function pisoAbonoMal(texto: string): boolean {
+  return /abono[^.\n]{0,60}desde\s*\$?\s*350\b/i.test(texto) || /desde\s*\$?\s*350\b[^.\n]{0,40}abono/i.test(texto);
+}
+
+function kiaFueraDeCatalogo(texto: string): boolean {
+  return texto.split(/(?<=[.?!])\s+/).some((frase) => {
+    const q = plano(frase);
+    if (!/\bkia\b|\bsoluto\b/.test(q)) return false;
+    const anioViejo = /\b2020\b|\b2021\b|\b2022\b|\b2023\b/.test(q);
+    const letra25 = /\$\s*25\b|\bdesde 25\b/.test(q);
+    if (!anioViejo && !letra25) return false;
+    if (/hyundai/.test(q) && /soluto desde 2024|kia soluto desde 2024/.test(q) && !letra25) return false;
+    return true;
+  });
+}
+
+function cotizaAutomatico(texto: string): boolean {
+  const q = plano(texto);
+  if (!/automatic/.test(q)) return false;
+  if (/se confirma en la visita/.test(q) && !/\$/.test(texto)) return false;
+  return /\$|\btenemos\b|\blo tenemos\b|\bdisponible\b|\babono\b|\bletra\b|\b\d{2}\b/.test(q);
 }
 
 /** El automático 2027 del Grand i10 es $35. $33 es el manual. */
@@ -58,7 +83,7 @@ export function corrigeLetraI10(texto: string): string {
 }
 
 const LLANTAS =
-  "Las llantas las asume usted durante todo el contrato. ¿Le dejo la visita en Juan Díaz o en La Chorrera?";
+  "Las llantas las asume usted durante todo el contrato: el desgaste lo hace quien conduce. El carro se entrega con sus llantas. ¿Le dejo la visita en Juan Díaz o en La Chorrera?";
 const COLISION =
   "Si hay una colisión, avíseme de inmediato y el equipo le indica el paso. ¿Le dejo la visita en Juan Díaz o en La Chorrera?";
 const RECIBO =
@@ -69,7 +94,10 @@ const CUPO =
 function corrigeRespuestaComercial(texto: string, cliente: string): string {
   const c = plano(cliente);
   const t = plano(texto);
-  if (/llanta/.test(c) && !/asume usted|usted las paga|por su cuenta/.test(t)) return LLANTAS;
+  if (cotizaAutomatico(texto)) return AUTOMATICO;
+  if (kiaFueraDeCatalogo(texto)) return KIA;
+  if (pisoAbonoMal(texto)) return RANGO_ABONO;
+  if ((/llanta/.test(c) || /llanta/.test(t)) && !/asume usted|usted las paga|por su cuenta/.test(t)) return LLANTAS;
   if (/colision|choque|siniestr|accidente/.test(c) && !/\bavis/.test(t)) return COLISION;
   if (/recibo/.test(t) && /familiar/.test(t)) return RECIBO;
   if (/cuando sepa|me avisa|cuando pueda|cuando tenga/.test(t)) return CUPO;
@@ -85,7 +113,7 @@ function quitaAdornos(texto: string): string {
 
 /** Lo que sale a WhatsApp. Lucía no se presenta como sistema ni repite al cliente. */
 export function mensajeNaturalLucia(mensaje: string, ultimoCliente?: string | null): string {
-  let texto = quitaAdornos(corrigeAbono(corrigeLetraI10(mensaje.replace(/\s+/g, " ").trim())));
+  let texto = quitaAdornos(corrigeLetraI10(mensaje.replace(/\s+/g, " ").trim()));
   texto = corrigeRespuestaComercial(texto, ultimoCliente ?? "");
   if (!texto) return "¿Qué carro está buscando?";
   if (ultimoCliente && esEco(texto, ultimoCliente)) return SIGUE;

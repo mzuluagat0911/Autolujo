@@ -93,8 +93,8 @@ export function horasHastaSeguimiento(
   if (intento === 6) return 24 * 7;
   if (intento === 7) return 24 * 10;
   if (temperatura === "caliente") return intento === 1 ? 3 : 24;
-  if (temperatura === "tibio") return intento === 1 ? 24 : 48;
-  return 48;
+  if (temperatura === "tibio") return intento === 1 ? 4 : 48;
+  return intento === 1 ? 8 : 48;
 }
 
 /** El primer seguimiento retoma el paso pendiente. Los demás tienen texto fijo. */

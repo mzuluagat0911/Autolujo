@@ -26,6 +26,7 @@ import {
   nombreDeWhatsApp,
   textosDelCliente,
 } from "../lib/comercial/lead.ts";
+import { PLANTILLAS_SEGUIMIENTO, plantillaAunNoLista, plantillaSeguimiento } from "../lib/comercial/plantillas.ts";
 
 const base = {
   temperatura: "tibio" as const,
@@ -67,9 +68,9 @@ assert.equal(esSolicitudNoContacto(["No me interesa ese Kia, ¿tienen otro?"]), 
 assert.equal(horasHastaSeguimiento("caliente", 1), 3);
 assert.equal(horasHastaSeguimiento("caliente", 2), 24);
 assert.equal(horasHastaSeguimiento("caliente", 3), 24);
-assert.equal(horasHastaSeguimiento("tibio", 1), 24);
+assert.equal(horasHastaSeguimiento("tibio", 1), 4);
 assert.equal(horasHastaSeguimiento("tibio", 2), 48);
-assert.equal(horasHastaSeguimiento("frio", 1), 48);
+assert.equal(horasHastaSeguimiento("frio", 1), 8);
 assert.equal(horasHastaSeguimiento("frio", 3), 48);
 assert.equal(horasHastaSeguimiento("frio", 4), 24);
 assert.equal(horasHastaSeguimiento("caliente", 5), 72);
@@ -109,6 +110,16 @@ assert.match(
   textoSeguimientoLead({ nombre: "Ana", proximaAccion: null, intento: 7 }),
   /último mensaje/,
 );
+assert.equal(PLANTILLAS_SEGUIMIENTO.length, 7);
+assert.equal(plantillaSeguimiento("Ana", 2).name, "comercial_seguimiento_2");
+assert.match(plantillaSeguimiento("Ana", 2).texto, /Juan Díaz o en La Chorrera/);
+assert.match(plantillaSeguimiento(null, 7).texto, /Hola, buenas/);
+assert.match(plantillaSeguimiento("Ana", 7).texto, /último mensaje/);
+assert.equal(
+  plantillaAunNoLista("WhatsApp send falló (400): (#132001) Template name does not exist in the translation"),
+  true,
+);
+assert.equal(plantillaAunNoLista("WhatsApp send falló (400): invalid phone"), false);
 
 assert.equal(
   avisoCitaPendiente({
@@ -196,8 +207,9 @@ assert.equal(
 assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Hola, ¿cuánto es la letra?" }]), false);
 assert.ok(MENSAJE_BIENVENIDA.includes("https://bit.ly/tratamientodedatosautolujopanama"));
 assert.ok(MENSAJE_BIENVENIDA.includes("desde $25"));
-assert.ok(MENSAJE_BIENVENIDA.includes("desde $100"));
-assert.equal(MENSAJE_BIENVENIDA.includes("$350"), false);
+assert.ok(MENSAJE_BIENVENIDA.includes("$99.99"));
+assert.ok(MENSAJE_BIENVENIDA.includes("Kia Soluto desde 2024"));
+assert.equal(MENSAJE_BIENVENIDA.includes("desde $350"), false);
 const eco =
   "Por aquí le atiendo mejor por escrito o con una foto del documento. Cuénteme qué está buscando.";
 assert.equal(mensajeNaturalLucia(eco, eco).includes("Por aquí le atiendo"), false);
@@ -208,29 +220,41 @@ assert.equal(
 assert.equal(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("inteligencia"), false);
 assert.ok(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("Lucía"));
 assert.equal(mensajeNaturalLucia("Hola, soy Lucía. ¿En qué le puedo ayudar?").includes("ayudar"), false);
+assert.ok(mensajeNaturalLucia("El abono inicial desde $350.").includes("$99.99"));
+assert.equal(mensajeNaturalLucia("El abono inicial desde $350.").includes("$350"), true);
+assert.ok(
+  mensajeNaturalLucia("Hyundai y Kia, letras desde $25.").includes("Kia Soluto empieza en 2024"),
+);
+assert.ok(
+  mensajeNaturalLucia("El Grand i10 automático lo tenemos desde $27.").includes("se confirma en la visita"),
+);
 assert.equal(
-  mensajeNaturalLucia("El abono inicial desde $350."),
-  "El abono inicial desde $100.",
+  mensajeNaturalLucia("El Grand i10 automático lo tenemos desde $27.").includes("$27"),
+  false,
 );
 assert.equal(mensajeNaturalLucia("Perfecto, ❤#Adorada❤#. La esperamos."), "Perfecto, Adorada. La esperamos.");
-assert.equal(
-  mensajeNaturalLucia("El Grand i10 automático 2027 queda en $33."),
-  "El Grand i10 automático 2027 queda en $35.",
+assert.ok(
+  mensajeNaturalLucia("El Grand i10 automático 2027 queda en $33.").includes("se confirma en la visita"),
 );
 assert.equal(
   mensajeNaturalLucia("El Grand i10 manual 2027 queda en $33."),
   "El Grand i10 manual 2027 queda en $33.",
 );
-assert.equal(
-  mensajeNaturalLucia("El Grand i10 manual 2027 es $33, y el automático 2027 es $33."),
-  "El Grand i10 manual 2027 es $33, y el automático 2027 es $35.",
+assert.ok(
+  mensajeNaturalLucia("El Grand i10 manual 2027 es $33, y el automático 2027 es $33.").includes(
+    "se confirma en la visita",
+  ),
 );
 assert.equal(
-  mensajeNaturalLucia("El Grand i10 automático 2026 queda en $33. El Grand i10 automático 2027 queda en $33."),
-  "El Grand i10 automático 2026 queda en $33. El Grand i10 automático 2027 queda en $35.",
+  mensajeNaturalLucia("El Grand i10 automático 2026 queda en $33. El Grand i10 automático 2027 queda en $33.").includes(
+    "$33",
+  ),
+  false,
 );
 assert.ok(
-  mensajeNaturalLucia("Eso se ve en la visita.", "¿Quién asume las llantas?").includes("asume usted"),
+  mensajeNaturalLucia("Los mantenimientos de las llantas se coordinan en la sede.", "¿Quién asume las llantas?").includes(
+    "asume usted",
+  ),
 );
 assert.ok(
   mensajeNaturalLucia("Eso lo ve el equipo en la visita.", "¿Y si me colisiono?").includes("avíseme"),

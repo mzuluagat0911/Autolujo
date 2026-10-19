@@ -126,7 +126,7 @@ export async function aplicarPedidoCita(opts: {
   anuncio: string | null;
   campanaId: string | null;
   textoCliente?: string | null;
-}): Promise<{ mensaje: string | null }> {
+}): Promise<{ mensaje: string | null; agendo?: boolean }> {
   const pedido = opts.pedido;
   if (!pedido || pedido.accion === "ninguna") return { mensaje: null };
   const abierta = await citaAbierta(opts.conversacionId);
@@ -204,7 +204,7 @@ export async function aplicarPedidoCita(opts: {
       nombre,
     })
   ) {
-    return { mensaje: null };
+    return { mensaje: null, agendo: true };
   }
 
   const sb = createServerSupabase();
@@ -273,6 +273,7 @@ export async function aplicarPedidoCita(opts: {
     .eq("conversacion_id", opts.conversacionId)
     .eq("estado", "pendiente");
   return {
+    agendo: true,
     mensaje: textoConfirmacion({
       nombre: cita.nombre,
       sede: cita.sede,

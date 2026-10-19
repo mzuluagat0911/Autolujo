@@ -1,21 +1,20 @@
 import {
   CUERPO_CONFIRMA_CITA,
   CUERPO_RECORDATORIO_CITA,
-  CUERPO_SEGUIMIENTO,
   PLANTILLA_CONFIRMA_CITA,
   PLANTILLA_RECORDATORIO_CITA,
-  PLANTILLA_SEGUIMIENTO,
+  PLANTILLAS_SEGUIMIENTO,
 } from "../lib/comercial/plantillas.ts";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
 const PLANTILLAS = [
-  {
-    name: PLANTILLA_SEGUIMIENTO,
+  ...PLANTILLAS_SEGUIMIENTO.map((plantilla) => ({
+    name: plantilla.name,
     category: "MARKETING",
-    text: CUERPO_SEGUIMIENTO,
-    example: ["Ana", "sobre el Kia Picanto"],
-  },
+    text: plantilla.text,
+    example: ["Ana"],
+  })),
   {
     name: PLANTILLA_CONFIRMA_CITA,
     category: "UTILITY",

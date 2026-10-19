@@ -3,7 +3,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { sendTemplate, sendText } from "@/lib/whatsapp/client";
 import { idMensajeEnviado } from "./entrega";
 import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
-import { plantillaSeguimiento } from "./plantillas";
+import { plantillaAunNoLista, plantillaSeguimiento } from "./plantillas";
 import { INTENTO_ARCHIVO, textoSeguimientoLead } from "./lead";
 import {
   archivarLeadSinRespuesta,
@@ -22,7 +22,6 @@ type ConversacionSeguimiento = {
   id: string;
   wa_numero: string;
   nombre: string | null;
-  interes: string | null;
   proxima_accion: string | null;
   etapa: string | null;
   temperatura: TemperaturaLead;
@@ -58,7 +57,7 @@ export async function ejecutarSeguimientosComercial(): Promise<{
   const ids = [...new Set(seguimientos.map((s) => s.conversacion_id))];
   const { data: conversaciones } = await sb
     .from("conversaciones_comercial")
-    .select("id, wa_numero, nombre, interes, proxima_accion, etapa, temperatura, ultimo_entrante_at, modo_atencion, cerrado_at")
+    .select("id, wa_numero, nombre, proxima_accion, etapa, temperatura, ultimo_entrante_at, modo_atencion, cerrado_at")
     .in("id", ids);
   const porId = new Map(
     ((conversaciones ?? []) as ConversacionSeguimiento[]).map((c) => [c.id, c]),
@@ -136,7 +135,7 @@ export async function ejecutarSeguimientosComercial(): Promise<{
       proximaAccion: c.proxima_accion,
       intento: seguimiento.intento,
     });
-    const plantilla = plantillaSeguimiento(c.nombre, c.interes);
+    const plantilla = plantillaSeguimiento(c.nombre, seguimiento.intento);
     const texto = ventanaAbierta(c.ultimo_entrante_at) ? textoLibre : plantilla.texto;
     try {
       if (!phoneId) throw new Error("Falta WHATSAPP_COMERCIAL_PHONE_NUMBER_ID.");
@@ -168,6 +167,17 @@ export async function ejecutarSeguimientosComercial(): Promise<{
       }
     } catch (e) {
       const mensaje = e instanceof Error ? e.message : "No se pudo enviar.";
+      if (!ventanaAbierta(c.ultimo_entrante_at) && plantillaAunNoLista(mensaje)) {
+        await sb
+          .from("seguimientos_comercial")
+          .update({
+            estado: "pendiente",
+            error: mensaje.slice(0, 1000),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", seguimiento.id);
+        continue;
+      }
       await sb
         .from("seguimientos_comercial")
         .update({

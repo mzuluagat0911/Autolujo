@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { EmptyState, StatusChip } from "@/components/kit";
+import { EmptyState, FiltersBar, StatusChip } from "@/components/kit";
 import { fechaConDia } from "@/lib/cartera/fecha";
 import { sedePorId } from "@/lib/comercial/sedes";
 import type { CitaComercial } from "@/lib/comercial/citas";
@@ -14,11 +14,23 @@ function telefono(n: string): string {
   return n;
 }
 
-export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: string | null }) {
+export function ListaCitas({
+  citas,
+  error,
+  fechaHoy,
+  manana,
+}: {
+  citas: CitaComercial[];
+  error: string | null;
+  fechaHoy: string;
+  manana: string;
+}) {
   const [aviso, setAviso] = useState<string | null>(error);
   const [hechas, setHechas] = useState<Record<string, true>>({});
   const [visitas, setVisitas] = useState<Record<string, "asistio" | "no_asistio" | "cancelada">>({});
   const [pending, start] = useTransition();
+  const [sede, setSede] = useState("todas");
+  const [cuando, setCuando] = useState("todas");
 
   function marcar(id: string, asistencia: "asistio" | "no_asistio" | "cancelada") {
     setAviso(null);
@@ -32,6 +44,14 @@ export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: st
     });
   }
 
+  const visibles = citas.filter((cita) => {
+    if (sede !== "todas" && cita.sede !== sede) return false;
+    if (cuando === "hoy" && cita.fecha !== fechaHoy) return false;
+    if (cuando === "manana" && cita.fecha !== manana) return false;
+    return true;
+  });
+  const excel = `/comercial/citas/excel?sede=${sede}&cuando=${cuando}`;
+
   if (error && citas.length === 0) {
     return <EmptyState title="Las citas no cargaron" hint={error} />;
   }
@@ -41,8 +61,44 @@ export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: st
 
   return (
     <div>
-      {aviso && <p className="mb-3 text-sm text-rojo">{aviso}</p>}
-      <div className="overflow-x-auto rounded-xl ring-1 ring-line">
+      <FiltersBar
+        chipGroups={[
+          {
+            active: sede,
+            onChip: setSede,
+            chips: [
+              { id: "todas", label: "Todas las sedes" },
+              { id: "juan_diaz", label: "Juan Díaz", count: citas.filter((c) => c.sede === "juan_diaz").length },
+              { id: "chorrera", label: "La Chorrera", count: citas.filter((c) => c.sede === "chorrera").length },
+            ],
+          },
+          {
+            active: cuando,
+            onChip: setCuando,
+            chips: [
+              { id: "todas", label: "Todas las fechas" },
+              { id: "hoy", label: "Hoy", count: citas.filter((c) => c.fecha === fechaHoy).length },
+              { id: "manana", label: "Mañana", count: citas.filter((c) => c.fecha === manana).length },
+            ],
+          },
+        ]}
+        actions={
+          <a
+            href={excel}
+            className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white"
+          >
+            Excel
+          </a>
+        }
+      />
+      {aviso && <p className="mb-3 mt-4 text-sm text-rojo">{aviso}</p>}
+      {visibles.length === 0 ? (
+        <div className="mt-4">
+          <EmptyState title="No hay citas en este filtro" hint="Cambie la sede o el día, o baje el Excel de lo que está viendo." />
+        </div>
+      ) : null}
+      {visibles.length > 0 && (
+      <div className="mt-4 overflow-x-auto rounded-xl ring-1 ring-line">
         <table className="w-full min-w-[46rem] text-left text-sm">
           <thead className="bg-surface-2 text-[11px] uppercase tracking-[0.12em] text-muted">
             <tr>
@@ -56,7 +112,7 @@ export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: st
             </tr>
           </thead>
           <tbody>
-            {citas.map((c) => {
+            {visibles.map((c) => {
               const visita = visitas[c.id] ?? (c.estado === "cancelada" ? "cancelada" : c.asistencia);
               const confirmada = c.confirmacion !== "pendiente" || hechas[c.id];
               const porLlamada = c.confirmacion === "llamada" || hechas[c.id];
@@ -145,6 +201,7 @@ export function ListaCitas({ citas, error }: { citas: CitaComercial[]; error: st
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

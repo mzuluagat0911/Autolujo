@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { PageHeader, PageShell } from "@/components/kit";
+import { hoyPanama, sumarDias } from "@/lib/cartera/fecha";
 import { listarCitas } from "@/lib/comercial/citas";
 import { ListaCitas } from "./lista";
 
@@ -37,7 +38,7 @@ export default async function CitasComercialPage() {
         </ul>
       )}
       <div className="mt-6">
-        <ListaCitas citas={citas} error={error} />
+        <ListaCitas citas={citas} error={error} fechaHoy={hoyPanama()} manana={sumarDias(hoyPanama(), 1)} />
       </div>
     </PageShell>
   );

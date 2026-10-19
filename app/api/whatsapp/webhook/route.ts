@@ -362,6 +362,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, salida))) {
       return;
     }
+    let agendo = false;
     if (guardado.conversacionId && r.cita && r.cita.accion !== "ninguna") {
       const hilo = await hiloComercial(guardado.conversacionId);
       const aplicada = await aplicarPedidoCita({
@@ -373,6 +374,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         textoCliente: ultimo,
       });
       if (aplicada.mensaje) salida = aplicada.mensaje;
+      agendo = aplicada.agendo === true;
     }
     const enviado = await enviarComercial(from, salida);
     if (enviado) yaSalio = true;
@@ -399,7 +401,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         enviado &&
         !optOut &&
         !r.pasar_a_humano &&
-        (!r.cita || r.cita.accion === "ninguna")
+        !agendo
       ) {
         await programarSiguienteSeguimiento(guardado.conversacionId, lectura.temperatura);
       }
