@@ -15,7 +15,12 @@ function normalizar(texto: string): string {
     .replace(/\u00a0/g, " ")
     .replace(/HYPERLINK\s+"[^"]*"\s*\\h\s*/gi, "")
     .replace(/\f/g, "\n[[PAGE]]\n")
-    .replace(/^\s*PAGE\s*2\s*$/gim, "[[PAGE]]");
+    .replace(/^\s*PAGE\s*2\s*$/gim, "[[PAGE]]")
+    .replace(/[ \t]*\n[ \t]*/g, "\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/^·\s*/gm, "• ")
+    .replace(/_{4,}\s+_{4,}/g, "________")
+    .replace(/^(FIRMA|C[EÉ]DULA)\s+(_+)\s*$/gim, "________\n$1");
 }
 
 function limpiarLinea(linea: string): string {
@@ -153,6 +158,17 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
         return;
       }
       firmaRestante = 0;
+
+      if (linea.startsWith("• ")) {
+        children.push(
+          new Paragraph({
+            children: [run(linea)],
+            indent: { left: 420 },
+            spacing: { before: 40, after: 40 },
+          }),
+        );
+        return;
+      }
 
       const especial = runsDeLinea(linea);
       if (especial) {

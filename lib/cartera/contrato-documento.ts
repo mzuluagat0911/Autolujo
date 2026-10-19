@@ -157,16 +157,36 @@ function aplicarFechas(cuerpo: string, anclaFecha: string, iso: string): string 
   return out;
 }
 
+function puesto(v: string): boolean {
+  return Boolean(v && v !== "—");
+}
+
 function fichaEnProsa(d: DatosContratoDoc): string {
-  const puesto = (v: string) => v && v !== "—";
-  const cabeza = [d.marca, d.modelo].filter(puesto).join(" ");
-  const anio = puesto(d.anio) ? ` año ${d.anio}` : "";
+  const modelo = puesto(d.modelo) ? d.modelo : "";
+  const tipo = puesto(d.tipo) && !modelo.toLowerCase().includes(d.tipo.toLowerCase()) ? d.tipo : "";
+  const cabeza = [d.marca, modelo, tipo].filter((v) => puesto(v)).join(" ");
   const resto = [
+    puesto(d.anio) ? `año ${d.anio}` : "",
     puesto(d.chasis) ? `chasis ${d.chasis}` : "",
     puesto(d.motor) ? `motor ${d.motor}` : "",
     puesto(d.color) ? `color ${d.color}` : "",
   ].filter(Boolean);
-  return [cabeza + anio, ...resto].filter(Boolean).join(", ");
+  return [cabeza, ...resto].filter(Boolean).join(", ");
+}
+
+/** Donde el contrato nombra el carro, va la ficha completa y no solo la placa de muestra. */
+function ponerFichaDelCarro(cuerpo: string, d: DatosContratoDoc): string {
+  const ficha = fichaEnProsa(d);
+  const placa = d.placa.trim();
+  if (!ficha || !placa || placa === "—") return cuerpo;
+  const esc = placa.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  let out = cuerpo.replace(/por el vehículo\s+.+?\s+con placa\s+/gi, `por el vehículo ${ficha}, con placa `);
+  out = out.replace(
+    new RegExp(`(vehículo)\\s+${esc}(?=\\s+[A-ZÁÉÍÓÚÑ])`, "g"),
+    `vehículo ${ficha}, placa ${placa}.`,
+  );
+  out = out.replace(new RegExp(`(vehículo)\\s+${esc}\\b`, "g"), `vehículo ${ficha}, placa ${placa}`);
+  return out;
 }
 
 export function enteroALetras(n: number): string {
@@ -297,10 +317,7 @@ export function armarTextoContrato(datos: DatosContratoDoc): string {
     `${enteroALetras(Math.round(letraLista))} BALBOAS (${letraLista.toFixed(2)})`,
   );
   cuerpo = cuerpo.replace(/Placa[\s\S]*?(?=SEGUNDA:)/, `${bloqueVehiculo(datos)}\n`);
-  const ficha = fichaEnProsa(datos);
-  if (ficha) {
-    cuerpo = cuerpo.replace(/por el vehículo\s+.+?\s+con placa\s+/gi, `por el vehículo ${ficha}, con placa `);
-  }
+  cuerpo = ponerFichaDelCarro(cuerpo, datos);
   if (datos.genero === "f") {
     cuerpo = cuerpo.replace("varón", "mujer");
     cuerpo = cuerpo.replace("mujer,  panameño", "mujer,  panameña");
