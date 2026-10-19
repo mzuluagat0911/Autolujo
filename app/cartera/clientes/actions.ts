@@ -13,6 +13,7 @@ import { provinciaValida } from "@/lib/cartera/provincias-panama";
 import { referenciasPersonales } from "@/lib/cartera/referencias-alta";
 import { numeroDeContrato } from "@/lib/cartera/contrato-numero";
 import { enviarBienvenidaCartera } from "@/lib/cartera/bienvenida-cartera";
+import { registrarEntrega } from "@/lib/cartera/sucursal";
 
 const PANAPASS_ENTRADA = 20;
 const CUOTA_DOMINGO_DEFAULT = 30;
@@ -435,6 +436,8 @@ export async function createClienteConContrato(
   if ((veh as { estado: string }).estado !== "activo") {
     await sb.from("vehiculos").update({ estado: "activo" }).eq("id", vehiculoId);
   }
+
+  await registrarEntrega(vehiculoId, fechaInicio, str(formData.get("sucursal")));
 
   // --- Cargos de entrada ---
   const cargos: Record<string, unknown>[] = [];

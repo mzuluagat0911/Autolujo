@@ -7,6 +7,9 @@ import { lineaSalidaHoy, salidasDelDia } from "@/lib/cartera/salidas-aplicar";
 import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
 import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta-cache";
 import { esAdelantado, type EstadoCuenta } from "@/lib/cartera/estado-cuenta";
+import type { EstadoCuentaFila } from "@/app/cartera/estados-cuenta/types";
+import { leerPanelOperativo } from "@/lib/cartera/panel-operativo";
+import { PanelOperativoVista } from "./panel-operativo";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -30,6 +33,7 @@ type Datos = {
   sinCubrirMonto: number;
   /** Adelantados (letra por delante). */
   adelantados: number;
+  estados: EstadoCuentaFila[];
   necesitaRespuesta: number;
   esperandoHace: number;
   error: string | null;
@@ -71,6 +75,7 @@ async function getDatos(contratoIds: string[] | null): Promise<Datos> {
     sinCubrirN: 0,
     sinCubrirMonto: 0,
     adelantados: 0,
+    estados: [],
     necesitaRespuesta: 0,
     esperandoHace: 0,
     error: null,
@@ -151,6 +156,7 @@ async function getDatos(contratoIds: string[] | null): Promise<Datos> {
       sinCubrirN,
       sinCubrirMonto: Math.round(sinCubrirMonto * 100) / 100,
       adelantados,
+      estados: vivos,
       necesitaRespuesta: necesita.count ?? 0,
       esperandoHace: esperando,
       error: null,
@@ -165,7 +171,13 @@ const HOY = fechaConDia(hoyPanama());
 export default async function PanelCartera() {
   const alcance = await leerAlcance();
   const contratoIds = await idsContratosAlcance(alcance.empresaIds);
-  const [d, salidasHoy] = await Promise.all([getDatos(contratoIds), salidasDelDia(hoyPanama())]);
+  const hoy = hoyPanama();
+  const [d, salidasHoy] = await Promise.all([getDatos(contratoIds), salidasDelDia(hoy)]);
+  const operativo = await leerPanelOperativo({
+    hoy,
+    empresaIds: alcance.empresaIds,
+    estados: d.estados,
+  }).catch((e: unknown) => (e instanceof Error ? e : new Error("No pude leer la operación.")));
   const etiqueta = etiquetaAlcance(alcance.codigos);
   const cobertura =
     d.contratosActivos > 0
@@ -254,6 +266,14 @@ export default async function PanelCartera() {
               tone={cobertura >= 70 ? "good" : cobertura >= 40 ? "warn" : "crit"}
             />
           </div>
+
+          {operativo instanceof Error ? (
+            <p className="rounded-xl bg-surface px-5 py-4 font-mono text-xs text-muted ring-1 ring-line">
+              {operativo.message}
+            </p>
+          ) : (
+            <PanelOperativoVista datos={operativo} />
+          )}
 
           {salidasHoy.length > 0 && (
             <div className="rounded-xl bg-ambar-wash px-5 py-4 ring-1 ring-ambar/25">

@@ -3,6 +3,7 @@
 // La fecha vive en un evento; no hace falta columna nueva.
 
 import { createServerSupabase } from "@/lib/supabase/server";
+import { nombreSucursal } from "./sucursal";
 import { hoyPanama, sumarDias } from "./fecha";
 import { correLetraNueva, type TerminosCuota } from "./cuota";
 import { pausaDeVehiculo, quitarLetrasDeLaPausa, reponerLetras } from "./pausa-productiva";
@@ -115,6 +116,7 @@ async function ajustarLetras(vehiculoId: string, anterior: string | null, desde:
 export async function aplicarDevolucion(input: {
   vehiculoId: string;
   fecha: string | null;
+  sucursal?: string | null;
 }): Promise<{ ok: boolean; msg: string }> {
   const desde = String(input.fecha ?? "").trim();
   if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
@@ -123,6 +125,7 @@ export async function aplicarDevolucion(input: {
   const hoy = hoyPanama();
   const sb = createServerSupabase();
   const previa = await devolucionDeVehiculo(input.vehiculoId);
+  const sucursal = nombreSucursal(input.sucursal);
   await soltarPausa(input.vehiculoId, desde);
 
   const guardado = await sb.from("vehiculos").update({ estado: "entregado" }).eq("id", input.vehiculoId);
@@ -135,9 +138,16 @@ export async function aplicarDevolucion(input: {
       tipo: "devolucion",
       titulo: "Devolución",
       detalle: `devolucion:${desde}`,
+      lugar: sucursal,
       origen: "manual",
     });
     if (error) return { ok: false, msg: error.message };
+  } else if (sucursal) {
+    await sb
+      .from("vehiculo_eventos")
+      .update({ lugar: sucursal })
+      .eq("vehiculo_id", input.vehiculoId)
+      .eq("detalle", `devolucion:${desde}`);
   }
 
   const quitadas = await ajustarLetras(input.vehiculoId, previa?.desde ?? null, desde, hoy);

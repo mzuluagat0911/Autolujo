@@ -376,6 +376,7 @@ export async function aplicarEstadoProductivo(input: {
   fechaInactivacion?: string | null;
   /** Primer día en que vuelve la letra. Vacío = sigue sin letra. */
   fechaCobroInactivacion?: string | null;
+  sucursal?: string | null;
 }): Promise<{ ok: boolean; msg: string }> {
   const estado = String(input.estado ?? "").trim();
   const hoy = hoyPanama();
@@ -386,6 +387,7 @@ export async function aplicarEstadoProductivo(input: {
     return aplicarDevolucion({
       vehiculoId: input.vehiculoId,
       fecha: input.fechaDevolucion ?? null,
+      sucursal: input.sucursal ?? null,
     });
   }
 

@@ -639,6 +639,7 @@ function PanelEditarCarro({
   const [ingreso, setIngreso] = useState(carro.pausaDesde ?? "");
   const [activacion, setActivacion] = useState(carro.pausaHasta ?? "");
   const [devolucion, setDevolucion] = useState(carro.devueltoDesde ?? "");
+  const [sucursal, setSucursal] = useState("");
   const [inactivoDesde, setInactivoDesde] = useState(carro.inactivoDesde ?? "");
   const [inactivoHasta, setInactivoHasta] = useState(carro.inactivoHasta ?? "");
   const [ultimaLetra, setUltimaLetra] = useState(hoyInput());
@@ -708,6 +709,7 @@ function PanelEditarCarro({
           fechaIngreso: enTaller ? ingreso : null,
           fechaActivacion: enTaller ? activacion || null : null,
           fechaDevolucion: entregado ? devolucion : null,
+          sucursal: entregado ? sucursal || null : null,
           fechaInactivacion: inactivo ? inactivoDesde : null,
           fechaCobroInactivacion: inactivo ? inactivoHasta || null : null,
         });
@@ -810,6 +812,7 @@ function PanelEditarCarro({
             </>
           )}
           {entregado && (
+            <>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
                 Fecha de devolución
@@ -825,6 +828,21 @@ function PanelEditarCarro({
                 Desde ese día no se calcula letra diaria. Si queda deuda, se sigue cobrando hasta que pague o hasta que archives el caso.
               </span>
             </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Sucursal
+              </span>
+              <select
+                value={sucursal}
+                onChange={(e) => setSucursal(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              >
+                <option value="">Sin sucursal</option>
+                <option value="juan_diaz">Juan Díaz</option>
+                <option value="chorrera">La Chorrera</option>
+              </select>
+            </label>
+            </>
           )}
           {inactivo && (
             <>
