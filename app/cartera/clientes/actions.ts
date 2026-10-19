@@ -6,6 +6,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, horaPanama } from "@/lib/cartera/fecha";
 import { normalizarGenero } from "@/lib/cartera/tratamiento";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
+import { asignadosDelCliente, decidirCupo, decidirTelefono, panoramaTelefono, soltarTelefono } from "@/lib/cartera/cliente-telefono";
 import { enlazarChatDelContrato, telefonosDeAlta } from "@/lib/cartera/enlazar-alta";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { provinciaValida } from "@/lib/cartera/provincias-panama";
@@ -167,6 +168,14 @@ export async function createCliente(formData: FormData): Promise<void> {
   }
 
   const sb = createServerSupabase();
+  if (tels) {
+    const panorama = await panoramaTelefono(tels.waNorm);
+    const decision = decidirTelefono({ clienteActualId: null, ...panorama });
+    if (decision.reutilizarId) {
+      const quien = panorama.coincidencias.find((c) => c.id === decision.reutilizarId)?.nombre ?? "un cliente";
+      volverClientes(`Ese celular ya es de ${quien}. Usá esa ficha para asignarle el carro.`);
+    }
+  }
   const { data: cliente, error } = await sb
     .from("clientes")
     .insert({
@@ -329,7 +338,7 @@ export async function createClienteConContrato(
   const fichaGuardada = await guardarFichaVehiculo(sb, vehiculoId, ficha);
   if (!fichaGuardada.ok) return { ok: false, error: fichaGuardada.error };
 
-  const { data: cliente, error: cErr } = await insertarCliente(sb, {
+  const fichaCliente = {
     nombre,
     genero,
     cedula: str(formData.get("cedula")),
@@ -343,10 +352,36 @@ export async function createClienteConContrato(
     fecha_nacimiento: identidad.fecha_nacimiento,
     numero_licencia: identidad.numero_licencia,
     fecha_vencimiento_licencia: identidad.fecha_vencimiento_licencia,
-  });
-  if (cErr || !cliente) {
-    return { ok: false, error: cErr?.message ?? "No pude crear el cliente." };
+  };
+  let clienteId: string;
+  let clienteNuevo = true;
+  if (tels) {
+    const panorama = await panoramaTelefono(tels.waNorm);
+    const decision = decidirTelefono({ clienteActualId: null, ...panorama });
+    if (decision.reutilizarId) {
+      const cupoPrevio = decidirCupo({
+        asignados: await asignadosDelCliente(decision.reutilizarId),
+        vehiculoId,
+        quedaraActivo: true,
+      });
+      if (!cupoPrevio.ok) return { ok: false, error: cupoPrevio.msg };
+      await soltarTelefono(decision.limpiarIds);
+      const patch = Object.fromEntries(Object.entries(fichaCliente).filter(([, v]) => v != null));
+      const { error: upErr } = await sb.from("clientes").update(patch).eq("id", decision.reutilizarId);
+      if (upErr) return { ok: false, error: upErr.message };
+      clienteId = decision.reutilizarId;
+      clienteNuevo = false;
+    } else {
+      const { data: cliente, error: cErr } = await insertarCliente(sb, fichaCliente);
+      if (cErr || !cliente) return { ok: false, error: cErr?.message ?? "No pude crear el cliente." };
+      clienteId = (cliente as { id: string }).id;
+    }
+  } else {
+    const { data: cliente, error: cErr } = await insertarCliente(sb, fichaCliente);
+    if (cErr || !cliente) return { ok: false, error: cErr?.message ?? "No pude crear el cliente." };
+    clienteId = (cliente as { id: string }).id;
   }
+  const cliente = { id: clienteId };
 
   const diasPrimeros = diasDomingos;
 
@@ -379,7 +414,7 @@ export async function createClienteConContrato(
   }
 
   if (contratoInsert.error || !contratoInsert.data) {
-    await sb.from("clientes").delete().eq("id", cliente.id);
+    if (clienteNuevo) await sb.from("clientes").delete().eq("id", cliente.id);
     return {
       ok: false,
       error: contratoInsert.error?.message ?? "No pude crear el contrato.",

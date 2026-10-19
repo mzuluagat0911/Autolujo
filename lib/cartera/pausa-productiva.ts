@@ -2,6 +2,7 @@
 // no corre letra diaria ni acuerdo diario. El saldo que ya debía sí se cobra.
 // Al volver a productivo (cualquier otro estado) la letra del día vuelve.
 
+import { cupoAlQuedarActivo } from "./cliente-telefono";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { esDomingo, hoyPanama, sumarDias } from "./fecha";
 import { correLetraNueva, cuotaDeFecha, type TerminosCuota } from "./cuota";
@@ -295,6 +296,8 @@ export async function aplicarEstadoProductivo(input: {
     const previa = await pausaDeVehiculo(input.vehiculoId);
 
     if (hasta && hasta <= hoy) {
+      const cupo = await cupoAlQuedarActivo(input.vehiculoId);
+      if (cupo) return { ok: false, msg: cupo };
       const fin = finDeLetrasQuitadas(desde, hasta, hoy);
       if (fin) await quitarLetrasDeLaPausa(input.vehiculoId, desde, fin);
       const nota = await anotarPausa(input.vehiculoId, estado, desde, hasta);
@@ -340,6 +343,8 @@ export async function aplicarEstadoProductivo(input: {
 
   const previa = await pausaDeVehiculo(input.vehiculoId);
   if ((estado || "activo") === "activo") {
+    const cupo = await cupoAlQuedarActivo(input.vehiculoId);
+    if (cupo) return { ok: false, msg: cupo };
     const { cerrarInactivacion } = await import("./inactivo");
     await cerrarInactivacion(input.vehiculoId, hoy);
   }

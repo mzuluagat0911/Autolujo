@@ -3,6 +3,7 @@
 // escribirle y la conversación sigue suelta.
 
 import { createServerSupabase } from "@/lib/supabase/server";
+import { asignadosDelCliente, chatPuedePasarA, decidirCupo, decidirTelefono, panoramaTelefono, soltarTelefono } from "./cliente-telefono";
 import { hoyPanama } from "./fecha";
 import { etiquetaCarroUi } from "./empresa";
 import { normalizarTelefono } from "./telefono";
@@ -19,7 +20,7 @@ export function telefonosDeAlta(whatsapp: string | null, telefono: string | null
   return { whatsapp: `+${waNorm}`, telefono: local, waNorm };
 }
 
-/** Crea el chat o lo amarra al contrato. No pisa el chat de otro cliente. */
+/** Crea el chat o lo amarra al contrato. Si ese celular ya tiene otro carro activo, no lo toca. */
 export async function enlazarChatDelContrato(opts: {
   clienteId: string;
   contratoId: string;
@@ -27,6 +28,8 @@ export async function enlazarChatDelContrato(opts: {
   numero: string;
   empresaCodigo: string | null;
   waNorm: string;
+  /** Si este carro no queda activo y el otro sí, el chat se queda en el activo. */
+  quedaraActivo?: boolean;
 }): Promise<string | null> {
   const sb = createServerSupabase();
   const etiqueta = etiquetaCarroUi(opts.empresaCodigo, opts.numero) || `Carro ${opts.numero}`;
@@ -37,8 +40,13 @@ export async function enlazarChatDelContrato(opts: {
     .maybeSingle();
   if (error) return error.message;
   const row = conv as { id: string; cliente_id: string | null } | null;
+  if (opts.quedaraActivo === false) {
+    const otros = await asignadosDelCliente(opts.clienteId);
+    if (otros.some((a) => a.vehiculoId !== opts.vehiculoId && a.estadoVehiculo === "activo")) return null;
+  }
   if (row?.cliente_id && row.cliente_id !== opts.clienteId) {
-    return "Ese celular ya tiene un chat de otro cliente. El contrato quedó creado; hay que revisarlo en Conversaciones.";
+    const bloqueo = await chatPuedePasarA(sb, row.cliente_id, opts.clienteId, opts.vehiculoId);
+    if (bloqueo) return bloqueo;
   }
   const patch = {
     cliente_id: opts.clienteId,
@@ -70,6 +78,7 @@ export async function crearArrendatarioEnCarro(opts: {
   genero: GeneroCliente;
   whatsappRaw: string;
   letra: number;
+  estadoDestino?: string | null;
 }): Promise<{ ok: true; aviso: string | null } | { ok: false; error: string }> {
   const nombre = opts.nombre.trim();
   if (nombre.length < 2) return { ok: false, error: "El nombre del arrendatario es obligatorio." };
@@ -78,25 +87,54 @@ export async function crearArrendatarioEnCarro(opts: {
   if (!(opts.letra > 0)) return { ok: false, error: "La letra diaria es obligatoria para enlazar el contrato." };
 
   const sb = createServerSupabase();
-  const { data: cliente, error: cErr } = await sb
-    .from("clientes")
-    .insert({
-      nombre,
-      genero: opts.genero,
-      whatsapp: tels.whatsapp,
-      telefono: tels.telefono,
-      mayor_de_25: true,
-    })
-    .select("id")
-    .single();
-  if (cErr || !cliente) return { ok: false, error: cErr?.message ?? "No pude crear el cliente." };
-  const clienteId = (cliente as { id: string }).id;
+  const panorama = await panoramaTelefono(tels.waNorm);
+  const decision = decidirTelefono({ clienteActualId: null, ...panorama });
+  let clienteId = decision.reutilizarId;
+  if (!clienteId) {
+    const { data: cliente, error: cErr } = await sb
+      .from("clientes")
+      .insert({
+        nombre,
+        genero: opts.genero,
+        whatsapp: tels.whatsapp,
+        telefono: tels.telefono,
+        mayor_de_25: true,
+      })
+      .select("id")
+      .single();
+    if (cErr || !cliente) return { ok: false, error: cErr?.message ?? "No pude crear el cliente." };
+    clienteId = (cliente as { id: string }).id;
+  }
 
   const hoy = hoyPanama();
-  const { data: veh } = await sb.from("vehiculos").select("empresa_id").eq("id", opts.vehiculoId).maybeSingle();
+  const { data: veh } = await sb.from("vehiculos").select("empresa_id, estado").eq("id", opts.vehiculoId).maybeSingle();
   const empresaId = (veh as { empresa_id: string } | null)?.empresa_id;
+  const estadoActual = (veh as { estado?: string } | null)?.estado ?? "";
+  const quedaraActivo = (opts.estadoDestino ?? estadoActual) === "activo";
+  const cupo = decidirCupo({
+    asignados: await asignadosDelCliente(clienteId),
+    vehiculoId: opts.vehiculoId,
+    quedaraActivo,
+  });
+  if (!cupo.ok) {
+    if (!decision.reutilizarId) await sb.from("clientes").delete().eq("id", clienteId);
+    return { ok: false, error: cupo.msg };
+  }
+  if (decision.reutilizarId) {
+    await soltarTelefono(decision.limpiarIds);
+    const { error: upErr } = await sb
+      .from("clientes")
+      .update({
+        nombre,
+        genero: opts.genero,
+        whatsapp: tels.whatsapp,
+        telefono: tels.telefono,
+      })
+      .eq("id", clienteId);
+    if (upErr) return { ok: false, error: upErr.message };
+  }
   if (!empresaId) {
-    await sb.from("clientes").delete().eq("id", clienteId);
+    if (!decision.reutilizarId) await sb.from("clientes").delete().eq("id", clienteId);
     return { ok: false, error: "No encontré la empresa del carro." };
   }
 
@@ -119,7 +157,7 @@ export async function crearArrendatarioEnCarro(opts: {
     contratoIns = await sb.from("contratos").insert(legacy).select("id").single();
   }
   if (contratoIns.error || !contratoIns.data) {
-    await sb.from("clientes").delete().eq("id", clienteId);
+    if (!decision.reutilizarId) await sb.from("clientes").delete().eq("id", clienteId);
     return { ok: false, error: contratoIns.error?.message ?? "No pude crear el contrato." };
   }
   const contrato = contratoIns.data;
@@ -131,6 +169,7 @@ export async function crearArrendatarioEnCarro(opts: {
     numero: opts.numero,
     empresaCodigo: opts.empresaCodigo,
     waNorm: tels.waNorm,
+    quedaraActivo,
   });
   return { ok: true, aviso };
 }

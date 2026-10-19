@@ -94,8 +94,12 @@ export async function inactivacionesAbiertas(): Promise<Map<string, Inactivacion
   for (const [id, ventana] of candidatos) {
     const est = estadoDe.get(id) ?? "";
     if (ventana.hasta && ventana.hasta <= hoy && est === "improductivo") {
-      await sb.from("vehiculos").update({ estado: "activo" }).eq("id", id);
-      await reponerLetras(id, ventana.hasta, hoy);
+      const { cupoAlQuedarActivo } = await import("./cliente-telefono");
+      const cupo = await cupoAlQuedarActivo(id);
+      if (!cupo) {
+        await sb.from("vehiculos").update({ estado: "activo" }).eq("id", id);
+        await reponerLetras(id, ventana.hasta, hoy);
+      }
     }
     if (!ventana.hasta && est !== "improductivo") continue;
     out.set(id, { vehiculoId: id, desde: ventana.desde, hasta: ventana.hasta });
@@ -166,6 +170,11 @@ export async function aplicarInactivacion(input: {
   }
 
   const yaCobra = Boolean(cobrar && cobrar <= hoy);
+  if (yaCobra) {
+    const { cupoAlQuedarActivo } = await import("./cliente-telefono");
+    const cupo = await cupoAlQuedarActivo(input.vehiculoId);
+    if (cupo) return { ok: false, msg: cupo };
+  }
   const guardado = await sb
     .from("vehiculos")
     .update({ estado: yaCobra ? "activo" : "improductivo" })

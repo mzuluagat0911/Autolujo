@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
+import { chatPuedePasarA, decidirTelefono, panoramaTelefono, soltarTelefono } from "@/lib/cartera/cliente-telefono";
 import { crearArrendatarioEnCarro, generoDeAlta } from "@/lib/cartera/enlazar-alta";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { aplicarEstadoProductivo } from "@/lib/cartera/pausa-productiva";
@@ -189,18 +190,9 @@ export async function guardarIdentidadCarro(input: {
       if (!telefonos) {
         return { ok: false, msg: "Celular inválido. Usa 8 dígitos o +507XXXXXXXX." };
       }
-      // No pisar a otro cliente que ya tenga ese WhatsApp.
-      const { data: choque } = await sb
-        .from("clientes")
-        .select("id, nombre")
-        .or(`wa_norm.eq.${telefonos.waNorm},tel_norm.eq.${telefonos.waNorm}`)
-        .neq("id", clienteContrato)
-        .limit(1)
-        .maybeSingle();
-      if (choque) {
-        const otro = (choque as { nombre?: string }).nombre ?? "otro cliente";
-        return { ok: false, msg: `Ese celular ya está en ${otro}.` };
-      }
+      const panorama = await panoramaTelefono(telefonos.waNorm);
+      const decision = decidirTelefono({ clienteActualId: clienteContrato, ...panorama });
+      await soltarTelefono(decision.limpiarIds);
     }
 
     const quiereCliente =
@@ -234,6 +226,7 @@ export async function guardarIdentidadCarro(input: {
         genero,
         whatsappRaw: celularRaw,
         letra,
+        estadoDestino: input.estado ?? null,
       });
       if (!enlace.ok) return { ok: false, msg: enlace.error };
       try {
@@ -259,11 +252,9 @@ export async function guardarIdentidadCarro(input: {
         .eq("wa_numero", telefonos.waNorm)
         .maybeSingle();
       convNuevaRow = convNueva as { id: string; cliente_id: string | null } | null;
-      if (convNuevaRow && convNuevaRow.cliente_id && convNuevaRow.cliente_id !== clienteContrato) {
-        return {
-          ok: false,
-          msg: "Ese celular ya tiene un chat de otro cliente. Revisá en Conversaciones.",
-        };
+      if (convNuevaRow?.cliente_id && convNuevaRow.cliente_id !== clienteContrato) {
+        const bloqueo = await chatPuedePasarA(sb, convNuevaRow.cliente_id, clienteContrato, id);
+        if (bloqueo) return { ok: false, msg: bloqueo };
       }
     }
 
