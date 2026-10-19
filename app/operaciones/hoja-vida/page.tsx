@@ -24,6 +24,7 @@ async function listarFlota(): Promise<{ filas: FilaHojaVida[]; error: string | n
         const { data: evs, error: e2 } = await sb
           .from("vehiculo_eventos")
           .select("vehiculo_id, fecha")
+          .neq("origen", "seguros")
           .in("vehiculo_id", ids)
           .range(from, from + pageSize - 1);
         if (e2) {

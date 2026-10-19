@@ -151,6 +151,7 @@ export async function listarEventos(vehiculoId: string): Promise<EventoHv[]> {
       .from("vehiculo_eventos")
       .select("*")
       .eq("vehiculo_id", vehiculoId)
+      .neq("origen", "seguros")
       .order("fecha", { ascending: false })
       .order("created_at", { ascending: false })
       .range(from, from + pageSize - 1);

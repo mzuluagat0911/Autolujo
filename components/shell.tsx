@@ -71,7 +71,7 @@ const NAV: Group[] = [
     // Los demás módulos del negocio — la visión de la plataforma.
     section: "Módulos del negocio",
     items: [
-      { label: "Seguros", href: "/seguros", status: "pronto" },
+      { label: "Seguros", href: "/seguros", status: "active" },
       { label: "Administrativo", href: "/administrativo", status: "pronto" },
     ],
   },
@@ -176,7 +176,7 @@ export function Shell({
       )}
 
       <aside
-        className={`fixed z-40 flex h-screen w-[17.5rem] flex-col bg-black text-white transition-transform md:sticky md:top-0 md:translate-x-0 ${
+        className={`fixed z-40 flex h-screen w-[17.5rem] flex-col bg-black text-white transition-transform print:hidden md:sticky md:top-0 md:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -274,7 +274,7 @@ export function Shell({
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex h-12 items-center bg-black px-4 md:hidden">
+        <div className="flex h-12 items-center bg-black px-4 print:hidden md:hidden">
           <button aria-label="Abrir menú" onClick={() => setOpen(true)} className="p-2 text-white">
             <MenuIcon />
           </button>
