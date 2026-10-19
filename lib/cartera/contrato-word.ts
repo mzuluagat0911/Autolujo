@@ -1,4 +1,4 @@
-import { AlignmentType, Document, HighlightColor, Packer, PageBreak, Paragraph, TextRun } from "docx";
+import { AlignmentType, BorderStyle, Document, HighlightColor, Packer, PageBreak, Paragraph, TextRun } from "docx";
 
 const FUENTE = "Calibri";
 const CUERPO = 24;
@@ -22,9 +22,24 @@ function limpiarLinea(linea: string): string {
   return linea.replace(/[ \t]+/g, " ").trim();
 }
 
-function esFirma(linea: string): boolean {
-  const guiones = (linea.match(/_/g) ?? []).length;
-  return guiones >= 8 && linea.replace(/[_\s]/g, "").length < 16;
+function esLineaDeFirma(linea: string): boolean {
+  const limpia = linea.replace(/\s/g, "");
+  return limpia.length >= 8 && /^_+$/.test(limpia);
+}
+
+/** Oficio / hoja legal: 216 mm × 355 mm. */
+const OFICIO_ANCHO = Math.round((216 / 25.4) * 1440);
+const OFICIO_ALTO = Math.round((355 / 25.4) * 1440);
+
+function rayaDeFirma(): Paragraph {
+  return new Paragraph({
+    border: {
+      bottom: { style: BorderStyle.SINGLE, size: 12, color: "000000", space: 1 },
+    },
+    indent: { right: 5200 },
+    spacing: { before: 720, after: 60 },
+    children: [new TextRun({ text: " ", font: FUENTE, size: CUERPO })],
+  });
 }
 
 function run(
@@ -109,7 +124,6 @@ function runsDeLinea(linea: string): { runs: TextRun[]; antes?: number; despues?
 export async function armarDocxContrato(texto: string): Promise<Buffer> {
   const children: Paragraph[] = [];
   const paginas = paginasDe(texto);
-  let anexos = false;
   let hojaContacto = false;
 
   paginas.forEach((lineas, indice) => {
@@ -122,28 +136,20 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
       if (esHojaDeContacto(linea, siguiente)) hojaContacto = true;
       if (!enCuerpo && /^Entre los suscritos/i.test(linea)) enCuerpo = true;
 
-      const alineacionFirma = anexos ? AlignmentType.LEFT : AlignmentType.CENTER;
-      const alineacion = hojaContacto ? AlignmentType.CENTER : AlignmentType.LEFT;
-
       if (indice === 0 && i === 0) {
         children.push(parrafo([run(linea, { bold: true, size: TITULO })], AlignmentType.CENTER, { after: 280 }));
         return;
       }
 
-      if (esFirma(linea)) {
+      if (esLineaDeFirma(linea)) {
         firmaRestante = 4;
-        children.push(
-          parrafo([run(linea)], hojaContacto ? AlignmentType.CENTER : alineacionFirma, { before: 220, after: 40 }),
-        );
+        children.push(rayaDeFirma());
         return;
       }
       if (firmaRestante > 0 && linea.length < 80 && !linea.includes(".")) {
         firmaRestante -= 1;
         const rol = /ARRENDATARIO|ARRENDADOR|TESTIGO|FIRMADO/i.test(linea);
-        children.push(
-          parrafo([run(linea, { bold: rol })], hojaContacto ? AlignmentType.CENTER : alineacionFirma, { after: 40 }),
-        );
-        if (/^TESTIGO$/i.test(linea)) anexos = true;
+        children.push(parrafo([run(linea, { bold: rol })], AlignmentType.LEFT, { after: 40 }));
         return;
       }
       firmaRestante = 0;
@@ -221,7 +227,7 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
       {
         properties: {
           page: {
-            size: { width: 12240, height: 15840 },
+            size: { width: OFICIO_ANCHO, height: OFICIO_ALTO },
             margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 },
           },
         },

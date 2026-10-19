@@ -124,7 +124,7 @@ export function AltaContratoForm({
 }: {
   carros: CarroLibre[];
   fechaHoy: string;
-  action: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string }>;
+  action: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string; clienteId?: string }>;
 }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
@@ -208,23 +208,10 @@ export function AltaContratoForm({
         setErr(r.error ?? "No se pudo guardar.");
         return;
       }
-      setMsg(r.msg ?? "Cliente, contrato y chat enlazados.");
-      e.currentTarget.reset();
-      setCobraDomingo(true);
-      setCuotaDomingo(String(CUOTA_DOMINGO));
-      setDiasDomingos(String(DIAS_DOMINGO));
-      setFechaInicioDomingo(fechaHoy);
-      setAbonoPactado("");
-      setAbonoPagado("");
-      setAbonoCuota("5");
-      setPanapassPagado(String(PANAPASS));
-      setDomingosPagado(String(DIAS_DOMINGO * CUOTA_DOMINGO));
-      setPrepagoLetras("0");
-      setPrepagoDomingos("0");
-      setLetra("");
-      window.location.assign(
-        `/cartera/clientes?aviso=${encodeURIComponent(r.msg ?? "Cliente, contrato y chat enlazados.")}`,
-      );
+      const destino = r.clienteId
+        ? `/cartera/clientes/${r.clienteId}`
+        : `/cartera/clientes?aviso=${encodeURIComponent(r.msg ?? "Cliente y contrato creados.")}`;
+      window.location.assign(destino);
     });
   }
 

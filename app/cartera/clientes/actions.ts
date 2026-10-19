@@ -234,7 +234,7 @@ type ParteDesglose = {
  */
 export async function createClienteConContrato(
   formData: FormData,
-): Promise<{ ok: boolean; error?: string; msg?: string }> {
+): Promise<{ ok: boolean; error?: string; msg?: string; clienteId?: string }> {
   const nombre = String(formData.get("nombre") ?? "").trim();
   if (!nombre) return { ok: false, error: "El nombre es obligatorio." };
   const genero = normalizarGenero(formData.get("genero"));
@@ -580,26 +580,35 @@ export async function createClienteConContrato(
 
   let avisoChat: string | null = null;
   if (tels) {
-    const empRaw = (veh as { empresa?: { codigo?: string } | { codigo?: string }[] | null }).empresa;
-    const emp = Array.isArray(empRaw) ? empRaw[0]?.codigo ?? null : empRaw?.codigo ?? null;
-    avisoChat = await enlazarChatDelContrato({
-      clienteId: cliente.id,
-      contratoId,
-      vehiculoId,
-      numero: (veh as { numero: string }).numero,
-      empresaCodigo: emp,
-      waNorm: tels.waNorm,
-    });
+    try {
+      const empRaw = (veh as { empresa?: { codigo?: string } | { codigo?: string }[] | null }).empresa;
+      const emp = Array.isArray(empRaw) ? empRaw[0]?.codigo ?? null : empRaw?.codigo ?? null;
+      avisoChat = await enlazarChatDelContrato({
+        clienteId: cliente.id,
+        contratoId,
+        vehiculoId,
+        numero: (veh as { numero: string }).numero,
+        empresaCodigo: emp,
+        waNorm: tels.waNorm,
+      });
+    } catch {
+      avisoChat = "El chat no se pudo enlazar; el contrato sí quedó.";
+    }
   }
 
-  revalidatePath("/cartera/clientes");
-  revalidatePath("/cartera/vehiculos");
-  revalidatePath("/cartera/conversaciones");
-  revalidatePath("/cartera/pagos");
-  revalidatePath("/cartera");
-  await invalidarLecturaEstados();
+  try {
+    revalidatePath("/cartera/clientes");
+    revalidatePath("/cartera/vehiculos");
+    revalidatePath("/cartera/conversaciones");
+    revalidatePath("/cartera/pagos");
+    revalidatePath("/cartera");
+    await invalidarLecturaEstados();
+  } catch {
+    // El contrato ya quedó. La ficha se abre igual.
+  }
   return {
     ok: true,
+    clienteId: cliente.id,
     msg: avisoChat
       ? `Cliente y contrato creados. ${avisoChat}`
       : tels

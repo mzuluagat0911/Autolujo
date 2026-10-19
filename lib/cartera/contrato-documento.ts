@@ -133,6 +133,42 @@ export function fechaContrato(iso: string): string {
   return `${d} de ${MESES[m - 1]} de ${y}`;
 }
 
+/** "19 días del mes de octubre del 2026" */
+function fechaEnDias(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return `${d} días del mes de ${MESES[m - 1]} del ${y}`;
+}
+
+function aplicarFechas(cuerpo: string, anclaFecha: string, iso: string): string {
+  const nueva = fechaContrato(iso);
+  const dias = fechaEnDias(iso);
+  const dado = dias.replace(/ del (\d{4})$/, " del año $1");
+  let out = cuerpo.split(anclaFecha).join(nueva);
+  const partes = anclaFecha.match(/^(\d+)\s+de\s+(\S+)\s+de\s+(\d{4})$/i);
+  if (partes) {
+    out = out.split(`${partes[1]} días del mes de ${partes[2]} del ${partes[3]}`).join(dias);
+  }
+  out = out.replace(
+    /Dado en\s+Panam[aá],\s+a los\s+\[_+\]\s+días del mes de\s+\[_+\]\s+del año\s+\[_+\]\./gi,
+    `Dado en Panamá, a los ${dado}.`,
+  );
+  out = out.replace(/^Fecha\s+_+\s*$/gm, `Fecha: ${nueva}`);
+  return out;
+}
+
+function fichaEnProsa(d: DatosContratoDoc): string {
+  const puesto = (v: string) => v && v !== "—";
+  const cabeza = [d.marca, d.modelo].filter(puesto).join(" ");
+  const anio = puesto(d.anio) ? ` año ${d.anio}` : "";
+  const resto = [
+    puesto(d.chasis) ? `chasis ${d.chasis}` : "",
+    puesto(d.motor) ? `motor ${d.motor}` : "",
+    puesto(d.color) ? `color ${d.color}` : "",
+  ].filter(Boolean);
+  return [cabeza + anio, ...resto].filter(Boolean).join(", ");
+}
+
 export function enteroALetras(n: number): string {
   const v = Math.round(n);
   if (v < 0 || v > 9999) return String(v);
@@ -252,7 +288,7 @@ export function armarTextoContrato(datos: DatosContratoDoc): string {
   cuerpo = cuerpo.split(ancla.chasis).join(datos.chasis);
   cuerpo = cuerpo.split(ancla.motor).join(datos.motor);
   cuerpo = reemplazarCarro(cuerpo, ancla.carro, datos.carro);
-  cuerpo = cuerpo.split(ancla.fecha).join(fechaContrato(datos.fechaInicio));
+  cuerpo = aplicarFechas(cuerpo, ancla.fecha, datos.fechaInicio);
   if (datos.numCuotas != null && datos.numCuotas > 0) {
     cuerpo = cuerpo.split(ancla.cuotas).join(enteroALetras(datos.numCuotas));
   }
@@ -261,6 +297,10 @@ export function armarTextoContrato(datos: DatosContratoDoc): string {
     `${enteroALetras(Math.round(letraLista))} BALBOAS (${letraLista.toFixed(2)})`,
   );
   cuerpo = cuerpo.replace(/Placa[\s\S]*?(?=SEGUNDA:)/, `${bloqueVehiculo(datos)}\n`);
+  const ficha = fichaEnProsa(datos);
+  if (ficha) {
+    cuerpo = cuerpo.replace(/por el vehículo\s+.+?\s+con placa\s+/gi, `por el vehículo ${ficha}, con placa `);
+  }
   if (datos.genero === "f") {
     cuerpo = cuerpo.replace("varón", "mujer");
     cuerpo = cuerpo.replace("mujer,  panameño", "mujer,  panameña");

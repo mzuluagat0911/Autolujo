@@ -43,7 +43,7 @@ export function ClientesDirectorio({
   carros: CarroLibre[];
   fechaHoy: string;
   createCliente: (fd: FormData) => Promise<void>;
-  createClienteConContrato: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string }>;
+  createClienteConContrato: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string; clienteId?: string }>;
 }) {
   const [q, setQ] = useState("");
   const [filtro, setFiltro] = useState<Filtro>("todos");
