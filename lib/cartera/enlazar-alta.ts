@@ -8,6 +8,7 @@ import { hoyPanama } from "./fecha";
 import { etiquetaCarroUi } from "./empresa";
 import { normalizarTelefono } from "./telefono";
 import { normalizarGenero, type GeneroCliente } from "./tratamiento";
+import { enviarBienvenidaCartera } from "./bienvenida-cartera";
 
 export function telefonosDeAlta(whatsapp: string | null, telefono: string | null): {
   whatsapp: string;
@@ -171,7 +172,13 @@ export async function crearArrendatarioEnCarro(opts: {
     waNorm: tels.waNorm,
     quedaraActivo,
   });
-  return { ok: true, aviso };
+  let avisoBienvenida: string | null = null;
+  if (!decision.reutilizarId) {
+    const bienvenida = await enviarBienvenidaCartera(tels.waNorm);
+    if (!bienvenida.ok) avisoBienvenida = "La bienvenida de cartera no salió.";
+  }
+  const avisoFinal = [aviso, avisoBienvenida].filter(Boolean).join(" ") || null;
+  return { ok: true, aviso: avisoFinal };
 }
 
 export function generoDeAlta(v: unknown): GeneroCliente | null {

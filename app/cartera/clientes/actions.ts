@@ -12,6 +12,7 @@ import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { provinciaValida } from "@/lib/cartera/provincias-panama";
 import { referenciasPersonales } from "@/lib/cartera/referencias-alta";
 import { numeroDeContrato } from "@/lib/cartera/contrato-numero";
+import { enviarBienvenidaCartera } from "@/lib/cartera/bienvenida-cartera";
 
 const PANAPASS_ENTRADA = 20;
 const CUOTA_DOMINGO_DEFAULT = 30;
@@ -210,10 +211,18 @@ export async function createCliente(formData: FormData): Promise<void> {
     }
   }
 
+  let avisoBienvenida = "";
+  if (tels) {
+    const bienvenida = await enviarBienvenidaCartera(tels.waNorm);
+    if (!bienvenida.ok) avisoBienvenida = " La bienvenida de cartera no salió.";
+  }
+
   revalidatePath("/cartera/clientes");
   revalidatePath("/cartera/conversaciones");
   volverClientes(
-    tels ? `${nombre} quedó creado y el chat enlazado a su celular.` : `${nombre} quedó creado. Sin celular no hay chat.`,
+    tels
+      ? `${nombre} quedó creado y el chat enlazado a su celular.${avisoBienvenida}`
+      : `${nombre} quedó creado. Sin celular no hay chat.`,
   );
 }
 
@@ -596,6 +605,12 @@ export async function createClienteConContrato(
     }
   }
 
+  let avisoBienvenida: string | null = null;
+  if (clienteNuevo && tels) {
+    const bienvenida = await enviarBienvenidaCartera(tels.waNorm);
+    if (!bienvenida.ok) avisoBienvenida = "La bienvenida de cartera no salió.";
+  }
+
   try {
     revalidatePath("/cartera/clientes");
     revalidatePath("/cartera/vehiculos");
@@ -606,14 +621,15 @@ export async function createClienteConContrato(
   } catch {
     // El contrato ya quedó. La ficha se abre igual.
   }
+  const base = avisoChat
+    ? `Cliente y contrato creados. ${avisoChat}`
+    : tels
+      ? "Cliente, contrato y chat enlazados."
+      : "Cliente y contrato creados. Sin celular no queda chat.";
   return {
     ok: true,
     clienteId: cliente.id,
-    msg: avisoChat
-      ? `Cliente y contrato creados. ${avisoChat}`
-      : tels
-        ? "Cliente, contrato y chat enlazados."
-        : "Cliente y contrato creados. Sin celular no queda chat.",
+    msg: avisoBienvenida ? `${base} ${avisoBienvenida}` : base,
   };
 }
 
