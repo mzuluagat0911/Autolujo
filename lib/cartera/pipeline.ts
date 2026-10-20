@@ -609,6 +609,58 @@ export async function hayImagenEntranteReciente(conversacionId: string, ventanaM
 }
 
 /**
+ * ¿Entró otro mensaje del cliente después de este? La ráfaga (hola + foto +
+ * "ya pagué") se contesta una sola vez: los anteriores se callan.
+ */
+export async function llegoEntranteDespues(
+  conversacionId: string,
+  mensajeId: string,
+): Promise<boolean> {
+  const sb = createServerSupabase();
+  const { data: yo } = await sb
+    .from("mensajes")
+    .select("created_at")
+    .eq("id", mensajeId)
+    .maybeSingle();
+  const creado = (yo as { created_at?: string } | null)?.created_at;
+  if (!creado) return false;
+  const { data } = await sb
+    .from("mensajes")
+    .select("id")
+    .eq("conversacion_id", conversacionId)
+    .eq("direccion", "in")
+    .gt("created_at", creado)
+    .neq("id", mensajeId)
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
+/** ¿Llegó otra foto después de esta? Esa es la que contesta. */
+export async function llegoImagenDespues(
+  conversacionId: string,
+  mensajeId: string,
+): Promise<boolean> {
+  const sb = createServerSupabase();
+  const { data: yo } = await sb
+    .from("mensajes")
+    .select("created_at")
+    .eq("id", mensajeId)
+    .maybeSingle();
+  const creado = (yo as { created_at?: string } | null)?.created_at;
+  if (!creado) return false;
+  const { data } = await sb
+    .from("mensajes")
+    .select("id")
+    .eq("conversacion_id", conversacionId)
+    .eq("direccion", "in")
+    .eq("tipo", "image")
+    .gt("created_at", creado)
+    .neq("id", mensajeId)
+    .limit(1);
+  return (data?.length ?? 0) > 0;
+}
+
+/**
  * Arranca el reloj de espera si no estaba corriendo. No lo reinicia: lo que
  * importa es desde CUÁNDO espera el cliente, no la última vez que se escaló.
  */

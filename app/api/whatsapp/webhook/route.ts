@@ -16,6 +16,8 @@ import {
   marcarPendienteDeRespuesta,
   notasRecientes,
   hayImagenEntranteReciente,
+  llegoEntranteDespues,
+  llegoImagenDespues,
   resumenContrato,
   anexarCarroAComprobantePendiente,
   type Conversacion,
@@ -723,16 +725,17 @@ async function manejarMensaje(msg: WhatsAppMessage) {
   }
 
   if (tipo === "text") {
+    const cuerpo = msg.text?.body ?? "";
     // Coalesce "foto + caption": si este texto suena a que anuncia un comprobante
     // ("aquí el pago", "envío comprobante"…), espera la ventana y, si en ella llegó
     // una imagen, no respondas — el lector de comprobante contesta por los dos.
-    if (pareceCaptionDeAdjunto(msg.text?.body ?? "")) {
+    if (pareceCaptionDeAdjunto(cuerpo)) {
       await new Promise((r) => setTimeout(r, VENTANA_ADJUNTO_MS));
       if (await hayImagenEntranteReciente(conv.id, VENTANA_ADJUNTO_MS * 2)) return;
     }
     // Si acabamos de preguntar "¿de qué carro?" y responden G45 / 144, anotá el
     // carro en el comprobante pendiente (sigue en revisión; no se aplica solo).
-    const anexado = await anexarCarroAComprobantePendiente(conv, msg.text?.body ?? "");
+    const anexado = await anexarCarroAComprobantePendiente(conv, cuerpo);
     if (anexado) {
       await responder(
         conv.id,
@@ -743,7 +746,14 @@ async function manejarMensaje(msg: WhatsAppMessage) {
       );
       return;
     }
-    await responderConAgente(conv, from);
+    if (await textoEnSilencio(conv.id, cuerpo)) return;
+    if (await laFotoContestaEsteTexto(conv.id, cuerpo)) return;
+    // Ráfaga: hola + foto + "ya pagué". Espera un silencio corto y, si llegó
+    // algo más nuevo o una foto, este texto no contesta.
+    await esperarRafaga();
+    if (await llegoEntranteDespues(conv.id, mensajeId)) return;
+    if (await laFotoContestaEsteTexto(conv.id, cuerpo)) return;
+    await responderConAgente(conv, from, undefined, mensajeId);
   } else if (tipo === "image") {
     await procesarComprobante(conv, from, msg, mensajeId);
   } else if (tipo === "audio") {
@@ -763,6 +773,37 @@ async function manejarMensaje(msg: WhatsAppMessage) {
 
 // Ventana de gracia para juntar una foto con su textito (caption). 3–5s.
 const VENTANA_ADJUNTO_MS = 4000;
+
+// Silencio tras el cual se contesta una sola vez. Un minuto entero no cabe:
+// el webhook se corta a los 60s y la respuesta se perdería.
+const VENTANA_RAFAGA_MS = 20_000;
+
+function esperarRafaga(): Promise<void> {
+  return new Promise((r) => setTimeout(r, VENTANA_RAFAGA_MS));
+}
+
+/** La foto ya registró el pago. Contesta solo si no llegó otra foto después. */
+async function fotoSigueSiendoLaQueContesta(
+  conversacionId: string,
+  mensajeId: string,
+): Promise<boolean> {
+  await esperarRafaga();
+  return !(await llegoImagenDespues(conversacionId, mensajeId));
+}
+
+/** "ok", "gracias" y emoji no se contestan. "ok" a una pregunta del agente sí. */
+async function textoEnSilencio(conversacionId: string, cuerpo: string): Promise<boolean> {
+  const historial = await historialReciente(conversacionId, 6);
+  const ultimoSaliente = [...historial].reverse().find((m) => m.direccion === "out")?.texto ?? null;
+  return destinarCharla(cuerpo, ultimoSaliente).destinar === "silencio";
+}
+
+/** Hola / "ya pagué" junto a una foto: contesta la foto, no el texto. Una pregunta sí. */
+async function laFotoContestaEsteTexto(conversacionId: string, cuerpo: string): Promise<boolean> {
+  const t = cuerpo.trim();
+  if (/[?¿]/.test(t) || t.length > 80) return false;
+  return hayImagenEntranteReciente(conversacionId, VENTANA_RAFAGA_MS);
+}
 
 // Texto que suena a "te estoy mandando el comprobante" (el caption de una foto).
 const ANUNCIA_ADJUNTO =
@@ -796,7 +837,12 @@ function tipoMensaje(msg: WhatsAppMessage): "text" | "image" | "audio" | "ack" |
 }
 
 // El agente conversa; si el caso lo amerita, escala a una persona del equipo.
-async function responderConAgente(conv: Conv, from: string, extraTurno?: { direccion: "in" | "out"; texto: string }) {
+async function responderConAgente(
+  conv: Conv,
+  from: string,
+  extraTurno?: { direccion: "in" | "out"; texto: string },
+  mensajeId?: string,
+) {
   try {
     const historial = await historialReciente(conv.id, 10);
     if (extraTurno) {
@@ -858,6 +904,7 @@ async function responderConAgente(conv: Conv, from: string, extraTurno?: { direc
     }
 
     if (r.pasar_a_humano) await marcarEscalada(conv.id, r.motivo ?? null);
+    if (mensajeId && (await llegoEntranteDespues(conv.id, mensajeId))) return;
     await responder(conv.id, from, r.mensaje);
   } catch (e) {
     console.error("[whatsapp/webhook] agente falló:", e);
@@ -897,10 +944,17 @@ async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, men
       mediaUrl,
       texto: transcript?.trim() || "🎤 Nota de voz",
     });
-    await responderConAgente(conv, from, {
-      direccion: "in",
-      texto: transcript?.trim() || "🎤 Nota de voz",
-    });
+    const dicho = transcript?.trim() || "";
+    if (dicho && (await textoEnSilencio(conv.id, dicho))) return;
+    await esperarRafaga();
+    if (await llegoEntranteDespues(conv.id, mensajeId)) return;
+    if (await laFotoContestaEsteTexto(conv.id, dicho)) return;
+    await responderConAgente(
+      conv,
+      from,
+      { direccion: "in", texto: dicho || "🎤 Nota de voz" },
+      mensajeId,
+    );
   } catch (e) {
     console.error("[whatsapp/webhook] transcribir audio falló:", e);
     await responderYEscalar(
@@ -940,6 +994,7 @@ async function procesarComprobante(
 
     // Ninguna lectura es comprobante → no creamos pago (antifraude).
     if (lista.length === 0) {
+      if (!(await fotoSigueSiendoLaQueContesta(conversacionId, mensajeId))) return;
       await responder(
         conversacionId,
         from,
@@ -964,6 +1019,7 @@ async function procesarComprobante(
     if (items.length === 1) {
       const { c, res } = items[0];
       const { respuesta, escalarMotivo } = armarRespuestaComprobante(c, res);
+      if (!(await fotoSigueSiendoLaQueContesta(conversacionId, mensajeId))) return;
       await responder(conversacionId, from, respuesta, res.pagoId ?? undefined);
       if (escalarMotivo) await marcarPendienteDeRespuesta(conversacionId, escalarMotivo);
       return;
@@ -980,6 +1036,7 @@ async function procesarComprobante(
       : motivos.length
         ? "Hay uno que reviso yo y le escribo."
         : "Los cruzo con el banco y le confirmo.";
+    if (!(await fotoSigueSiendoLaQueContesta(conversacionId, mensajeId))) return;
     await responder(conversacionId, from, `${cabeza}\n${lineas.join("\n")}\n${cola}`, primerPago ?? undefined);
     if (motivos.length) {
       await marcarPendienteDeRespuesta(conversacionId, `Foto con varios comprobantes: ${motivos.join(" · ")}`);

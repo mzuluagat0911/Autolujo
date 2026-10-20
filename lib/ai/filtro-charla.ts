@@ -1,5 +1,5 @@
-// Filtro barato ANTES del LLM. WhatsApp de cobranza está lleno de "ok" y
-// "gracias": eso no necesita a Marcela. Si hay duda, pasa al agente.
+// Filtro barato ANTES del LLM. "ok", "gracias" y un emoji no se contestan:
+// cada respuesta se cobra. Si hay duda, pasa al agente.
 //
 // El dinero, el reclamo y el comprobante NUNCA se filtran aquí.
 
@@ -7,8 +7,6 @@ export type DestinoCharla =
   | { destinar: "agente" }
   | { destinar: "silencio" }
   | { destinar: "canned"; mensaje: string };
-
-const MENSAJE_GRACIAS = "Con gusto";
 
 /** Palabras que convierten el mensaje en asunto de cartera → Marcela. */
 const INTENTO =
@@ -74,12 +72,11 @@ export function destinarCharla(
 
   if (ACK.has(norm)) {
     // "sí" / "ok" / "dale" a una pregunta del agente SÍ es respuesta de negocio.
+    // "gracias" no: contestarlo también se cobra.
     if (ultimoFuePregunta(ultimoSaliente) && !esGracias(norm)) {
       return { destinar: "agente" };
     }
-    return esGracias(norm)
-      ? { destinar: "canned", mensaje: MENSAJE_GRACIAS }
-      : { destinar: "silencio" };
+    return { destinar: "silencio" };
   }
 
   return { destinar: "agente" };

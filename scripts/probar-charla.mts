@@ -25,10 +25,11 @@ check("👍", destinarCharla("👍").destinar, "silencio");
 check("jajaja", destinarCharla("jajaja").destinar, "silencio");
 check("ok dale", destinarCharla("ok dale").destinar, "silencio");
 
-console.log("\n· Gracias → respuesta fija, no Marcela");
-check("gracias", destinarCharla("gracias"), { destinar: "canned", mensaje: "Con gusto" });
-check("mil gracias", destinarCharla("¡Mil gracias!").destinar, "canned");
-check("ok gracias", destinarCharla("ok gracias").destinar, "canned");
+console.log("\n· Gracias y emoji → silencio, no se contesta");
+check("gracias", destinarCharla("gracias").destinar, "silencio");
+check("mil gracias", destinarCharla("¡Mil gracias!").destinar, "silencio");
+check("ok gracias", destinarCharla("ok gracias").destinar, "silencio");
+check("gracias con emoji", destinarCharla("gracias 🙏").destinar, "silencio");
 
 console.log("\n· SÍ va a Marcela");
 check("cuánto debo", destinarCharla("cuanto debo").destinar, "agente");
@@ -46,7 +47,7 @@ console.log("\n· Respuesta a una pregunta del agente");
 const pregunta = "¿Me puedes mandar la foto del comprobante?";
 check("sí a una pregunta", destinarCharla("si", pregunta).destinar, "agente");
 check("ok a una pregunta", destinarCharla("ok", pregunta).destinar, "agente");
-check("gracias a una pregunta sigue canned", destinarCharla("gracias", pregunta).destinar, "canned");
+check("gracias a una pregunta sigue en silencio", destinarCharla("gracias", pregunta).destinar, "silencio");
 check("ok después de un saldo (sin pregunta)", destinarCharla("ok", "Hoy te toca $30.").destinar, "silencio");
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
