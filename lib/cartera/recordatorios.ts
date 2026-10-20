@@ -1,10 +1,9 @@
 // Escalera de recordatorios de pago.
 //
-// Tras el estado de cuenta de las 9am, si el cliente aún no paga, se le
-// reengancha durante el día con plantillas dedicadas ya aprobadas en Meta:
-// `recordatorio_pago` (1pm) y `ultimo_aviso_pago` (5:30pm).
+// Tras el estado de cuenta de las 9am, si el cliente aún no paga, a las
+// 5:30 p.m. sale `ultimo_aviso_pago`. El de la 1:00 p.m. (`recordatorio_pago`)
+// está apagado: era otra plantilla cobrada el mismo día.
 //
-// - 1:00 p.m.: solo quien debe MÁS DE UNA cuota (no solo la de hoy).
 // - 5:30 p.m.: todos los que aún deben hoy y no han pagado.
 // - Domingo: la cola base (`estadosCuentaHoy`) solo incluye tajada de
 //   domingo, letra atrasada, acuerdo atrasado o acuerdo de domingo. Al día no entra.
@@ -19,7 +18,7 @@ import { sendTemplate } from "@/lib/whatsapp/client";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "./fecha";
 import { normalizarTelefono } from "./telefono";
-import { estadosCuentaHoy, cuotasAtraso, type EstadoCuenta } from "./estado-cuenta";
+import { estadosCuentaHoy, type EstadoCuenta } from "./estado-cuenta";
 import { envioPausado, envioPausadoContrato } from "./envio-pausa";
 import { espejarEnChat } from "./pipeline";
 
@@ -105,17 +104,18 @@ async function enviarUno(
 
 /**
  * Manda el recordatorio del nivel indicado.
- * - mediodía (1pm): solo quien debe más de una cuota.
+ * - mediodía (1pm): apagado. No sale ningún mensaje.
  * - cierre (5:30): todos los que aún deben hoy y no han pagado.
  */
 export async function enviarRecordatoriosHoy(nivel: NivelRecordatorio): Promise<{
   total: number; enviados: number; fallidos: number; sinNumero: number; yaEstaban: number;
 }> {
+  if (nivel === "mediodia") {
+    return { total: 0, enviados: 0, fallidos: 0, sinNumero: 0, yaEstaban: 0 };
+  }
   const sb = createServerSupabase();
   const fecha = hoyPanama();
-  const base = (await estadosCuentaHoy()).filter((e) => !envioPausado(e.empresa));
-  const estados =
-    nivel === "mediodia" ? base.filter((e) => cuotasAtraso(e) > 1) : base;
+  const estados = (await estadosCuentaHoy()).filter((e) => !envioPausado(e.empresa));
 
   let enviados = 0, fallidos = 0, sinNumero = 0, yaEstaban = 0;
   const TANDA = 10;

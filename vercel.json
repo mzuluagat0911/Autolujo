@@ -13,18 +13,6 @@
       "schedule": "0 14 * * 0-6"
     },
     {
-      "path": "/api/cron/recordatorio-mediodia",
-      "schedule": "0 18 * * 0-6"
-    },
-    {
-      "path": "/api/cron/recordatorio-mediodia",
-      "schedule": "25 18 * * 0-6"
-    },
-    {
-      "path": "/api/cron/recordatorio-mediodia",
-      "schedule": "50 18 * * 0-6"
-    },
-    {
       "path": "/api/cron/recordatorio-cierre",
       "schedule": "30 22 * * 0-6"
     },
