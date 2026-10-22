@@ -16,6 +16,8 @@ export type FiltroBandejaComercial =
   | "mios"
   | "sin_asignar"
   | "calientes"
+  | "tibios"
+  | "frios"
   | "seguimiento"
   | "citas"
   | "cerrados"
@@ -126,6 +128,10 @@ export async function listarChatsComercial(opts: {
       query = query.is("asesor_id", null).is("cerrado_at", null);
     } else if (filtro === "calientes") {
       query = query.eq("temperatura", "caliente").is("cerrado_at", null);
+    } else if (filtro === "tibios") {
+      query = query.eq("temperatura", "tibio").is("cerrado_at", null);
+    } else if (filtro === "frios") {
+      query = query.eq("temperatura", "frio").is("cerrado_at", null);
     } else if (filtro === "seguimiento") {
       query = query.not("seguimiento_at", "is", null).is("cerrado_at", null);
     } else if (filtro === "citas") {

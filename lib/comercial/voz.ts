@@ -90,10 +90,49 @@ const RECIBO =
   "El recibo es de agua, luz, teléfono o cable. En la visita confirman de quién puede estar. ¿Le dejo la visita en Juan Díaz o en La Chorrera?";
 const CUPO =
   "Le aparto el sábado a las 9 a. m., o el domingo en Juan Díaz. El domingo solo abre allá. ¿Cuál le sirve?";
+const PAGOS =
+  "La letra es diaria. Si le queda mejor, puede adelantar la semana, la quincena o el mes. No manejamos pagos atrasados. ¿Le queda mejor Juan Díaz o La Chorrera?";
+const REQUISITOS =
+  "Para adquirir el carro necesita récord policivo, paz y salvo e historial de tránsito, un recibo de agua, luz, teléfono o cable, licencia panameña, cédula o carnet vigente, el abono y ser mayor de 25. ¿De qué lugar es usted?";
+const REQUISITOS_Y_PAGOS =
+  "Para adquirir el carro necesita récord policivo, paz y salvo e historial de tránsito, un recibo de agua, luz, teléfono o cable, licencia panameña, cédula o carnet vigente, el abono y ser mayor de 25. La letra es diaria; la semana, la quincena y el mes se pagan por adelantado, y no hay pagos atrasados. ¿De qué lugar es usted?";
+
+function pideRequisitos(cliente: string): boolean {
+  const c = plano(cliente);
+  return /requisit|que necesito|que se necesita|para adquirir|que documentos|que piden|para sacar el carro/.test(c);
+}
+
+function respondeRequisitos(texto: string): boolean {
+  const q = plano(texto);
+  const marcas = [ /record policivo|paz y salvo/.test(q), /licencia/.test(q), /cedula|carnet/.test(q), /mayor de 25|25 anos/.test(q) ].filter(Boolean).length;
+  return marcas >= 2;
+}
+
+function explicaPago(texto: string): boolean {
+  const q = plano(texto);
+  return /adelantad/.test(q) && /no manejamos pagos atrasad|no hay pagos atrasad|no contamos con pagos atrasad|sin pagos atrasad/.test(q);
+}
+
+function ofrecePagoMal(texto: string): boolean {
+  const q = plano(texto);
+  if (/facilidad de pago|pago mensual|pagos mensual|mensualidad/.test(q)) return !explicaPago(texto);
+  if (/pagos atrasad|pago atrasad/.test(q) && !/no manejamos|no hay|no contamos|sin pagos/.test(q)) return true;
+  return false;
+}
+
+function clientePideMensual(cliente: string): boolean {
+  const c = plano(cliente);
+  return /facilidad de pago|pago mensual|pagos mensual|mensualidad|pagos atrasad|pagar atrasad/.test(c);
+}
 
 function corrigeRespuestaComercial(texto: string, cliente: string): string {
   const c = plano(cliente);
   const t = plano(texto);
+  const faltaRequisitos = pideRequisitos(cliente) && !respondeRequisitos(texto);
+  const malPago = ofrecePagoMal(texto) || (clientePideMensual(cliente) && !explicaPago(texto));
+  if (faltaRequisitos && malPago) return REQUISITOS_Y_PAGOS;
+  if (faltaRequisitos) return REQUISITOS;
+  if (malPago) return PAGOS;
   if (cotizaAutomatico(texto)) return AUTOMATICO;
   if (kiaFueraDeCatalogo(texto)) return KIA;
   if (pisoAbonoMal(texto)) return RANGO_ABONO;

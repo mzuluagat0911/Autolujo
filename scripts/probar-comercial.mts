@@ -271,6 +271,34 @@ assert.equal(
   false,
 );
 assert.ok(
+  mensajeNaturalLucia(
+    "Claro. Tenemos opciones de pago mensual. ¿Le queda mejor Juan Díaz o La Chorrera?",
+    "Busco una facilidad de pago mensual",
+  ).includes("por adelantado") ||
+    mensajeNaturalLucia(
+      "Claro. Tenemos opciones de pago mensual. ¿Le queda mejor Juan Díaz o La Chorrera?",
+      "Busco una facilidad de pago mensual",
+    ).includes("adelantar"),
+);
+assert.equal(
+  mensajeNaturalLucia(
+    "Claro. Tenemos opciones de pago mensual.",
+    "Busco una facilidad de pago mensual",
+  ).includes("pago mensual"),
+  false,
+);
+assert.ok(
+  mensajeNaturalLucia(
+    "La letra es diaria. La semana, la quincena y el mes se pagan por adelantado. No hay pagos atrasados.",
+    "Busco una facilidad de pago mensual",
+  ).includes("No hay pagos atrasados"),
+);
+assert.ok(
+  mensajeNaturalLucia("¿Le queda mejor Juan Díaz o La Chorrera?", "¿Cuáles son los requisitos para adquirir el carro?").includes(
+    "récord policivo",
+  ),
+);
+assert.ok(
   mensajeNaturalLucia("Le dejo La Chorrera a las 9.", "Quiero ir el domingo.").includes("solo abre Juan Díaz"),
 );
 assert.equal(repiteCitaPorDuda("?", "El paz y salvo es del tránsito?"), false);

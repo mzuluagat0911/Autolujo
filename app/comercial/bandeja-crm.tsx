@@ -37,6 +37,8 @@ const FILTROS: { value: FiltroBandejaComercial; label: string }[] = [
   { value: "mios", label: "Mis chats" },
   { value: "sin_asignar", label: "Sin asignar" },
   { value: "calientes", label: "Calientes" },
+  { value: "tibios", label: "Tibios" },
+  { value: "frios", label: "Fríos" },
   { value: "seguimiento", label: "Seguimiento" },
   { value: "citas", label: "Con cita" },
   { value: "todos", label: "Todos" },
