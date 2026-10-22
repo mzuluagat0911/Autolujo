@@ -1,4 +1,6 @@
-import { AlignmentType, BorderStyle, Document, HighlightColor, Packer, PageBreak, Paragraph, TextRun } from "docx";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+import { AlignmentType, BorderStyle, Document, HighlightColor, ImageRun, Packer, PageBreak, Paragraph, TextRun } from "docx";
 
 const FUENTE = "Calibri";
 /** Calibri 10. El Word mide en medios puntos. */
@@ -49,6 +51,63 @@ function rayaDeFirma(): Paragraph {
   });
 }
 
+type Png = { data: Buffer; width: number; height: number };
+
+function cargarPng(nombre: string, caja: { ancho: number; alto: number }): Png | null {
+  const ruta = join(process.cwd(), "lib/cartera/contratos/firmas", nombre);
+  if (!existsSync(ruta)) return null;
+  const data = readFileSync(ruta);
+  const w = data.readUInt32BE(16);
+  const h = data.readUInt32BE(20);
+  if (!w || !h) return null;
+  const escala = Math.min(caja.ancho / w, caja.alto / h);
+  return {
+    data,
+    width: Math.max(1, Math.round(w * escala)),
+    height: Math.max(1, Math.round(h * escala)),
+  };
+}
+
+function imagen(png: Png, alt: string): ImageRun {
+  return new ImageRun({
+    type: "png",
+    data: png.data,
+    transformation: { width: png.width, height: png.height },
+    altText: { name: alt, description: alt, title: alt },
+  });
+}
+
+function parrafoConFirma(png: Png, alt: string): Paragraph {
+  return new Paragraph({
+    border: {
+      bottom: { style: BorderStyle.SINGLE, size: 12, color: "000000", space: 1 },
+    },
+    indent: { right: 6200 },
+    spacing: { before: 200, after: 20 },
+    children: [imagen(png, alt)],
+  });
+}
+
+function parrafoLogo(png: Png): Paragraph {
+  return new Paragraph({
+    alignment: AlignmentType.CENTER,
+    spacing: { before: 80, after: 80 },
+    children: [imagen(png, "Yappy")],
+  });
+}
+
+/** La raya del cliente queda en blanco. Luis firma como arrendador y Carolina como testigo. */
+function quienFirma(siguientes: string[]): "luis" | "carolina" | null {
+  for (const linea of siguientes) {
+    if (esLineaDeFirma(linea)) break;
+    const t = linea.trim();
+    if (/^ARRENDATARIO$/i.test(t)) return null;
+    if (/COGUA/i.test(t) || /^ARRENDADOR$/i.test(t)) return "luis";
+    if (/CASTAÑEDA/i.test(t) || /^TESTIGO$/i.test(t)) return "carolina";
+  }
+  return null;
+}
+
 function esInicioAnexo(linea: string): boolean {
   return (
     /^Panam[aá],/i.test(linea) ||
@@ -63,7 +122,10 @@ function esPazYSalvo(linea: string): boolean {
 }
 
 function esRenglonDeFirma(linea: string): boolean {
-  return /^(FIRMA|Firma|C[EÉ]DULA|NOMBRE|Nombre)\b/i.test(linea);
+  const m = linea.match(/^(FIRMA|Firma|C[EÉ]DULA|NOMBRE|Nombre)\b\s*:?\s*(.*)$/i);
+  if (!m) return false;
+  const resto = m[2].replace(/_/g, "").trim();
+  return resto.length === 0 || /^de identidad/i.test(resto);
 }
 
 function run(
@@ -146,6 +208,9 @@ function runsDeLinea(linea: string): { runs: TextRun[]; antes?: number; despues?
 }
 
 export async function armarDocxContrato(texto: string): Promise<Buffer> {
+  const firmaLuis = cargarPng("firma-luis.png", { ancho: 190, alto: 86 });
+  const firmaCarolina = cargarPng("firma-carolina.png", { ancho: 190, alto: 86 });
+  const logoYappy = cargarPng("logo-yappy.png", { ancho: 168, alto: 60 });
   const children: Paragraph[] = [];
   const paginas = paginasDe(texto);
   let hojaContacto = false;
@@ -201,6 +266,10 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
       }
 
       if (/^NO TIENE$/i.test(linea)) {
+        if (logoYappy && hojaContacto) {
+          poner(parrafoLogo(logoYappy));
+          return;
+        }
         poner(parrafo([run(linea, { bold: true, highlight: HighlightColor.YELLOW })], AlignmentType.CENTER, { before: 80, after: 80 }));
         return;
       }
@@ -213,7 +282,10 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
 
       if (esLineaDeFirma(linea)) {
         firmaRestante = 4;
-        poner(rayaDeFirma());
+        const quien = quienFirma(lineas.slice(i + 1));
+        if (quien === "luis" && firmaLuis) poner(parrafoConFirma(firmaLuis, "Firma de Luis Hernando Cogua"));
+        else if (quien === "carolina" && firmaCarolina) poner(parrafoConFirma(firmaCarolina, "Firma de Diana Carolina Castañeda"));
+        else poner(rayaDeFirma());
         return;
       }
       if (firmaRestante > 0 && linea.length < 80 && !linea.includes(".")) {
