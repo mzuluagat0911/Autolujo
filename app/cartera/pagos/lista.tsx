@@ -4,32 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { StatusChip, Money, FiltersBar, EmptyState } from "@/components/kit";
 import { accionDarAval, resolverPago } from "./actions";
-import type { SalidaFila } from "@/lib/cartera/salidas-aplicar";
-
-export type PagoFila = {
-  id: string;
-  fecha: string | null;
-  monto: number;
-  banco: string | null;
-  referencia: string | null;
-  numero_carro: string | null;
-  carroResuelto: string | null;
-  estado_conciliacion: string;
-  origen?: string | null;
-  contrato_id?: string | null;
-  contratoLabel?: string | null;
-  comprobante_url: string | null;
-  notas: string | null;
-  created_at: string;
-  rubro?: string | null;
-  destino_interior?: string | null;
-  signedUrl?: string | null;
-  salida?: SalidaFila | null;
-  alertaCuenta: boolean;
-  empresa: string | null;
-};
-
-export type ContratoOpt = { id: string; label: string; empresa: string | null };
+import type { ContratoOpt, PagoFila } from "./tipos";
 
 type Filtro = "todos" | "banco" | "alerta" | "contrato";
 type FiltroEmpresa = "todas" | "AL" | "KW" | "GD";
@@ -57,12 +32,15 @@ function resumenNotas(notas: string | null): string | null {
   return null;
 }
 
-export function ListaComprobantes({
+export default function ListaComprobantes({
   pendientes,
   contratos,
+  vacio = false,
 }: {
   pendientes: PagoFila[];
   contratos: ContratoOpt[];
+  /** Sin cola y sin error de lectura: el servidor igual monta este módulo. */
+  vacio?: boolean;
 }) {
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [empresa, setEmpresa] = useState<FiltroEmpresa>("todas");
@@ -108,6 +86,23 @@ export function ListaComprobantes({
     () => contratos.filter((c) => empresa === "todas" || c.empresa === empresa),
     [contratos, empresa],
   );
+
+  if (vacio) {
+    return (
+      <EmptyState
+        title="Nada pendiente"
+        hint="Los comprobantes de WhatsApp aparecen aquí hasta que el extracto los cruce."
+        action={
+          <Link
+            href="/cartera/extractos"
+            className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
+          >
+            Ir a Conciliación
+          </Link>
+        }
+      />
+    );
+  }
 
   return (
     <div>

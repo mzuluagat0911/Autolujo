@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { PageHeader, PageShell, EmptyState } from "@/components/kit";
+import { PageHeader, PageShell } from "@/components/kit";
 import { rechazarComprobantesRepetidos } from "@/lib/cartera/comprobante-validacion";
 import { salidasDePagos } from "@/lib/cartera/salidas-aplicar";
 import { etiquetaCarroUi, siglaEmpresa } from "@/lib/cartera/empresa";
-import { ListaComprobantes, type ContratoOpt, type PagoFila } from "./lista";
+import ListaComprobantes from "./lista";
+import type { ContratoOpt, PagoFila } from "./tipos";
 
 export const dynamic = "force-dynamic";
 
@@ -175,22 +176,11 @@ export default async function PagosPage({
       )}
 
       <div className="mt-6">
-        {pendientes.length === 0 && !error ? (
-          <EmptyState
-            title="Nada pendiente"
-            hint="Los comprobantes de WhatsApp aparecen aquí hasta que el extracto los cruce."
-            action={
-              <Link
-                href="/cartera/extractos"
-                className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
-              >
-                Ir a Conciliación
-              </Link>
-            }
-          />
-        ) : (
-          <ListaComprobantes pendientes={pendientes} contratos={contratos} />
-        )}
+        <ListaComprobantes
+          pendientes={pendientes}
+          contratos={contratos}
+          vacio={pendientes.length === 0 && !error}
+        />
       </div>
     </PageShell>
   );
