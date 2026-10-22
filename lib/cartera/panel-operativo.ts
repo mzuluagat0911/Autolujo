@@ -2,6 +2,7 @@
 // El dinero sin pagar es el total del extracto. La letra que no corre
 // es la cuota del día de un carro improductivo o en taller: no es "a pagar hoy".
 
+import { unstable_cache } from "next/cache";
 import { cuotaDeFecha } from "./cuota";
 import { etiquetaSucursal } from "./sucursal";
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -77,26 +78,45 @@ export function noPagosDe(estados: {
     .sort((a, b) => b.monto - a.monto);
 }
 
-async function leerRecaudo(desde: string, hasta: string, empresaIds: string[] | null): Promise<RecaudoDia[]> {
+type FilaRecaudo = {
+  fecha: string;
+  monto: number | null;
+  contrato: { empresa_id: string; empresa: { codigo: string } | { codigo: string }[] | null } | { empresa_id: string; empresa: { codigo: string } | { codigo: string }[] | null }[] | null;
+};
+
+async function paginaRecaudo(
+  desde: string,
+  hasta: string,
+  empresaIds: string[] | null,
+  from: number,
+): Promise<FilaRecaudo[]> {
   const sb = createServerSupabase();
+  let q = sb
+    .from("pagos")
+    .select("fecha, monto, contrato:contratos!inner(empresa_id, empresa:empresas(codigo))")
+    .gte("fecha", desde)
+    .lte("fecha", hasta)
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .range(from, from + 999);
+  if (empresaIds) q = q.in("contrato.empresa_id", empresaIds);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data ?? []) as unknown as FilaRecaudo[];
+}
+
+async function leerRecaudo(desde: string, hasta: string, empresaIds: string[] | null): Promise<RecaudoDia[]> {
   const mapa = new Map<string, RecaudoDia>();
-  for (let from = 0; from < 20000; from += 1000) {
-    let q = sb
-      .from("pagos")
-      .select("fecha, monto, contrato:contratos!inner(empresa_id, empresa:empresas(codigo))")
-      .gte("fecha", desde)
-      .lte("fecha", hasta)
-      .in("estado_conciliacion", ["conciliado", "manual"])
-      .range(from, from + 999);
-    if (empresaIds) q = q.in("contrato.empresa_id", empresaIds);
-    const { data, error } = await q;
-    if (error) throw new Error(error.message);
-    const chunk = (data ?? []) as unknown as {
-      fecha: string;
-      monto: number | null;
-      contrato: { empresa_id: string; empresa: { codigo: string } | { codigo: string }[] | null } | { empresa_id: string; empresa: { codigo: string } | { codigo: string }[] | null }[] | null;
-    }[];
-    for (const row of chunk) {
+  const primera = await paginaRecaudo(desde, hasta, empresaIds, 0);
+  const resto =
+    primera.length < 1000
+      ? []
+      : (
+          await Promise.all([1000, 2000, 3000, 4000, 5000, 6000, 7000].map((from) => paginaRecaudo(desde, hasta, empresaIds, from)))
+        ).flatMap((chunk, i, todos) => {
+          const previaCorta = todos.slice(0, i).some((p) => p.length < 1000);
+          return previaCorta ? [] : chunk;
+        });
+  for (const row of [...primera, ...resto]) {
       const contrato = uno(row.contrato);
       const empresa = codigoEmpresa(contrato?.empresa);
       const clave = `${row.fecha}|${empresa}`;
@@ -104,8 +124,6 @@ async function leerRecaudo(desde: string, hasta: string, empresaIds: string[] | 
       cur.monto += Number(row.monto) || 0;
       cur.pagos += 1;
       mapa.set(clave, cur);
-    }
-    if (chunk.length < 1000) break;
   }
   return [...mapa.values()].map((f) => ({ ...f, monto: redondear(f.monto) }));
 }
@@ -230,20 +248,27 @@ async function leerImproductivos(hoy: string, empresaIds: string[] | null): Prom
   };
 }
 
-export async function leerPanelOperativo(opts: {
-  hoy: string;
-  empresaIds: string[] | null;
-  estados: Parameters<typeof noPagosDe>[0];
-}): Promise<PanelOperativo> {
-  const desde = inicioMes(opts.hoy);
-  const hasta = opts.hoy < finMes(opts.hoy) ? opts.hoy : finMes(opts.hoy);
+type BaseOperativa = {
+  desde: string;
+  hasta: string;
+  empresas: string[];
+  recaudo: RecaudoDia[];
+  movimientos: MovimientoDia[];
+  improductivos: ImproductivoEmpresa[];
+  porEntregar: HuecoEmpresa[];
+};
+
+async function leerBaseOperativa(hoy: string, empresasKey: string): Promise<BaseOperativa> {
+  const empresaIds = empresasKey === "*" ? null : empresasKey.split(",").filter(Boolean);
+  const desde = inicioMes(hoy);
+  const hasta = hoy < finMes(hoy) ? hoy : finMes(hoy);
   const sb = createServerSupabase();
   let empresasQ = sb.from("empresas").select("codigo").order("codigo");
-  if (opts.empresaIds) empresasQ = empresasQ.in("id", opts.empresaIds);
+  if (empresaIds) empresasQ = empresasQ.in("id", empresaIds);
   const [recaudo, movimientos, flota, empresas] = await Promise.all([
-    leerRecaudo(desde, hasta, opts.empresaIds),
-    leerMovimientos(desde, hasta, opts.empresaIds),
-    leerImproductivos(opts.hoy, opts.empresaIds),
+    leerRecaudo(desde, hasta, empresaIds),
+    leerMovimientos(desde, hasta, empresaIds),
+    leerImproductivos(hoy, empresaIds),
     empresasQ,
   ]);
   if (empresas.error) throw new Error(empresas.error.message);
@@ -253,8 +278,22 @@ export async function leerPanelOperativo(opts: {
     empresas: ((empresas.data ?? []) as { codigo: string }[]).map((e) => e.codigo.toUpperCase()),
     recaudo,
     movimientos,
-    noPagos: noPagosDe(opts.estados),
     improductivos: flota.improductivos,
     porEntregar: flota.porEntregar,
   };
+}
+
+const baseOperativa = unstable_cache(leerBaseOperativa, ["panel-operativo-v1"], {
+  revalidate: 60 * 10,
+  tags: ["extracto-dia"],
+});
+
+export async function leerPanelOperativo(opts: {
+  hoy: string;
+  empresaIds: string[] | null;
+  estados: Parameters<typeof noPagosDe>[0];
+}): Promise<PanelOperativo> {
+  const empresasKey = opts.empresaIds?.length ? [...opts.empresaIds].sort().join(",") : "*";
+  const base = await baseOperativa(opts.hoy, empresasKey);
+  return { ...base, noPagos: noPagosDe(opts.estados) };
 }

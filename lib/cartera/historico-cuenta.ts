@@ -2,6 +2,7 @@
 // El estado de cuenta de hoy no lista un recargo ya pagado. Acá sí: el día
 // que se cargó y el día que se cubrió.
 
+import { cargosPendientesActivos } from "./cargos-ajustables";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { diasEntre, fechaConDia, hoyPanama, sumarDias } from "./fecha";
 import {
@@ -288,6 +289,23 @@ export async function historicoDeContrato(
   );
   for (const c of cargosFila) {
     if (c.pagoId && esRecargo(c)) cubiertos.add(c.id);
+  }
+  const aunAbiertos = new Set(
+    cargosPendientesActivos(
+      cargosFila.map((c) => ({
+        id: c.id,
+        fecha: c.fecha,
+        tipo: c.tipo,
+        concepto: c.concepto,
+        concepto_codigo: c.conceptoCodigo,
+        monto: c.monto,
+        pago_id: c.pagoId,
+      })),
+      pagosFila.filter(cuentaEnSaldo),
+    ).map((c) => c.id),
+  );
+  for (const c of cargosFila) {
+    if (esCierre(c) && !aunAbiertos.has(c.id)) cubiertos.add(c.id);
   }
 
   return {

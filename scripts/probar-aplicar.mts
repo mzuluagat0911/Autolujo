@@ -12,6 +12,7 @@ import {
 } from "@/lib/cartera/aplicar-pago";
 import type { Obligacion } from "@/lib/cartera/types";
 import { debeCobrarCierreSemana } from "@/lib/cartera/cierre-semana";
+import { cargosPendientesActivos, cubetaDeCargoAjuste } from "@/lib/cartera/cargos-ajustables";
 
 let fallos = 0;
 function check(nombre: string, obtenido: unknown, esperado: unknown) {
@@ -200,6 +201,26 @@ check("el $10 ya cargado no se cuenta como letra", debeCobrarCierreSemana({
   atrasoAcuerdo: 0,
   yaTieneCierre: true,
 }), false);
+
+console.log("\n· ajustar cuenta esconde lo ya pagado");
+check(
+  "el cierre no cae en el recargo de las 7",
+  cubetaDeCargoAjuste({ tipo: "multa", concepto: "Recargo Cierre semana", concepto_codigo: "CIERRE_SEMANA" }),
+  "cierre de semana",
+);
+const ajuste = cargosPendientesActivos(
+  [
+    { id: "c13", fecha: "2026-10-13", tipo: "multa", concepto: "Recargo Cierre semana", concepto_codigo: "CIERRE_SEMANA", monto: 10 },
+    { id: "c20", fecha: "2026-10-20", tipo: "multa", concepto: "Recargo Cierre semana", concepto_codigo: "CIERRE_SEMANA", monto: 10 },
+    { id: "tarde", fecha: "2026-10-18", tipo: "multa", concepto: "Pago después de las 7 PM", concepto_codigo: "PAGO_TARDE", monto: 5 },
+    { id: "mant", fecha: "2026-10-09", tipo: "otras", concepto: "Mantenimiento", concepto_codigo: "124", monto: 40 },
+  ],
+  [
+    { id: "p14", fecha: "2026-10-14", asignaciones: { asignaciones: [{ tipo: "cierre_semana", etiqueta: "Recargo Cierre semana", aplicado: 10 }] } },
+    { id: "p21", fecha: "2026-10-21", asignaciones: { asignaciones: [{ tipo: "cierre_semana", etiqueta: "Recargo Cierre semana", aplicado: 10 }, { tipo: "recargo", etiqueta: "Recargo", aplicado: 5 }] } },
+  ],
+);
+check("los cierres pagados salen de ajustar", ajuste.map((c) => c.id), ["mant"]);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

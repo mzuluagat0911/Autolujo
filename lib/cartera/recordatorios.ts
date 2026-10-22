@@ -10,15 +10,15 @@
 // Quien ya pagó o mandó comprobante NO recibe recordatorio: eso lo garantiza
 // `estadosCuentaHoy()`, que ya los excluye.
 //
-// La "lista por llamar" (quién debe hoy y no ha pagado al cierre) se calcula
-// en vivo con `paraLlamarHoy()`; la bitácora `recordatorios` solo evita repetir
-// el mismo nivel dos veces.
+// La "lista por llamar" lee el extracto del día ya armado. El recordatorio de
+// las 5:30 sigue calculando la cola en vivo. La bitácora evita repetir el aviso.
 
 import { sendTemplate } from "@/lib/whatsapp/client";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { hoyPanama } from "./fecha";
+import { esDomingo, hoyPanama } from "./fecha";
 import { normalizarTelefono } from "./telefono";
-import { estadosCuentaHoy, type EstadoCuenta } from "./estado-cuenta";
+import { audienciaDomingo, estadosCuentaHoy, type EstadoCuenta } from "./estado-cuenta";
+import { estadosCuentaPanel } from "./estado-cuenta-cache";
 import { envioPausado, envioPausadoContrato } from "./envio-pausa";
 import { espejarEnChat } from "./pipeline";
 
@@ -134,9 +134,15 @@ export async function enviarRecordatoriosHoy(nivel: NivelRecordatorio): Promise<
 }
 
 /**
- * Lista "por llamar": quién debe hoy y no ha pagado. Se calcula en vivo, así
- * que sirve en cualquier momento del día para que el equipo levante el teléfono.
+ * Lista "por llamar": quién debe hoy y no ha pagado. Usa el extracto ya armado
+ * del día, el mismo que el panel, para no reconstruir la flota en cada visita.
  */
 export async function paraLlamarHoy(): Promise<EstadoCuenta[]> {
-  return estadosCuentaHoy();
+  const hoy = hoyPanama();
+  const domingo = esDomingo(hoy);
+  const todos = await estadosCuentaPanel();
+  return todos
+    .filter((e) => e.totalHoy > 0.009 && !e.pendiente)
+    .filter((e) => !domingo || audienciaDomingo(e))
+    .sort((a, b) => b.totalHoy - a.totalHoy);
 }

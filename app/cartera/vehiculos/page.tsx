@@ -45,17 +45,22 @@ async function kmMesPorVehiculo(
       })),
     };
   }
-  const rows: { vehiculo_id: string; km: number | null }[] = [];
-  for (let from = 0; from < 20000; from += 1000) {
-    const { data, error } = await sb
+  const pedir = (from: number) =>
+    sb
       .from("gps_dias")
       .select("vehiculo_id, km")
       .gte("fecha", mesIni)
       .lte("fecha", hoy)
       .not("vehiculo_id", "is", null)
       .range(from, from + 999);
-    if (error) return { error, data: null };
-    const chunk = (data ?? []) as { vehiculo_id: string; km: number | null }[];
+  const primera = await pedir(0);
+  if (primera.error) return { error: primera.error, data: null };
+  const rows = [...((primera.data ?? []) as { vehiculo_id: string; km: number | null }[])];
+  if (rows.length < 1000) return { error: null, data: rows };
+  const siguientes = await Promise.all([1000, 2000, 3000, 4000, 5000, 6000, 7000].map((from) => pedir(from)));
+  for (const pagina of siguientes) {
+    if (pagina.error) return { error: pagina.error, data: null };
+    const chunk = (pagina.data ?? []) as { vehiculo_id: string; km: number | null }[];
     rows.push(...chunk);
     if (chunk.length < 1000) break;
   }

@@ -75,16 +75,21 @@ async function getData() {
     };
 
     const raw = (rows ?? []) as unknown as Raw[];
-    const salidas = await salidasDePagos(raw.map((p) => p.id));
+    const porFirmar = [...new Set(raw.filter((p) => esPorRevisar(p) && p.comprobante_url).map((p) => p.comprobante_url as string))];
+    const [salidas, firmas] = await Promise.all([
+      salidasDePagos(raw.map((p) => p.id)),
+      porFirmar.length > 0
+        ? sb.storage.from("comprobantes").createSignedUrls(porFirmar, 3600)
+        : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
+    ]);
+    const urlPorPath = new Map(
+      (firmas.data ?? []).filter((f) => f.path && f.signedUrl).map((f) => [f.path as string, f.signedUrl]),
+    );
     const pendientes: PagoFila[] = [];
 
     for (const p of raw) {
       if (!esPorRevisar(p)) continue;
-      let signedUrl: string | null = null;
-      if (p.comprobante_url) {
-        const { data: s } = await sb.storage.from("comprobantes").createSignedUrl(p.comprobante_url, 3600);
-        signedUrl = s?.signedUrl ?? null;
-      }
+      const signedUrl = p.comprobante_url ? (urlPorPath.get(p.comprobante_url) ?? null) : null;
       const carroResuelto = p.contrato?.vehiculo?.numero ?? p.numero_carro ?? null;
       const contratoLabel = p.contrato
         ? `${etiquetaCarroUi(p.contrato.vehiculo?.empresa?.codigo, p.contrato.vehiculo?.numero)} · ${p.contrato.cliente?.nombre ?? ""}`

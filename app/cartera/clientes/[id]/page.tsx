@@ -59,15 +59,17 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
   const { id } = await params;
   const sb = createServerSupabase();
 
-  const { data: cliente } = await sb
-    .from("clientes")
-    .select("id, nombre, genero, cedula, telefono, whatsapp, score_financiero, direccion, notas, fecha_nacimiento, fecha_vencimiento_licencia")
-    .eq("id", id)
-    .maybeSingle();
+  const [{ data: cliente }, refsCol, extraCol] = await Promise.all([
+    sb
+      .from("clientes")
+      .select("id, nombre, genero, cedula, telefono, whatsapp, score_financiero, direccion, notas, fecha_nacimiento, fecha_vencimiento_licencia")
+      .eq("id", id)
+      .maybeSingle(),
+    sb.from("clientes").select("referencias").eq("id", id).maybeSingle(),
+    sb.from("clientes").select("numero_licencia, provincia").eq("id", id).maybeSingle(),
+  ]);
   if (!cliente) notFound();
   const cli = cliente as Cliente;
-  const refsCol = await sb.from("clientes").select("referencias").eq("id", id).maybeSingle();
-  const extraCol = await sb.from("clientes").select("numero_licencia, provincia").eq("id", id).maybeSingle();
   const deNotas = notasDeAlta(cli.notas);
   const referenciasCol = refsCol.error
     ? null

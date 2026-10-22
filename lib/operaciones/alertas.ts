@@ -2,6 +2,7 @@
 // revisado/placa. Todo defensivo: si la migración 0018 aún no corrió (columnas
 // inexistentes) o no hay datos, devuelve `disponible: false` sin romper la UI.
 
+import { cache } from "react";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
@@ -30,7 +31,9 @@ function diasHasta(fecha: string, hoy: string): number {
 }
 
 /** Mapa vehiculo_id → cliente (contrato activo), para saber a quién citar/avisar. */
-async function clientePorVehiculoActivo(): Promise<Map<string, { nombre: string; contacto: string | null }>> {
+const clientePorVehiculoActivo = cache(async function clientePorVehiculoActivo(): Promise<
+  Map<string, { nombre: string; contacto: string | null }>
+> {
   const sb = createServerSupabase();
   const { data } = await sb
     .from("contratos")
@@ -43,7 +46,7 @@ async function clientePorVehiculoActivo(): Promise<Map<string, { nombre: string;
     }
   }
   return out;
-}
+});
 
 export type LicenciaItem = {
   id: string;
@@ -57,7 +60,7 @@ export type LicenciaItem = {
 };
 
 /** Mapa cliente_id → carro del contrato activo. */
-async function carroPorClienteActivo(): Promise<
+const carroPorClienteActivo = cache(async function carroPorClienteActivo(): Promise<
   Map<string, { etiqueta: string; vehiculoId: string }>
 > {
   const sb = createServerSupabase();
@@ -83,7 +86,7 @@ async function carroPorClienteActivo(): Promise<
     });
   }
   return out;
-}
+});
 
 export async function licenciasSemaforo(): Promise<{ disponible: boolean; items: LicenciaItem[] }> {
   const sb = createServerSupabase();

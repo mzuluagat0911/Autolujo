@@ -117,6 +117,8 @@ export type DatosContratoDoc = {
   anio: string;
   color: string;
   numeroContrato: string | null;
+  /** Día en que se imprime o se registra. Va en la cláusula quincuagésima. */
+  fechaEmision?: string | null;
 };
 
 export function plantillaDeContrato(codigo: string | null, numCuotas: number | null): PlantillaContrato {
@@ -155,6 +157,15 @@ function aplicarFechas(cuerpo: string, anclaFecha: string, iso: string): string 
   );
   out = out.replace(/^Fecha\s+_+\s*$/gm, `Fecha: ${nueva}`);
   return out;
+}
+
+/** La constancia de la quincuagésima lleva el día en que se emite el contrato. */
+function ponerFechaQuicuagesima(cuerpo: string, iso: string): string {
+  const fecha = fechaEnDias(iso);
+  return cuerpo.replace(
+    /Para constancia de aceptación de este contrato, se firma el presente documento en la Ciudad de Panamá, a los [^.]+\./gi,
+    `Para constancia de aceptación de este contrato, se firma el presente documento en la Ciudad de Panamá, a los ${fecha}.`,
+  );
 }
 
 function puesto(v: string): boolean {
@@ -318,6 +329,7 @@ export function armarTextoContrato(datos: DatosContratoDoc): string {
   );
   cuerpo = cuerpo.replace(/Placa[\s\S]*?(?=SEGUNDA:)/, `${bloqueVehiculo(datos)}\n`);
   cuerpo = ponerFichaDelCarro(cuerpo, datos);
+  cuerpo = ponerFechaQuicuagesima(cuerpo, datos.fechaEmision || datos.fechaInicio);
   if (datos.genero === "f") {
     cuerpo = cuerpo.replace("varón", "mujer");
     cuerpo = cuerpo.replace("mujer,  panameño", "mujer,  panameña");

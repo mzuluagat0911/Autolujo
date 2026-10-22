@@ -1,13 +1,14 @@
 import { AlignmentType, BorderStyle, Document, HighlightColor, Packer, PageBreak, Paragraph, TextRun } from "docx";
 
 const FUENTE = "Calibri";
-const CUERPO = 24;
-const TITULO = 24;
+/** Calibri 10. El Word mide en medios puntos. */
+const CUERPO = 20;
+const TITULO = 20;
 const REFERENCIA = 20;
-const PANAPASS = 36;
+const PANAPASS = 20;
 
 const CLAUSULA =
-  /^(NOTA(?:\s+\d+)?|(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|S[EÉ]PTIMA|OCTAVA|NOVENA|D[EÉ]CIMA|VIG[EÉ]SIMA|TRIG[EÉ]SIMA|CUATRIG[EÉ]SIMA|CUATROG[EÉ]SIMA|QUICUAG[EÉ]SIMA)(?:\s+(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|S[EÉ]PTIMA|OCTAVA|NOVENA))?)\s*:\s*(.*)$/i;
+  /^(NOTA(?:\s+(?:\d+|PROMOCI[OÓ]N))?|PAR[AÁ]GRAFO|(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|S[EÉ]PTIMA|OCTAVA|NOVENA|D[EÉ]CIMA|VIG[EÉ]SIMA|TRIG[EÉ]SIMA|CUATRIG[EÉ]SIMA|CUATROG[EÉ]SIMA|QUICUAG[EÉ]SIMA)(?:\s+(?:PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|S[EÉ]PTIMA|OCTAVA|NOVENA))?)\s*:\s*(.*)$/i;
 
 function normalizar(texto: string): string {
   return texto
@@ -20,7 +21,8 @@ function normalizar(texto: string): string {
     .replace(/[ \t]{2,}/g, " ")
     .replace(/^·\s*/gm, "• ")
     .replace(/_{4,}\s+_{4,}/g, "________")
-    .replace(/^(FIRMA|C[EÉ]DULA)\s+(_+)\s*$/gim, "________\n$1");
+    .replace(/\bordialmente\b/gi, "Cordialmente")
+    .replace(/\bDOCED\b/g, "DOCE");
 }
 
 function limpiarLinea(linea: string): string {
@@ -41,10 +43,27 @@ function rayaDeFirma(): Paragraph {
     border: {
       bottom: { style: BorderStyle.SINGLE, size: 12, color: "000000", space: 1 },
     },
-    indent: { right: 5200 },
-    spacing: { before: 720, after: 60 },
+    indent: { right: 6200 },
+    spacing: { before: 360, after: 20 },
     children: [new TextRun({ text: " ", font: FUENTE, size: CUERPO })],
   });
+}
+
+function esInicioAnexo(linea: string): boolean {
+  return (
+    /^Panam[aá],/i.test(linea) ||
+    /^AUTORIZACI[OÓ]N PARA/i.test(linea) ||
+    /^Fecha\s+_{2,}/i.test(linea) ||
+    /^Fecha\s*$/i.test(linea)
+  );
+}
+
+function esPazYSalvo(linea: string): boolean {
+  return /^(Paz y salvo|No tener|No ser parte)/i.test(linea);
+}
+
+function esRenglonDeFirma(linea: string): boolean {
+  return /^(FIRMA|Firma|C[EÉ]DULA|NOMBRE|Nombre)\b/i.test(linea);
 }
 
 function run(
@@ -71,8 +90,8 @@ function parrafo(
     alignment,
     spacing: {
       before: spacing?.before ?? 0,
-      after: spacing?.after ?? 120,
-      line: spacing?.line ?? 276,
+      after: spacing?.after ?? 60,
+      line: spacing?.line ?? 240,
     },
   });
 }
@@ -130,41 +149,103 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
   const children: Paragraph[] = [];
   const paginas = paginasDe(texto);
   let hojaContacto = false;
+  let alInicio = true;
+  let ultimaFueFecha = false;
+
+  const salto = () => {
+    if (alInicio) return;
+    children.push(new Paragraph({ children: [new PageBreak()] }));
+    alInicio = true;
+    ultimaFueFecha = false;
+  };
+  const poner = (p: Paragraph) => {
+    children.push(p);
+    alInicio = false;
+  };
 
   paginas.forEach((lineas, indice) => {
-    if (indice > 0) children.push(new Paragraph({ children: [new PageBreak()] }));
+    if (indice > 0) salto();
     let enCuerpo = indice > 0;
     let firmaRestante = 0;
 
     lineas.forEach((linea, i) => {
       const siguiente = lineas.slice(i + 1).find(Boolean) ?? "";
-      if (esHojaDeContacto(linea, siguiente)) hojaContacto = true;
+      if (esHojaDeContacto(linea, siguiente)) {
+        salto();
+        hojaContacto = true;
+      }
+      if (/^PODER ESPECIAL$/i.test(linea) && !alInicio && !ultimaFueFecha) salto();
+      if (esInicioAnexo(linea)) salto();
       if (!enCuerpo && /^Entre los suscritos/i.test(linea)) enCuerpo = true;
 
       if (indice === 0 && i === 0) {
-        children.push(parrafo([run(linea, { bold: true, size: TITULO })], AlignmentType.CENTER, { after: 280 }));
+        poner(parrafo([run(linea, { bold: true, size: TITULO })], AlignmentType.CENTER, { after: 200 }));
+        return;
+      }
+
+      if (/^Panam[aá],/i.test(linea) || /^Fecha\s+_{2,}/i.test(linea) || /^Fecha\s*$/i.test(linea)) {
+        ultimaFueFecha = true;
+        poner(parrafo([run(linea, { bold: true, highlight: HighlightColor.YELLOW })], AlignmentType.LEFT, { before: 80, after: 80 }));
+        return;
+      }
+      ultimaFueFecha = false;
+
+      if (/^PODER ESPECIAL$/i.test(linea)) {
+        poner(parrafo([run(linea, { bold: true, highlight: HighlightColor.YELLOW })], AlignmentType.LEFT, { before: 200, after: 160 }));
+        return;
+      }
+
+      if (/^Cordialmente\b/i.test(linea)) {
+        poner(parrafo([run("Cordialmente", { bold: true, highlight: HighlightColor.YELLOW })], AlignmentType.LEFT, { before: 200, after: 200 }));
+        return;
+      }
+
+      if (/^NO TIENE$/i.test(linea)) {
+        poner(parrafo([run(linea, { bold: true, highlight: HighlightColor.YELLOW })], AlignmentType.CENTER, { before: 80, after: 80 }));
+        return;
+      }
+
+      if (esRenglonDeFirma(linea)) {
+        const etiqueta = linea.replace(/_+/g, "").replace(/:+\s*$/, "").trim();
+        poner(parrafo([run(`${etiqueta}  ______________________________`)], AlignmentType.LEFT, { before: 280, after: 40 }));
         return;
       }
 
       if (esLineaDeFirma(linea)) {
         firmaRestante = 4;
-        children.push(rayaDeFirma());
+        poner(rayaDeFirma());
         return;
       }
       if (firmaRestante > 0 && linea.length < 80 && !linea.includes(".")) {
         firmaRestante -= 1;
-        const rol = /ARRENDATARIO|ARRENDADOR|TESTIGO|FIRMADO/i.test(linea);
-        children.push(parrafo([run(linea, { bold: rol })], AlignmentType.LEFT, { after: 40 }));
+        const rol = /ARRENDATARIO|ARRENDADOR|TESTIGO|FIRMADO|PODER ESPECIAL/i.test(linea);
+        poner(
+          new Paragraph({
+            children: [run(linea, rol ? { bold: true, highlight: HighlightColor.YELLOW } : { bold: true })],
+            spacing: { before: 0, after: 20, line: 240 },
+          }),
+        );
         return;
       }
       firmaRestante = 0;
 
+      if (esPazYSalvo(linea)) {
+        poner(
+          new Paragraph({
+            children: [run(`•  ${linea}`, { highlight: HighlightColor.YELLOW })],
+            indent: { left: 420 },
+            spacing: { before: 0, after: 0, line: 240 },
+          }),
+        );
+        return;
+      }
+
       if (linea.startsWith("• ")) {
-        children.push(
+        poner(
           new Paragraph({
             children: [run(linea)],
             indent: { left: 420 },
-            spacing: { before: 40, after: 40 },
+            spacing: { before: 0, after: 20, line: 240 },
           }),
         );
         return;
@@ -172,11 +253,11 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
 
       const especial = runsDeLinea(linea);
       if (especial) {
-        children.push(
+        poner(
           parrafo(especial.runs, AlignmentType.CENTER, {
-            before: especial.antes ?? (hojaContacto ? 80 : 0),
-            after: especial.despues ?? (hojaContacto ? 160 : 80),
-            line: hojaContacto ? 360 : 276,
+            before: especial.antes ?? (hojaContacto ? 60 : 0),
+            after: especial.despues ?? (hojaContacto ? 80 : 60),
+            line: 240,
           }),
         );
         return;
@@ -186,17 +267,43 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
         const campo = linea.match(/^([^:]{2,42}):\s*(.*)$/);
         if (campo) {
           const valor = campo[2].trim();
-          children.push(
+          poner(
             parrafo(
               valor ? [run(`${campo[1]}: `, { bold: true }), run(valor)] : [run(`${campo[1]}:`, { bold: true })],
               AlignmentType.LEFT,
-              { after: 60 },
+              { after: 40 },
             ),
           );
           return;
         }
-        children.push(
-          parrafo([run(linea, esReferencia(linea) ? { size: REFERENCIA } : undefined)], AlignmentType.LEFT, { after: 40 }),
+        poner(
+          parrafo([run(linea, esReferencia(linea) ? { size: REFERENCIA } : undefined)], AlignmentType.LEFT, { after: 20 }),
+        );
+        return;
+      }
+
+      if (/^Señores$/i.test(linea)) {
+        poner(parrafo([run(linea, { bold: true })], AlignmentType.LEFT, { before: 80, after: 20 }));
+        return;
+      }
+      if (/S\.A\.?\s*$/i.test(linea) && linea.length < 70 && !linea.includes(",")) {
+        poner(parrafo([run(linea, { bold: true, highlight: HighlightColor.YELLOW })], AlignmentType.LEFT, { before: 40, after: 20 }));
+        return;
+      }
+      if (/^(La Ciudad|Ciudad)$/i.test(linea)) {
+        poner(parrafo([run(linea)], AlignmentType.LEFT, { before: 0, after: 160 }));
+        return;
+      }
+
+      const limite = linea.match(/^(NORTE|SUR|ESTE|OESTE):\s*(.*)$/i);
+      if (limite && !hojaContacto) {
+        const valor = limite[2].trim();
+        poner(
+          parrafo(
+            valor ? [run(`${limite[1].toUpperCase()}: `, { bold: true }), run(valor)] : [run(`${limite[1].toUpperCase()}:`, { bold: true })],
+            AlignmentType.LEFT,
+            { before: 20, after: 20 },
+          ),
         );
         return;
       }
@@ -206,14 +313,14 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
         const encabezado = `${clausula[1].replace(/\s+/g, " ").trim()}:`;
         const resto = clausula[2].trim();
         if (!resto || linea.length < 110) {
-          children.push(parrafo([run(linea.replace(/\s+:/, ":"), { bold: true })], AlignmentType.LEFT, { before: 240, after: 80 }));
+          poner(parrafo([run(linea.replace(/\s+:/, ":"), { bold: true })], AlignmentType.LEFT, { before: 160, after: 40 }));
           return;
         }
-        children.push(
+        poner(
           parrafo(
             [run(`${encabezado} `, { bold: true }), run(resto)],
             AlignmentType.JUSTIFIED,
-            { before: 200, after: 140 },
+            { before: 160, after: 40 },
           ),
         );
         return;
@@ -221,11 +328,11 @@ export async function armarDocxContrato(texto: string): Promise<Buffer> {
 
       const cita = /^[“"]/.test(linea);
       const corto = linea.length < 90 && !/[.]$/.test(linea);
-      children.push(
+      poner(
         parrafo(
           [run(linea, { italics: cita, bold: cita })],
           hojaContacto || cita ? AlignmentType.CENTER : corto ? AlignmentType.LEFT : AlignmentType.JUSTIFIED,
-          { after: hojaContacto ? 160 : corto ? 60 : 140, line: hojaContacto ? 360 : 276 },
+          { after: hojaContacto ? 60 : 40, line: 240 },
         ),
       );
     });

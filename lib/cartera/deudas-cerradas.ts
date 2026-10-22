@@ -1,6 +1,7 @@
 // Deudas de contratos CERRADOS (ex-clientes): entregaron el carro debiendo y se
 // les sigue cobrando el saldo. No tienen cuota diaria; solo la deuda pendiente.
 
+import { unstable_cache } from "next/cache";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export type DeudaCerrada = {
@@ -13,7 +14,7 @@ export type DeudaCerrada = {
   saldo: number;
 };
 
-export async function deudasCerradas(): Promise<DeudaCerrada[]> {
+async function leerDeudasCerradas(): Promise<DeudaCerrada[]> {
   const sb = createServerSupabase();
 
   const { data: contratos } = await sb
@@ -49,4 +50,13 @@ export async function deudasCerradas(): Promise<DeudaCerrada[]> {
     }))
     .filter((d) => d.saldo > 0.009)
     .sort((a, b) => b.saldo - a.saldo);
+}
+
+const deudasEnCache = unstable_cache(leerDeudasCerradas, ["deudas-cerradas-v1"], {
+  revalidate: 60 * 10,
+  tags: ["extracto-dia"],
+});
+
+export function deudasCerradas(): Promise<DeudaCerrada[]> {
+  return deudasEnCache();
 }

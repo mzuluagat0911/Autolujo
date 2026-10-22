@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { hoyPanama } from "@/lib/cartera/fecha";
 import { armarTextoContrato } from "@/lib/cartera/contrato-documento";
 import { numeroDeContrato } from "@/lib/cartera/contrato-numero";
 import { armarDocxContrato } from "@/lib/cartera/contrato-word";
@@ -139,6 +140,7 @@ export async function GET(
     anio: veh?.anio != null ? String(veh.anio) : "—",
     color: tec?.color || "—",
     numeroContrato,
+    fechaEmision: hoyPanama(),
   });
 
   const docx = await armarDocxContrato(texto);

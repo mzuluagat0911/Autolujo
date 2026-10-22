@@ -18,7 +18,6 @@ import {
 import { sincronizarSalidaReasignada } from "@/lib/cartera/salidas-aplicar";
 import { recalcularRecargo } from "@/lib/cartera/devengo";
 import type { EstadoCuentaFila } from "./types";
-import { etiquetaCargo } from "@/lib/cartera/extracto-desglose";
 import {
   conceptoSinMarca,
   esCargoConCuota,
@@ -26,10 +25,10 @@ import {
   marcarConceptoRecargo,
   marcarFechaEspecifica,
 } from "@/lib/cartera/recargo-montos";
-import { CONCEPTOS_PAGO, conceptoCanonico, cubetaDeConcepto } from "@/lib/cartera/rubros-pago";
+import { CONCEPTOS_PAGO, conceptoCanonico } from "@/lib/cartera/rubros-pago";
 import { historicoDeContrato, movimientosDelDia } from "@/lib/cartera/historico-cuenta";
 import { guardarDiaHistorico } from "@/lib/cartera/historico-editar";
-import { atribuirRecargos, lineasAsignadas } from "@/lib/cartera/recargo-cubierto";
+import { cargosPendientesActivos } from "@/lib/cartera/cargos-ajustables";
 import type { TipoObligacion } from "@/lib/cartera/types";
 
 const FRECUENCIAS_OK = new Set<FrecuenciaAcuerdo>([
@@ -172,85 +171,6 @@ async function prioridadAbonoDe(
   if (error) return null;
   const v = (data as { prioridad_abono?: string | null } | null)?.prioridad_abono;
   return v && v !== "menor" ? v : null;
-}
-
-/** Cargos editables (no renta diaria) + acuerdos del contrato. */
-function cubetaDeAsignacion(a: { tipo?: string; etiqueta?: string }): string | null {
-  const cubeta = cubetaDeConcepto(a.tipo ?? "", a.etiqueta);
-  if (cubeta === "por no pagar") return "recargo";
-  if (cubeta) return cubeta;
-  const tipo = (a.tipo ?? "").toLowerCase();
-  const et = (a.etiqueta ?? "").trim().toLowerCase();
-  if (tipo === "acuerdo") return null;
-  if (!et || et === "saldo anterior" || et.startsWith("cuota") || et.startsWith("letra")) return null;
-  return et;
-}
-
-function cubetaDeCargo(c: { tipo: string; concepto: string | null; concepto_codigo: string | null }): string | null {
-  if (c.tipo === "acuerdo") return null;
-  const codigo = (c.concepto_codigo ?? "").toUpperCase();
-  if (codigo === "PAGO_TARDE") return "recargo";
-  if (c.tipo === "multa" && /recargo|por no pagar|pago despu[eé]s/i.test(c.concepto ?? "")) return "recargo";
-  if (codigo === "AFILIACION" || c.tipo === "afiliacion") return "abono inicial";
-  const et = etiquetaCargo(c.concepto, c.concepto_codigo, c.tipo);
-  return cubetaDeConcepto("", et) ?? et.toLowerCase();
-}
-
-/** Cargos ya cubiertos por un pago no se editan acá: siguen en el libro, no en la lista. */
-function cargosPendientesActivos(
-  cargos: CargoEditable[],
-  pagos: { id?: string; fecha?: string | null; asignaciones: unknown }[],
-): CargoEditable[] {
-  const cover = new Map<string, number>();
-  for (const p of pagos) {
-    const raw = p.asignaciones as
-      | { asignaciones?: { tipo?: string; etiqueta?: string; aplicado?: number }[] }
-      | { tipo?: string; etiqueta?: string; aplicado?: number }[]
-      | null;
-    const lineas = Array.isArray(raw) ? raw : (raw?.asignaciones ?? []);
-    for (const a of lineas) {
-      const key = cubetaDeAsignacion(a);
-      if (!key) continue;
-      cover.set(key, (cover.get(key) ?? 0) + Math.max(Number(a.aplicado) || 0, 0));
-    }
-  }
-  const cruzado = atribuirRecargos(
-    cargos.map((c) => ({
-      id: c.id,
-      fecha: c.fecha ?? "",
-      monto: Number(c.monto) || 0,
-      tipo: c.tipo,
-      concepto: c.concepto,
-      conceptoCodigo: c.concepto_codigo,
-      pagoId: c.pago_id ?? null,
-    })),
-    pagos.map((p, i) => ({
-      id: p.id || `pago-${i}`,
-      fecha: p.fecha ?? "",
-      lineas: lineasAsignadas(p.asignaciones),
-    })),
-  );
-  const hidden = new Set<string>(cruzado.cubiertos);
-  const ordered = [...cargos].sort((a, b) => String(a.fecha).localeCompare(String(b.fecha)));
-  for (const c of ordered) {
-    if (c.pago_id) {
-      hidden.add(c.id);
-      continue;
-    }
-    if (c.tipo === "acuerdo") {
-      hidden.add(c.id);
-      continue;
-    }
-    const key = cubetaDeCargo(c);
-    if (!key) continue;
-    const monto = Number(c.monto) || 0;
-    const disponible = cover.get(key) ?? 0;
-    if (monto > 0.009 && disponible + 0.009 >= monto) {
-      cover.set(key, Math.round((disponible - monto) * 100) / 100);
-      hidden.add(c.id);
-    }
-  }
-  return cargos.filter((c) => !hidden.has(c.id));
 }
 
 export async function cargarLedgerEditable(contratoId: string): Promise<
