@@ -157,7 +157,7 @@ export async function resolverPago(formData: FormData): Promise<void> {
   revalidatePath("/");
 }
 
-export type ResultadoPagoManual = { ok: boolean; msg: string };
+export type ResultadoPagoManual = { ok: boolean; msg: string; pagoId?: string };
 
 /**
  * Registra un pago hecho en oficina (efectivo, datáfono o transferencia a mano).
@@ -353,6 +353,7 @@ export async function registrarPagoManual(
       : `Pago de ${money(monto)} registrado en el Carro ${numeroCanon} (${metodoLabel}).`;
   return {
     ok: true,
+    pagoId,
     msg: avisado
       ? `${base} Le avisamos al cliente por WhatsApp. ✅`
       : `${base} No se pudo avisar por WhatsApp (fuera de la ventana de 24h); el equipo puede confirmarle al pasar. ✅`,

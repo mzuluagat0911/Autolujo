@@ -174,6 +174,16 @@ export function PagoManualForm({ abiertoPorDefecto = false }: { abiertoPorDefect
             {estado && (
               <span className={`text-sm ${estado.ok ? "text-verde" : "text-rojo"}`}>{estado.msg}</span>
             )}
+            {estado?.ok && estado.pagoId && (
+              <a
+                href={`/cartera/pagos/${estado.pagoId}/recibo?imprimir=1`}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-lg bg-ink px-4 py-2 text-sm font-medium text-white hover:bg-black"
+              >
+                Imprimir recibo
+              </a>
+            )}
           </div>
         </form>
       )}

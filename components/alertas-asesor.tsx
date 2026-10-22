@@ -229,7 +229,7 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
     >
       {children}
       {toast && pathname !== (toast.href ?? `/cartera/conversaciones/${toast.id}`) && (
-        <div className="fixed bottom-4 right-4 z-50 w-[min(100%-2rem,22rem)] rounded-xl bg-surface p-4 ring-1 ring-line shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
+        <div className="fixed bottom-4 right-4 z-50 w-[min(100%-2rem,22rem)] rounded-xl bg-surface p-4 ring-1 ring-line shadow-[0_12px_40px_rgba(0,0,0,0.12)] print:hidden">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ambar">
             {toast.clase === "gps" ? "Alerta de rastreo" : "Cliente espera respuesta"}
           </p>

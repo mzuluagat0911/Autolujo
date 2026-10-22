@@ -208,6 +208,7 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
                 <th className="px-4 py-3 font-medium">Carro</th>
                 <th className="px-4 py-3 font-medium">Estado</th>
                 <th className="px-4 py-3 font-medium">Origen</th>
+                <th className="px-4 py-3 font-medium">Recibo</th>
               </tr>
             </thead>
             <tbody>
@@ -224,6 +225,11 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
                     <td className="px-4 py-3 tabular-nums">{p.numero_carro ?? "—"}</td>
                     <td className="px-4 py-3"><StatusChip tone={estadoTone(p.estado_conciliacion)}>{p.estado_conciliacion}</StatusChip></td>
                     <td className="px-4 py-3 text-xs text-muted">{p.origen ?? "—"}{p.referencia ? ` · ${p.referencia}` : ""}</td>
+                    <td className="px-4 py-3">
+                      <a href={`/cartera/pagos/${p.id}/recibo`} className="text-sm font-medium text-ink underline-offset-2 hover:underline">
+                        Imprimir
+                      </a>
+                    </td>
                   </tr>
                 );
               })}
