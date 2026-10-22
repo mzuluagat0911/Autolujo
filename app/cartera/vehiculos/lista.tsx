@@ -643,6 +643,8 @@ function PanelEditarCarro({
   const [inactivoDesde, setInactivoDesde] = useState(carro.inactivoDesde ?? "");
   const [inactivoHasta, setInactivoHasta] = useState(carro.inactivoHasta ?? "");
   const [ultimaLetra, setUltimaLetra] = useState(hoyInput());
+  const [bajaAbierta, setBajaAbierta] = useState(false);
+  const [motivoBaja, setMotivoBaja] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const enTaller = estado === "mantenimiento" || estado === "chapisteria" || estado === "colision";
   const entregado = estado === "entregado";
@@ -1073,25 +1075,12 @@ function PanelEditarCarro({
               type="button"
               disabled={pending}
               onClick={() => {
-                const quien = (carro.cliente ?? nombre).trim() || "este cliente";
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(ultimaLetra)) {
                   setErr("Indicá la fecha de la última letra.");
                   return;
                 }
-                const [anio, mes, dia] = ultimaLetra.split("-");
-                const ok = window.confirm(
-                  `Archivar el caso de ${quien}. La última letra es el ${dia}/${mes}/${anio}. Ese día queda en la deuda y después el agente cobra ese saldo, sin letra nueva. Este carro queda libre para otro cliente.`,
-                );
-                if (!ok) return;
                 setErr(null);
-                start(async () => {
-                  const r = await archivarCasoCarro(carro.id, ultimaLetra);
-                  if (!r.ok) {
-                    setErr(r.msg);
-                    return;
-                  }
-                  onSaved(r.msg);
-                });
+                setBajaAbierta(true);
               }}
               className="rounded-lg px-4 py-2.5 text-sm font-medium text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash disabled:opacity-50"
             >
@@ -1105,6 +1094,69 @@ function PanelEditarCarro({
             Hoja de vida
           </Link>
         </div>
+        {bajaAbierta && carro.contratoId && (
+          <div className="mt-4 rounded-xl bg-rojo-wash p-4 ring-1 ring-rojo/30">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-rojo">
+                Observación o motivo de la baja
+              </span>
+              <textarea
+                rows={3}
+                required
+                value={motivoBaja}
+                onChange={(e) => setMotivoBaja(e.target.value)}
+                placeholder="Por qué deja de ser cliente"
+                className="resize-y rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  const quien = (carro.cliente ?? nombre).trim() || "este cliente";
+                  const nota = motivoBaja.replace(/\s+/g, " ").trim();
+                  if (!/^\d{4}-\d{2}-\d{2}$/.test(ultimaLetra)) {
+                    setErr("Indicá la fecha de la última letra.");
+                    return;
+                  }
+                  if (nota.length < 3) {
+                    setErr("Escribí la observación o el motivo de la baja.");
+                    return;
+                  }
+                  const [anio, mes, dia] = ultimaLetra.split("-");
+                  const ok = window.confirm(
+                    `Archivar el caso de ${quien}. La última letra es el ${dia}/${mes}/${anio}. Motivo: ${nota}. Ese día queda en la deuda y después el agente cobra ese saldo, sin letra nueva. Este carro queda libre para otro cliente.`,
+                  );
+                  if (!ok) return;
+                  setErr(null);
+                  start(async () => {
+                    const r = await archivarCasoCarro(carro.id, ultimaLetra, nota);
+                    if (!r.ok) {
+                      setErr(r.msg);
+                      return;
+                    }
+                    onSaved(r.msg);
+                  });
+                }}
+                className="rounded-lg px-4 py-2.5 text-sm font-medium text-rojo ring-1 ring-rojo/30 hover:bg-white disabled:opacity-50"
+              >
+                {pending ? "Archivando…" : "Confirmar baja"}
+              </button>
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setBajaAbierta(false);
+                  setErr(null);
+                }}
+                className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        )}
       </form>
     </div>
   );

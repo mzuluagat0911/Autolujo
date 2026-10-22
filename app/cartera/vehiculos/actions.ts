@@ -363,12 +363,17 @@ export async function guardarIdentidadCarro(input: {
 export async function archivarCasoCarro(
   vehiculoId: string,
   fechaUltimaLetra: string,
+  motivoBaja: string,
 ): Promise<ResultadoFicha> {
   const id = String(vehiculoId ?? "").trim();
   const ultima = String(fechaUltimaLetra ?? "").trim();
+  const motivo = String(motivoBaja ?? "").replace(/\s+/g, " ").trim();
   if (!id) return { ok: false, msg: "Falta el carro." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ultima)) {
     return { ok: false, msg: "Indicá la fecha de la última letra." };
+  }
+  if (motivo.length < 3) {
+    return { ok: false, msg: "Escribí la observación o el motivo de la baja." };
   }
   const sb = createServerSupabase();
   const { data: veh } = await sb.from("vehiculos").select("estado, numero").eq("id", id).maybeSingle();
@@ -414,7 +419,7 @@ export async function archivarCasoCarro(
     fecha: hoyPanama(),
     tipo: "otro",
     titulo: "Caso archivado",
-    detalle: detalleCasoArchivado(ultima, contratoIds[0] ?? ""),
+    detalle: detalleCasoArchivado(ultima, contratoIds[0] ?? "", motivo),
     origen: "manual",
   });
   try {

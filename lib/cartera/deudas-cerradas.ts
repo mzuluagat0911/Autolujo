@@ -2,6 +2,7 @@
 // les sigue cobrando el saldo. No tienen cuota diaria; solo la deuda pendiente.
 
 import { unstable_cache } from "next/cache";
+import { leerCasoArchivado } from "@/lib/cartera/archivo-caso";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 export type DeudaCerrada = {
@@ -12,6 +13,7 @@ export type DeudaCerrada = {
   empresa: string | null;
   estado: string;
   saldo: number;
+  motivo: string | null;
 };
 
 async function leerDeudasCerradas(): Promise<DeudaCerrada[]> {
@@ -38,6 +40,23 @@ async function leerDeudasCerradas(): Promise<DeudaCerrada[]> {
     ((saldos ?? []) as { contrato_id: string; saldo_actual: number | null }[]).map((s) => [s.contrato_id, Number(s.saldo_actual ?? 0)]),
   );
 
+  const motivos = new Map<string, string>();
+  for (let desde = 0; ; desde += 1000) {
+    const { data: eventos } = await sb
+      .from("vehiculo_eventos")
+      .select("detalle, created_at")
+      .like("detalle", "caso-archivado:%")
+      .order("created_at", { ascending: false })
+      .range(desde, desde + 999);
+    const lote = (eventos ?? []) as { detalle: string }[];
+    for (const ev of lote) {
+      const caso = leerCasoArchivado(ev.detalle);
+      if (!caso?.motivo || motivos.has(caso.contratoId)) continue;
+      motivos.set(caso.contratoId, caso.motivo);
+    }
+    if (lote.length < 1000) break;
+  }
+
   return filas
     .map((f) => ({
       contratoId: f.id,
@@ -47,12 +66,13 @@ async function leerDeudasCerradas(): Promise<DeudaCerrada[]> {
       empresa: f.vehiculo?.empresa?.codigo ?? null,
       estado: f.estado,
       saldo: saldoMap.get(f.id) ?? 0,
+      motivo: motivos.get(f.id) ?? null,
     }))
     .filter((d) => d.saldo > 0.009)
     .sort((a, b) => b.saldo - a.saldo);
 }
 
-const deudasEnCache = unstable_cache(leerDeudasCerradas, ["deudas-cerradas-v1"], {
+const deudasEnCache = unstable_cache(leerDeudasCerradas, ["deudas-cerradas-v2"], {
   revalidate: 60 * 10,
   tags: ["extracto-dia"],
 });

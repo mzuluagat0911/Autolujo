@@ -58,6 +58,7 @@ export function DeudoresCerrados({ deudas }: { deudas: DeudaCerrada[] }) {
               <th className="px-4 py-3">Ex-cliente</th>
               <th className="px-4 py-3">Estado</th>
               <th className="px-4 py-3 text-right whitespace-nowrap">Deuda</th>
+              <th className="px-4 py-3">Motivo de la baja</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -74,6 +75,7 @@ export function DeudoresCerrados({ deudas }: { deudas: DeudaCerrada[] }) {
                 <td className="px-4 py-2.5 text-right font-semibold tabular-nums text-rojo">
                   <Money amount={d.saldo} />
                 </td>
+                <td className="max-w-[280px] px-4 py-2.5 text-ink">{d.motivo ?? "—"}</td>
                 <td className="px-4 py-2.5 text-right">
                   {d.clienteId ? (
                     <Link href={`/cartera/clientes/${d.clienteId}`} className="text-xs text-muted hover:text-ink">
@@ -85,7 +87,7 @@ export function DeudoresCerrados({ deudas }: { deudas: DeudaCerrada[] }) {
             ))}
             {filtradas.length === 0 && (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-muted">
+                <td colSpan={6} className="px-4 py-8 text-center text-muted">
                   Ninguno debe ${min} o más.
                 </td>
               </tr>

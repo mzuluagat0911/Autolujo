@@ -7,8 +7,25 @@ import { esDomingo, hoyPanama } from "./fecha";
 
 const PREFIJO = "caso-archivado:";
 
-export function detalleCasoArchivado(fecha: string, contratoId: string): string {
-  return `${PREFIJO}${fecha}:${contratoId}`;
+export function detalleCasoArchivado(fecha: string, contratoId: string, motivo = ""): string {
+  const base = `${PREFIJO}${fecha}:${contratoId}`;
+  const nota = motivo.replace(/\s+/g, " ").trim();
+  return nota ? `${base}\n${nota}` : base;
+}
+
+/** La nota va en la línea de abajo para no partir el id del contrato. */
+export function leerCasoArchivado(detalle: string): { fecha: string; contratoId: string; motivo: string } | null {
+  if (!detalle.startsWith(PREFIJO)) return null;
+  const resto = detalle.slice(PREFIJO.length);
+  const corte = resto.indexOf("\n");
+  const cabeza = (corte >= 0 ? resto.slice(0, corte) : resto).trim();
+  const motivo = corte >= 0 ? resto.slice(corte + 1).trim() : "";
+  const sep = cabeza.indexOf(":");
+  if (sep < 0) return null;
+  const fecha = cabeza.slice(0, sep);
+  const contratoId = cabeza.slice(sep + 1).trim();
+  if (!fechaValida(fecha) || !contratoId) return null;
+  return { fecha, contratoId, motivo };
 }
 
 function fechaValida(fecha: string): boolean {
@@ -85,12 +102,11 @@ export async function filasUltimaLetra(
   const vistos = new Set<string>();
   const pendientes: { contratoId: string }[] = [];
   for (const row of data as { detalle: string }[]) {
-    const resto = row.detalle.slice(PREFIJO.length);
-    const [ultima, contratoId] = resto.split(":");
-    if (!fechaValida(ultima) || !contratoId || vistos.has(contratoId)) continue;
-    vistos.add(contratoId);
-    if (fecha > ultima || yaTiene.has(contratoId)) continue;
-    pendientes.push({ contratoId });
+    const caso = leerCasoArchivado(row.detalle);
+    if (!caso || vistos.has(caso.contratoId)) continue;
+    vistos.add(caso.contratoId);
+    if (fecha > caso.fecha || yaTiene.has(caso.contratoId)) continue;
+    pendientes.push({ contratoId: caso.contratoId });
   }
   if (pendientes.length === 0) return [];
 
