@@ -104,7 +104,7 @@ export async function cargarRecibo(pagoId: string, atendio: string): Promise<Rec
     .maybeSingle();
   if (error || !data) return null;
 
-  const row = data as {
+  const row = data as unknown as {
     id: string;
     fecha: string | null;
     pagado_at: string | null;
