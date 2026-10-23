@@ -96,7 +96,7 @@ export async function notaPanapass(texto: string, wa: string | null): Promise<st
           .eq("cliente_id", cliente.id)
           .eq("estado", "activo")
           .limit(1);
-        const row = (contratos ?? [])[0] as
+        const row = (contratos ?? [])[0] as unknown as
           | {
               vehiculo: {
                 numero: string;
