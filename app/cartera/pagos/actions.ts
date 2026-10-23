@@ -15,6 +15,7 @@ import { recalcularRecargo } from "@/lib/cartera/devengo";
 import { aplicarPagoEnObligaciones, revertirPagoEnObligaciones, textoComoSeAplico } from "@/lib/cartera/aplicar-pago";
 import { avisarPagoConciliado } from "@/lib/cartera/avisar-conciliacion";
 import { hoyPanama, pagadoAtDesdeForm, horaPanama, fechaContable, sumarDias } from "@/lib/cartera/fecha";
+import { atribuirHoraConciliacion } from "@/lib/cartera/hora-pago";
 import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { sendText } from "@/lib/whatsapp/client";
 import { destinoLibre, destinoPorId, type DestinoInterior } from "@/lib/cartera/salidas-interior";
@@ -138,6 +139,7 @@ export async function resolverPago(formData: FormData): Promise<void> {
   }
   if (nuevoEstado === "conciliado") {
     try {
+      await atribuirHoraConciliacion(sb, pagoId);
       const aplicado = await aplicarPagoEnObligaciones(pagoId);
       try {
         await avisarPagoConciliado(pagoId, aplicado);

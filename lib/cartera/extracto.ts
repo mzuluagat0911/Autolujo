@@ -7,6 +7,7 @@ import { unzipSync } from "fflate";
 import { extractText, getDocumentProxy } from "unpdf";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, fechaContable, sumarDias } from "./fecha";
+import { atribuirHoraConciliacion } from "./hora-pago";
 import { recalcularRecargo } from "./devengo";
 import { aplicarPagoEnObligaciones } from "./aplicar-pago";
 import { pagoEsperaConceptoExcedente } from "./cobro-hoy";
@@ -935,6 +936,7 @@ export async function procesarExtracto(
         });
         continue;
       }
+      await atribuirHoraConciliacion(sb, pagoId);
       await registrarAuditoriaConciliacion({
         accion: estado,
         actor: cargadoPor,

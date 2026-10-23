@@ -5,7 +5,8 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
-import { hoyPanama, horaPanama, pasoCorte, fueraHorarioOperativo, fechaConDia, sumarDias, fechaContable, instantePanama, pagadoAtDesdeForm, esDomingo, esSabado } from "@/lib/cartera/fecha";
+import { hoyPanama, horaPanama, pasoCorte, fueraHorarioOperativo, fechaConDia, sumarDias, fechaContable, pagadoAtDesdeForm, esDomingo, esSabado } from "@/lib/cartera/fecha";
+import { MARCA_SIN_HORA } from "@/lib/cartera/hora-pago";
 import { estadoCuentaContrato, money, cuotasAtraso } from "@/lib/cartera/estado-cuenta";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
@@ -1328,18 +1329,6 @@ export async function procesarPagoComprobante(opts: {
       console.error("[pipeline] excedente", e);
     }
   }
-  const notas = [
-    `Lectura IA (confianza: ${comprobante.confianza}). Resolución carro: ${resolucion.estado}.`,
-    !chatVinculado
-      ? `Desde número no vinculado (${conversacion.wa_numero}).${sugerenciaCarro ? ` Sugiere ${sugerenciaCarro}.` : ""}`
-      : null,
-    veredicto.alertas.length ? `ALERTAS: ${resumirAlertas(veredicto.alertas)}` : null,
-    veredicto.alertas.some((a) => a.codigo === "hora_distinta") ? MARCA_REVISION_DOS_PAGOS : null,
-    notaExcedente,
-  ]
-    .filter(Boolean)
-    .join(" ");
-
   // Fecha/hora del comprobante (no del momento en que llegó el WhatsApp).
   const fechaLeida =
     comprobante.fecha && /^\d{4}-\d{2}-\d{2}$/.test(comprobante.fecha) ? comprobante.fecha : null;
@@ -1348,15 +1337,20 @@ export async function procesarPagoComprobante(opts: {
       ? comprobante.hora.slice(0, 5)
       : null;
   const fechaPago = fechaLeida ?? hoyPanama();
-  let pagadoAt: string;
-  if (horaLeida) {
-    pagadoAt = pagadoAtDesdeForm(fechaPago, horaLeida);
-  } else if (fechaPago === hoyPanama()) {
-    pagadoAt = new Date().toISOString();
-  } else {
-    // Sin hora legible en un día pasado: mediodía Panamá (no inventamos puntualidad).
-    pagadoAt = instantePanama(fechaPago, 12, 0).toISOString();
-  }
+  // Sin hora en el papel: se guarda la llegada y, al conciliar, se cambia por esa hora.
+  const pagadoAt = horaLeida ? pagadoAtDesdeForm(fechaPago, horaLeida) : new Date().toISOString();
+  const notas = [
+    `Lectura IA (confianza: ${comprobante.confianza}). Resolución carro: ${resolucion.estado}.`,
+    !chatVinculado
+      ? `Desde número no vinculado (${conversacion.wa_numero}).${sugerenciaCarro ? ` Sugiere ${sugerenciaCarro}.` : ""}`
+      : null,
+    veredicto.alertas.length ? `ALERTAS: ${resumirAlertas(veredicto.alertas)}` : null,
+    veredicto.alertas.some((a) => a.codigo === "hora_distinta") ? MARCA_REVISION_DOS_PAGOS : null,
+    notaExcedente,
+    horaLeida ? null : MARCA_SIN_HORA,
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   // La persona y el número salen del contrato. El chat puede tener pegada
   // a otra persona (el G30 guardaba a Edgar y el título "325").

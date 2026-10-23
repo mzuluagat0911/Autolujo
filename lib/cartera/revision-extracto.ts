@@ -2,7 +2,8 @@
 // cruce no pudo marcar solo. No inventa matches: exige un contrato.
 
 import { createServerSupabase } from "@/lib/supabase/server";
-import { instantePanama, sumarDias } from "./fecha";
+import { hoyPanama, sumarDias } from "./fecha";
+import { atribuirHoraConciliacion } from "./hora-pago";
 import { recalcularRecargo } from "./devengo";
 import { aplicarPagoEnObligaciones, borrarCargosAcuerdoDelPago } from "./aplicar-pago";
 import { avisarPagoConciliado } from "./avisar-conciliacion";
@@ -277,14 +278,16 @@ export async function aplicarMovimientoExtracto(opts: {
     if (error) return { ok: false, error: error.message };
     pagoId = pendiente.id;
     pagadoAt = pendiente.pagadoAt;
+    await atribuirHoraConciliacion(sb, pagoId);
   } else {
-    pagadoAt = instantePanama(mov.fecha, 12, 0).toISOString();
+    const ahora = new Date();
+    pagadoAt = ahora.toISOString();
     const { data: pago, error } = await sb
       .from("pagos")
       .insert({
         contrato_id: contrato.id,
         cliente_id: contrato.clienteId,
-        fecha: mov.fecha,
+        fecha: hoyPanama(ahora),
         pagado_at: pagadoAt,
         monto,
         metodo: "transferencia",
