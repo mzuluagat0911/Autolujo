@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { salir } from "@/app/ingreso/actions";
+import { escuchaAvisos, type ModuloId } from "@/lib/equipo/modulos";
 import type { SesionEquipo } from "@/lib/equipo/tipos";
 import { Brand } from "./brand";
 import {
@@ -12,7 +13,7 @@ import {
   useChatsEsperandoCount,
 } from "./alertas-asesor";
 
-type Item = { label: string; href: string; status: "active" | "pronto" };
+type Item = { label: string; href: string; status: "active" | "pronto"; modulo: ModuloId };
 type Group = { section: string | null; items: Item[] };
 
 const NAV: Group[] = [
@@ -20,59 +21,59 @@ const NAV: Group[] = [
     // Home de la plataforma: el pulso de todo el negocio.
     section: null,
     items: [
-      { label: "Resumen", href: "/admin", status: "active" },
+      { label: "Resumen", href: "/admin", status: "active", modulo: "resumen" },
     ],
   },
   {
     // MÓDULO CARTERA (el primero que construimos) — su tablero + herramientas.
     section: "Cartera",
     items: [
-      { label: "Panel de cartera", href: "/cartera", status: "active" },
-      { label: "Estado de cuenta", href: "/cartera/estados-cuenta", status: "active" },
-      { label: "Conversaciones", href: "/cartera/conversaciones", status: "active" },
-      { label: "Comprobantes", href: "/cartera/pagos", status: "active" },
-      { label: "Conciliación", href: "/cartera/extractos", status: "active" },
-      { label: "Carros", href: "/cartera/vehiculos", status: "active" },
-      { label: "Rastreo", href: "/cartera/rastreo", status: "active" },
-      { label: "Clientes", href: "/cartera/clientes", status: "active" },
-      { label: "Tarifario", href: "/cartera/tarifario", status: "active" },
-      { label: "Cobros de taller", href: "/cartera/cobros-taller", status: "active" },
+      { label: "Panel de cartera", href: "/cartera", status: "active", modulo: "cartera" },
+      { label: "Estado de cuenta", href: "/cartera/estados-cuenta", status: "active", modulo: "cartera" },
+      { label: "Conversaciones", href: "/cartera/conversaciones", status: "active", modulo: "cartera" },
+      { label: "Comprobantes", href: "/cartera/pagos", status: "active", modulo: "cartera" },
+      { label: "Conciliación", href: "/cartera/extractos", status: "active", modulo: "cartera" },
+      { label: "Carros", href: "/cartera/vehiculos", status: "active", modulo: "cartera" },
+      { label: "Rastreo", href: "/cartera/rastreo", status: "active", modulo: "cartera" },
+      { label: "Clientes", href: "/cartera/clientes", status: "active", modulo: "cartera" },
+      { label: "Tarifario", href: "/cartera/tarifario", status: "active", modulo: "cartera" },
+      { label: "Cobros de taller", href: "/cartera/cobros-taller", status: "active", modulo: "cartera" },
     ],
   },
   {
     section: "Operaciones",
     items: [
-      { label: "Panel", href: "/operaciones", status: "active" },
-      { label: "Hoja de vida", href: "/operaciones/hoja-vida", status: "active" },
-      { label: "Mantenimiento", href: "/operaciones/mantenimiento", status: "active" },
-      { label: "Chapistería", href: "/operaciones/chapisteria", status: "active" },
-      { label: "Licencias", href: "/operaciones/licencias", status: "active" },
-      { label: "Placas y revisado", href: "/operaciones/placas", status: "active" },
+      { label: "Panel", href: "/operaciones", status: "active", modulo: "operaciones" },
+      { label: "Hoja de vida", href: "/operaciones/hoja-vida", status: "active", modulo: "operaciones" },
+      { label: "Mantenimiento", href: "/operaciones/mantenimiento", status: "active", modulo: "operaciones" },
+      { label: "Chapistería", href: "/operaciones/chapisteria", status: "active", modulo: "operaciones" },
+      { label: "Licencias", href: "/operaciones/licencias", status: "active", modulo: "operaciones" },
+      { label: "Placas y revisado", href: "/operaciones/placas", status: "active", modulo: "operaciones" },
     ],
   },
   {
     section: "Configuración",
     items: [
-      { label: "Empresas", href: "/cartera/empresas", status: "active" },
-      { label: "Alcance de cartera", href: "/admin/alcance", status: "active" },
-      { label: "Usuarios y roles", href: "/usuarios", status: "active" },
-      { label: "Meta de cobranza", href: "/admin/metas", status: "active" },
+      { label: "Empresas", href: "/cartera/empresas", status: "active", modulo: "configuracion" },
+      { label: "Alcance de cartera", href: "/admin/alcance", status: "active", modulo: "configuracion" },
+      { label: "Usuarios y roles", href: "/usuarios", status: "active", modulo: "equipo" },
+      { label: "Meta de cobranza", href: "/admin/metas", status: "active", modulo: "configuracion" },
     ],
   },
   {
     section: "Comercial",
     items: [
-      { label: "Chats", href: "/comercial", status: "active" },
-      { label: "Citas", href: "/comercial/citas", status: "active" },
-      { label: "Resultados", href: "/comercial/resultados", status: "active" },
+      { label: "Chats", href: "/comercial", status: "active", modulo: "comercial" },
+      { label: "Citas", href: "/comercial/citas", status: "active", modulo: "comercial" },
+      { label: "Resultados", href: "/comercial/resultados", status: "active", modulo: "comercial" },
     ],
   },
   {
     // Los demás módulos del negocio — la visión de la plataforma.
     section: "Módulos del negocio",
     items: [
-      { label: "Seguros", href: "/seguros", status: "active" },
-      { label: "Administrativo", href: "/administrativo", status: "pronto" },
+      { label: "Seguros", href: "/seguros", status: "active", modulo: "seguros" },
+      { label: "Administrativo", href: "/administrativo", status: "pronto", modulo: "resumen" },
     ],
   },
 ];
@@ -164,8 +165,12 @@ export function Shell({
     return <div className="min-h-screen bg-paper font-brand-ui">{children}</div>;
   }
 
+  const modulos = new Set(equipo?.modulos ?? []);
+  const escucha = escuchaAvisos(equipo?.modulos ?? []);
+  const muestraAvisos = escucha.cartera || escucha.comercial;
+
   return (
-    <AlertasAsesorProvider>
+    <AlertasAsesorProvider escucha={escucha}>
     <div className="flex min-h-screen bg-paper">
       {open && (
         <button
@@ -187,12 +192,7 @@ export function Shell({
 
         <nav className="flex-1 overflow-y-auto px-4 pb-8">
           {NAV.map((group, gi) => {
-            const items =
-              equipo?.rol === "admin"
-                ? group.items
-                : equipo?.rol === "comercial"
-                  ? group.items.filter((i) => i.href === "/comercial" || i.href.startsWith("/comercial/"))
-                  : group.items.filter((i) => i.href !== "/usuarios" && i.href !== "/admin/metas");
+            const items = group.items.filter((i) => modulos.has(i.modulo));
             if (items.length === 0) return null;
 
             // Resumen y links sueltos: siempre visibles.
@@ -247,7 +247,7 @@ export function Shell({
             <p className="truncate text-[11px] font-medium tracking-wide text-white">
               {equipo?.nombre ?? "Equipo"}
             </p>
-            {equipo?.rol === "admin" && (
+            {modulos.has("equipo") && (
               <Link
                 href="/usuarios"
                 className="mt-0.5 block text-[10px] font-medium uppercase tracking-[0.18em] text-gold/90 hover:text-gold"
@@ -265,9 +265,11 @@ export function Shell({
             </form>
           </div>
           <div className="flex items-center gap-1">
-            <div className="hidden md:block">
-              <AlertasCampana variant="side" />
-            </div>
+            {muestraAvisos && (
+              <div className="hidden md:block">
+                <AlertasCampana variant="side" />
+              </div>
+            )}
             <ThemeToggle />
           </div>
         </div>
@@ -279,9 +281,11 @@ export function Shell({
             <MenuIcon />
           </button>
           <span className="ml-2 font-serif text-sm text-white">AutoLujo</span>
-          <div className="ml-auto">
-            <AlertasCampana variant="mobile" />
-          </div>
+          {muestraAvisos && (
+            <div className="ml-auto">
+              <AlertasCampana variant="mobile" />
+            </div>
+          )}
         </div>
         <main className="min-w-0 flex-1 px-5 sm:px-8 lg:px-12">{children}</main>
       </div>

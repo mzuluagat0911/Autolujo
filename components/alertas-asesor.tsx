@@ -59,10 +59,16 @@ export function useAlertasCount(): number {
 /** Solo chats que nadie ha tomado. GPS y salidas viven en la campana. */
 export function useChatsEsperandoCount(): number {
   const items = useContext(AlertasCtx)?.items ?? [];
-  return items.filter((a) => a.clase === "chat" || a.clase === "comercial" || a.clase == null).length;
+  return items.filter((a) => a.clase === "chat" || a.clase == null).length;
 }
 
-export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
+export function AlertasAsesorProvider({
+  children,
+  escucha = { cartera: true, comercial: true },
+}: {
+  children: ReactNode;
+  escucha?: { cartera: boolean; comercial: boolean };
+}) {
   const [items, setItems] = useState<AlertaEscalada[]>([]);
   const [open, setOpen] = useState(false);
   const [toast, setToast] = useState<AlertaEscalada | null>(null);
@@ -135,13 +141,14 @@ export function AlertasAsesorProvider({ children }: { children: ReactNode }) {
       }
       setItems(next);
     };
+    if (!escucha.cartera && !escucha.comercial) return;
     void tick();
     const id = window.setInterval(tick, POLL_MS);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [avisar]);
+  }, [avisar, escucha.cartera, escucha.comercial]);
 
   useEffect(() => {
     const n = items.length;

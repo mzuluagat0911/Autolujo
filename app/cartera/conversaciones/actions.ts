@@ -529,6 +529,11 @@ export type AlertaEscalada = {
 /** Chats que Marcela (o el sistema) pasó a una persona y nadie ha tomado. */
 export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
   try {
+    const { sesionEquipo } = await import("@/lib/equipo/sesion");
+    const { escuchaAvisos } = await import("@/lib/equipo/modulos");
+    const yo = await sesionEquipo();
+    const oye = escuchaAvisos(yo?.modulos ?? []);
+    if (!oye.cartera && !oye.comercial) return [];
     const sb = createServerSupabase();
     const { data, error } = await sb
       .from("conversaciones")
@@ -537,8 +542,10 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       )
       .eq("necesita_humano", true)
       .order("escalada_at", { ascending: true, nullsFirst: false });
-    if (error) throw error;
-    const chats = ((data ?? []) as unknown as {
+    if (error && oye.cartera) throw error;
+    const chats = !oye.cartera
+      ? []
+      : ((data ?? []) as unknown as {
       id: string;
       etiqueta: string | null;
       motivo_escalada: string | null;
@@ -559,21 +566,24 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       clase: "chat" as const,
       href: `/cartera/conversaciones/${c.id}`,
     }));
-    let consultaComercial = sb
-      .from("conversaciones_comercial")
-      .select("id, nombre, wa_numero, motivo, ultimo_texto, ultimo_mensaje_at, asesor_id")
-      .eq("necesita_humano", true)
-      .is("asesor_id", null)
-      .order("ultimo_mensaje_at", { ascending: true, nullsFirst: false });
-    const comercialesRes = await consultaComercial;
-    let comercialesData = comercialesRes.data as unknown as Record<string, unknown>[] | null;
-    if (comercialesRes.error && /asesor_id/i.test(comercialesRes.error.message)) {
-      const retry = await sb
+    let comercialesData: Record<string, unknown>[] | null = null;
+    if (oye.comercial) {
+      const consultaComercial = sb
         .from("conversaciones_comercial")
-        .select("id, wa_numero, motivo, ultimo_texto, ultimo_mensaje_at")
+        .select("id, nombre, wa_numero, motivo, ultimo_texto, ultimo_mensaje_at, asesor_id")
         .eq("necesita_humano", true)
+        .is("asesor_id", null)
         .order("ultimo_mensaje_at", { ascending: true, nullsFirst: false });
-      comercialesData = retry.data as unknown as Record<string, unknown>[] | null;
+      const comercialesRes = await consultaComercial;
+      comercialesData = comercialesRes.data as unknown as Record<string, unknown>[] | null;
+      if (comercialesRes.error && /asesor_id/i.test(comercialesRes.error.message)) {
+        const retry = await sb
+          .from("conversaciones_comercial")
+          .select("id, wa_numero, motivo, ultimo_texto, ultimo_mensaje_at")
+          .eq("necesita_humano", true)
+          .order("ultimo_mensaje_at", { ascending: true, nullsFirst: false });
+        comercialesData = retry.data as unknown as Record<string, unknown>[] | null;
+      }
     }
     const comerciales: AlertaEscalada[] = ((comercialesData ?? []) as unknown as {
       id: string;
@@ -625,7 +635,10 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
       clase: s.tipo.startsWith("gps_") ? ("gps" as const) : ("salida" as const),
       href: s.tipo.startsWith("gps_") ? hrefRastreo(s.titulo) : "/cartera/pagos",
     }));
-    return [...comerciales, ...extrasOps, ...extrasSalida, ...extras, ...chats];
+    return [
+      ...comerciales,
+      ...(oye.cartera ? [...extrasOps, ...extrasSalida, ...extras, ...chats] : []),
+    ];
   } catch {
     return [];
   }

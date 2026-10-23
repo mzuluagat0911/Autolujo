@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageHeader } from "@/components/kit";
+import { casaDe } from "@/lib/equipo/modulos";
 import { sesionEquipo } from "@/lib/equipo/sesion";
 import { hoyPanama, mesLargo } from "@/lib/cartera/fecha";
 import { listarMetasCobranza, mesClave } from "@/lib/cartera/metas-cobranza";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function MetasPage() {
   const yo = await sesionEquipo();
   if (!yo) redirect("/ingreso");
-  if (yo.rol !== "admin") redirect("/admin");
+  if (!yo.modulos.includes("configuracion")) redirect(casaDe(yo.modulos));
 
   const hoy = hoyPanama();
   const mesActual = hoy.slice(0, 7);

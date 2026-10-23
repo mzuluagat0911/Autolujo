@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { PageHeader, StatusChip } from "@/components/kit";
+import { casaDe } from "@/lib/equipo/modulos";
 import { sesionEquipo } from "@/lib/equipo/sesion";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { leerAlcance, etiquetaAlcance } from "@/lib/cartera/alcance";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function AlcancePage() {
   const yo = await sesionEquipo();
   if (!yo) redirect("/ingreso");
-  if (yo.rol !== "admin") redirect("/admin");
+  if (!yo.modulos.includes("configuracion")) redirect(casaDe(yo.modulos));
 
   const sb = createServerSupabase();
   const [{ data: empresas }, alcance] = await Promise.all([

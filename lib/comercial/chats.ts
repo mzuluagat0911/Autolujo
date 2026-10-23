@@ -1,5 +1,6 @@
 // Bandeja del WhatsApp de ventas. No lee ni escribe `conversaciones` de cartera.
 
+import { parseRol } from "@/lib/equipo/modulos";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { partirArchivo } from "./archivo";
 import { entregaNueva } from "./entrega";
@@ -633,9 +634,8 @@ export async function listarAsesoresComerciales(): Promise<AsesorComercial[]> {
     .from("equipo")
     .select("id, nombre, rol")
     .eq("activo", true)
-    .in("rol", ["admin", "comercial"])
     .order("nombre");
-  return (data ?? []) as AsesorComercial[];
+  return ((data ?? []) as AsesorComercial[]).filter((a) => parseRol(a.rol).includes("comercial"));
 }
 
 async function registrarEventoComercial(

@@ -9,7 +9,7 @@ export type ResultadoAlcance = { ok: boolean; msg: string };
 
 async function soloAdmin() {
   const s = await sesionEquipo();
-  if (!s || s.rol !== "admin") throw new Error("Solo el administrador.");
+  if (!s?.modulos.includes("configuracion")) throw new Error("No tienes configuración.");
   return s;
 }
 

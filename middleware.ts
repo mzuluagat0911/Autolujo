@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { casaDe, parseRol, puedeVerRuta } from "@/lib/equipo/modulos";
 
 const PUBLICAS = new Set(["/", "/privacidad", "/terminos", "/ingreso"]);
 
@@ -53,18 +54,9 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(dest);
   }
 
-  if ((path === "/usuarios" || path.startsWith("/usuarios/")) && eq.rol !== "admin") {
-    return NextResponse.redirect(new URL("/cartera", req.url));
-  }
-  if ((path === "/admin/metas" || path.startsWith("/admin/metas/")) && eq.rol !== "admin") {
-    return NextResponse.redirect(new URL("/admin", req.url));
-  }
-  if (
-    eq.rol === "comercial" &&
-    path !== "/comercial" &&
-    !path.startsWith("/comercial/")
-  ) {
-    return NextResponse.redirect(new URL("/comercial", req.url));
+  const modulos = parseRol(eq.rol);
+  if (!puedeVerRuta(modulos, path)) {
+    return NextResponse.redirect(new URL(casaDe(modulos), req.url));
   }
 
   return res;

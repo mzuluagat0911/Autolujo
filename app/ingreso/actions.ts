@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createAuthSupabase } from "@/lib/supabase/auth";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { casaDe, parseRol, puedeVerRuta } from "@/lib/equipo/modulos";
 import { hayEquipo } from "@/lib/equipo/sesion";
 
 export type ResultadoIngreso = { ok: boolean; msg: string };
@@ -26,16 +27,18 @@ export async function entrar(
   const sb = createServerSupabase();
   const { data: row } = await sb
     .from("equipo")
-    .select("activo")
+    .select("activo, rol")
     .eq("id", data.user.id)
     .maybeSingle();
-  const activo = (row as { activo?: boolean } | null)?.activo;
-  if (!activo) {
+  const fila = row as { activo?: boolean; rol?: string } | null;
+  if (!fila?.activo) {
     await auth.auth.signOut();
     return { ok: false, msg: "Esa cuenta no está activa. Pida acceso al administrador." };
   }
 
-  const dest = next.startsWith("/") && !next.startsWith("//") ? next : "/cartera";
+  const modulos = parseRol(fila.rol);
+  const pedido = next.startsWith("/") && !next.startsWith("//") ? next : "";
+  const dest = pedido && puedeVerRuta(modulos, pedido) ? pedido : casaDe(modulos);
   redirect(dest);
 }
 

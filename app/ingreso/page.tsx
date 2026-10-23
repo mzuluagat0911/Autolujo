@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createAuthSupabase } from "@/lib/supabase/auth";
+import { casaDe } from "@/lib/equipo/modulos";
 import { hayEquipo, sesionEquipo } from "@/lib/equipo/sesion";
 import { FormularioIngreso } from "./formulario";
 
@@ -11,7 +12,7 @@ export default async function IngresoPage({
   searchParams: Promise<{ next?: string }>;
 }) {
   const ya = await sesionEquipo();
-  if (ya) redirect("/cartera");
+  if (ya && ya.modulos.length > 0) redirect(casaDe(ya.modulos));
   const auth = await createAuthSupabase();
   const { data } = await auth.auth.getUser();
   if (data.user) await auth.auth.signOut();

@@ -1,13 +1,12 @@
 import { cache } from "react";
 import { createAuthSupabase } from "@/lib/supabase/auth";
 import { createServerSupabase } from "@/lib/supabase/server";
-import type { RolEquipo, SesionEquipo } from "./tipos";
+import { parseRol } from "./modulos";
+import type { SesionEquipo } from "./tipos";
 
 function fila(r: { id: string; email: string; nombre: string; rol: string; activo: boolean }): SesionEquipo | null {
   if (!r.activo) return null;
-  const rol: RolEquipo =
-    r.rol === "admin" ? "admin" : r.rol === "comercial" ? "comercial" : "cartera";
-  return { id: r.id, email: r.email, nombre: r.nombre, rol };
+  return { id: r.id, email: r.email, nombre: r.nombre, modulos: parseRol(r.rol) };
 }
 
 export const sesionEquipo = cache(async function sesionEquipo(): Promise<SesionEquipo | null> {
