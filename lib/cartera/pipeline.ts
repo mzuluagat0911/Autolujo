@@ -251,6 +251,19 @@ export async function resumenContrato(contratoId: string): Promise<string | null
   }
 
   const pagos = await pagosRecientesContrato(contratoId, 5);
+  const { data: fichaPanapass } = await sb
+    .from("contratos")
+    .select("vehiculo:vehiculos(panapass, placa)")
+    .eq("id", contratoId)
+    .maybeSingle();
+  const vehPanapass = (fichaPanapass as { vehiculo?: { panapass?: string | null; placa?: string | null } | { panapass?: string | null; placa?: string | null }[] | null } | null)
+    ?.vehiculo;
+  const fichaCarro = Array.isArray(vehPanapass) ? vehPanapass[0] : vehPanapass;
+  const numeroPanapass = String(fichaCarro?.panapass ?? "").trim();
+  const placaPanapass = String(fichaCarro?.placa ?? "").trim();
+  const lineaPanapass = numeroPanapass
+    ? `- Panapass de ESTE carro${placaPanapass ? ` (placa ${placaPanapass})` : ""}: ${numeroPanapass}. Si pregunta el número, responde ese, tal cual y sin signo $. No es un cobro.`
+    : `- Panapass de ESTE carro: NO ESTÁ CARGADO. Si lo pregunta, no inventes el número.`;
   const tarifaPlenaDia = est.letra + est.penalidad;
   const letraEnDomingo = Boolean(est.cobraDomingo) && !(Number(est.cuotaDomingo) > 0.009);
   const domingos = letraEnDomingo
@@ -279,6 +292,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     `DATOS EXACTOS del contrato de ESTE cliente (usa SOLO estos números; nunca inventes ni estimes otros):`,
     `- Cliente: ${est.clienteNombre}. Tratamiento: ${est.clienteTratamiento || est.clienteNombre.split(" ")[0] || "cliente"} (usa Sr./Sra. SOLO si viene en este tratamiento; si es solo el nombre, no inventes género).`,
     `- Carro: ${est.vehiculoNumero}`,
+    lineaPanapass,
     `- Cuota diaria pagando PUNTUAL (antes de las 7:00 p.m.): ${m(est.letra)}.`,
     `- Si paga después de las 7:00 p.m. se le cobra un recargo de ${m(est.penalidad)} ESE día. Nunca lo llames descuento.`,
     `- Días atrasados sin pagar quedan en la letra más el recargo (${m(tarifaPlenaDia)} por día, no solo ${m(est.letra)}).`,

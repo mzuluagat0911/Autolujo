@@ -65,6 +65,7 @@ export function destinarCharla(
   if (!norm) return { destinar: "silencio" }; // solo emoji / signos
 
   if (INTENTO.test(norm) || INTENTO.test(crudo)) return { destinar: "agente" };
+  if (/pana\s*-?\s*pass/i.test(norm) || /pana\s*-?\s*pass/i.test(crudo)) return { destinar: "agente" };
 
   if (norm.length > 48) return { destinar: "agente" };
 

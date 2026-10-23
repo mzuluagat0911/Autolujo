@@ -35,6 +35,7 @@ import {
 } from "@/lib/comercial/cita-pedido";
 import { esDocumentoRequisito, guardarFotoComercial } from "@/lib/comercial/documento";
 import { textoInventario } from "@/lib/comercial/inventario";
+import { notaPanapass } from "@/lib/comercial/panapass-consulta";
 import { sedePorId, textoSedes } from "@/lib/comercial/sedes";
 import { aplicarPedidoCita, citaAbierta } from "@/lib/comercial/citas";
 import { enviarVideoSede, pideUbicacion, sedesParaVideo } from "@/lib/comercial/video-sede";
@@ -316,7 +317,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       await entregarRespuestaComercial(from, guardado.conversacionId, tarjeta, decision.envia);
       return;
     }
-    const base = await contextoParaLucia(guardado.conversacionId, msg);
+    const base = await contextoParaLucia(guardado.conversacionId, msg, texto);
     const contexto = nota ? `${base}\n${nota}` : base;
     const r = await responderComercial({
       historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
@@ -422,7 +423,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         : [{ direccion: "in" as const, texto: texto.trim() }];
       const r = await responderComercial({
         historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
-        contexto: await contextoParaLucia(guardado.conversacionId, msg),
+        contexto: await contextoParaLucia(guardado.conversacionId, msg, texto),
       });
       await entregarRespuestaComercial(
         from,
@@ -601,10 +602,12 @@ function datosCampana(msg: WhatsAppMessage): {
 }
 
 /** Inventario, sedes, campaña y cita abierta. Lucía no inventa lo que no está aquí. */
-async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMessage): Promise<string> {
+async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMessage, dicho = ""): Promise<string> {
   const campana = datosCampana(msg);
   const hoy = hoyPanama();
   const partes = [`Hoy en Panamá: ${fechaConDia(hoy)} (${hoy}).`, textoSedes(), await textoInventario()];
+  const panapass = await notaPanapass(dicho || msg.text?.body || "", msg.from ?? null);
+  if (panapass) partes.push(panapass);
   if (campana.anuncio || campana.campanaId) {
     partes.push(
       "LEAD DE CAMPAÑA DE META. Llegó tocando este anuncio.",
