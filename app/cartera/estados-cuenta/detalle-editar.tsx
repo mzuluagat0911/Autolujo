@@ -17,6 +17,13 @@ import {
   type DestinoInterior,
 } from "@/lib/cartera/salidas-interior";
 import {
+  descripcionExtension,
+  esExtension,
+  motivoDeExtension,
+  MOTIVOS_EXTENSION,
+  type MotivoExtension,
+} from "@/lib/cartera/extension";
+import {
   cargarLedgerEditable,
   guardarLedgerEditable,
   type AcuerdoDraft,
@@ -257,6 +264,26 @@ export function EditorLedger({
         id: null,
         tipo: "otro",
         descripcion: "Acuerdo de pago",
+        saldo: 0,
+        cuota_diaria: 5,
+        cuota_domingo: 0,
+        monto_total: 0,
+        activo: true,
+        frecuencia: "dia",
+        fecha_especifica: null,
+        borrar: false,
+      },
+      ...prev,
+    ]);
+  }
+
+  function addExtension() {
+    setAcuerdos((prev) => [
+      {
+        key: uid(),
+        id: null,
+        tipo: "otro",
+        descripcion: descripcionExtension("seguro_menor"),
         saldo: 0,
         cuota_diaria: 5,
         cuota_domingo: 0,
@@ -614,19 +641,27 @@ export function EditorLedger({
       <section>
         <div className="mb-2 flex items-center justify-between gap-2">
           <h3 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-            Acuerdos de pago
+            Extensión y acuerdos
           </h3>
-          <button
-            type="button"
-            onClick={addAcuerdo}
-            className="rounded-lg px-2 py-1 text-[11px] font-medium text-ink ring-1 ring-line hover:bg-surface-2"
-          >
-            + Acuerdo
-          </button>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={addExtension}
+              className="rounded-lg px-2 py-1 text-[11px] font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+            >
+              + Extensión
+            </button>
+            <button
+              type="button"
+              onClick={addAcuerdo}
+              className="rounded-lg px-2 py-1 text-[11px] font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+            >
+              + Acuerdo
+            </button>
+          </div>
         </div>
         <p className="mb-3 text-[11px] text-muted">
-          Podés combinar varios (doble/triple): p. ej. un acuerdo de $150 con $5/día + $30 domingo, u otro
-          quincenal aparte. Cada fila tiene su saldo; el cobro del día suma lo que toque.
+          La extensión lleva motivo (seguro menor de edad, área geográfica, beneficiario adicional o piratería) y se cobra igual que un acuerdo: saldo, cada cuánto y cuota. Entra a la cola, cuando los planes de adelante llegan a cero. Podés combinar varios. Cada fila tiene su saldo.
         </p>
         {acuerdosVivos.length === 0 ? (
           <p className="py-3 text-sm text-muted">Sin acuerdos activos.</p>
@@ -637,21 +672,46 @@ export function EditorLedger({
                 <li key={a.key} className="rounded-xl bg-surface-2/60 p-3 ring-1 ring-line">
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <label className="flex flex-col gap-1 sm:col-span-2">
-                      <span className="text-[11px] text-muted">Descripción</span>
-                      <input
-                        className={INPUT}
-                        value={a.descripcion}
-                        onChange={(e) =>
-                          setAcuerdos((prev) =>
-                            prev.map((x) =>
-                              x.key === a.key ? { ...x, descripcion: e.target.value } : x,
-                            ),
-                          )
-                        }
-                      />
+                      <span className="text-[11px] text-muted">
+                        {esExtension(a.descripcion) ? "Motivo" : "Descripción"}
+                      </span>
+                      {esExtension(a.descripcion) ? (
+                        <select
+                          className={SELECT}
+                          value={motivoDeExtension(a.descripcion) ?? "seguro_menor"}
+                          onChange={(e) => {
+                            const motivo = e.target.value as MotivoExtension;
+                            setAcuerdos((prev) =>
+                              prev.map((x) =>
+                                x.key === a.key ? { ...x, descripcion: descripcionExtension(motivo) } : x,
+                              ),
+                            );
+                          }}
+                        >
+                          {MOTIVOS_EXTENSION.map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          className={INPUT}
+                          value={a.descripcion}
+                          onChange={(e) =>
+                            setAcuerdos((prev) =>
+                              prev.map((x) =>
+                                x.key === a.key ? { ...x, descripcion: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        />
+                      )}
                     </label>
                     <label className="flex flex-col gap-1">
-                      <span className="text-[11px] text-muted">Saldo del acuerdo</span>
+                      <span className="text-[11px] text-muted">
+                        {esExtension(a.descripcion) ? "Saldo" : "Saldo del acuerdo"}
+                      </span>
                       <input
                         type="number"
                         step="0.01"

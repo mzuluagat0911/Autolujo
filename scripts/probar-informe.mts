@@ -8,6 +8,7 @@ import {
   pagoDe,
   partirPago,
   totalDeudaDe,
+  tramosDeEventos,
   type CargoInforme,
   type CarroInforme,
   type PagoInforme,
@@ -111,4 +112,68 @@ assert.equal(fechaInformeCartera("2026-10-23T17:00:00.000Z", "2026-10-23"), "202
 assert.equal(fechaInformeCartera("2026-10-22T20:00:00.000Z", "2026-10-22"), "2026-10-22");
 assert.equal(fechaInformeCartera(null, "2026-10-23"), "2026-10-23");
 
-console.log("Informe mensual: pestañas, pago y deuda OK");
+const adelantado: CarroInforme = {
+  id: "c2",
+  numero: "69",
+  empresa: "AUTOLUJO",
+  conductor: "ANA",
+  desdeContrato: "2026-10-01",
+};
+const letrasAdelanto: CargoInforme[] = [1, 2, 3, 4].map((d) => ({
+  contratoId: "c2",
+  fecha: `2026-10-0${d}`,
+  tipo: "renta",
+  concepto: "Cuota diaria",
+  codigo: null,
+  monto: 30,
+}));
+const pagoAdelanto: PagoInforme = {
+  contratoId: "c2",
+  fecha: "2026-10-01",
+  monto: 90,
+  metodo: "transferencia",
+  notas: "lectura ia del comprobante",
+  rubro: null,
+  asignaciones: [{ tipo: "cuenta_diaria", aplicado: 90 }],
+};
+const diasAdelanto = filasDelInforme([adelantado], letrasAdelanto, [pagoAdelanto], "2026-10-01", "2026-10-04");
+assert.deepEqual(diasAdelanto.map((f) => f.detalle), ["", "AL DIA", "AL DIA", "NO PAGO"]);
+
+const enTaller: CarroInforme = {
+  ...adelantado,
+  id: "c3",
+  estadoVehiculo: "chapisteria",
+  tramos: tramosDeEventos(
+    [{ fecha: "2026-10-02", detalle: "pausa-productiva:chapisteria", created_at: "2026-10-02T12:00:00Z" }],
+    "chapisteria",
+    "c3",
+  ),
+};
+const diasTaller = filasDelInforme(
+  [enTaller],
+  letrasAdelanto.map((c) => ({ ...c, contratoId: "c3" })),
+  [{ ...pagoAdelanto, contratoId: "c3" }],
+  "2026-10-01",
+  "2026-10-04",
+);
+assert.deepEqual(diasTaller.map((f) => f.detalle), ["", "CHAPISTERIA", "CHAPISTERIA", "CHAPISTERIA"]);
+
+const porEntregar: CarroInforme = {
+  id: "c4",
+  numero: "56",
+  empresa: "AUTOLUJO",
+  conductor: "LUIS",
+  desdeContrato: "2026-10-01",
+  estadoVehiculo: "por_entregar",
+  tramos: tramosDeEventos([], "por_entregar", "c4"),
+};
+const diasEntrega = filasDelInforme(
+  [porEntregar],
+  [{ contratoId: "c4", fecha: "2026-10-01", tipo: "renta", concepto: "Cuota diaria", codigo: null, monto: 25 }],
+  [],
+  "2026-10-01",
+  "2026-10-02",
+);
+assert.deepEqual(diasEntrega.map((f) => f.detalle), ["NO PAGO", "X ENTREGAR"]);
+
+console.log("Informe mensual: pestañas, pago, deuda y detalle OK");

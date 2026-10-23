@@ -14,6 +14,8 @@ import { referenciasPersonales } from "@/lib/cartera/referencias-alta";
 import { numeroDeContrato } from "@/lib/cartera/contrato-numero";
 import { enviarBienvenidaCartera } from "@/lib/cartera/bienvenida-cartera";
 import { registrarEntrega } from "@/lib/cartera/sucursal";
+import { descripcionExtension, motivoExtensionDe } from "@/lib/cartera/extension";
+import type { FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
 
 const PANAPASS_ENTRADA = 20;
 const CUOTA_DOMINGO_DEFAULT = 30;
@@ -298,6 +300,26 @@ export async function createClienteConContrato(
     };
   }
 
+  const extensionMotivo = motivoExtensionDe(formData.get("extension_motivo"));
+  const extensionSaldo = Math.max(num(formData.get("extension_saldo")) ?? 0, 0);
+  const extensionCuota = Math.max(num(formData.get("extension_cuota")) ?? 0, 0);
+  const extensionDomingo = Math.max(num(formData.get("extension_cuota_domingo")) ?? 0, 0);
+  const frecuencias = new Set(["dia", "domingo", "semana", "quincena", "mes", "fecha"]);
+  const extensionFreqRaw = String(formData.get("extension_frecuencia") ?? "dia").trim();
+  const extensionFreq: FrecuenciaAcuerdo = frecuencias.has(extensionFreqRaw)
+    ? (extensionFreqRaw as FrecuenciaAcuerdo)
+    : "dia";
+  const extensionEmpieza = str(formData.get("extension_empieza"));
+  if (extensionMotivo && extensionSaldo <= 0.009) {
+    return { ok: false, error: "Si hay extensión, indicá el saldo." };
+  }
+  if (!extensionMotivo && extensionSaldo > 0.009) {
+    return { ok: false, error: "Elegí el motivo de la extensión." };
+  }
+  if (extensionMotivo && extensionFreq !== "fecha" && extensionCuota <= 0.009) {
+    return { ok: false, error: "Indicá la cuota de la extensión." };
+  }
+
   if (panapassPagado + 0.009 < panapassCargo) {
     return {
       ok: false,
@@ -501,6 +523,29 @@ export async function createClienteConContrato(
       .select("id")
       .single();
     acuerdoId = (ac as { id: string } | null)?.id ?? null;
+  }
+
+  if (extensionMotivo && extensionSaldo > 0.009) {
+    const fila = {
+      contrato_id: contratoId,
+      tipo: "otro" as const,
+      descripcion: descripcionExtension(extensionMotivo),
+      monto_total: extensionSaldo,
+      saldo: extensionSaldo,
+      cuota_diaria: extensionCuota,
+      cuota_domingo: extensionFreq === "dia" ? extensionDomingo : 0,
+      frecuencia: extensionFreq,
+      fecha_especifica: extensionEmpieza,
+      activo: true,
+    };
+    const ins = await sb.from("acuerdos").insert(fila);
+    if (ins.error && /frecuencia|fecha_especifica/i.test(ins.error.message)) {
+      const { frecuencia: _f, fecha_especifica: _fe, ...legacy } = fila;
+      const retry = await sb.from("acuerdos").insert(legacy);
+      if (retry.error) console.error("[extension]", retry.error.message);
+    } else if (ins.error) {
+      console.error("[extension]", ins.error.message);
+    }
   }
 
   // --- Un solo pago con desglose ---

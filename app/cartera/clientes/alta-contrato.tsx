@@ -2,6 +2,15 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { Field, Select, Textarea } from "@/components/form";
+import {
+  DIAS_SEMANA,
+  FRECUENCIAS_ACUERDO,
+  anclaPorDefecto,
+  diaSemanaDeAncla,
+  fechaConDiaSemana,
+  type FrecuenciaAcuerdo,
+} from "@/lib/cartera/acuerdo";
+import { MOTIVOS_EXTENSION, type MotivoExtension } from "@/lib/cartera/extension";
 import { PROVINCIAS_PANAMA } from "@/lib/cartera/provincias-panama";
 import { REFERENCIAS_MAX, REFERENCIAS_MIN } from "@/lib/cartera/referencias-alta";
 import type { CarroLibre } from "./actions";
@@ -141,6 +150,12 @@ export function AltaContratoForm({
   const [domingosPagado, setDomingosPagado] = useState(String(DIAS_DOMINGO * CUOTA_DOMINGO));
   const [prepagoLetras, setPrepagoLetras] = useState("0");
   const [prepagoDomingos, setPrepagoDomingos] = useState("0");
+  const [extMotivo, setExtMotivo] = useState<"" | MotivoExtension>("");
+  const [extSaldo, setExtSaldo] = useState("0");
+  const [extFrecuencia, setExtFrecuencia] = useState<FrecuenciaAcuerdo>("dia");
+  const [extCuota, setExtCuota] = useState("5");
+  const [extDomingo, setExtDomingo] = useState("0");
+  const [extEmpieza, setExtEmpieza] = useState("");
   const [letra, setLetra] = useState("");
   const [vehiculoId, setVehiculoId] = useState("");
   const [ficha, setFicha] = useState({
@@ -450,6 +465,148 @@ export function AltaContratoForm({
         )}
         {restante <= 0.009 && abonoP > 0 && (
           <p className="text-sm text-verde sm:col-span-2">Abono cubierto completo hoy.</p>
+        )}
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2 lg:grid-cols-3">
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted sm:col-span-2 lg:col-span-3">
+          Extensión
+        </h3>
+        <p className="text-sm text-muted sm:col-span-2 lg:col-span-3">
+          Opcional. El saldo se cobra con la cuota y la frecuencia, igual que un acuerdo. Entra a la cola: se cobra cuando los planes de adelante llegan a cero.
+        </p>
+        <Select
+          label="Motivo"
+          name="extension_motivo"
+          value={extMotivo}
+          onChange={(e) => setExtMotivo(e.target.value as "" | MotivoExtension)}
+          options={[
+            { value: "", label: "Sin extensión" },
+            ...MOTIVOS_EXTENSION.map((m) => ({ value: m.id, label: m.label })),
+          ]}
+        />
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+            Saldo
+          </span>
+          <input
+            name="extension_saldo"
+            type="number"
+            step="0.01"
+            min="0"
+            value={extSaldo}
+            onChange={(e) => setExtSaldo(e.target.value)}
+            className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+            Cada
+          </span>
+          <select
+            name="extension_frecuencia"
+            value={extFrecuencia}
+            onChange={(e) => {
+              const frecuencia = e.target.value as FrecuenciaAcuerdo;
+              setExtFrecuencia(frecuencia);
+              if (frecuencia === "semana") setExtEmpieza(anclaPorDefecto("semana", fechaHoy) ?? fechaHoy);
+              else if (frecuencia !== "dia" && frecuencia !== "domingo" && !extEmpieza) setExtEmpieza(fechaHoy);
+            }}
+            className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+          >
+            {FRECUENCIAS_ACUERDO.map((f) => (
+              <option key={f.value} value={f.value}>
+                {f.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+            {extFrecuencia === "domingo"
+              ? "Cuota domingo"
+              : extFrecuencia === "semana"
+                ? "Cuota / semana"
+                : extFrecuencia === "quincena"
+                  ? "Cuota / quincena"
+                  : extFrecuencia === "mes"
+                    ? "Cuota / mes"
+                    : extFrecuencia === "fecha"
+                      ? "Monto (fecha)"
+                      : "Cuota / día"}
+          </span>
+          <input
+            name="extension_cuota"
+            type="number"
+            step="0.01"
+            min="0"
+            value={extCuota}
+            onChange={(e) => setExtCuota(e.target.value)}
+            className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+          />
+        </label>
+        {(extFrecuencia === "dia" || extFrecuencia === "domingo") && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              Empieza
+            </span>
+            <input
+              name="extension_empieza"
+              type="date"
+              value={extEmpieza}
+              onChange={(e) => setExtEmpieza(e.target.value)}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+            />
+          </label>
+        )}
+        {extFrecuencia === "dia" && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              Los domingos
+            </span>
+            <input
+              name="extension_cuota_domingo"
+              type="number"
+              step="0.01"
+              min="0"
+              value={extDomingo}
+              onChange={(e) => setExtDomingo(e.target.value)}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+            />
+          </label>
+        )}
+        {extFrecuencia === "semana" && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              Día de la semana
+            </span>
+            <select
+              value={diaSemanaDeAncla(extEmpieza)}
+              onChange={(e) => setExtEmpieza(fechaConDiaSemana(fechaHoy, Number(e.target.value)))}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+            >
+              {DIAS_SEMANA.map((d) => (
+                <option key={d.value} value={d.value}>
+                  {d.label}
+                </option>
+              ))}
+            </select>
+            <input type="hidden" name="extension_empieza" value={extEmpieza} />
+          </label>
+        )}
+        {(extFrecuencia === "quincena" || extFrecuencia === "mes" || extFrecuencia === "fecha") && (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              {extFrecuencia === "fecha" ? "Fecha de cobro" : "Fecha ancla"}
+            </span>
+            <input
+              name="extension_empieza"
+              type="date"
+              value={extEmpieza}
+              onChange={(e) => setExtEmpieza(e.target.value)}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+            />
+          </label>
         )}
       </section>
 

@@ -40,6 +40,14 @@ export type FilaInforme = {
   deudas: MontosInforme;
 };
 
+export type TramoInforme = {
+  /** Primer día con esta etiqueta. */
+  desde: string;
+  /** Primer día en que ya no aplica. Vacío = sigue. */
+  hasta: string | null;
+  etiqueta: string;
+};
+
 export type CarroInforme = {
   id: string;
   numero: string;
@@ -47,6 +55,10 @@ export type CarroInforme = {
   conductor: string;
   /** Día en que empieza el contrato. Antes de esto no hay fila. */
   desdeContrato: string;
+  vehiculoId?: string;
+  estadoVehiculo?: string;
+  /** Chapistería, mecánica, ex cliente y el resto, por fechas. */
+  tramos?: TramoInforme[];
 };
 
 export type CargoInforme = {
@@ -199,12 +211,135 @@ export function partirPago(pago: PagoInforme): { general: number; efect: number;
   return { general: efect ? 0 : monto, efect: efect ? monto : 0, pagos };
 }
 
-function detalleDe(notas: string[], letra: number, pago: number): string {
-  const cortas = notas
-    .map((n) => n.replace(/\s+/g, " ").trim())
-    .filter((n) => n && n.length <= 80 && !/lectura ia/i.test(n));
-  if (cortas.length) return cortas.slice(0, 2).join(" · ");
-  if (letra > 0.009 && pago <= 0.009) return "NO PAGO";
+function etiquetaEstado(estado: string | null | undefined): string | null {
+  switch ((estado ?? "").trim()) {
+    case "chapisteria":
+      return "CHAPISTERIA";
+    case "mantenimiento":
+      return "MECANICA";
+    case "colision":
+      return "COLISION";
+    case "por_entregar":
+      return "X ENTREGAR";
+    case "improductivo":
+      return "OTROS";
+    default:
+      return null;
+  }
+}
+
+const ETIQUETA_PAUSA: Record<string, string> = {
+  chapisteria: "CHAPISTERIA",
+  mantenimiento: "MECANICA",
+  colision: "COLISION",
+};
+
+function fechaTramo(v: string | undefined): v is string {
+  return Boolean(v && /^\d{4}-\d{2}-\d{2}$/.test(v));
+}
+
+/**
+ * Tramos de detalle a partir de los eventos del carro.
+ * Taller y improductivo salen de la pausa. Ex cliente, del archivo del caso.
+ * Por entregar no tiene fecha de ingreso: cubre el rango y cede el día si hay otra etiqueta.
+ */
+export function tramosDeEventos(
+  eventos: { fecha: string; detalle: string; created_at?: string }[],
+  estadoActual: string | null | undefined,
+  contratoId: string,
+): TramoInforme[] {
+  const orden = [...eventos].sort((a, b) => (a.created_at ?? a.fecha).localeCompare(b.created_at ?? b.fecha));
+  const tramos: TramoInforme[] = [];
+  let abierto: TramoInforme | null = null;
+  const cerrar = (hasta: string | null) => {
+    if (!abierto) return;
+    tramos.push({ ...abierto, hasta: abierto.hasta ?? hasta });
+    abierto = null;
+  };
+  for (const ev of orden) {
+    const det = String(ev.detalle ?? "").split("\n")[0].trim();
+    const dia = String(ev.fecha ?? "").slice(0, 10);
+    if (det === "retorno-productivo") {
+      cerrar(fechaTramo(dia) ? dia : null);
+      continue;
+    }
+    if (det === "inactivo-anulado") {
+      if (abierto?.etiqueta === "OTROS") abierto = null;
+      else cerrar(fechaTramo(dia) ? dia : null);
+      continue;
+    }
+    if (det.startsWith("pausa-productiva:")) {
+      const [, estado, hasta] = det.split(":");
+      const etiqueta = ETIQUETA_PAUSA[estado];
+      if (!etiqueta || !fechaTramo(dia)) continue;
+      cerrar(dia);
+      abierto = { desde: dia, hasta: fechaTramo(hasta) ? hasta : null, etiqueta };
+      continue;
+    }
+    if (det.startsWith("inactivo:")) {
+      const [desde, hasta] = det.slice("inactivo:".length).split(":");
+      if (!fechaTramo(desde)) continue;
+      cerrar(desde);
+      abierto = { desde, hasta: fechaTramo(hasta) ? hasta : null, etiqueta: "OTROS" };
+      continue;
+    }
+    if (det.startsWith("caso-archivado:")) {
+      const [fecha, id] = det.slice("caso-archivado:".length).split(":");
+      if (!fechaTramo(fecha) || id !== contratoId) continue;
+      tramos.push({ desde: fecha, hasta: null, etiqueta: "EX-CLIENTES" });
+    }
+  }
+  if (abierto) {
+    const productivo = estadoActual === "activo" || estadoActual === "entregado" || estadoActual === "por_entregar";
+    if (!(productivo && !abierto.hasta)) tramos.push(abierto);
+  }
+  if (estadoActual === "por_entregar") {
+    tramos.push({ desde: "0001-01-01", hasta: null, etiqueta: "X ENTREGAR" });
+  }
+  return tramos;
+}
+
+/** La etiqueta del día. Ex cliente gana sobre taller o por entregar. */
+export function etiquetaDelDia(carro: CarroInforme, fecha: string): string | null {
+  let situacion: { desde: string; etiqueta: string } | null = null;
+  let exCliente = false;
+  for (const t of carro.tramos ?? []) {
+    if (fecha < t.desde) continue;
+    if (t.hasta && fecha >= t.hasta) continue;
+    if (t.etiqueta === "EX-CLIENTES") {
+      exCliente = true;
+      continue;
+    }
+    if (!situacion || t.desde >= situacion.desde) situacion = { desde: t.desde, etiqueta: t.etiqueta };
+  }
+  if (exCliente) return "EX-CLIENTES";
+  return situacion?.etiqueta ?? null;
+}
+
+/**
+ * Detalle del día, con las mismas etiquetas del informe de contabilidad.
+ * Un pago adelantado que ya cubre la letra deja AL DIA. NO PAGO queda
+ * solo cuando esa letra sigue debiendo y ese día no entró a cuota.
+ */
+export function detalleInforme(
+  carro: CarroInforme,
+  fecha: string,
+  letra: number,
+  pagoCuota: number,
+  saldoCuota: number,
+): string {
+  const pagoLetra = pagoCuota > 0.009;
+  const hayLetra = letra > 0.009;
+  const etiqueta = etiquetaDelDia(carro, fecha);
+  // Por entregar no trae fecha de ingreso. Si ese día igual hubo letra, manda la letra.
+  if (etiqueta && !(etiqueta === "X ENTREGAR" && hayLetra)) return etiqueta;
+  if (hayLetra && !pagoLetra) return saldoCuota <= 0.009 ? "AL DIA" : "NO PAGO";
+  if (!hayLetra && !pagoLetra) {
+    const est = etiquetaEstado(carro.estadoVehiculo);
+    if (!est) return "";
+    if ((carro.tramos ?? []).some((t) => t.etiqueta === est)) return "";
+    return est;
+  }
   return "";
 }
 
@@ -260,13 +395,13 @@ export function filasDelInforme(
 
     let dia = inicio;
     let primero = true;
+    let saldoCuota = apertura.Cuota;
     while (dia <= hasta) {
       const deudas = montosVacios();
       const pagosDia = montosVacios();
       let letra = 0;
       let general = 0;
       let efect = 0;
-      const notas: string[] = [];
       if (primero) {
         for (const concepto of CONCEPTOS) deudas[concepto] = apertura[concepto];
         primero = false;
@@ -283,8 +418,8 @@ export function filasDelInforme(
         general = r2(general + parte.general);
         efect = r2(efect + parte.efect);
         for (const concepto of CONCEPTOS) pagosDia[concepto] = r2(pagosDia[concepto] + parte.pagos[concepto]);
-        if (p.notas) notas.push(p.notas);
       }
+      saldoCuota = r2(saldoCuota + letra - pagosDia.Cuota);
       filas.push({
         fecha: dia,
         carro: carro.numero.trim(),
@@ -293,7 +428,7 @@ export function filasDelInforme(
         letra: r2(letra),
         general: r2(general),
         efect: r2(efect),
-        detalle: detalleDe(notas, letra, general + efect),
+        detalle: detalleInforme(carro, dia, letra, pagosDia.Cuota, saldoCuota),
         pagos: pagosDia,
         deudas,
       });

@@ -300,7 +300,7 @@ export function EstadosTabla({
               Fechas del informe
             </h2>
             <p className="mt-2 text-sm text-muted">
-              Entran los días entre las dos fechas. El primer día trae el saldo que ya venía. El día cierra a las 12 del mediodía: un pago de antes de esa hora queda en el día anterior.
+              Entran los días entre las dos fechas, también los carros improductivos, en taller y por entregar. El primer día trae el saldo que ya venía. El día cierra a las 12 del mediodía: un pago de antes de esa hora queda en el día anterior.
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <Field

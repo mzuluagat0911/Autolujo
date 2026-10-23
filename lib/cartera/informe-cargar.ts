@@ -6,6 +6,7 @@ import {
   fechaInformeCartera,
   filasDelInforme,
   metaDelInforme,
+  tramosDeEventos,
   type CargoInforme,
   type CarroInforme,
   type FilaInforme,
@@ -58,7 +59,7 @@ async function contratosActivos(sb: Sb): Promise<CarroInforme[]> {
     sb
       .from("contratos")
       .select(
-        "id, fecha_inicio, vehiculo:vehiculos(numero, empresa:empresas(codigo)), cliente:clientes(nombre)",
+        "id, fecha_inicio, vehiculo:vehiculos(id, numero, estado, empresa:empresas(codigo)), cliente:clientes(nombre)",
       )
       .eq("estado", "activo")
       .range(a, b),
@@ -66,8 +67,53 @@ async function contratosActivos(sb: Sb): Promise<CarroInforme[]> {
   return filas.map(carroDe).filter((c): c is CarroInforme => Boolean(c));
 }
 
+// Improductivo, taller y por entregar. Si el contrato sigue activo ya entra
+// arriba. Si no, se toma el más reciente para que el saldo igual salga.
+const ESTADOS_IMPRODUCTIVOS = ["improductivo", "por_entregar", "chapisteria", "mantenimiento"] as const;
+
+const SEL_CONTRATO =
+  "id, estado, fecha_inicio, vehiculo_id, vehiculo:vehiculos(id, numero, estado, empresa:empresas(codigo)), cliente:clientes(nombre)";
+
+async function contratosImproductivos(sb: Sb): Promise<CarroInforme[]> {
+  const vehs = await paginas<{ id: string }>((a, b) =>
+    sb.from("vehiculos").select("id").in("estado", [...ESTADOS_IMPRODUCTIVOS]).range(a, b),
+  );
+  const ids = vehs.map((v) => v.id);
+  if (!ids.length) return [];
+
+  type Fila = Record<string, unknown> & { estado?: string; fecha_inicio?: string | null; vehiculo_id?: string };
+  const filas: Fila[] = [];
+  for (let i = 0; i < ids.length; i += 80) {
+    const lote = ids.slice(i, i + 80);
+    const { data, error } = await sb.from("contratos").select(SEL_CONTRATO).in("vehiculo_id", lote);
+    if (error) throw new Error(error.message);
+    filas.push(...((data ?? []) as Fila[]));
+  }
+
+  const porVeh = new Map<string, Fila[]>();
+  for (const row of filas) {
+    const vehiculoId = String(row.vehiculo_id ?? "");
+    if (!vehiculoId) continue;
+    const lista = porVeh.get(vehiculoId) ?? [];
+    lista.push(row);
+    porVeh.set(vehiculoId, lista);
+  }
+
+  const out: CarroInforme[] = [];
+  for (const lista of porVeh.values()) {
+    const activo = lista.find((c) => c.estado === "activo");
+    const elegido =
+      activo ??
+      [...lista].sort((a, b) => String(b.fecha_inicio ?? "").localeCompare(String(a.fecha_inicio ?? "")))[0];
+    if (!elegido) continue;
+    const carro = carroDe(elegido);
+    if (carro) out.push(carro);
+  }
+  return out;
+}
+
 function carroDe(row: Record<string, unknown>): CarroInforme | null {
-  const veh = uno(row.vehiculo as { numero?: string | null; empresa?: unknown } | null);
+  const veh = uno(row.vehiculo as { id?: string | null; numero?: string | null; estado?: string | null; empresa?: unknown } | null);
   const emp = uno(veh?.empresa as { codigo?: string | null } | null);
   const cli = uno(row.cliente as { nombre?: string | null } | null);
   const numero = String(veh?.numero ?? "").trim();
@@ -79,6 +125,8 @@ function carroDe(row: Record<string, unknown>): CarroInforme | null {
     empresa,
     conductor: String(cli?.nombre ?? "").trim() || "Sin nombre",
     desdeContrato: String(row.fecha_inicio ?? ""),
+    vehiculoId: String(veh?.id ?? ""),
+    estadoVehiculo: String(veh?.estado ?? ""),
   };
 }
 
@@ -88,7 +136,7 @@ async function contratosPorId(sb: Sb, ids: string[]): Promise<CarroInforme[]> {
     const lote = ids.slice(i, i + 80);
     const { data, error } = await sb
       .from("contratos")
-      .select("id, fecha_inicio, vehiculo:vehiculos(numero, empresa:empresas(codigo)), cliente:clientes(nombre)")
+      .select("id, fecha_inicio, vehiculo:vehiculos(id, numero, estado, empresa:empresas(codigo)), cliente:clientes(nombre)")
       .in("id", lote);
     if (error) throw new Error(error.message);
     for (const row of data ?? []) {
@@ -146,6 +194,38 @@ async function pagosEntre(sb: Sb, desde: string | null, hasta: string | null): P
     .filter((p) => (!desde || p.fecha >= desde) && (!hasta || p.fecha <= hasta));
 }
 
+async function ponerTramos(sb: Sb, carros: CarroInforme[]): Promise<void> {
+  const ids = [...new Set(carros.map((c) => c.vehiculoId).filter((id): id is string => Boolean(id)))];
+  const eventos = new Map<string, { fecha: string; detalle: string; created_at?: string }[]>();
+  for (let i = 0; i < ids.length; i += 80) {
+    const lote = ids.slice(i, i + 80);
+    const filas = await paginas<Record<string, unknown>>((a, b) =>
+      sb
+        .from("vehiculo_eventos")
+        .select("vehiculo_id, fecha, detalle, created_at")
+        .in("vehiculo_id", lote)
+        .or(
+          "detalle.like.pausa-productiva:%,detalle.like.inactivo:%,detalle.like.caso-archivado:%,detalle.eq.retorno-productivo,detalle.eq.inactivo-anulado",
+        )
+        .range(a, b),
+    );
+    for (const row of filas) {
+      const id = String(row.vehiculo_id ?? "");
+      if (!id) continue;
+      const lista = eventos.get(id) ?? [];
+      lista.push({
+        fecha: String(row.fecha ?? ""),
+        detalle: String(row.detalle ?? ""),
+        created_at: (row.created_at as string | null) ?? undefined,
+      });
+      eventos.set(id, lista);
+    }
+  }
+  for (const carro of carros) {
+    carro.tramos = tramosDeEventos(eventos.get(carro.vehiculoId ?? "") ?? [], carro.estadoVehiculo, carro.id);
+  }
+}
+
 async function antesDelMes(sb: Sb, ids: string[], desde: string): Promise<{ cargos: CargoInforme[]; pagos: PagoInforme[] }> {
   const cargos: CargoInforme[] = [];
   const pagos: PagoInforme[] = [];
@@ -190,13 +270,15 @@ async function antesDelMes(sb: Sb, ids: string[], desde: string): Promise<{ carg
 
 export async function datosInforme(desde: string, hasta: string): Promise<{ filas: FilaInforme[]; meta: MetaInforme }> {
   const sb = createServerSupabase();
-  const [activos, delMesCargos, delMesPagos, metaRow] = await Promise.all([
+  const [activos, improductivos, delMesCargos, delMesPagos, metaRow] = await Promise.all([
     contratosActivos(sb),
+    contratosImproductivos(sb),
     cargosEntre(sb, desde, hasta),
     pagosEntre(sb, desde, hasta),
     metaCobranzaDeMes(hasta),
   ]);
   const porId = new Map(activos.map((c) => [c.id, c]));
+  for (const carro of improductivos) if (!porId.has(carro.id)) porId.set(carro.id, carro);
   const faltan = new Set<string>();
   for (const c of delMesCargos) if (!porId.has(c.contratoId)) faltan.add(c.contratoId);
   for (const p of delMesPagos) if (!porId.has(p.contratoId)) faltan.add(p.contratoId);
@@ -204,7 +286,10 @@ export async function datosInforme(desde: string, hasta: string): Promise<{ fila
     for (const carro of await contratosPorId(sb, [...faltan])) porId.set(carro.id, carro);
   }
   const carros = [...porId.values()];
-  const previo = await antesDelMes(sb, carros.map((c) => c.id), desde);
+  const [previo] = await Promise.all([
+    antesDelMes(sb, carros.map((c) => c.id), desde),
+    ponerTramos(sb, carros),
+  ]);
   const filas = filasDelInforme(
     carros,
     [...previo.cargos, ...delMesCargos],
