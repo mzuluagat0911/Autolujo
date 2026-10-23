@@ -23,7 +23,7 @@ import {
   type Pieza,
   type Seccion,
 } from "@/lib/seguros/modelo";
-import { carroVolvio, guardarCaso, marcarAviso, quitarDocumento, subirDocumento } from "../actions";
+import { carroVolvio, eliminarCaso, guardarCaso, marcarAviso, quitarDocumento, subirDocumento } from "../actions";
 import { BloqueRegistro } from "../registro";
 import { registroTieneDatos, type RegistroCarro } from "@/lib/seguros/datos";
 
@@ -33,6 +33,8 @@ const PRIMARIO =
   "rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50";
 const SECUNDARIO =
   "rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50";
+const PELIGRO =
+  "rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-rojo ring-1 ring-rojo/30 hover:bg-surface-2 disabled:opacity-50";
 
 export function FichaCaso({
   fila,
@@ -115,6 +117,31 @@ export function FichaCaso({
           <Link href={`/seguros/${fila.id}/paquete`} className={SECUNDARIO}>
             Imprimir paquete
           </Link>
+          <button
+            type="button"
+            className={PELIGRO}
+            disabled={pending}
+            onClick={() => {
+              const ok = window.confirm(
+                "¿Eliminar este choque? Se borra el caso y sus archivos. Si el carro quedó en colisión por este registro y no tiene otro choque, vuelve a trabajar.",
+              );
+              if (!ok) return;
+              const fd = new FormData();
+              fd.set("id", fila.id);
+              setError(null);
+              start(async () => {
+                const r = await eliminarCaso(fd);
+                if (!r.ok) {
+                  setError(r.error ?? "No se pudo eliminar.");
+                  return;
+                }
+                router.push("/seguros");
+                router.refresh();
+              });
+            }}
+          >
+            Eliminar choque
+          </button>
         </div>
       </header>
 

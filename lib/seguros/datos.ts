@@ -145,6 +145,59 @@ export async function guardarFila(
   return error ? error.message : null;
 }
 
+export async function borrarFila(id: string, vehiculoId: string): Promise<string | null> {
+  const sb = createServerSupabase();
+  const { error } = await sb
+    .from("vehiculo_eventos")
+    .delete()
+    .eq("id", id)
+    .eq("vehiculo_id", vehiculoId)
+    .eq("origen", ORIGEN_SEGUROS)
+    .eq("titulo", TITULO_CASO);
+  return error ? error.message : null;
+}
+
+/** La nota que crearFila deja en la hoja de vida al abrir el caso. Borra una sola. */
+export async function borrarNotaColisionReportada(vehiculoId: string, fecha: string): Promise<void> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("vehiculo_eventos")
+    .select("id")
+    .eq("vehiculo_id", vehiculoId)
+    .eq("fecha", fecha)
+    .eq("titulo", "Colisión reportada")
+    .eq("detalle", "El caso está en Seguros.")
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const row = (data ?? [])[0] as { id: string } | undefined;
+  if (!row) return;
+  await sb.from("vehiculo_eventos").delete().eq("id", row.id);
+}
+
+/** Quita la pausa de colisión que abrió este choque, si sigue abierta en esa fecha. */
+export async function borrarPausaColision(vehiculoId: string, fecha: string): Promise<boolean> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("vehiculo_eventos")
+    .select("id, detalle")
+    .eq("vehiculo_id", vehiculoId)
+    .eq("fecha", fecha)
+    .like("detalle", "pausa-productiva:colision%")
+    .order("created_at", { ascending: false })
+    .limit(5);
+  const fila = ((data ?? []) as { id: string; detalle: string }[]).find(
+    (r) => r.detalle === "pausa-productiva:colision" || r.detalle.startsWith("pausa-productiva:colision:"),
+  );
+  if (!fila) return false;
+  const { error } = await sb.from("vehiculo_eventos").delete().eq("id", fila.id);
+  return !error;
+}
+
+export async function dejarVehiculoActivo(vehiculoId: string): Promise<void> {
+  const sb = createServerSupabase();
+  await sb.from("vehiculos").update({ estado: "activo" }).eq("id", vehiculoId);
+}
+
 export async function crearFila(input: {
   vehiculoId: string;
   fecha: string;

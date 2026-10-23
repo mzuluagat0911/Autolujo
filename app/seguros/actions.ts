@@ -1,12 +1,17 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { aplicarEstadoProductivo } from "@/lib/cartera/pausa-productiva";
+import { aplicarEstadoProductivo, pausaDeVehiculo, reponerLetras } from "@/lib/cartera/pausa-productiva";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import {
   borrarArchivo,
+  borrarFila,
+  borrarNotaColisionReportada,
+  borrarPausaColision,
   carrosParaCaso,
   crearFila,
+  dejarVehiculoActivo,
+  listarCasos,
   empresaDeVehiculo,
   guardarFila,
   guardarPoliza,
@@ -93,6 +98,36 @@ export async function crearCaso(fd: FormData): Promise<Resultado> {
     id: creado.id,
     msg: pausa.ok ? "Caso abierto. El carro quedó en colisión." : `Caso abierto. ${pausa.msg}`,
   };
+}
+
+export async function eliminarCaso(fd: FormData): Promise<Resultado> {
+  const id = texto(fd.get("id"));
+  const fila = id ? await leerCaso(id) : null;
+  if (!fila) return { ok: false, error: "No encuentro el caso." };
+
+  for (const doc of fila.caso.documentos) {
+    await borrarArchivo(doc.path);
+  }
+  const error = await borrarFila(id, fila.vehiculoId);
+  if (error) return { ok: false, error };
+
+  await borrarNotaColisionReportada(fila.vehiculoId, fila.fecha);
+
+  const otros = (await listarCasos()).some((c) => c.vehiculoId === fila.vehiculoId);
+  if (!otros) {
+    const pausa = await pausaDeVehiculo(fila.vehiculoId);
+    if (pausa?.estado === "colision") {
+      const quitada = await borrarPausaColision(fila.vehiculoId, pausa.desde);
+      if (quitada) {
+        await dejarVehiculoActivo(fila.vehiculoId);
+        await reponerLetras(fila.vehiculoId, pausa.desde, hoyPanama());
+      }
+    }
+  }
+
+  revalidar(id);
+  revalidatePath("/cartera/estados-cuenta");
+  return { ok: true, msg: "Choque eliminado." };
 }
 
 function piezasDe(fd: FormData): Pieza[] {
