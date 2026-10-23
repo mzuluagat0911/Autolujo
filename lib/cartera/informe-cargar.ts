@@ -1,7 +1,9 @@
 import { createServerSupabase } from "@/lib/supabase/server";
+import { sumarDias } from "./fecha";
 import { metaCobranzaDeMes } from "./metas-cobranza";
 import {
   empresaInforme,
+  fechaInformeCartera,
   filasDelInforme,
   metaDelInforme,
   type CargoInforme,
@@ -114,27 +116,34 @@ async function cargosEntre(sb: Sb, desde: string | null, hasta: string | null): 
   }));
 }
 
+function pagoInformeDe(p: Record<string, unknown>): PagoInforme {
+  const guardada = String(p.fecha).slice(0, 10);
+  return {
+    contratoId: String(p.contrato_id),
+    fecha: fechaInformeCartera((p.pagado_at as string | null) ?? null, guardada),
+    monto: Number(p.monto) || 0,
+    metodo: (p.metodo as string | null) ?? null,
+    notas: (p.notas as string | null) ?? null,
+    rubro: (p.rubro as string | null) ?? null,
+    asignaciones: lineas(p.asignaciones),
+  };
+}
+
 async function pagosEntre(sb: Sb, desde: string | null, hasta: string | null): Promise<PagoInforme[]> {
+  const tope = hasta ? sumarDias(hasta, 1) : null;
   const filas = await paginas<Record<string, unknown>>((a, b) => {
     let q = sb
       .from("pagos")
-      .select("contrato_id, fecha, monto, metodo, notas, rubro, asignaciones, estado_conciliacion")
+      .select("contrato_id, fecha, pagado_at, monto, metodo, notas, rubro, asignaciones, estado_conciliacion")
       .in("estado_conciliacion", ["conciliado", "manual"]);
     if (desde) q = q.gte("fecha", desde);
-    if (hasta) q = q.lte("fecha", hasta);
+    if (tope) q = q.lte("fecha", tope);
     return q.range(a, b);
   });
   return filas
     .filter((p) => p.contrato_id)
-    .map((p) => ({
-      contratoId: String(p.contrato_id),
-      fecha: String(p.fecha).slice(0, 10),
-      monto: Number(p.monto) || 0,
-      metodo: (p.metodo as string | null) ?? null,
-      notas: (p.notas as string | null) ?? null,
-      rubro: (p.rubro as string | null) ?? null,
-      asignaciones: lineas(p.asignaciones),
-    }));
+    .map(pagoInformeDe)
+    .filter((p) => (!desde || p.fecha >= desde) && (!hasta || p.fecha <= hasta));
 }
 
 async function antesDelMes(sb: Sb, ids: string[], desde: string): Promise<{ cargos: CargoInforme[]; pagos: PagoInforme[] }> {
@@ -154,10 +163,10 @@ async function antesDelMes(sb: Sb, ids: string[], desde: string): Promise<{ carg
       paginas<Record<string, unknown>>((a, b) =>
         sb
           .from("pagos")
-          .select("contrato_id, fecha, monto, metodo, notas, rubro, asignaciones")
+          .select("contrato_id, fecha, pagado_at, monto, metodo, notas, rubro, asignaciones")
           .in("contrato_id", lote)
           .in("estado_conciliacion", ["conciliado", "manual"])
-          .lt("fecha", desde)
+          .lte("fecha", desde)
           .range(a, b),
       ),
     ]);
@@ -172,15 +181,8 @@ async function antesDelMes(sb: Sb, ids: string[], desde: string): Promise<{ carg
       });
     }
     for (const row of p) {
-      pagos.push({
-        contratoId: String(row.contrato_id),
-        fecha: String(row.fecha).slice(0, 10),
-        monto: Number(row.monto) || 0,
-        metodo: (row.metodo as string | null) ?? null,
-        notas: (row.notas as string | null) ?? null,
-        rubro: (row.rubro as string | null) ?? null,
-        asignaciones: lineas(row.asignaciones),
-      });
+      const pago = pagoInformeDe(row);
+      if (pago.fecha < desde) pagos.push(pago);
     }
   }
   return { cargos, pagos };

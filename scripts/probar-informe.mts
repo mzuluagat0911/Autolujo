@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
 import {
   deudaDeCarro,
+  fechaInformeCartera,
   filasDelInforme,
   metaDelInforme,
   pagoDe,
@@ -104,5 +105,10 @@ assert.match(String(extracto.getCell("D2").formula), /SUMIFS/);
 const metaHoja = wb.getWorksheet("META")!;
 assert.equal(metaHoja.getCell("C2").value, null);
 assert.match(String(metaHoja.getCell("E2").formula), /SUMIFS/);
+
+assert.equal(fechaInformeCartera("2026-10-23T16:59:00.000Z", "2026-10-23"), "2026-10-22");
+assert.equal(fechaInformeCartera("2026-10-23T17:00:00.000Z", "2026-10-23"), "2026-10-23");
+assert.equal(fechaInformeCartera("2026-10-22T20:00:00.000Z", "2026-10-22"), "2026-10-22");
+assert.equal(fechaInformeCartera(null, "2026-10-23"), "2026-10-23");
 
 console.log("Informe mensual: pestañas, pago y deuda OK");

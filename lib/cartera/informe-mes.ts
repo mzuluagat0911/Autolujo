@@ -6,7 +6,7 @@
 // cuota se suma además la letra del rango.
 
 import { etiquetaCargo } from "./extracto-desglose";
-import { diasHabilesEnRango, finMes, inicioMes, sumarDias } from "./fecha";
+import { diasHabilesEnRango, finMes, inicioMes, partesPagoPanama, sumarDias } from "./fecha";
 
 export const HOJA_BASE = "INFORME_2025";
 
@@ -67,6 +67,21 @@ export type PagoInforme = {
   rubro: string | null;
   asignaciones: { tipo: string; aplicado: number }[] | null;
 };
+
+/**
+ * Cartera cierra el día anterior a las 12:00. En el informe, un pago de las
+ * 11:59 queda en el día de ayer. Desde las 12:00 queda en el día en que entró.
+ * Sin hora, se respeta la fecha guardada.
+ */
+export function fechaInformeCartera(pagadoAt: string | null | undefined, fechaGuardada: string): string {
+  const guardada = fechaGuardada.slice(0, 10);
+  if (!pagadoAt) return guardada;
+  const instante = new Date(pagadoAt);
+  if (Number.isNaN(instante.getTime())) return guardada;
+  const { fecha, hora } = partesPagoPanama(instante);
+  if (hora < 12) return sumarDias(fecha, -1);
+  return fecha;
+}
 
 export type MetaInforme = {
   mes: string;
