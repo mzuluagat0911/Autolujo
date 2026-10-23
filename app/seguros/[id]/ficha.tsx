@@ -24,6 +24,8 @@ import {
   type Seccion,
 } from "@/lib/seguros/modelo";
 import { carroVolvio, guardarCaso, marcarAviso, quitarDocumento, subirDocumento } from "../actions";
+import { BloqueRegistro } from "../registro";
+import { registroTieneDatos, type RegistroCarro } from "@/lib/seguros/datos";
 
 const INPUT =
   "w-full rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20";
@@ -36,10 +38,12 @@ export function FichaCaso({
   fila,
   urls,
   hoy,
+  registro,
 }: {
   fila: CasoFila;
   urls: Record<string, string>;
   hoy: string;
+  registro: RegistroCarro | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -381,6 +385,7 @@ export function FichaCaso({
               urls={urls}
               disabled={pending}
               onRun={correr}
+              registro={d.id === "registro" ? registro : null}
             />
           ))}
         </div>
@@ -416,6 +421,7 @@ function CajaDoc({
   urls,
   disabled,
   onRun,
+  registro,
 }: {
   casoId: string;
   tipo: DocTipo;
@@ -425,11 +431,18 @@ function CajaDoc({
   urls: Record<string, string>;
   disabled: boolean;
   onRun: (accion: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData) => void;
+  registro?: RegistroCarro | null;
 }) {
+  const traido = registroTieneDatos(registro);
   return (
     <div className="rounded-lg p-3 ring-1 ring-line">
       <p className="text-sm font-medium">{label}</p>
       <p className="mt-0.5 text-xs text-muted">{hint}</p>
+      {traido && registro && (
+        <div className="mt-3">
+          <BloqueRegistro registro={registro} />
+        </div>
+      )}
       <ul className="mt-2 flex flex-col gap-1">
         {archivos.map((a) => (
           <li key={a.id} className="flex items-center justify-between gap-2 text-xs">

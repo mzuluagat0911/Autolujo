@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
-import { empresaDeVehiculo, firmar, leerCaso, pathEmpresa } from "@/lib/seguros/datos";
+import { empresaDeVehiculo, firmar, leerCaso, pathEmpresa, registroDeVehiculo, registroTieneDatos } from "@/lib/seguros/datos";
+import { BloqueRegistro } from "../../registro";
 import {
   DOCUMENTOS,
   fechaCorta,
@@ -15,7 +16,11 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const fila = await leerCaso(id);
   if (!fila) notFound();
-  const empresa = await empresaDeVehiculo(fila.vehiculoId);
+  const [empresa, registro] = await Promise.all([
+    empresaDeVehiculo(fila.vehiculoId),
+    registroDeVehiculo(fila.vehiculoId),
+  ]);
+  const registroListo = registroTieneDatos(registro);
   const fijos = empresa
     ? [pathEmpresa(empresa.id, "registro"), pathEmpresa(empresa.id, "representante")]
     : [];
@@ -84,15 +89,31 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
           </div>
         )}
 
+        {registro && registroListo && (
+          <div className="mt-8">
+            <h2 className="text-sm font-semibold">Registro vehicular</h2>
+            <p className="mt-1 text-xs text-muted">Tomado de la ficha del carro.</p>
+            <div className="mt-3">
+              <BloqueRegistro registro={registro} />
+            </div>
+          </div>
+        )}
+
         <div className="mt-8">
           <h2 className="text-sm font-semibold">Documentos</h2>
           <ul className="mt-2 text-sm">
             {DOCUMENTOS.map((d) => {
               const n = fila.caso.documentos.filter((x) => x.tipo === d.id).length;
+              const estado =
+                d.id === "registro" && registroListo
+                  ? "En el sistema"
+                  : n > 0
+                    ? `${n} archivo${n === 1 ? "" : "s"}`
+                    : "Falta";
               return (
                 <li key={d.id} className="flex justify-between border-b border-line py-1.5">
                   <span>{d.label}</span>
-                  <span className="text-muted">{n > 0 ? `${n} archivo${n === 1 ? "" : "s"}` : "Falta"}</span>
+                  <span className="text-muted">{estado}</span>
                 </li>
               );
             })}

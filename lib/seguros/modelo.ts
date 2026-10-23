@@ -35,7 +35,7 @@ export const DOCUMENTOS = [
   { id: "resolucion", label: "Resolución de tránsito", hint: "Se retira después de la audiencia." },
   { id: "cedula", label: "Cédula", hint: "Copia de quien manejaba." },
   { id: "licencia", label: "Licencia", hint: "Copia de quien manejaba." },
-  { id: "registro", label: "Registro vehicular", hint: "Del carro." },
+  { id: "registro", label: "Registro vehicular", hint: "Sale de la ficha del carro." },
   { id: "foto_reparado", label: "Fotos del carro reparado", hint: "Cuando ya salió del taller." },
   { id: "cotizacion", label: "Cotización o facturas", hint: "Lo que se lleva a la aseguradora." },
   { id: "finiquito", label: "Finiquito", hint: "El monto que la aseguradora va a pagar." },

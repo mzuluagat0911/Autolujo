@@ -338,6 +338,53 @@ export async function guardarPoliza(input: {
   return error ? error.message : null;
 }
 
+export type RegistroCarro = {
+  placa: string;
+  marca: string;
+  modelo: string;
+  anio: string;
+  color: string;
+  tipo: string;
+  chasis: string;
+  motor: string;
+};
+
+export function registroTieneDatos(r: RegistroCarro | null | undefined): boolean {
+  if (!r) return false;
+  return Object.values(r).some((v) => v.trim());
+}
+
+/** Ficha del carro que ya vive en el sistema. El paquete no pide volver a cargarla. */
+export async function registroDeVehiculo(vehiculoId: string): Promise<RegistroCarro | null> {
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("vehiculos")
+    .select("placa, marca, modelo, anio, color, tipo, chasis, numero_motor")
+    .eq("id", vehiculoId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as {
+    placa: string | null;
+    marca: string | null;
+    modelo: string | null;
+    anio: number | null;
+    color: string | null;
+    tipo: string | null;
+    chasis: string | null;
+    numero_motor: string | null;
+  };
+  return {
+    placa: row.placa ?? "",
+    marca: row.marca ?? "",
+    modelo: row.modelo ?? "",
+    anio: row.anio != null ? String(row.anio) : "",
+    color: row.color ?? "",
+    tipo: row.tipo ?? "",
+    chasis: row.chasis ?? "",
+    motor: row.numero_motor ?? "",
+  };
+}
+
 export async function empresaDeVehiculo(vehiculoId: string): Promise<{ id: string; codigo: string } | null> {
   const sb = createServerSupabase();
   const { data } = await sb
