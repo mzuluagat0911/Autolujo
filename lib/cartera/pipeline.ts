@@ -6,7 +6,6 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
 import { pagoEnOficinaTexto } from "@/lib/cartera/medios-pago";
 import { hoyPanama, horaPanama, pasoCorte, fueraHorarioOperativo, fechaConDia, sumarDias, fechaContable, pagadoAtDesdeForm, esDomingo, esSabado } from "@/lib/cartera/fecha";
-import { MARCA_SIN_HORA } from "@/lib/cartera/hora-pago";
 import { estadoCuentaContrato, money, cuotasAtraso } from "@/lib/cartera/estado-cuenta";
 import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { CUOTAS_PARA_TERMINACION } from "@/lib/cartera/clausulas";
@@ -1337,7 +1336,8 @@ export async function procesarPagoComprobante(opts: {
       ? comprobante.hora.slice(0, 5)
       : null;
   const fechaPago = fechaLeida ?? hoyPanama();
-  // Sin hora en el papel: se guarda la llegada y, al conciliar, se cambia por esa hora.
+  // Hasta conciliar se guarda la hora del papel, si se pudo leer. Al conciliar
+  // queda la hora de la conciliación.
   const pagadoAt = horaLeida ? pagadoAtDesdeForm(fechaPago, horaLeida) : new Date().toISOString();
   const notas = [
     `Lectura IA (confianza: ${comprobante.confianza}). Resolución carro: ${resolucion.estado}.`,
@@ -1347,7 +1347,6 @@ export async function procesarPagoComprobante(opts: {
     veredicto.alertas.length ? `ALERTAS: ${resumirAlertas(veredicto.alertas)}` : null,
     veredicto.alertas.some((a) => a.codigo === "hora_distinta") ? MARCA_REVISION_DOS_PAGOS : null,
     notaExcedente,
-    horaLeida ? null : MARCA_SIN_HORA,
   ]
     .filter(Boolean)
     .join(" ");

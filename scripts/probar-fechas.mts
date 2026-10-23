@@ -13,7 +13,6 @@ import {
 import { cuotaDeFecha, omiteDomingoYaCerrado, tarifaPlena, penalidadDe, type TerminosCuota } from "@/lib/cartera/cuota";
 import { calcularCifras, cubrioCuotaDelDia, type EntradaCifras } from "@/lib/cartera/cifras";
 import { inactivacionVigente } from "@/lib/cartera/inactivo";
-import { esMediodiaSinHora, pagoSinHora } from "@/lib/cartera/hora-pago";
 import { armarVentanasSinLetra, fechaCaeEnSinLetra, ventanasAplicables } from "@/lib/cartera/pausa-productiva";
 
 let fallos = 0;
@@ -403,11 +402,6 @@ check("chapistería cerrada: el día anterior al ingreso sí corre letra", fecha
 const abiertoEnActivo = ventanasAplicables([{ desde: "2026-09-30", hasta: null }], "activo");
 check("improductivo sin fecha y carro ya activo no apaga la letra", fechaCaeEnSinLetra(abiertoEnActivo, "2026-10-12"), false);
 check("la pausa con fecha de activación sí frena esos días", fechaCaeEnSinLetra(ventanasAplicables(g03, "activo"), "2026-10-12"), true);
-
-check("las 12:00 en punto es un pago sin hora", esMediodiaSinHora("2026-10-23T17:00:00.000Z"), true);
-check("las 12:01 ya es una hora real", esMediodiaSinHora("2026-10-23T17:01:00.000Z"), false);
-check("la oficina a las 12:00 no se toca", pagoSinHora({ origen: "manual", notas: null, pagadoAt: "2026-10-23T17:00:00.000Z" }), false);
-check("un comprobante a las 12:00 en punto sí se corrige", pagoSinHora({ origen: "comprobante", notas: null, pagadoAt: "2026-10-23T17:00:00.000Z" }), true);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);
