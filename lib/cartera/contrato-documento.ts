@@ -119,6 +119,7 @@ export type DatosContratoDoc = {
   numeroContrato: string | null;
   /** Día en que se imprime o se registra. Va en la cláusula quincuagésima. */
   fechaEmision?: string | null;
+  panapass?: string | null;
 };
 
 export function plantillaDeContrato(codigo: string | null, numCuotas: number | null): PlantillaContrato {
