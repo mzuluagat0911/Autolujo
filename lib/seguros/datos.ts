@@ -20,9 +20,16 @@ type VehiculoMini = {
   placa: string | null;
   marca: string | null;
   modelo: string | null;
+  anio: number | null;
   estado: string;
   empresa: { codigo: string } | { codigo: string }[] | null;
 };
+
+function anioDe(v: number | null | undefined): number | null {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
 
 function empresaDe(v: VehiculoMini["empresa"]): string {
   if (!v) return "";
@@ -62,7 +69,7 @@ async function vehiculosDe(ids: string[]): Promise<Map<string, VehiculoMini>> {
   const sb = createServerSupabase();
   const { data, error } = await sb
     .from("vehiculos")
-    .select("id, numero, placa, marca, modelo, estado, empresa:empresas(codigo)")
+    .select("id, numero, placa, marca, modelo, anio, estado, empresa:empresas(codigo)")
     .in("id", ids);
   if (error) throw new Error(error.message);
   for (const row of (data ?? []) as unknown as VehiculoMini[]) map.set(row.id, row);
@@ -86,6 +93,8 @@ export async function listarCasos(): Promise<CasoFila[]> {
       numero: v.numero,
       placa: v.placa ?? "",
       marca: v.marca ?? "",
+      modelo: v.modelo ?? "",
+      anio: anioDe(v.anio),
       empresa: empresaDe(v.empresa),
       estadoCarro: v.estado,
     });
@@ -115,6 +124,8 @@ export async function leerCaso(id: string): Promise<CasoFila | null> {
     numero: v.numero,
     placa: v.placa ?? "",
     marca: v.marca ?? "",
+    modelo: v.modelo ?? "",
+    anio: anioDe(v.anio),
     empresa: empresaDe(v.empresa),
     estadoCarro: v.estado,
   };
@@ -245,7 +256,7 @@ export async function carrosParaCaso(): Promise<CarroParaCaso[]> {
   const sb = createServerSupabase();
   const { data: vehs, error } = await sb
     .from("vehiculos")
-    .select("id, numero, placa, marca, modelo, estado, empresa:empresas(codigo)")
+    .select("id, numero, placa, marca, modelo, anio, estado, empresa:empresas(codigo)")
     .neq("estado", "entregado")
     .order("numero");
   if (error) throw new Error(error.message);

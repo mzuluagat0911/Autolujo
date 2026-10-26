@@ -130,10 +130,18 @@ export async function eliminarCaso(fd: FormData): Promise<Resultado> {
   return { ok: true, msg: "Choque eliminado." };
 }
 
+function montoOpcional(raw: string): number | undefined {
+  if (!raw.trim()) return undefined;
+  const n = Number(raw.replace(",", "."));
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function piezasDe(fd: FormData): Pieza[] {
   const nombres = fd.getAll("pieza").map((v) => String(v));
   const condiciones = fd.getAll("condicion").map((v) => String(v));
   const precios = fd.getAll("precio").map((v) => String(v));
+  const preciosPieza = fd.getAll("precio_pieza").map((v) => String(v));
+  const manos = fd.getAll("mano_obra").map((v) => String(v));
   const extras = new Set(fd.getAll("extra_idx").map((v) => String(v)));
   const ids = fd.getAll("pieza_id").map((v) => String(v));
   const out: Pieza[] = [];
@@ -141,12 +149,16 @@ function piezasDe(fd: FormData): Pieza[] {
     const pieza = nombres[i]?.trim() ?? "";
     if (!pieza) continue;
     const precio = Number(String(precios[i] ?? "").replace(",", "."));
+    const precioPieza = montoOpcional(preciosPieza[i] ?? "");
+    const manoObra = montoOpcional(manos[i] ?? "");
     out.push({
       id: ids[i] || crypto.randomUUID(),
       pieza,
       condicion: condiciones[i] === "reparar" ? "reparar" : "nueva",
       precio: Number.isFinite(precio) ? Math.max(precio, 0) : 0,
       extra: extras.has(String(i)),
+      ...(precioPieza != null ? { precioPieza } : {}),
+      ...(manoObra != null ? { manoObra } : {}),
     });
   }
   return out;
@@ -159,8 +171,10 @@ export async function guardarCaso(fd: FormData): Promise<Resultado> {
 
   const fecha = texto(fd.get("fecha")) || fila.fecha;
   if (!fechaOk(fecha)) return { ok: false, error: "La fecha del choque no es válida." };
-  const audiencia = texto(fd.get("fecha_audiencia"));
+  const audiencia = fd.has("fecha_audiencia") ? texto(fd.get("fecha_audiencia")) : fila.caso.fechaAudiencia;
   if (audiencia && !fechaOk(audiencia)) return { ok: false, error: "La fecha de audiencia no es válida." };
+  const audiencia2 = fd.has("fecha_audiencia_2") ? texto(fd.get("fecha_audiencia_2")) : fila.caso.fechaAudiencia2;
+  if (audiencia2 && !fechaOk(audiencia2)) return { ok: false, error: "La segunda fecha de audiencia no es válida." };
   const pago = texto(fd.get("fecha_pago"));
   if (pago && !fechaOk(pago)) return { ok: false, error: "La fecha de pago no es válida." };
 
@@ -181,7 +195,14 @@ export async function guardarCaso(fd: FormData): Promise<Resultado> {
     numeroReclamo: texto(fd.get("numero_reclamo")),
     numeroParte: texto(fd.get("numero_parte")),
     fechaAudiencia: audiencia,
-    lugarAudiencia: texto(fd.get("lugar_audiencia")),
+    fechaAudiencia2: audiencia2,
+    lugarAudiencia: fd.has("lugar_audiencia") ? texto(fd.get("lugar_audiencia")) : fila.caso.lugarAudiencia,
+    conductor: texto(fd.get("conductor")),
+    cedulaConductor: texto(fd.get("cedula_conductor")),
+    placaCupo: texto(fd.get("placa_cupo")),
+    asistencia: texto(fd.get("asistencia")),
+    numeroTramite: texto(fd.get("numero_tramite")),
+    ajustador: texto(fd.get("ajustador")),
     montoFiniquito: monto != null && Number.isFinite(monto) ? monto : null,
     fechaPago: pago,
     motivoNoProcede: texto(fd.get("motivo_no_procede")),

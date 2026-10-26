@@ -48,6 +48,10 @@ export type Pieza = {
   pieza: string;
   condicion: "nueva" | "reparar";
   precio: number;
+  /** Precio de la pieza con descuento. Vacío si el monto se escribió a mano. */
+  precioPieza?: number;
+  /** Mano de obra del listado. En Kia es la de Hyundai. */
+  manoObra?: number;
   extra: boolean;
 };
 
@@ -68,7 +72,14 @@ export type Caso = {
   numeroReclamo: string;
   numeroParte: string;
   fechaAudiencia: string;
+  fechaAudiencia2: string;
   lugarAudiencia: string;
+  conductor: string;
+  cedulaConductor: string;
+  placaCupo: string;
+  asistencia: string;
+  numeroTramite: string;
+  ajustador: string;
   montoFiniquito: number | null;
   fechaPago: string;
   motivoNoProcede: string;
@@ -92,6 +103,8 @@ export type CasoFila = {
   numero: string;
   placa: string;
   marca: string;
+  modelo: string;
+  anio: number | null;
   empresa: string;
   estadoCarro: string;
 };
@@ -190,7 +203,14 @@ export function casoVacio(): Caso {
     numeroReclamo: "",
     numeroParte: "",
     fechaAudiencia: "",
+    fechaAudiencia2: "",
     lugarAudiencia: "",
+    conductor: "",
+    cedulaConductor: "",
+    placaCupo: "",
+    asistencia: "",
+    numeroTramite: "",
+    ajustador: "",
     montoFiniquito: null,
     fechaPago: "",
     motivoNoProcede: "",
@@ -208,6 +228,24 @@ export function casoVacio(): Caso {
 
 function texto(v: unknown): string {
   return typeof v === "string" ? v : "";
+}
+
+function monto(v: unknown): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
+}
+
+function piezaGuardada(p: Pieza): Pieza {
+  const precioPieza = monto(p.precioPieza);
+  const manoObra = monto(p.manoObra);
+  return {
+    id: p.id,
+    pieza: p.pieza,
+    condicion: p.condicion === "reparar" ? "reparar" : "nueva",
+    precio: Number(p.precio) || 0,
+    extra: Boolean(p.extra),
+    ...(precioPieza != null ? { precioPieza } : {}),
+    ...(manoObra != null ? { manoObra } : {}),
+  };
 }
 
 export function parseCaso(raw: string | null | undefined): Caso | null {
@@ -233,7 +271,14 @@ export function parseCaso(raw: string | null | undefined): Caso | null {
       numeroReclamo: texto(j.numeroReclamo),
       numeroParte: texto(j.numeroParte),
       fechaAudiencia: texto(j.fechaAudiencia),
+      fechaAudiencia2: texto(j.fechaAudiencia2),
       lugarAudiencia: texto(j.lugarAudiencia),
+      conductor: texto(j.conductor),
+      cedulaConductor: texto(j.cedulaConductor),
+      placaCupo: texto(j.placaCupo),
+      asistencia: texto(j.asistencia),
+      numeroTramite: texto(j.numeroTramite),
+      ajustador: texto(j.ajustador),
       fechaPago: texto(j.fechaPago),
       motivoNoProcede: texto(j.motivoNoProcede),
       observaciones: texto(j.observaciones),
@@ -244,7 +289,7 @@ export function parseCaso(raw: string | null | undefined): Caso | null {
       contratoId: j.contratoId ?? null,
       avisoOficina: j.avisoOficina ?? null,
       avisoAudiencia: j.avisoAudiencia ?? null,
-      piezas: Array.isArray(j.piezas) ? j.piezas.filter((p) => p && p.pieza) : [],
+      piezas: Array.isArray(j.piezas) ? j.piezas.filter((p) => p && p.pieza).map(piezaGuardada) : [],
       documentos: Array.isArray(j.documentos) ? j.documentos.filter((d) => d && d.path) : [],
     };
   } catch {

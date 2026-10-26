@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type FormEvent } from "react";
-import { Money, StatusChip, Toast } from "@/components/kit";
+import { StatusChip, Toast } from "@/components/kit";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import {
   ASEGURADORAS,
@@ -26,6 +26,7 @@ import {
 import { carroVolvio, eliminarCaso, guardarCaso, marcarAviso, quitarDocumento, subirDocumento } from "../actions";
 import { BloqueRegistro } from "../registro";
 import { registroTieneDatos, type RegistroCarro } from "@/lib/seguros/datos";
+import { plata, tarifasDe, totalTarifa } from "@/lib/seguros/tarifas";
 
 const INPUT =
   "w-full rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20";
@@ -55,6 +56,7 @@ export function FichaCaso({
   const [via, setVia] = useState<"" | "fud" | "parte">(fila.caso.via ?? "");
   const [aseguradora, setAseguradora] = useState(fila.caso.aseguradora);
   const [piezas, setPiezas] = useState<Pieza[]>(fila.caso.piezas);
+  const tarifas = tarifasDe(fila.marca, fila.modelo, fila.anio);
   const casoVista = { ...fila.caso, seccion, via: via === "fud" || via === "parte" ? via : null, aseguradora };
   const proxima = siguienteSeccion(casoVista);
 
@@ -115,7 +117,7 @@ export function FichaCaso({
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip tone={tonoSeccion(seccion)}>{etiquetaSeccion(seccion)}</StatusChip>
           <Link href={`/seguros/${fila.id}/paquete`} className={SECUNDARIO}>
-            Imprimir paquete
+            Paquete para Santiago
           </Link>
           <button
             type="button"
@@ -264,77 +266,142 @@ export function FichaCaso({
               <input name="fecha_audiencia" type="date" defaultValue={fila.caso.fechaAudiencia} className={INPUT} />
             </label>
             <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Segunda audiencia</span>
+              <input name="fecha_audiencia_2" type="date" defaultValue={fila.caso.fechaAudiencia2} className={INPUT} />
+            </label>
+            <label className="flex flex-col gap-1.5">
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Lugar</span>
               <input name="lugar_audiencia" defaultValue={fila.caso.lugarAudiencia} placeholder="Juzgado de tránsito" className={INPUT} />
             </label>
           </section>
         )}
 
+        <section className="grid gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2">
+          <h2 className="text-sm font-semibold sm:col-span-2">Portada del paquete</h2>
+          <p className="text-xs text-muted sm:col-span-2">
+            Estos datos salen en la hoja amarilla que encabeza el paquete de Santiago.
+          </p>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Conductor</span>
+            <input name="conductor" defaultValue={fila.caso.conductor} className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Cédula del conductor</span>
+            <input name="cedula_conductor" defaultValue={fila.caso.cedulaConductor} className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Placa de cupo</span>
+            <input name="placa_cupo" defaultValue={fila.caso.placaCupo} className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Asistencia de colisión</span>
+            <input name="asistencia" defaultValue={fila.caso.asistencia} className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Ajustador</span>
+            <input name="ajustador" defaultValue={fila.caso.ajustador} className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Número de trámite</span>
+            <input name="numero_tramite" defaultValue={fila.caso.numeroTramite} placeholder="Si queda vacío, la portada usa el reclamo" className={INPUT} />
+          </label>
+        </section>
+
         <section className="rounded-xl bg-surface p-5 ring-1 ring-line">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-sm font-semibold">Piezas y precios</h2>
               <p className="mt-1 text-xs text-muted">
-                Nueva o a reparar. Si el jefe pidió sumar una pieza que no salió golpeada, marcala como extra.
+                Al elegir la pieza se carga el precio con descuento y se le suma la mano de obra. En Kia Soluto esa mano de obra es la de Hyundai. Si el jefe pidió una pieza que no salió golpeada, marcala como extra.
               </p>
             </div>
-            <p className="text-sm font-medium">
-              Total <Money amount={totalPiezas(piezas)} />
-            </p>
+            <p className="text-sm font-medium tabular-nums">Total USD {plata(totalPiezas(piezas))}</p>
           </div>
-          <div className="mt-4 flex flex-col gap-2">
-            {piezas.map((p, i) => (
-              <div key={p.id} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_140px_120px_auto_auto] sm:items-center">
-                <input type="hidden" name="pieza_id" value={p.id} />
-                <input
-                  name="pieza"
-                  value={p.pieza}
-                  onChange={(e) => setPiezas(piezas.map((x, j) => (j === i ? { ...x, pieza: e.target.value } : x)))}
-                  placeholder="Defensa delantera"
-                  className={INPUT}
-                />
-                <select
-                  name="condicion"
-                  value={p.condicion}
-                  onChange={(e) =>
-                    setPiezas(piezas.map((x, j) => (j === i ? { ...x, condicion: e.target.value === "reparar" ? "reparar" : "nueva" } : x)))
-                  }
-                  className={INPUT}
-                >
-                  <option value="nueva">Nueva</option>
-                  <option value="reparar">Reparar</option>
-                </select>
-                <input
-                  name="precio"
-                  inputMode="decimal"
-                  value={p.precio ? String(p.precio) : ""}
-                  onChange={(e) =>
-                    setPiezas(
-                      piezas.map((x, j) => (j === i ? { ...x, precio: Number(e.target.value.replace(",", ".")) || 0 } : x)),
-                    )
-                  }
-                  placeholder="0"
-                  className={INPUT}
-                />
-                <label className="flex items-center gap-2 text-xs text-muted">
-                  <input
-                    type="checkbox"
-                    name="extra_idx"
-                    value={String(i)}
-                    checked={p.extra}
-                    onChange={(e) => setPiezas(piezas.map((x, j) => (j === i ? { ...x, extra: e.target.checked } : x)))}
-                  />
-                  Extra
-                </label>
-                <button
-                  type="button"
-                  className="text-sm text-rojo"
-                  onClick={() => setPiezas(piezas.filter((_, j) => j !== i))}
-                >
-                  Quitar
-                </button>
-              </div>
-            ))}
+          <div className="mt-4 flex flex-col gap-3">
+            {piezas.map((p, i) => {
+              const delListado = tarifas.some((t) => t.nombre === p.pieza);
+              return (
+                <div key={p.id} className="flex flex-col gap-1">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_140px_120px_auto_auto] sm:items-center">
+                    <input type="hidden" name="pieza_id" value={p.id} />
+                    <input type="hidden" name="precio_pieza" value={p.precioPieza ?? ""} />
+                    <input type="hidden" name="mano_obra" value={p.manoObra ?? ""} />
+                    <input
+                      name="pieza"
+                      value={p.pieza}
+                      list={`tarifas-${p.id}`}
+                      onChange={(e) => {
+                        const nombre = e.target.value;
+                        const t = tarifas.find((x) => x.nombre === nombre);
+                        setPiezas(
+                          piezas.map((x, j) => {
+                            if (j !== i) return x;
+                            if (!t) return { ...x, pieza: nombre, precioPieza: undefined, manoObra: undefined };
+                            return { ...x, pieza: nombre, precioPieza: t.pieza, manoObra: t.mano, precio: totalTarifa(t) };
+                          }),
+                        );
+                      }}
+                      placeholder="Defensa delantera"
+                      className={INPUT}
+                    />
+                    <select
+                      name="condicion"
+                      value={p.condicion}
+                      onChange={(e) =>
+                        setPiezas(piezas.map((x, j) => (j === i ? { ...x, condicion: e.target.value === "reparar" ? "reparar" : "nueva" } : x)))
+                      }
+                      className={INPUT}
+                    >
+                      <option value="nueva">Nueva</option>
+                      <option value="reparar">Reparar</option>
+                    </select>
+                    <input
+                      name="precio"
+                      inputMode="decimal"
+                      value={p.precio ? String(p.precio) : ""}
+                      onChange={(e) =>
+                        setPiezas(
+                          piezas.map((x, j) =>
+                            j === i
+                              ? { ...x, precio: Number(e.target.value.replace(",", ".")) || 0, precioPieza: undefined, manoObra: undefined }
+                              : x,
+                          ),
+                        )
+                      }
+                      placeholder="0"
+                      className={INPUT}
+                    />
+                    <label className="flex items-center gap-2 text-xs text-muted">
+                      <input
+                        type="checkbox"
+                        name="extra_idx"
+                        value={String(i)}
+                        checked={p.extra}
+                        onChange={(e) => setPiezas(piezas.map((x, j) => (j === i ? { ...x, extra: e.target.checked } : x)))}
+                      />
+                      Extra
+                    </label>
+                    <button
+                      type="button"
+                      className="text-sm text-rojo"
+                      onClick={() => setPiezas(piezas.filter((_, j) => j !== i))}
+                    >
+                      Quitar
+                    </button>
+                  </div>
+                  <datalist id={`tarifas-${p.id}`}>
+                    {tarifas.map((t) => (
+                      <option key={t.nombre} value={t.nombre} />
+                    ))}
+                  </datalist>
+                  {delListado && typeof p.precioPieza === "number" && typeof p.manoObra === "number" && (
+                    <p className="text-xs text-muted tabular-nums">
+                      Pieza con descuento USD {plata(p.precioPieza)} · mano de obra USD {plata(p.manoObra)}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <button
             type="button"
