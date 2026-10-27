@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { strFromU8, strToU8, unzipSync, zipSync } from "fflate";
 import { enteroALetras, fechaContrato, plantillaDeContrato, type DatosContratoDoc, type PlantillaContrato } from "./contrato-documento";
@@ -393,14 +393,112 @@ function rellenar(xml: string, d: DatosContratoDoc, cual: PlantillaContrato): st
     out = reemplazarToken(out, "varón", "mujer");
     out = reemplazarToken(out, "panameño", "panameña");
   }
-  return resaltarPasos(out);
+  return compactarHuecos(resaltarPasos(out));
+}
+
+function vacio(xml: string): boolean {
+  return !textoDe(xml).trim() && !xml.includes("<w:drawing") && !/w:type="page"/.test(xml);
+}
+
+function esRaya(texto: string): boolean {
+  const limpia = texto.replace(/\s/g, "");
+  return limpia.length >= 8 && /^_+$/.test(limpia);
+}
+
+function esLineaDeFirma(texto: string): boolean {
+  const t = texto.trim();
+  return esRaya(t) || (/^FIRMA\b/i.test(t) && /_{4,}/.test(t));
+}
+
+/** Una línea entre párrafos. Dos antes de una firma. Las rachas largas, donde iba el logo, se cierran. */
+function compactarHuecos(xml: string): string {
+  return editarParrafos(xml, (lista) => {
+    let i = 0;
+    while (i < lista.length) {
+      if (!vacio(lista[i].xml)) {
+        i += 1;
+        continue;
+      }
+      let j = i;
+      while (j < lista.length && vacio(lista[j].xml)) j += 1;
+      const siguiente = lista[j] ? textoDe(lista[j].xml).trim() : "";
+      const conservar = esLineaDeFirma(siguiente) ? 2 : 1;
+      for (let k = i; k < j; k++) {
+        if (k >= i + conservar) lista[k].deleted = true;
+        else lista[k].xml = lista[k].xml.replace(/<w:spacing\b[^/]*\/>/g, "");
+      }
+      i = j;
+    }
+  });
+}
+
+type RolFirma = "cliente" | "luis" | "carolina";
+
+function rolDeRaya(lista: Parrafo[], i: number): RolFirma | null {
+  if (!esRaya(textoDe(lista[i].xml))) return null;
+  let vistos = 0;
+  for (let j = i + 1; j < lista.length && vistos < 4; j++) {
+    const t = textoDe(lista[j].xml).trim();
+    if (!t) continue;
+    vistos += 1;
+    if (esRaya(t) || t.length > 80) break;
+    if (/^ARRENDATARIO$/i.test(t)) return "cliente";
+    if (/^ARRENDADOR$/i.test(t)) return "luis";
+    if (/^TESTIGO$/i.test(t)) return "carolina";
+  }
+  return null;
+}
+
+type PngFirma = { data: Uint8Array; cx: number; cy: number };
+
+function pngDeFirma(nombre: string): PngFirma | null {
+  const ruta = join(process.cwd(), "lib/cartera/contratos/firmas", nombre);
+  if (!existsSync(ruta)) return null;
+  const data = readFileSync(ruta);
+  const w = data.readUInt32BE(16);
+  const h = data.readUInt32BE(20);
+  if (!w || !h) return null;
+  const escala = Math.min(190 / w, 86 / h);
+  const px = (n: number) => Math.max(1, Math.round(n * escala));
+  const emu = (n: number) => Math.round(n * 9525);
+  return { data: new Uint8Array(data), cx: emu(px(w)), cy: emu(px(h)) };
+}
+
+function parrafoConImagen(rId: string, nombre: string, docId: number, cx: number, cy: number): string {
+  const a = "http://schemas.openxmlformats.org/drawingml/2006/main";
+  const pic = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+  return `<w:p><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${docId}" name="${esc(nombre)}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="${a}" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="${a}"><a:graphicData uri="${pic}"><pic:pic xmlns:pic="${pic}"><pic:nvPicPr><pic:cNvPr id="${docId}" name="${esc(nombre)}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+}
+
+type MediosContrato = { id: string; archivo: string; data: Uint8Array };
+
+function pegarFirmas(xml: string): { xml: string; medios: MediosContrato[] } {
+  const luis = pngDeFirma("firma-luis.png");
+  const carolina = pngDeFirma("firma-carolina.png");
+  const medios: MediosContrato[] = [];
+  if (luis) medios.push({ id: "rIdFirmaLuis", archivo: "word/media/firma-luis.png", data: luis.data });
+  if (carolina) medios.push({ id: "rIdFirmaCarolina", archivo: "word/media/firma-carolina.png", data: carolina.data });
+  let docId = 1;
+  const out = editarParrafos(xml, (lista) => {
+    lista.forEach((p, i) => {
+      const rol = rolDeRaya(lista, i);
+      if (rol === "luis" && luis) {
+        p.xml = parrafoConImagen("rIdFirmaLuis", "Firma de Luis Hernando Cogua", docId, luis.cx, luis.cy);
+        docId += 1;
+      } else if (rol === "carolina" && carolina) {
+        p.xml = parrafoConImagen("rIdFirmaCarolina", "Firma de Diana Carolina Castañeda", docId, carolina.cx, carolina.cy);
+        docId += 1;
+      }
+    });
+  });
+  return { xml: out, medios: docId > 1 ? medios : [] };
 }
 
 function escHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-function htmlDeParrafo(p: string): string {
+function htmlDeParrafo(p: string, imagenes: Map<string, string>): string {
   const jc = p.match(/<w:jc\b[^>]*w:val="([^"]+)"/)?.[1] ?? "";
   const align = jc === "center" ? "center" : jc === "right" ? "right" : jc === "both" ? "justify" : "left";
   const ind = p.match(/<w:ind\b[^>]*\/?>/)?.[0] ?? "";
@@ -411,6 +509,10 @@ function htmlDeParrafo(p: string): string {
   const runs = [...p.matchAll(/<w:r\b[^>]*\/>|<w:r\b[^>]*>[\s\S]*?<\/w:r>/g)];
   let inner = "";
   let corte = false;
+  for (const embed of p.matchAll(/r:embed="([^"]+)"/g)) {
+    const src = imagenes.get(embed[1]);
+    if (src) inner += `<img src="${src}" alt="Firma" style="height:72px;width:auto;display:block"/>`;
+  }
   for (const run of runs) {
     const xml = run[0];
     const rpr = xml.match(/<w:rPr[\s\S]*?<\/w:rPr>/)?.[0] ?? "";
@@ -448,8 +550,17 @@ function htmlDeParrafo(p: string): string {
 
 /** El mismo Word, en HTML, para verlo dentro de la plataforma. */
 export function htmlDeDocxContrato(docx: Buffer): string {
-  const xml = strFromU8(unzipSync(new Uint8Array(docx))["word/document.xml"]);
-  return [...xml.matchAll(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g)].map((m) => htmlDeParrafo(m[0])).join("");
+  const piezas = unzipSync(new Uint8Array(docx));
+  const xml = strFromU8(piezas["word/document.xml"]);
+  const rels = strFromU8(piezas["word/_rels/document.xml.rels"] ?? new Uint8Array());
+  const imagenes = new Map<string, string>();
+  for (const rel of rels.matchAll(/Id="([^"]+)"[^>]*Target="([^"]+)"/g)) {
+    const archivo = rel[2].replace(/^\.\.\//, "").replace(/^\//, "");
+    const bytes = piezas[`word/${archivo}`] ?? piezas[archivo];
+    if (!bytes) continue;
+    imagenes.set(rel[1], `data:image/png;base64,${Buffer.from(bytes).toString("base64")}`);
+  }
+  return [...xml.matchAll(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g)].map((m) => htmlDeParrafo(m[0], imagenes)).join("");
 }
 
 export async function armarDocxDesdeOriginal(d: DatosContratoDoc): Promise<Buffer> {
@@ -457,7 +568,24 @@ export async function armarDocxDesdeOriginal(d: DatosContratoDoc): Promise<Buffe
   const ruta = join(process.cwd(), "lib/cartera/contratos/originales", ARCHIVO[cual]);
   const crudo = new Uint8Array(readFileSync(ruta));
   const piezas = unzipSync(crudo);
-  const xml = strFromU8(piezas["word/document.xml"]);
-  piezas["word/document.xml"] = strToU8(rellenar(xml, d, cual));
+  const armado = pegarFirmas(rellenar(strFromU8(piezas["word/document.xml"]), d, cual));
+  piezas["word/document.xml"] = strToU8(armado.xml);
+  for (const medio of armado.medios) piezas[medio.archivo] = medio.data;
+  if (armado.medios.length) {
+    const tipos = strFromU8(piezas["[Content_Types].xml"]);
+    if (!tipos.includes('Extension="png"')) {
+      piezas["[Content_Types].xml"] = strToU8(
+        tipos.replace("</Types>", '<Default Extension="png" ContentType="image/png"/></Types>'),
+      );
+    }
+    const rels = strFromU8(piezas["word/_rels/document.xml.rels"]);
+    const extras = armado.medios
+      .map(
+        (m) =>
+          `<Relationship Id="${m.id}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${m.archivo.split("/").pop()}"/>`,
+      )
+      .join("");
+    piezas["word/_rels/document.xml.rels"] = strToU8(rels.replace("</Relationships>", `${extras}</Relationships>`));
+  }
   return Buffer.from(zipSync(piezas));
 }
