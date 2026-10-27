@@ -405,13 +405,24 @@ function esRaya(texto: string): boolean {
   return limpia.length >= 8 && /^_+$/.test(limpia);
 }
 
-/** Quita los párrafos vacíos que abrían huecos. El salto de página se conserva. */
+/** Quita los párrafos vacíos y deja el mismo aire entre un párrafo y el siguiente. */
 function compactarHuecos(xml: string): string {
   return editarParrafos(xml, (lista) => {
     for (const p of lista) {
-      if (vacio(p.xml)) p.deleted = true;
+      if (vacio(p.xml)) {
+        p.deleted = true;
+        continue;
+      }
+      if (/w:type="page"/.test(p.xml) && !textoDe(p.xml).trim()) continue;
+      p.xml = ponerSpacing(p.xml, '<w:spacing w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>');
     }
   });
+}
+
+function ponerSpacing(xml: string, spacing: string): string {
+  if (/<w:spacing\b/.test(xml)) return xml.replace(/<w:spacing\b[^>]*\/>/, spacing);
+  if (/<w:pPr\b/.test(xml)) return xml.replace(/<w:pPr\b([^>]*)>/, `<w:pPr$1>${spacing}`);
+  return xml.replace(/<w:p\b([^>]*)>/, `<w:p$1><w:pPr>${spacing}</w:pPr>`);
 }
 
 type RolFirma = "cliente" | "luis" | "carolina";
@@ -433,7 +444,7 @@ function rolDeRaya(lista: Parrafo[], i: number): RolFirma | null {
 
 type PngFirma = { data: Uint8Array; cx: number; cy: number };
 
-/** Las dos firmas ocupan el mismo recuadro y quedan centradas sobre el nombre. */
+/** Mismo alto en las dos. El ancho sigue la forma de cada firma, sin aplastarla. */
 function pngDeFirma(nombre: string): PngFirma | null {
   const ruta = join(process.cwd(), "lib/cartera/contratos/firmas", nombre);
   if (!existsSync(ruta)) return null;
@@ -443,15 +454,16 @@ function pngDeFirma(nombre: string): PngFirma | null {
   if (!w || !h) return null;
   const data = new Uint8Array(crudo.byteLength);
   data.set(crudo);
-  const cx = Math.round(1.45 * 914400);
-  const cy = Math.round(0.55 * 914400);
-  return { data, cx, cy };
+  const alto = 0.78 * 914400;
+  return { data, cx: Math.round(alto * (w / h)), cy: Math.round(alto) };
 }
 
 const FORMA_FIRMA =
-  '<w:jc w:val="center"/><w:spacing w:before="160" w:after="0" w:line="240" w:lineRule="auto"/>';
+  '<w:keepNext/><w:ind w:left="720"/><w:spacing w:before="280" w:after="40" w:line="240" w:lineRule="auto"/>';
 const FORMA_NOMBRE =
-  '<w:jc w:val="center"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>';
+  '<w:keepNext/><w:ind w:left="720"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>';
+const FORMA_ROL =
+  '<w:ind w:left="720"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>';
 
 function conForma(xml: string, forma: string): string {
   const pPr = `<w:pPr>${forma}</w:pPr>`;
@@ -459,15 +471,16 @@ function conForma(xml: string, forma: string): string {
   return xml.replace(/<w:p\b([^>]*)>/, `<w:p$1>${pPr}`);
 }
 
-function centrarTexto(xml: string, firma: boolean): string {
-  const formado = conForma(xml, firma ? FORMA_FIRMA : FORMA_NOMBRE);
+function formarBloque(xml: string, cual: "firma" | "nombre" | "rol"): string {
+  const forma = cual === "firma" ? FORMA_FIRMA : cual === "rol" ? FORMA_ROL : FORMA_NOMBRE;
+  const formado = conForma(xml, forma);
   return mapTextos(formado, (t) => t.replace(/^\s+/, ""));
 }
 
 function parrafoConImagen(rId: string, nombre: string, docId: number, cx: number, cy: number): string {
   const a = "http://schemas.openxmlformats.org/drawingml/2006/main";
   const pic = "http://schemas.openxmlformats.org/drawingml/2006/picture";
-  return `<w:p><w:pPr>${FORMA_FIRMA}</w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${docId}" name="${esc(nombre)}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="${a}" noChangeAspect="0"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="${a}"><a:graphicData uri="${pic}"><pic:pic xmlns:pic="${pic}"><pic:nvPicPr><pic:cNvPr id="${docId}" name="${esc(nombre)}"/><pic:cNvPicPr><a:picLocks noChangeAspect="0"/></pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  return `<w:p><w:pPr>${FORMA_FIRMA}</w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${docId}" name="${esc(nombre)}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="${a}" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="${a}"><a:graphicData uri="${pic}"><pic:pic xmlns:pic="${pic}"><pic:nvPicPr><pic:cNvPr id="${docId}" name="${esc(nombre)}"/><pic:cNvPicPr><a:picLocks noChangeAspect="1"/></pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
 }
 
 type MediosContrato = { id: string; archivo: string; data: Uint8Array };
@@ -493,18 +506,19 @@ function pegarFirmas(xml: string): { xml: string; medios: MediosContrato[] } {
         const t = textoDe(lista[j].xml).trim();
         if (!t || esRaya(t)) break;
         vistos += 1;
-        lista[j].xml = centrarTexto(lista[j].xml, false);
-        if (/^(ARRENDATARIO|ARRENDADOR|TESTIGO)$/i.test(t)) break;
+        const esRol = /^(ARRENDATARIO|ARRENDADOR|TESTIGO)$/i.test(t);
+        lista[j].xml = formarBloque(lista[j].xml, esRol ? "rol" : "nombre");
+        if (esRol) break;
       }
       if (rol === "cliente") {
-        p.xml = centrarTexto(p.xml, true);
+        p.xml = formarBloque(p.xml, "firma");
         return;
       }
       const firma = rol === "luis" ? luis : carolina;
       const id = rol === "luis" ? "rIdFirmaLuis" : "rIdFirmaCarolina";
       const nombre = rol === "luis" ? "Firma de Luis Hernando Cogua" : "Firma de Diana Carolina Castañeda";
       if (!firma) {
-        p.xml = centrarTexto(p.xml, true);
+        p.xml = formarBloque(p.xml, "firma");
         return;
       }
       p.xml = parrafoConImagen(id, nombre, docId, firma.cx, firma.cy);
@@ -531,7 +545,7 @@ function htmlDeParrafo(p: string, imagenes: Map<string, string>): string {
   let corte = false;
   for (const embed of p.matchAll(/r:embed="([^"]+)"/g)) {
     const src = imagenes.get(embed[1]);
-    if (src) inner += `<img src="${src}" alt="Firma" style="height:58px;width:158px;object-fit:contain;display:block;margin:0 auto"/>`;
+    if (src) inner += `<img src="${src}" alt="Firma" style="height:74px;width:auto;display:block"/>`;
   }
   for (const run of runs) {
     const xml = run[0];
