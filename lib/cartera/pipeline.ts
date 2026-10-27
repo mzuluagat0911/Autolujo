@@ -756,7 +756,8 @@ export async function conversacionesEnEspera(minutos: number): Promise<number> {
 /**
  * Reclama un mensaje entrante como "en proceso" usando el UNIQUE de
  * wa_message_id como candado. Si Meta reintenta el webhook, el segundo intento
- * choca con el unique y devuelve null → no se reprocesa (no duplica pagos).
+ * choca con el unique y devuelve null. Una foto que no terminó de guardarse
+ * o de leerse se retoma con `idImagenPorRetomar` (no se duplica el pago).
  * Devuelve el id del mensaje si lo reclamó, o null si ya existía.
  */
 export async function reclamarMensajeEntrante(opts: {
@@ -797,6 +798,95 @@ export async function reclamarMensajeEntrante(opts: {
     })
     .eq("id", opts.conversacionId);
   return data.id as string;
+}
+
+/** La lectura de una foto ya cerró (con pago o sin él). No se vuelve a leer. */
+export const LECTURA_LISTA = "sistema:lista";
+/** Otra ejecución sigue leyendo esta foto. El número es Date.now() de cuando tomó el turno. */
+const LECTURA_PREFIJO = "sistema:lectura:";
+/** Más que el tope del webhook, para no leer dos veces la misma foto. */
+const LECTURA_VIVA_MS = 150_000;
+
+/**
+ * ¿Esta foto ya se leyó, la está leyendo otra ejecución, o hay que tomarla?
+ * Puro: el candado de verdad está en `tomarLecturaImagen`.
+ */
+export function estadoLecturaImagen(
+  row: { pagoId: string | null; enviadoPor: string | null },
+  ahora: number,
+): "lista" | "ocupada" | "tomar" {
+  if (row.pagoId) return "lista";
+  if (row.enviadoPor === LECTURA_LISTA) return "lista";
+  const marca = row.enviadoPor ?? "";
+  if (marca.startsWith(LECTURA_PREFIJO)) {
+    const desde = Number(marca.slice(LECTURA_PREFIJO.length));
+    if (Number.isFinite(desde) && ahora - desde < LECTURA_VIVA_MS) return "ocupada";
+  }
+  return "tomar";
+}
+
+/**
+ * Foto ya reclamada que todavía no tiene pago ni lectura cerrada.
+ * El reintento de Meta trae otra vez el id del archivo y puede seguir.
+ */
+export async function idImagenPorRetomar(waMessageId: string): Promise<string | null> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("mensajes")
+    .select("id, tipo, pago_id, enviado_por")
+    .eq("wa_message_id", waMessageId)
+    .maybeSingle();
+  const row = data as { id: string; tipo: string; pago_id: string | null; enviado_por: string | null } | null;
+  if (!row || row.tipo !== "image") return null;
+  if (estadoLecturaImagen({ pagoId: row.pago_id, enviadoPor: row.enviado_por }, Date.now()) === "lista") {
+    return null;
+  }
+  return row.id;
+}
+
+/** Path ya subido de esta foto, si la ejecución anterior alcanzó a guardarla. */
+export async function mediaDeMensaje(mensajeId: string): Promise<string | null> {
+  const sb = createServerSupabase();
+  const { data } = await sb.from("mensajes").select("media_url").eq("id", mensajeId).maybeSingle();
+  return (data as { media_url: string | null } | null)?.media_url ?? null;
+}
+
+/** Baja del bucket la foto que ya quedó guardada. */
+export async function bajarArchivoComprobante(path: string): Promise<Buffer | null> {
+  const sb = createServerSupabase();
+  const { data, error } = await sb.storage.from(BUCKET).download(path);
+  if (error || !data) return null;
+  return Buffer.from(await data.arrayBuffer());
+}
+
+/**
+ * Un solo lector por foto. `ocupada` = otra ejecución sigue viva: el webhook
+ * responde 503 para que Meta vuelva a intentar. `lista` = ya no hay nada que hacer.
+ */
+export async function tomarLecturaImagen(mensajeId: string): Promise<"tomar" | "lista" | "ocupada"> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("mensajes")
+    .select("pago_id, enviado_por")
+    .eq("id", mensajeId)
+    .maybeSingle();
+  const row = data as { pago_id: string | null; enviado_por: string | null } | null;
+  if (!row) return "ocupada";
+  const estado = estadoLecturaImagen({ pagoId: row.pago_id, enviadoPor: row.enviado_por }, Date.now());
+  if (estado !== "tomar") return estado;
+  const marca = `${LECTURA_PREFIJO}${Date.now()}`;
+  let q = sb.from("mensajes").update({ enviado_por: marca }).eq("id", mensajeId).select("id");
+  q = row.enviado_por == null ? q.is("enviado_por", null) : q.eq("enviado_por", row.enviado_por);
+  const { data: upd } = await q;
+  return upd && upd.length > 0 ? "tomar" : "ocupada";
+}
+
+/** La foto ya se leyó. Con pago, queda enlazada; sin pago, no se vuelve a crear. */
+export async function cerrarLecturaImagen(mensajeId: string, pagoId: string | null): Promise<void> {
+  const sb = createServerSupabase();
+  const upd: Record<string, unknown> = { enviado_por: LECTURA_LISTA };
+  if (pagoId) upd.pago_id = pagoId;
+  await sb.from("mensajes").update(upd).eq("id", mensajeId);
 }
 
 /** El equipo abrió el chat: limpia el contador de no leídos. */

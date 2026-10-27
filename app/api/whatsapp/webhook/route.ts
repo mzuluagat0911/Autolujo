@@ -10,6 +10,11 @@ import {
   subirAudioChat,
   reclamarMensajeEntrante,
   completarMensaje,
+  idImagenPorRetomar,
+  mediaDeMensaje,
+  bajarArchivoComprobante,
+  tomarLecturaImagen,
+  cerrarLecturaImagen,
   historialReciente,
   marcarEscalada,
   marcarNecesitaHumano,
@@ -25,7 +30,7 @@ import {
 import { responderAgente } from "@/lib/ai/agente";
 import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoConArchivo } from "@/lib/comercial/archivo";
-import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "@/lib/comercial/bienvenida";
+import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA, sinBienvenidaRepetida } from "@/lib/comercial/bienvenida";
 import { mensajeNaturalLucia } from "@/lib/comercial/voz";
 import {
   ajustarMensajeDeCita,
@@ -85,7 +90,17 @@ function conPieHorario(base: string): string {
 }
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// La foto se guarda en los primeros segundos. La lectura puede seguir después;
+// si esta función se corta, Meta reintenta y se retoma la misma foto.
+export const maxDuration = 120;
+
+/** La foto todavía la está leyendo otra ejecución. Meta tiene que volver a llamar. */
+class ComprobanteEnProceso extends Error {
+  constructor() {
+    super("COMPROBANTE_EN_PROCESO");
+    this.name = "ComprobanteEnProceso";
+  }
+}
 
 // Número del agente COMERCIAL (Lucía). Los mensajes que entren a este
 // phone_number_id se atienden con ventas, no con cobranza (Claudia).
@@ -126,10 +141,14 @@ export async function POST(req: NextRequest) {
     return new Response("Bad JSON", { status: 400 });
   }
 
-  // Meta reintenta si no recibe 200 rápido: procesamos con try/catch y siempre 200.
+  // 200 cuando el evento quedó resuelto. 503 solo si una foto sigue en lectura:
+  // Meta vuelve a llamar y se retoma, sin duplicar el pago.
   try {
     await procesar(payload);
   } catch (e) {
+    if (e instanceof ComprobanteEnProceso) {
+      return new Response("retry", { status: 503 });
+    }
     console.error("[whatsapp/webhook] error procesando:", e);
   }
 
@@ -191,6 +210,7 @@ async function procesar(payload: WebhookPayload) {
     try {
       await manejarMensaje(msg);
     } catch (e) {
+      if (e instanceof ComprobanteEnProceso) throw e;
       console.error("[whatsapp/webhook] error en mensaje:", e);
     }
   }
@@ -342,11 +362,14 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         proximaAccion: r.lead.proxima_accion,
       });
     }
-    let salida = ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, ultimo), {
-      hoy: hoyPanama(),
-      fechaCita: citaPrevia?.fecha ?? null,
-      cliente: ultimo,
-    });
+    let salida = sinBienvenidaRepetida(
+      ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, ultimo), {
+        hoy: hoyPanama(),
+        fechaCita: citaPrevia?.fecha ?? null,
+        cliente: ultimo,
+      }),
+      historial,
+    );
     if (!decision.envia) {
       if (guardado.conversacionId) {
         await guardarBorradorComercial(guardado.conversacionId, salida);
@@ -428,7 +451,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       await entregarRespuestaComercial(
         from,
         guardado.conversacionId,
-        mensajeNaturalLucia(r.mensaje, texto),
+        sinBienvenidaRepetida(mensajeNaturalLucia(r.mensaje, texto), historial),
         decision.envia,
       );
       if (decision.envia && guardado.conversacionId) {
@@ -713,16 +736,20 @@ async function manejarMensaje(msg: WhatsAppMessage) {
 
   // Candado de idempotencia: reclama el mensaje ANTES de trabajo pesado.
   // Si Meta reintenta, el segundo choca con el unique y sale sin reprocesar.
-  const mensajeId = await reclamarMensajeEntrante({
+  let mensajeId = await reclamarMensajeEntrante({
     conversacionId: conv.id, waMessageId: msg.id,
     tipo: tipo === "image" ? "image" : tipo === "audio" ? "audio" : "text",
     texto,
   });
-  if (!mensajeId) return; // duplicado (reintento de Meta)
+  if (!mensajeId && tipo === "image" && msg.id) {
+    // La foto ya estaba anotada, pero se cortó antes de guardarla o de leerla.
+    mensajeId = await idImagenPorRetomar(msg.id);
+  }
+  if (!mensajeId) return;
 
-  // Si una persona del equipo tomó el chat, el agente NO responde.
-  // Solo marcamos que hay un mensaje nuevo esperando respuesta.
-  if (conv.modo === "humano") {
+  // Si una persona del equipo tomó el chat, el agente no escribe.
+  // La foto igual se guarda y se registra: si no, el comprobante desaparece.
+  if (conv.modo === "humano" && tipo !== "image") {
     await marcarNecesitaHumano(conv.id);
     return;
   }
@@ -758,7 +785,7 @@ async function manejarMensaje(msg: WhatsAppMessage) {
     if (await laFotoContestaEsteTexto(conv.id, cuerpo)) return;
     await responderConAgente(conv, from, undefined, mensajeId);
   } else if (tipo === "image") {
-    await procesarComprobante(conv, from, msg, mensajeId);
+    await procesarComprobante(conv, from, msg, mensajeId, conv.modo === "humano");
   } else if (tipo === "audio") {
     await procesarAudio(conv, from, msg, mensajeId);
   } else if (tipo === "ack") {
@@ -969,18 +996,40 @@ async function procesarAudio(conv: Conv, from: string, msg: WhatsAppMessage, men
   }
 }
 
-// Descarga el comprobante, lo lee con visión, lo sube a Storage, resuelve el
-// contrato por # de carro, registra el pago y responde lo leído.
+/** Baja la foto y la deja en el chat antes de leerla. Si ya estaba, la reutiliza. */
+async function asegurarFotoGuardada(
+  mensajeId: string,
+  mediaId: string,
+  mime: string,
+): Promise<{ bytes: Buffer; path: string }> {
+  const ya = await mediaDeMensaje(mensajeId);
+  if (ya) {
+    const guardado = await bajarArchivoComprobante(ya);
+    if (guardado) return { bytes: guardado, path: ya };
+  }
+  const bytes = await downloadMedia(mediaId);
+  const path = await subirComprobante(bytes, mime);
+  await completarMensaje(mensajeId, { mediaUrl: path });
+  return { bytes, path };
+}
+
+// Primero guarda la foto en el chat. Después la lee y registra el pago.
+// Si se corta a mitad, el archivo ya se ve y el reintento de Meta sigue la lectura.
 async function procesarComprobante(
   conv: Conv,
   from: string,
   msg: WhatsAppMessage,
   mensajeId: string,
+  callado = false,
 ) {
   const conversacionId = conv.id;
   const image = msg.image;
   const mediaId = image?.id;
   if (!mediaId) {
+    if (callado) {
+      await marcarNecesitaHumano(conversacionId);
+      return;
+    }
     await responderYEscalar(
       conversacionId,
       from,
@@ -991,44 +1040,53 @@ async function procesarComprobante(
   }
   const mime = image?.mime_type ?? "image/jpeg";
 
+  const avisar = async (texto: string, pagoId?: string) => {
+    if (callado) {
+      await marcarNecesitaHumano(conversacionId);
+      return;
+    }
+    await responder(conversacionId, from, texto, pagoId);
+  };
+
   try {
-    const bytes = await downloadMedia(mediaId);
+    const { bytes, path } = await asegurarFotoGuardada(mensajeId, mediaId, mime);
+    const turno = await tomarLecturaImagen(mensajeId);
+    if (turno === "lista") return;
+    if (turno === "ocupada") throw new ComprobanteEnProceso();
+
     const lista = (await leerComprobantes(bytes, mime)).filter((x) => x.es_comprobante);
 
-    // Ninguna lectura es comprobante → no creamos pago (antifraude).
+    // Ninguna lectura es comprobante → no creamos pago. La foto sí queda en el chat.
     if (lista.length === 0) {
-      if (!(await fotoSigueSiendoLaQueContesta(conversacionId, mensajeId))) return;
-      await responder(
-        conversacionId,
-        from,
+      await cerrarLecturaImagen(mensajeId, null);
+      if (callado || !(await fotoSigueSiendoLaQueContesta(conversacionId, mensajeId))) return;
+      await avisar(
         "Esa foto no se ve como comprobante. Mándeme la captura de la transferencia donde se vea el monto.",
       );
       return;
     }
 
-    // La imagen se sube UNA sola vez, aunque traiga varios recibos.
-    const path = await subirComprobante(bytes, mime);
     const items: { c: Comprobante; res: Awaited<ReturnType<typeof procesarPagoComprobante>> }[] = [];
     for (const c of lista) {
       const res = await procesarPagoComprobante({ conversacion: conv, comprobante: c, bytes, mime, path });
       items.push({ c, res });
     }
 
-    // La miniatura del mensaje enlaza al primer pago creado.
     const primerPago = items.find((it) => it.res.pagoId)?.res.pagoId ?? null;
-    await completarMensaje(mensajeId, { mediaUrl: path, pagoId: primerPago });
+    await cerrarLecturaImagen(mensajeId, primerPago);
 
-    // Un solo comprobante: respuesta completa de siempre.
     if (items.length === 1) {
       const { c, res } = items[0];
       const { respuesta, escalarMotivo } = armarRespuestaComprobante(c, res);
-      if (!(await fotoSigueSiendoLaQueContesta(conversacionId, mensajeId))) return;
-      await responder(conversacionId, from, respuesta, res.pagoId ?? undefined);
+      if (!callado && (await fotoSigueSiendoLaQueContesta(conversacionId, mensajeId))) {
+        await avisar(respuesta, res.pagoId ?? undefined);
+      } else if (callado) {
+        await marcarNecesitaHumano(conversacionId);
+      }
       if (escalarMotivo) await marcarPendienteDeRespuesta(conversacionId, escalarMotivo);
       return;
     }
 
-    // Varios comprobantes en una foto: se resumen y se escala si alguno tiene pero.
     const lineas = items.map(({ c, res }) => lineaComprobante(c, res));
     const motivos = items
       .map(({ c, res }) => armarRespuestaComprobante(c, res).escalarMotivo)
@@ -1039,18 +1097,34 @@ async function procesarComprobante(
       : motivos.length
         ? "Hay uno que reviso yo y le escribo."
         : "Los cruzo con el banco y le confirmo.";
-    if (!(await fotoSigueSiendoLaQueContesta(conversacionId, mensajeId))) return;
-    await responder(conversacionId, from, `${cabeza}\n${lineas.join("\n")}\n${cola}`, primerPago ?? undefined);
+    if (!callado && (await fotoSigueSiendoLaQueContesta(conversacionId, mensajeId))) {
+      await avisar(`${cabeza}\n${lineas.join("\n")}\n${cola}`, primerPago ?? undefined);
+    } else if (callado) {
+      await marcarNecesitaHumano(conversacionId);
+    }
     if (motivos.length) {
       await marcarPendienteDeRespuesta(conversacionId, `Foto con varios comprobantes: ${motivos.join(" · ")}`);
     }
   } catch (e) {
+    if (e instanceof ComprobanteEnProceso) throw e;
     console.error("[whatsapp/webhook] error procesando comprobante:", e);
+    // Ya se leyó (hay pago o la lectura se cerró): el fallo fue al contestar.
+    if (!msg.id || !(await idImagenPorRetomar(msg.id))) return;
+    const guardada = await mediaDeMensaje(mensajeId);
+    if (!guardada) throw new ComprobanteEnProceso();
+    await cerrarLecturaImagen(mensajeId, null);
+    if (callado) {
+      await marcarPendienteDeRespuesta(
+        conversacionId,
+        "La foto quedó en el chat, pero no se pudo leer el comprobante.",
+      );
+      return;
+    }
     await responderYEscalar(
       conversacionId,
       from,
-      "No pude abrir la foto. ¿Me la reenvía?",
-      "Falló el procesamiento de un comprobante: revisar si el pago quedó registrado.",
+      "La foto ya quedó en el chat. No pude leer el monto; el equipo la revisa.",
+      "La foto quedó guardada, pero falló la lectura del comprobante.",
     );
   }
 }
