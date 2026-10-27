@@ -454,14 +454,16 @@ type PngFirma = { data: Uint8Array; cx: number; cy: number };
 function pngDeFirma(nombre: string): PngFirma | null {
   const ruta = join(process.cwd(), "lib/cartera/contratos/firmas", nombre);
   if (!existsSync(ruta)) return null;
-  const data = readFileSync(ruta);
-  const w = data.readUInt32BE(16);
-  const h = data.readUInt32BE(20);
+  const crudo = readFileSync(ruta);
+  const w = crudo.readUInt32BE(16);
+  const h = crudo.readUInt32BE(20);
   if (!w || !h) return null;
+  const data = new Uint8Array(crudo.byteLength);
+  data.set(crudo);
   const escala = Math.min(190 / w, 86 / h);
   const px = (n: number) => Math.max(1, Math.round(n * escala));
   const emu = (n: number) => Math.round(n * 9525);
-  return { data: new Uint8Array(data), cx: emu(px(w)), cy: emu(px(h)) };
+  return { data, cx: emu(px(w)), cy: emu(px(h)) };
 }
 
 function parrafoConImagen(rId: string, nombre: string, docId: number, cx: number, cy: number): string {
@@ -570,7 +572,7 @@ export async function armarDocxDesdeOriginal(d: DatosContratoDoc): Promise<Buffe
   const piezas = unzipSync(crudo);
   const armado = pegarFirmas(rellenar(strFromU8(piezas["word/document.xml"]), d, cual));
   piezas["word/document.xml"] = strToU8(armado.xml);
-  for (const medio of armado.medios) piezas[medio.archivo] = medio.data;
+  for (const medio of armado.medios) piezas[medio.archivo] = medio.data as Uint8Array<ArrayBuffer>;
   if (armado.medios.length) {
     const tipos = strFromU8(piezas["[Content_Types].xml"]);
     if (!tipos.includes('Extension="png"')) {
