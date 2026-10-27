@@ -405,16 +405,41 @@ function esRaya(texto: string): boolean {
   return limpia.length >= 8 && /^_+$/.test(limpia);
 }
 
-/** Quita los párrafos vacíos y deja el mismo aire entre un párrafo y el siguiente. */
+const LINEA = ' w:line="276" w:lineRule="auto"';
+
+function planoTitulo(texto: string): string {
+  return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+}
+
+/** El aire de contrato-KW·182. No se inventa otro. */
+function spacingDeReferencia(texto: string, enCuerpo: boolean): string {
+  const t = texto.trim();
+  const p = planoTitulo(t);
+  if (!enCuerpo) {
+    if (/^CONTRATO DE ARRENDAMIENTO/.test(p)) return `<w:spacing w:after="280"${LINEA}/>`;
+    if (/^\d+\s+\S/.test(t)) return `<w:spacing w:after="40"${LINEA}/>`;
+    return `<w:spacing w:after="60"${LINEA}/>`;
+  }
+  if (/^NOTA\b/.test(p)) return `<w:spacing w:before="200" w:after="140"${LINEA}/>`;
+  if (/^(PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|SEPTIMA|OCTAVA|NOVENA|DECIMA|VIGESIMA|TRIGESIMA|CUATRIGESIMA|QUINCUAGESIMA|QUICUAGESIMA)\b/.test(p)) {
+    return `<w:spacing w:before="240" w:after="80"${LINEA}/>`;
+  }
+  return `<w:spacing w:after="140"${LINEA}/>`;
+}
+
+/** Quita los párrafos vacíos del archivo convertido y copia el aire del contrato de referencia. */
 function compactarHuecos(xml: string): string {
   return editarParrafos(xml, (lista) => {
+    let enCuerpo = false;
     for (const p of lista) {
       if (vacio(p.xml)) {
         p.deleted = true;
         continue;
       }
-      if (/w:type="page"/.test(p.xml) && !textoDe(p.xml).trim()) continue;
-      p.xml = ponerSpacing(p.xml, '<w:spacing w:before="0" w:after="60" w:line="240" w:lineRule="auto"/>');
+      const texto = textoDe(p.xml).trim();
+      if (/^Entre los suscritos/i.test(texto)) enCuerpo = true;
+      if (/w:type="page"/.test(p.xml) && !texto) continue;
+      p.xml = ponerSpacing(p.xml, spacingDeReferencia(texto, enCuerpo));
     }
   });
 }
@@ -444,7 +469,7 @@ function rolDeRaya(lista: Parrafo[], i: number): RolFirma | null {
 
 type PngFirma = { data: Uint8Array; cx: number; cy: number };
 
-/** Mismo alto en las dos. El ancho sigue la forma de cada firma, sin aplastarla. */
+/** Misma altura que en el contrato de referencia. El ancho no se aplasta. */
 function pngDeFirma(nombre: string): PngFirma | null {
   const ruta = join(process.cwd(), "lib/cartera/contratos/firmas", nombre);
   if (!existsSync(ruta)) return null;
@@ -454,16 +479,16 @@ function pngDeFirma(nombre: string): PngFirma | null {
   if (!w || !h) return null;
   const data = new Uint8Array(crudo.byteLength);
   data.set(crudo);
-  const alto = 0.78 * 914400;
+  const alto = 0.9 * 914400;
   return { data, cx: Math.round(alto * (w / h)), cy: Math.round(alto) };
 }
 
 const FORMA_FIRMA =
-  '<w:keepNext/><w:ind w:left="720"/><w:spacing w:before="280" w:after="40" w:line="240" w:lineRule="auto"/>';
+  '<w:keepNext/><w:spacing w:before="220" w:after="40" w:line="276" w:lineRule="auto"/>';
 const FORMA_NOMBRE =
-  '<w:keepNext/><w:ind w:left="720"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>';
+  '<w:keepNext/><w:spacing w:after="40" w:line="276" w:lineRule="auto"/>';
 const FORMA_ROL =
-  '<w:ind w:left="720"/><w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>';
+  '<w:spacing w:after="40" w:line="276" w:lineRule="auto"/>';
 
 function conForma(xml: string, forma: string): string {
   const pPr = `<w:pPr>${forma}</w:pPr>`;
