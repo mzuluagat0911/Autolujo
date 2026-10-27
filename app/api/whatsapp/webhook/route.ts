@@ -90,9 +90,9 @@ function conPieHorario(base: string): string {
 }
 
 export const runtime = "nodejs";
-// La foto se guarda en los primeros segundos. La lectura puede seguir después;
-// si esta función se corta, Meta reintenta y se retoma la misma foto.
-export const maxDuration = 120;
+// La foto se guarda en los primeros segundos, dentro de este tope.
+// Si la lectura se corta, Meta reintenta y se retoma la misma foto.
+export const maxDuration = 60;
 
 /** La foto todavía la está leyendo otra ejecución. Meta tiene que volver a llamar. */
 class ComprobanteEnProceso extends Error {
