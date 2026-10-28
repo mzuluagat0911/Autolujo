@@ -28,6 +28,7 @@ import {
 } from "@/lib/seguros/modelo";
 import {
   carroVolvio,
+  confirmarChoque,
   eliminarCaso,
   guardarCaso,
   marcarAviso,
@@ -84,6 +85,7 @@ export function FichaCaso({
   const casoVista = { ...fila.caso, seccion, via: via === "fud" || via === "parte" ? via : null, aseguradora };
   const proxima = siguienteSeccion(casoVista);
   const total = totalPapeles(fila.caso.via);
+  const porConfirmar = fila.caso.porConfirmar;
   const dias = diasEnSeccion(fila, hoy);
   const trabado = atraso(fila, hoy);
   const conductorCliente = !fila.caso.conductor.trim() && cliente ? cliente : null;
@@ -201,6 +203,23 @@ export function FichaCaso({
     return false;
   }
 
+  function borrarCaso(pregunta: string) {
+    if (!window.confirm(pregunta)) return;
+    const fd = new FormData();
+    fd.set("id", fila.id);
+    setError(null);
+    start(async () => {
+      const r = await eliminarCaso(fd);
+      if (!r.ok) {
+        setError(r.error ?? "No se pudo eliminar.");
+        return;
+      }
+      setSucio(false);
+      router.push("/seguros");
+      router.refresh();
+    });
+  }
+
   const paquete = `/seguros/${fila.id}/paquete`;
 
   return (
@@ -235,6 +254,50 @@ export function FichaCaso({
         </div>
       </header>
 
+      {porConfirmar && (
+        <section className="rounded-xl bg-ambar-wash p-5 ring-1 ring-ambar/30">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ambar">Reportado por WhatsApp</p>
+          <p className="mt-2 max-w-2xl text-sm">
+            El cliente avisó un choque en el chat de cartera. El carro sigue trabajando y el cobro no cambia hasta que lo
+            confirme.
+          </p>
+          {fila.caso.relato && <p className="mt-3 max-w-2xl rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-line">“{fila.caso.relato}”</p>}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={PRIMARIO}
+              disabled={pending}
+              onClick={() => {
+                if (!window.confirm("¿Confirmar el choque? El carro queda en colisión desde la fecha del choque.")) return;
+                const fd = new FormData();
+                fd.set("id", fila.id);
+                correr(confirmarChoque, fd);
+              }}
+            >
+              Confirmar choque
+            </button>
+            <button
+              type="button"
+              className={SECUNDARIO}
+              disabled={pending}
+              onClick={() => borrarCaso("¿Descartar este reporte? Se borra el caso y el carro sigue igual.")}
+            >
+              Descartar
+            </button>
+            {fila.caso.conversacionId && (
+              <Link
+                href={`/cartera/conversaciones/${fila.caso.conversacionId}`}
+                className="ml-auto text-sm font-medium hover:underline"
+              >
+                Ver el chat
+              </Link>
+            )}
+          </div>
+          {error && <p className="mt-3 text-sm text-rojo">{error}</p>}
+        </section>
+      )}
+
+      {!porConfirmar && (
       <div className="flex flex-wrap gap-1.5">
         {SECCIONES.map((s) => (
           <button
@@ -250,6 +313,7 @@ export function FichaCaso({
           </button>
         ))}
       </div>
+      )}
 
       <section className="rounded-xl bg-surface p-5 ring-1 ring-line">
         <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Qué sigue</p>
@@ -266,7 +330,7 @@ export function FichaCaso({
           </p>
         )}
         <div className="mt-4 flex flex-wrap gap-2">
-          {proxima && (
+          {proxima && !porConfirmar && (
             <button type="button" onClick={() => enviar(proxima)} className={PRIMARIO} disabled={pending}>
               Pasar a {etiquetaSeccion(proxima)}
             </button>
@@ -704,25 +768,11 @@ export function FichaCaso({
           type="button"
           className={`${PELIGRO} ml-auto`}
           disabled={pending}
-          onClick={() => {
-            const ok = window.confirm(
+          onClick={() =>
+            borrarCaso(
               "¿Eliminar este choque? Se borra el caso y sus archivos. Si el carro quedó en colisión por este registro y no tiene otro choque, vuelve a trabajar.",
-            );
-            if (!ok) return;
-            const fd = new FormData();
-            fd.set("id", fila.id);
-            setError(null);
-            start(async () => {
-              const r = await eliminarCaso(fd);
-              if (!r.ok) {
-                setError(r.error ?? "No se pudo eliminar.");
-                return;
-              }
-              setSucio(false);
-              router.push("/seguros");
-              router.refresh();
-            });
-          }}
+            )
+          }
         >
           Eliminar choque
         </button>

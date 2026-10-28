@@ -5,6 +5,7 @@ import {
   ORIGEN_SEGUROS,
   TITULO_CASO,
   TITULO_POLIZA,
+  casoVacio,
   parseCaso,
   type AseguradoraId,
   type Caso,
@@ -229,15 +230,69 @@ export async function crearFila(input: {
     .select("id")
     .single();
   if (error || !data) return { error: error?.message ?? "No se pudo abrir el caso." };
+  if (!input.caso.porConfirmar) await notaColisionReportada(input.vehiculoId, input.fecha);
+  return { id: data.id };
+}
+
+export async function notaColisionReportada(vehiculoId: string, fecha: string): Promise<void> {
+  const sb = createServerSupabase();
   await sb.from("vehiculo_eventos").insert({
-    vehiculo_id: input.vehiculoId,
-    fecha: input.fecha,
+    vehiculo_id: vehiculoId,
+    fecha,
     tipo: "chapisteria",
     titulo: "Colisión reportada",
     detalle: "El caso está en Seguros.",
     origen: "manual",
   });
-  return { id: data.id };
+}
+
+const CHOQUE_EN_CHAT =
+  /(?<![a-záéíóúñ])(choc(o|ó|aron|ado|ada|ar|aste|amos|ando)|choqu[eé]s?|colisi[oó]n|colision[eé]|accidente|me (pegaron|dieron) (por )?atr[aá]s)(?![a-záéíóúñ])/i;
+
+export function hablaDeChoque(texto: string): boolean {
+  return CHOQUE_EN_CHAT.test(texto);
+}
+
+/**
+ * El cliente avisó un choque por el chat de cartera. Deja el caso en Seguros
+ * por confirmar; no pone el carro en colisión ni toca el cobro.
+ */
+export async function reportarChoqueDesdeChat(input: {
+  contratoId: string;
+  conversacionId: string;
+  texto: string;
+}): Promise<string | null> {
+  const sb = createServerSupabase();
+  const hoy = hoyPanama();
+  const { data: contrato } = await sb
+    .from("contratos")
+    .select("id, vehiculo_id, cliente_id, cliente:clientes(nombre)")
+    .eq("id", input.contratoId)
+    .maybeSingle();
+  const vehiculoId = (contrato?.vehiculo_id as string | null | undefined) ?? null;
+  if (!contrato || !vehiculoId) return null;
+
+  const { data: recientes } = await sb
+    .from("vehiculo_eventos")
+    .select("id")
+    .eq("vehiculo_id", vehiculoId)
+    .eq("origen", ORIGEN_SEGUROS)
+    .eq("titulo", TITULO_CASO)
+    .gte("fecha", sumarDias(hoy, -3))
+    .limit(1);
+  if (recientes?.length) return null;
+
+  const cli = contrato.cliente as { nombre: string } | { nombre: string }[] | null;
+  const caso = casoVacio();
+  caso.relato = input.texto.trim().slice(0, 500);
+  caso.clienteId = (contrato.cliente_id as string | null) ?? null;
+  caso.clienteNombre = (Array.isArray(cli) ? cli[0]?.nombre : cli?.nombre) ?? "";
+  caso.contratoId = input.contratoId;
+  caso.seccionDesde = hoy;
+  caso.porConfirmar = true;
+  caso.conversacionId = input.conversacionId;
+  const creado = await crearFila({ vehiculoId, fecha: hoy, caso });
+  return "error" in creado ? null : creado.id;
 }
 
 export type CarroParaCaso = {

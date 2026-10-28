@@ -44,6 +44,7 @@ export function Tablero({
   const avisos = useMemo(() => {
     const lista: { id: string; texto: string; href: string }[] = [];
     for (const c of casos) {
+      if (c.caso.porConfirmar) continue;
       const carro = `${etiquetaCarroUi(c.empresa, c.numero)} ${c.placa}`.trim();
       const oficinaPendiente =
         (c.caso.seccion === "reportado" || c.caso.seccion === "cita") &&
@@ -74,6 +75,8 @@ export function Tablero({
     }
     return lista;
   }, [casos, hoy]);
+
+  const porConfirmar = casos.filter((c) => c.caso.porConfirmar && !cerrado(c.caso.seccion));
 
   const trabados = useMemo(
     () =>
@@ -134,6 +137,30 @@ export function Tablero({
           hint={<span>Mes pasado: <Money amount={pagadoPasado} /></span>}
         />
       </div>
+
+      {porConfirmar.length > 0 && (
+        <section className="rounded-xl bg-ambar-wash ring-1 ring-ambar/30">
+          <div className="border-b border-ambar/20 px-4 py-3">
+            <h2 className="text-sm font-semibold">Reportados por WhatsApp</h2>
+            <p className="mt-0.5 text-xs text-muted">
+              El cliente avisó un choque en el chat. Confirme o descarte; mientras tanto el carro sigue trabajando.
+            </p>
+          </div>
+          <ul>
+            {porConfirmar.map((c) => (
+              <li key={c.id} className="border-b border-ambar/20 last:border-0">
+                <Link href={`/seguros/${c.id}`} className="block px-4 py-3 text-sm hover:bg-white/60">
+                  <span className="font-medium">
+                    {etiquetaCarroUi(c.empresa, c.numero)} {c.placa}
+                  </span>
+                  <span className="text-muted"> · {c.caso.clienteNombre || "Sin cliente"} · {fechaCorta(c.fecha)}</span>
+                  {c.caso.relato && <span className="mt-0.5 block truncate text-xs text-muted">“{c.caso.relato}”</span>}
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {polizasPorVencer > 0 && (
         <Link

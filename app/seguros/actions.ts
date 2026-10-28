@@ -13,6 +13,7 @@ import {
   dejarVehiculoActivo,
   listarCasos,
   empresaDeVehiculo,
+  notaColisionReportada,
   guardarFila,
   guardarPoliza,
   leerCaso,
@@ -277,6 +278,30 @@ export async function marcarAviso(fd: FormData): Promise<Resultado> {
   if (error) return { ok: false, error };
   revalidar(id);
   return { ok: true };
+}
+
+/** El choque que avisó el chat es real: desde aquí el carro queda en colisión como un caso abierto a mano. */
+export async function confirmarChoque(fd: FormData): Promise<Resultado> {
+  const id = texto(fd.get("id"));
+  const fila = await leerCaso(id);
+  if (!fila) return { ok: false, error: "No encuentro el caso." };
+  if (!fila.caso.porConfirmar) return { ok: true, msg: "El choque ya estaba confirmado." };
+  fila.caso.porConfirmar = false;
+  fila.caso.seccionDesde = hoyPanama();
+  const error = await guardarFila(id, fila.vehiculoId, fila.fecha, fila.km, fila.caso.lugar, fila.caso);
+  if (error) return { ok: false, error };
+  await notaColisionReportada(fila.vehiculoId, fila.fecha);
+  const pausa = await aplicarEstadoProductivo({
+    vehiculoId: fila.vehiculoId,
+    estado: "colision",
+    fechaIngreso: fila.fecha,
+  });
+  revalidar(id);
+  revalidatePath("/cartera/estados-cuenta");
+  return {
+    ok: true,
+    msg: pausa.ok ? "Choque confirmado. El carro quedó en colisión." : `Choque confirmado. ${pausa.msg}`,
+  };
 }
 
 export async function carroVolvio(fd: FormData): Promise<Resultado> {

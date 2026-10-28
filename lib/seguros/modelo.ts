@@ -96,6 +96,9 @@ export type Caso = {
   avisoAudiencia: string | null;
   /** Día en que entró a la sección actual. Vacío en casos viejos: se cuenta desde el choque. */
   seccionDesde: string;
+  /** Lo abrió el chat de cartera. El carro sigue trabajando hasta que alguien lo confirme. */
+  porConfirmar: boolean;
+  conversacionId: string | null;
 };
 
 export type CasoFila = {
@@ -159,6 +162,9 @@ export function siguienteSeccion(caso: Pick<Caso, "seccion" | "via">): Seccion |
 }
 
 export function queSigue(caso: Caso): string {
+  if (caso.porConfirmar) {
+    return "El cliente avisó un choque por WhatsApp. Lea el chat y confirme el choque o descártelo. Mientras tanto el carro sigue trabajando.";
+  }
   if (caso.seccion === "reportado") {
     if (!caso.via) return "Elija si el otro aceptó la culpa (FUD) o hay que llamar a tránsito (parte).";
     if (caso.via === "fud") {
@@ -228,6 +234,8 @@ export function casoVacio(): Caso {
     avisoOficina: null,
     avisoAudiencia: null,
     seccionDesde: "",
+    porConfirmar: false,
+    conversacionId: null,
   };
 }
 
@@ -295,6 +303,8 @@ export function parseCaso(raw: string | null | undefined): Caso | null {
       avisoOficina: j.avisoOficina ?? null,
       avisoAudiencia: j.avisoAudiencia ?? null,
       seccionDesde: texto(j.seccionDesde),
+      porConfirmar: Boolean(j.porConfirmar),
+      conversacionId: typeof j.conversacionId === "string" ? j.conversacionId : null,
       piezas: Array.isArray(j.piezas) ? j.piezas.filter((p) => p && p.pieza).map(piezaGuardada) : [],
       documentos: Array.isArray(j.documentos) ? j.documentos.filter((d) => d && d.path) : [],
     };
@@ -324,6 +334,7 @@ const PLAZO: Partial<Record<Seccion, number>> = {
 export function atraso(fila: Pick<CasoFila, "fecha" | "caso">, hoy: string): string | null {
   const { caso } = fila;
   if (cerrado(caso.seccion)) return null;
+  if (caso.porConfirmar) return null;
   if (caso.seccion === "audiencia") {
     const ultima = caso.fechaAudiencia2 || caso.fechaAudiencia;
     if (ultima && ultima < hoy) return `La audiencia fue el ${fechaCorta(ultima)}: pase a esperar la resolución.`;

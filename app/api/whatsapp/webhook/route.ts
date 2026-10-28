@@ -28,6 +28,7 @@ import {
   type Conversacion,
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
+import { hablaDeChoque, reportarChoqueDesdeChat } from "@/lib/seguros/datos";
 import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoConArchivo } from "@/lib/comercial/archivo";
 import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA, sinBienvenidaRepetida } from "@/lib/comercial/bienvenida";
@@ -934,6 +935,13 @@ async function responderConAgente(
     }
 
     if (r.pasar_a_humano) await marcarEscalada(conv.id, r.motivo ?? null);
+    if (r.pasar_a_humano && conv.contrato_id && hablaDeChoque(textoCliente)) {
+      await reportarChoqueDesdeChat({
+        contratoId: conv.contrato_id,
+        conversacionId: conv.id,
+        texto: textoCliente,
+      }).catch((e) => console.error("[whatsapp/webhook] caso de choque:", e));
+    }
     if (mensajeId && (await llegoEntranteDespues(conv.id, mensajeId))) return;
     await responder(conv.id, from, r.mensaje);
   } catch (e) {
