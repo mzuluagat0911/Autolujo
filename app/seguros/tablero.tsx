@@ -7,7 +7,11 @@ import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { sumarDias } from "@/lib/cartera/fecha";
 import {
   SECCIONES,
+  atraso,
+  cerrado,
+  diasEnSeccion,
   etiquetaSeccion,
+  queSigue,
   fechaCorta,
   nombreAseguradora,
   tonoSeccion,
@@ -71,17 +75,29 @@ export function Tablero({
     return lista;
   }, [casos, hoy]);
 
+  const trabados = useMemo(
+    () =>
+      casos
+        .map((c) => ({ c, motivo: atraso(c, hoy) }))
+        .filter((x): x is { c: CasoFila; motivo: string } => Boolean(x.motivo))
+        .sort((a, b) => diasEnSeccion(b.c, hoy) - diasEnSeccion(a.c, hoy)),
+    [casos, hoy],
+  );
+
   const filtrados = useMemo(() => {
     const texto = q.trim().toLowerCase();
-    return casos.filter((c) => {
-      if (seccion !== "todas" && c.caso.seccion !== seccion) return false;
-      if (!texto) return true;
-      const bolsa = [c.numero, c.placa, c.marca, c.caso.clienteNombre, c.caso.numeroReclamo, c.empresa]
-        .join(" ")
-        .toLowerCase();
-      return bolsa.includes(texto);
-    });
-  }, [casos, q, seccion]);
+    const peso = (c: CasoFila) => (cerrado(c.caso.seccion) ? 2 : atraso(c, hoy) ? 0 : 1);
+    return casos
+      .filter((c) => {
+        if (seccion !== "todas" && c.caso.seccion !== seccion) return false;
+        if (!texto) return true;
+        const bolsa = [c.numero, c.placa, c.marca, c.caso.clienteNombre, c.caso.numeroReclamo, c.empresa]
+          .join(" ")
+          .toLowerCase();
+        return bolsa.includes(texto);
+      })
+      .sort((a, b) => peso(a) - peso(b) || diasEnSeccion(b, hoy) - diasEnSeccion(a, hoy));
+  }, [casos, q, seccion, hoy]);
 
   const abiertos = casos.filter((c) => c.caso.seccion !== "pagado" && c.caso.seccion !== "no_procede").length;
   const pagadoEste = casos
@@ -105,7 +121,11 @@ export function Tablero({
   return (
     <div className="flex flex-col gap-6">
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Resumen label="Abiertos" valor={String(abiertos)} />
+        <Resumen
+          label="Abiertos"
+          valor={String(abiertos)}
+          hint={trabados.length ? <span className="text-rojo">{trabados.length} trabados</span> : "Todos a tiempo"}
+        />
         <Resumen label="Para avisar" valor={String(avisos.length)} tono={avisos.length ? "text-ambar" : "text-ink"} />
         <Resumen label="Choques este mes" valor={String(choquesEste)} hint={`Mes pasado: ${choquesPasado}`} />
         <Resumen
@@ -150,6 +170,29 @@ export function Tablero({
         </section>
       )}
 
+      {trabados.length > 0 && (
+        <section className="rounded-xl bg-surface ring-1 ring-line">
+          <div className="border-b border-line px-4 py-3">
+            <h2 className="text-sm font-semibold">Casos trabados</h2>
+            <p className="mt-0.5 text-xs text-muted">
+              Llevan más días de lo normal en su etapa. Primero los más viejos.
+            </p>
+          </div>
+          <ul>
+            {trabados.map(({ c, motivo }) => (
+              <li key={c.id} className="border-b border-line last:border-0">
+                <Link href={`/seguros/${c.id}`} className="flex flex-wrap items-baseline gap-x-2 px-4 py-3 text-sm hover:bg-surface-2">
+                  <span className="font-medium">
+                    {etiquetaCarroUi(c.empresa, c.numero)} {c.placa}
+                  </span>
+                  <span className="text-muted">{motivo}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="flex flex-col gap-3">
         <label className="relative block max-w-md">
           <span className="sr-only">Buscar caso</span>
@@ -184,46 +227,95 @@ export function Tablero({
           }
         />
       ) : (
-        <div className="overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-line text-[11px] uppercase tracking-[0.12em] text-muted">
-                <th className="px-4 py-3 font-medium">Carro</th>
-                <th className="px-4 py-3 font-medium">Cliente</th>
-                <th className="px-4 py-3 font-medium">Choque</th>
-                <th className="px-4 py-3 font-medium">Camino</th>
-                <th className="px-4 py-3 font-medium">Sección</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtrados.map((c) => (
-                <tr key={c.id} className="border-b border-line last:border-0 hover:bg-surface-2">
-                  <td className="px-4 py-3">
-                    <Link href={`/seguros/${c.id}`} className="font-medium hover:underline">
-                      {etiquetaCarroUi(c.empresa, c.numero)}
-                    </Link>
-                    <p className="font-mono text-xs text-muted">{c.placa || "Sin placa"}</p>
-                  </td>
-                  <td className="px-4 py-3">{c.caso.clienteNombre || "Sin cliente activo"}</td>
-                  <td className="px-4 py-3 tabular-nums">{fechaCorta(c.fecha)}</td>
-                  <td className="px-4 py-3">
-                    {c.caso.via === "parte" ? "Parte" : c.caso.via === "fud" ? "FUD" : "—"}
-                    {c.caso.aseguradora ? (
-                      <span className="mt-0.5 block text-xs text-muted">{nombreAseguradora(c.caso.aseguradora)}</span>
-                    ) : null}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusChip tone={tonoSeccion(c.caso.seccion)}>{etiquetaSeccion(c.caso.seccion)}</StatusChip>
+        <>
+          <ul className="flex flex-col gap-2 sm:hidden">
+            {filtrados.map((c) => {
+              const motivo = atraso(c, hoy);
+              return (
+                <li key={c.id}>
+                  <Link href={`/seguros/${c.id}`} className="block rounded-xl bg-surface p-4 ring-1 ring-line active:bg-surface-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-medium">
+                          {etiquetaCarroUi(c.empresa, c.numero)}
+                          <span className="ml-2 font-mono text-xs text-muted">{c.placa}</span>
+                        </p>
+                        <p className="truncate text-xs text-muted">
+                          {c.caso.clienteNombre || "Sin cliente activo"} · choque {fechaCorta(c.fecha)}
+                        </p>
+                      </div>
+                      <StatusChip tone={tonoSeccion(c.caso.seccion)}>{etiquetaSeccion(c.caso.seccion)}</StatusChip>
+                    </div>
+                    {!cerrado(c.caso.seccion) && (
+                      <p className={`mt-2 text-xs ${motivo ? "text-rojo" : "text-muted"}`}>
+                        {motivo ?? `${diasTexto(diasEnSeccion(c, hoy))} en esta etapa`}
+                      </p>
+                    )}
                     <Papeles caso={c.caso} />
-                  </td>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="hidden overflow-x-auto rounded-xl bg-surface ring-1 ring-line sm:block">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-line text-[11px] uppercase tracking-[0.12em] text-muted">
+                  <th className="px-4 py-3 font-medium">Carro</th>
+                  <th className="px-4 py-3 font-medium">Cliente</th>
+                  <th className="px-4 py-3 font-medium">Choque</th>
+                  <th className="px-4 py-3 font-medium">Sección</th>
+                  <th className="px-4 py-3 text-right font-medium">En la etapa</th>
+                  <th className="px-4 py-3 font-medium">Qué sigue</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {filtrados.map((c) => {
+                  const motivo = atraso(c, hoy);
+                  const abierto = !cerrado(c.caso.seccion);
+                  return (
+                    <tr key={c.id} className="border-b border-line align-top last:border-0 hover:bg-surface-2">
+                      <td className="px-4 py-3">
+                        <Link href={`/seguros/${c.id}`} className="font-medium hover:underline">
+                          {etiquetaCarroUi(c.empresa, c.numero)}
+                        </Link>
+                        <p className="font-mono text-xs text-muted">{c.placa || "Sin placa"}</p>
+                      </td>
+                      <td className="px-4 py-3">
+                        {c.caso.clienteNombre || "Sin cliente activo"}
+                        <span className="mt-0.5 block text-xs text-muted">
+                          {[c.caso.via === "parte" ? "Parte" : c.caso.via === "fud" ? "FUD" : "", nombreAseguradora(c.caso.aseguradora)]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums">{fechaCorta(c.fecha)}</td>
+                      <td className="px-4 py-3">
+                        <StatusChip tone={tonoSeccion(c.caso.seccion)}>{etiquetaSeccion(c.caso.seccion)}</StatusChip>
+                        <Papeles caso={c.caso} />
+                      </td>
+                      <td className={`px-4 py-3 text-right tabular-nums ${motivo ? "font-medium text-rojo" : "text-muted"}`}>
+                        {abierto ? diasTexto(diasEnSeccion(c, hoy)) : "—"}
+                      </td>
+                      <td className={`max-w-[280px] px-4 py-3 text-xs ${motivo ? "text-rojo" : "text-muted"}`}>
+                        {abierto ? (motivo ?? queSigue(c.caso)) : ""}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
+}
+
+function diasTexto(n: number): string {
+  if (n === 0) return "Hoy";
+  return n === 1 ? "1 día" : `${n} días`;
 }
 
 function Papeles({ caso }: { caso: Caso }) {

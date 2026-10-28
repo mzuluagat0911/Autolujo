@@ -77,6 +77,7 @@ export async function crearCaso(fd: FormData): Promise<Resultado> {
   const caso = casoVacio();
   caso.via = via;
   caso.seccion = "reportado";
+  caso.seccionDesde = hoyPanama();
   caso.lugar = texto(fd.get("lugar"));
   caso.relato = texto(fd.get("relato"));
   caso.clienteId = carro.clienteId;
@@ -211,6 +212,14 @@ export async function guardarCaso(fd: FormData): Promise<Resultado> {
     acuerdoFirmado: fd.get("acuerdo_firmado") === "1",
     piezas: piezasDe(fd),
   };
+  const cambiaSeccion = caso.seccion !== fila.caso.seccion;
+  if (cambiaSeccion && caso.seccion === "pagado" && caso.montoFiniquito == null) {
+    return { ok: false, error: "Para marcar pagado, anote el monto del finiquito." };
+  }
+  if (cambiaSeccion && caso.seccion === "no_procede" && !caso.motivoNoProcede) {
+    return { ok: false, error: "Para marcar que no procede, anote el motivo." };
+  }
+  if (cambiaSeccion) caso.seccionDesde = hoyPanama();
   if (caso.seccion === "pagado" && !caso.fechaPago) caso.fechaPago = hoyPanama();
   if (caso.avisoAudiencia && caso.avisoAudiencia !== caso.fechaAudiencia) caso.avisoAudiencia = null;
 

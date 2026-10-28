@@ -10,6 +10,9 @@ import {
   DOCUMENTOS,
   SECCIONES,
   TELEFONO_TRANSITO,
+  atraso,
+  cerrado,
+  diasEnSeccion,
   etiquetaSeccion,
   fechaCorta,
   nombreAseguradora,
@@ -81,6 +84,8 @@ export function FichaCaso({
   const casoVista = { ...fila.caso, seccion, via: via === "fud" || via === "parte" ? via : null, aseguradora };
   const proxima = siguienteSeccion(casoVista);
   const total = totalPapeles(fila.caso.via);
+  const dias = diasEnSeccion(fila, hoy);
+  const trabado = atraso(fila, hoy);
   const conductorCliente = !fila.caso.conductor.trim() && cliente ? cliente : null;
 
   useEffect(() => {
@@ -249,6 +254,11 @@ export function FichaCaso({
       <section className="rounded-xl bg-surface p-5 ring-1 ring-line">
         <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Qué sigue</p>
         <p className="mt-2 max-w-2xl text-base">{queSigue(casoVista)}</p>
+        {!cerrado(fila.caso.seccion) && (
+          <p className={`mt-2 text-sm ${trabado ? "font-medium text-rojo" : "text-muted"}`}>
+            {trabado ?? `Lleva ${dias === 0 ? "desde hoy" : dias === 1 ? "1 día" : `${dias} días`} en esta etapa.`}
+          </p>
+        )}
         {seccion === "reportado" && (
           <p className="mt-3 text-sm text-muted">
             Tránsito {TELEFONO_TRANSITO}
@@ -798,6 +808,8 @@ function CajaDoc({
 }) {
   const traido = registroTieneDatos(registro);
   const campo = useRef<HTMLInputElement>(null);
+  const camara = useRef<HTMLInputElement>(null);
+  const esFoto = tipo === "foto_dano" || tipo === "foto_reparado";
   const delCliente = cliente && (tipo === "cedula" || tipo === "licencia") ? (tipo as DocCliente) : null;
   return (
     <div className={`rounded-lg p-3 ring-1 ${error ? "ring-rojo/40" : "ring-line"}`}>
@@ -860,14 +872,41 @@ function CajaDoc({
           Manejaba otra persona: subir su copia solo para este caso
         </button>
       ) : (
-        <button
-          type="button"
-          className={`${SECUNDARIO} mt-3 w-full`}
-          disabled={disabled}
-          onClick={() => campo.current?.click()}
-        >
-          {disabled ? "Subiendo…" : archivos.length > 0 ? "Agregar archivo" : "Subir archivo"}
-        </button>
+        <div className="mt-3 flex gap-2">
+          {esFoto && (
+            <>
+              <input
+                ref={camara}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="sr-only"
+                tabIndex={-1}
+                onChange={(e) => {
+                  const elegidos = Array.from(e.currentTarget.files ?? []);
+                  e.currentTarget.value = "";
+                  onSubir(elegidos);
+                }}
+              />
+              <button
+                type="button"
+                className={`${PRIMARIO} flex-1 sm:hidden`}
+                disabled={disabled}
+                onClick={() => camara.current?.click()}
+              >
+                Tomar foto
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className={`${SECUNDARIO} flex-1`}
+            disabled={disabled}
+            onClick={() => campo.current?.click()}
+          >
+            {disabled ? "Subiendo…" : archivos.length > 0 ? "Agregar archivo" : "Subir archivo"}
+          </button>
+        </div>
       )}
       {error && <p className="mt-2 text-xs text-rojo">{error}</p>}
     </div>

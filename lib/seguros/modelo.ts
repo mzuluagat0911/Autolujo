@@ -1,6 +1,8 @@
 // Un choque es un caso. La carpeta vive en vehiculo_eventos (origen seguros)
 // para no pedir una tabla nueva. La hoja de vida no muestra esas filas.
 
+import { diasEntre } from "@/lib/cartera/fecha";
+
 export const ORIGEN_SEGUROS = "seguros";
 export const TITULO_CASO = "Colisión";
 export const TITULO_POLIZA = "Póliza";
@@ -92,6 +94,8 @@ export type Caso = {
   documentos: DocumentoCaso[];
   avisoOficina: string | null;
   avisoAudiencia: string | null;
+  /** Día en que entró a la sección actual. Vacío en casos viejos: se cuenta desde el choque. */
+  seccionDesde: string;
 };
 
 export type CasoFila = {
@@ -223,6 +227,7 @@ export function casoVacio(): Caso {
     documentos: [],
     avisoOficina: null,
     avisoAudiencia: null,
+    seccionDesde: "",
   };
 }
 
@@ -289,12 +294,49 @@ export function parseCaso(raw: string | null | undefined): Caso | null {
       contratoId: j.contratoId ?? null,
       avisoOficina: j.avisoOficina ?? null,
       avisoAudiencia: j.avisoAudiencia ?? null,
+      seccionDesde: texto(j.seccionDesde),
       piezas: Array.isArray(j.piezas) ? j.piezas.filter((p) => p && p.pieza).map(piezaGuardada) : [],
       documentos: Array.isArray(j.documentos) ? j.documentos.filter((d) => d && d.path) : [],
     };
   } catch {
     return null;
   }
+}
+
+export function cerrado(seccion: Seccion): boolean {
+  return seccion === "pagado" || seccion === "no_procede";
+}
+
+export function diasEnSeccion(fila: Pick<CasoFila, "fecha" | "caso">, hoy: string): number {
+  return Math.max(0, diasEntre(fila.caso.seccionDesde || fila.fecha, hoy));
+}
+
+/** Días que puede quedarse un caso en cada sección antes de avisar. */
+const PLAZO: Partial<Record<Seccion, number>> = {
+  reportado: 1,
+  cita: 2,
+  resolucion: 10,
+  facturas: 7,
+  seguimiento: 15,
+};
+
+/** Por qué el caso está trabado, o null si va a tiempo. */
+export function atraso(fila: Pick<CasoFila, "fecha" | "caso">, hoy: string): string | null {
+  const { caso } = fila;
+  if (cerrado(caso.seccion)) return null;
+  if (caso.seccion === "audiencia") {
+    const ultima = caso.fechaAudiencia2 || caso.fechaAudiencia;
+    if (ultima && ultima < hoy) return `La audiencia fue el ${fechaCorta(ultima)}: pase a esperar la resolución.`;
+    if (!caso.fechaAudiencia && diasEnSeccion(fila, hoy) > 3) return "Sin fecha de audiencia: anótela.";
+    return null;
+  }
+  const plazo = PLAZO[caso.seccion];
+  const dias = diasEnSeccion(fila, hoy);
+  if (plazo == null || dias <= plazo) return null;
+  if (caso.seccion === "seguimiento") return `${dias} días en seguimiento sin finiquito: llame a la aseguradora.`;
+  if (caso.seccion === "resolucion") return `${dias} días esperando la resolución: retírela en el juzgado.`;
+  if (caso.seccion === "facturas") return `${dias} días armando facturas: complete y presente el reclamo.`;
+  return `${dias} días en ${etiquetaSeccion(caso.seccion).toLowerCase()}.`;
 }
 
 export function totalPiezas(piezas: Pieza[]): number {
