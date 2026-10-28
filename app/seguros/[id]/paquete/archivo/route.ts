@@ -2,7 +2,16 @@ import { NextResponse } from "next/server";
 import { puedeVerRuta } from "@/lib/equipo/modulos";
 import { sesionEquipo } from "@/lib/equipo/sesion";
 import { createServerSupabase } from "@/lib/supabase/server";
-import { empresaDeVehiculo, leerCaso, pathEmpresa, registroDeVehiculo, registroTieneDatos } from "@/lib/seguros/datos";
+import {
+  clienteDelCaso,
+  empresaDeVehiculo,
+  leerCaso,
+  pathCliente,
+  pathEmpresa,
+  registroDeVehiculo,
+  registroTieneDatos,
+  type DocCliente,
+} from "@/lib/seguros/datos";
 import { armarPaquetePdf, type ArchivoPaquete } from "@/lib/seguros/paquete-pdf";
 import { empresaEnHoja, type Papeles } from "@/lib/seguros/portada";
 import type { DocTipo, DocumentoCaso } from "@/lib/seguros/modelo";
@@ -37,13 +46,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const fila = await leerCaso(id);
   if (!fila) return new NextResponse("No encuentro el caso", { status: 404 });
 
-  const [empresa, registro] = await Promise.all([
+  const [empresa, registro, cliente] = await Promise.all([
     empresaDeVehiculo(fila.vehiculoId),
     registroDeVehiculo(fila.vehiculoId),
+    clienteDelCaso(fila),
   ]);
   const paths = [...new Set(fila.caso.documentos.map((d) => d.path))];
   if (empresa) {
     paths.push(pathEmpresa(empresa.id, "representante"), pathEmpresa(empresa.id, "registro"));
+  }
+  if (cliente) {
+    paths.push(pathCliente(cliente.id, "cedula"), pathCliente(cliente.id, "licencia"));
   }
   const bajados = new Map<string, Uint8Array>();
   await Promise.all(
@@ -54,12 +67,17 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   );
 
   const hay = (tipo: DocTipo) => fila.caso.documentos.some((d) => d.tipo === tipo && bajados.has(d.path));
+  /** La copia del caso manda (manejaba otra persona); si no hay, va la del cliente. */
+  const copiaCliente = (cual: DocCliente) =>
+    cliente && !hay(cual) ? bajados.get(pathCliente(cliente.id, cual)) : undefined;
+  const cedulaCliente = copiaCliente("cedula");
+  const licenciaCliente = copiaCliente("licencia");
   const representante = empresa ? bajados.get(pathEmpresa(empresa.id, "representante")) : undefined;
   const registroPublico = empresa ? bajados.get(pathEmpresa(empresa.id, "registro")) : undefined;
   const papeles: Papeles = {
     factura: hay("cotizacion"),
     cotizacion: fila.caso.piezas.length > 0 || hay("cotizacion"),
-    cedulaLicencia: hay("cedula") || hay("licencia"),
+    cedulaLicencia: hay("cedula") || hay("licencia") || Boolean(cedulaCliente || licenciaCliente),
     representante: Boolean(representante),
     registroVehiculo: registroTieneDatos(registro),
     informe: hay("fud") || hay("parte"),
@@ -73,7 +91,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const archivos: ArchivoPaquete[] = [];
   meter(archivos, de("cotizacion"), bajados);
   meter(archivos, de("cedula"), bajados);
+  if (cedulaCliente) archivos.push({ nombre: "Cedula", bytes: cedulaCliente });
   meter(archivos, de("licencia"), bajados);
+  if (licenciaCliente) archivos.push({ nombre: "Licencia", bytes: licenciaCliente });
   if (representante) archivos.push({ nombre: "Cedula del representante", bytes: representante });
   meter(archivos, de("fud"), bajados);
   meter(archivos, de("parte"), bajados);

@@ -16,6 +16,7 @@ import {
   guardarFila,
   guardarPoliza,
   leerCaso,
+  pathCliente,
   pathEmpresa,
   subirArchivo,
 } from "@/lib/seguros/datos";
@@ -323,6 +324,26 @@ export async function subirDocEmpresa(fd: FormData): Promise<Resultado> {
   if (error) return { ok: false, error };
   revalidar();
   return { ok: true };
+}
+
+export async function subirDocCliente(fd: FormData): Promise<Resultado> {
+  const casoId = texto(fd.get("id"));
+  const clienteId = texto(fd.get("cliente_id"));
+  const cual = texto(fd.get("cual"));
+  const archivo = fd.get("archivo");
+  if (!clienteId || (cual !== "cedula" && cual !== "licencia")) {
+    return { ok: false, error: "Falta el cliente o el tipo de documento." };
+  }
+  if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elegí un archivo." };
+  if (archivo.size > 8 * 1024 * 1024) return { ok: false, error: "El archivo pasa de 8 MB." };
+  const error = await subirArchivo(
+    pathCliente(clienteId, cual),
+    new Uint8Array(await archivo.arrayBuffer()),
+    archivo.type || "application/octet-stream",
+  );
+  if (error) return { ok: false, error };
+  revalidar(casoId || undefined);
+  return { ok: true, msg: cual === "cedula" ? "Cédula guardada en el cliente." : "Licencia guardada en el cliente." };
 }
 
 export async function empresaDelCaso(vehiculoId: string) {

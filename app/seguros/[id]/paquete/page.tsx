@@ -1,6 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { empresaDeVehiculo, firmar, leerCaso, pathEmpresa, registroDeVehiculo, registroTieneDatos } from "@/lib/seguros/datos";
+import {
+  clienteDelCaso,
+  empresaDeVehiculo,
+  firmar,
+  leerCaso,
+  pathCliente,
+  pathEmpresa,
+  registroDeVehiculo,
+  registroTieneDatos,
+} from "@/lib/seguros/datos";
 import { totalPiezas } from "@/lib/seguros/modelo";
 import { hojaAmarilla, type Papeles } from "@/lib/seguros/portada";
 import { plata } from "@/lib/seguros/tarifas";
@@ -11,20 +20,22 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const fila = await leerCaso(id);
   if (!fila) notFound();
-  const [empresa, registro] = await Promise.all([
+  const [empresa, registro, cliente] = await Promise.all([
     empresaDeVehiculo(fila.vehiculoId),
     registroDeVehiculo(fila.vehiculoId),
+    clienteDelCaso(fila),
   ]);
   const registroListo = registroTieneDatos(registro);
   const fijos = empresa
     ? [pathEmpresa(empresa.id, "registro"), pathEmpresa(empresa.id, "representante")]
     : [];
-  const urls = await firmar([...fila.caso.documentos.map((d) => d.path), ...fijos]);
+  const delCliente = cliente ? [pathCliente(cliente.id, "cedula"), pathCliente(cliente.id, "licencia")] : [];
+  const urls = await firmar([...fila.caso.documentos.map((d) => d.path), ...fijos, ...delCliente]);
   const hay = (tipo: string) => fila.caso.documentos.some((d) => d.tipo === tipo && urls[d.path]);
   const papeles: Papeles = {
     factura: hay("cotizacion"),
     cotizacion: fila.caso.piezas.length > 0 || hay("cotizacion"),
-    cedulaLicencia: hay("cedula") || hay("licencia"),
+    cedulaLicencia: hay("cedula") || hay("licencia") || delCliente.some((p) => urls[p]),
     representante: Boolean(empresa && urls[pathEmpresa(empresa.id, "representante")]),
     registroVehiculo: registroListo,
     informe: hay("fud") || hay("parte"),

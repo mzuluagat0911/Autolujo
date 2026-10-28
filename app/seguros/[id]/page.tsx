@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { hoyPanama } from "@/lib/cartera/fecha";
-import { firmar, leerCaso, registroDeVehiculo } from "@/lib/seguros/datos";
+import { clienteDelCaso, firmar, leerCaso, pathCliente, registroDeVehiculo } from "@/lib/seguros/datos";
 import { FichaCaso } from "./ficha";
 
 export const dynamic = "force-dynamic";
@@ -10,10 +10,9 @@ export default async function CasoPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const fila = await leerCaso(id);
   if (!fila) notFound();
-  const [urls, registro] = await Promise.all([
-    firmar(fila.caso.documentos.map((d) => d.path)),
-    registroDeVehiculo(fila.vehiculoId),
-  ]);
+  const [registro, cliente] = await Promise.all([registroDeVehiculo(fila.vehiculoId), clienteDelCaso(fila)]);
+  const copiasCliente = cliente ? [pathCliente(cliente.id, "cedula"), pathCliente(cliente.id, "licencia")] : [];
+  const urls = await firmar([...fila.caso.documentos.map((d) => d.path), ...copiasCliente]);
   return (
     <div className="mx-auto max-w-4xl py-10">
       <p className="mb-6">
@@ -21,7 +20,7 @@ export default async function CasoPage({ params }: { params: Promise<{ id: strin
           ← Choques
         </Link>
       </p>
-      <FichaCaso fila={fila} urls={urls} hoy={hoyPanama()} registro={registro} />
+      <FichaCaso fila={fila} urls={urls} hoy={hoyPanama()} registro={registro} cliente={cliente} />
     </div>
   );
 }

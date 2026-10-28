@@ -466,6 +466,58 @@ export function pathEmpresa(empresaId: string, cual: "registro" | "representante
   return `seguros/empresas/${empresaId}/${cual}`;
 }
 
+export type DocCliente = "cedula" | "licencia";
+
+/** Copia que vive en el cliente: sirve para todos sus casos. */
+export function pathCliente(clienteId: string, cual: DocCliente): string {
+  return `seguros/clientes/${clienteId}/${cual}`;
+}
+
+export type ClienteDelCaso = {
+  id: string;
+  nombre: string;
+  cedula: string;
+  licencia: string;
+  venceLicencia: string;
+};
+
+/** El cliente guardado en el caso; si el caso es viejo, el del contrato activo del carro. */
+export async function clienteDelCaso(fila: CasoFila): Promise<ClienteDelCaso | null> {
+  const sb = createServerSupabase();
+  let clienteId = fila.caso.clienteId;
+  if (!clienteId) {
+    const { data } = await sb
+      .from("contratos")
+      .select("cliente_id")
+      .eq("vehiculo_id", fila.vehiculoId)
+      .eq("estado", "activo")
+      .limit(1)
+      .maybeSingle();
+    clienteId = (data as { cliente_id: string | null } | null)?.cliente_id ?? null;
+  }
+  if (!clienteId) return null;
+  const { data, error } = await sb
+    .from("clientes")
+    .select("id, nombre, cedula, numero_licencia, fecha_vencimiento_licencia")
+    .eq("id", clienteId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as {
+    id: string;
+    nombre: string | null;
+    cedula: string | null;
+    numero_licencia: string | null;
+    fecha_vencimiento_licencia: string | null;
+  };
+  return {
+    id: row.id,
+    nombre: row.nombre ?? "",
+    cedula: row.cedula ?? "",
+    licencia: row.numero_licencia ?? "",
+    venceLicencia: row.fecha_vencimiento_licencia ?? "",
+  };
+}
+
 export async function listarEmpresas(): Promise<{ id: string; codigo: string; nombre: string }[]> {
   const sb = createServerSupabase();
   const { data, error } = await sb.from("empresas").select("id, codigo, nombre").order("codigo");

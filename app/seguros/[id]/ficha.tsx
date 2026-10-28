@@ -23,9 +23,23 @@ import {
   type Pieza,
   type Seccion,
 } from "@/lib/seguros/modelo";
-import { carroVolvio, eliminarCaso, guardarCaso, marcarAviso, quitarDocumento, subirDocumento } from "../actions";
+import {
+  carroVolvio,
+  eliminarCaso,
+  guardarCaso,
+  marcarAviso,
+  quitarDocumento,
+  subirDocCliente,
+  subirDocumento,
+} from "../actions";
 import { BloqueRegistro } from "../registro";
-import { registroTieneDatos, type RegistroCarro } from "@/lib/seguros/datos";
+import {
+  pathCliente,
+  registroTieneDatos,
+  type ClienteDelCaso,
+  type DocCliente,
+  type RegistroCarro,
+} from "@/lib/seguros/datos";
 import { plata, tarifasDe, totalTarifa } from "@/lib/seguros/tarifas";
 
 const INPUT =
@@ -42,11 +56,13 @@ export function FichaCaso({
   urls,
   hoy,
   registro,
+  cliente,
 }: {
   fila: CasoFila;
   urls: Record<string, string>;
   hoy: string;
   registro: RegistroCarro | null;
+  cliente: ClienteDelCaso | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -505,6 +521,7 @@ export function FichaCaso({
               onRun={correr}
               onSubir={(archivos) => subirArchivos(d.id, archivos)}
               registro={d.id === "registro" ? registro : null}
+              cliente={d.id === "cedula" || d.id === "licencia" ? cliente : null}
             />
           ))}
         </div>
@@ -542,6 +559,7 @@ function CajaDoc({
   onRun,
   onSubir,
   registro,
+  cliente,
 }: {
   casoId: string;
   tipo: DocTipo;
@@ -553,17 +571,22 @@ function CajaDoc({
   onRun: (accion: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData) => void;
   onSubir: (archivos: File[]) => void;
   registro?: RegistroCarro | null;
+  cliente?: ClienteDelCaso | null;
 }) {
   const traido = registroTieneDatos(registro);
   const campo = useRef<HTMLInputElement>(null);
+  const delCliente = cliente && (tipo === "cedula" || tipo === "licencia") ? (tipo as DocCliente) : null;
   return (
     <div className="rounded-lg p-3 ring-1 ring-line">
       <p className="text-sm font-medium">{label}</p>
-      <p className="mt-0.5 text-xs text-muted">{hint}</p>
+      <p className="mt-0.5 text-xs text-muted">{delCliente ? "Ya la tenemos del cliente. Va sola en el paquete." : hint}</p>
       {traido && registro && (
         <div className="mt-3">
           <BloqueRegistro registro={registro} />
         </div>
+      )}
+      {delCliente && cliente && (
+        <CopiaCliente casoId={casoId} cliente={cliente} cual={delCliente} urls={urls} disabled={disabled} onRun={onRun} />
       )}
       <ul className="mt-2 flex flex-col gap-1">
         {archivos.map((a) => (
@@ -604,14 +627,100 @@ function CajaDoc({
           onSubir(elegidos);
         }}
       />
-      <button
-        type="button"
-        className={`${SECUNDARIO} mt-3 w-full`}
-        disabled={disabled}
-        onClick={() => campo.current?.click()}
-      >
-        {disabled ? "Subiendo…" : archivos.length > 0 ? "Agregar archivo" : "Subir archivo"}
-      </button>
+      {delCliente ? (
+        <button
+          type="button"
+          className="mt-3 text-xs text-muted hover:text-ink hover:underline"
+          disabled={disabled}
+          onClick={() => campo.current?.click()}
+        >
+          Manejaba otra persona: subir su copia solo para este caso
+        </button>
+      ) : (
+        <button
+          type="button"
+          className={`${SECUNDARIO} mt-3 w-full`}
+          disabled={disabled}
+          onClick={() => campo.current?.click()}
+        >
+          {disabled ? "Subiendo…" : archivos.length > 0 ? "Agregar archivo" : "Subir archivo"}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function CopiaCliente({
+  casoId,
+  cliente,
+  cual,
+  urls,
+  disabled,
+  onRun,
+}: {
+  casoId: string;
+  cliente: ClienteDelCaso;
+  cual: DocCliente;
+  urls: Record<string, string>;
+  disabled: boolean;
+  onRun: (accion: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData) => void;
+}) {
+  const campo = useRef<HTMLInputElement>(null);
+  const copia = urls[pathCliente(cliente.id, cual)];
+  const numero = cual === "cedula" ? cliente.cedula : cliente.licencia;
+  return (
+    <div className="mt-3 rounded-lg bg-surface-2 p-3">
+      <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+        <div className="col-span-2">
+          <dt className="text-[11px] uppercase tracking-[0.12em] text-muted">Cliente</dt>
+          <dd className="mt-0.5">{cliente.nombre || "—"}</dd>
+        </div>
+        <div>
+          <dt className="text-[11px] uppercase tracking-[0.12em] text-muted">{cual === "cedula" ? "Cédula" : "Licencia"}</dt>
+          <dd className="mt-0.5 tabular-nums">{numero.trim() || "—"}</dd>
+        </div>
+        {cual === "licencia" && (
+          <div>
+            <dt className="text-[11px] uppercase tracking-[0.12em] text-muted">Vence</dt>
+            <dd className="mt-0.5 tabular-nums">{cliente.venceLicencia ? fechaCorta(cliente.venceLicencia) : "—"}</dd>
+          </div>
+        )}
+      </dl>
+      <input
+        ref={campo}
+        type="file"
+        accept="image/*,.pdf"
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(e) => {
+          const archivo = e.currentTarget.files?.[0];
+          e.currentTarget.value = "";
+          if (!archivo) return;
+          const fd = new FormData();
+          fd.set("id", casoId);
+          fd.set("cliente_id", cliente.id);
+          fd.set("cual", cual);
+          fd.set("archivo", archivo);
+          onRun(subirDocCliente, fd);
+        }}
+      />
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        {copia ? (
+          <a href={copia} target="_blank" rel="noreferrer" className="text-sm font-medium hover:underline">
+            Ver copia
+          </a>
+        ) : (
+          <span className="text-xs text-rojo">Falta la copia del documento.</span>
+        )}
+        <button
+          type="button"
+          className={`${SECUNDARIO} ml-auto`}
+          disabled={disabled}
+          onClick={() => campo.current?.click()}
+        >
+          {copia ? "Cambiar" : "Agregar copia"}
+        </button>
+      </div>
     </div>
   );
 }
