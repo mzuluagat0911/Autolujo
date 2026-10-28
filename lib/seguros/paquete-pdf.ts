@@ -41,7 +41,6 @@ function lineas(font: PDFFont, texto: string, size: number, max: number, tope: n
 function hojaAmarillaPdf(doc: PDFDocument, font: PDFFont, bold: PDFFont, input: Parameters<typeof hojaAmarilla>[0]): void {
   const hoja = hojaAmarilla(input);
   const page = doc.addPage(A4);
-  page.drawRectangle({ x: 0, y: 0, width: A4[0], height: A4[1], color: AMARILLO });
   const titulo = "RECLAMOS ASEGURADORA";
   const anchoTitulo = bold.widthOfTextAtSize(titulo, 14);
   page.drawText(titulo, { x: (A4[0] - anchoTitulo) / 2, y: 800, size: 14, font: bold, color: NEGRO });

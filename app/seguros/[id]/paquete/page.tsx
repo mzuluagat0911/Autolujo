@@ -73,24 +73,24 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
         La hoja amarilla es la portada. El PDF le suma la cotización, el registro del carro y los papeles cargados en el caso.
       </p>
 
-      <article className="hoja-amarilla bg-[#ffe566] p-5 text-black sm:p-8">
+      <article className="hoja-amarilla bg-white p-5 text-black ring-1 ring-line sm:p-8">
         <h1 className="text-center text-lg font-bold tracking-wide">RECLAMOS ASEGURADORA</h1>
         <table className="mt-4 w-full border-collapse text-xs">
           <tbody>
             <tr>
-              <th className="border border-black px-2 py-1.5 text-left font-semibold">EMPRESA</th>
-              <td className="border border-black px-2 py-1.5">{hoja.empresa}</td>
-              <th className="border border-black px-2 py-1.5 text-left font-semibold">CARRO #</th>
-              <td className="border border-black px-2 py-1.5">{hoja.numero}</td>
-              <th className="border border-black px-2 py-1.5 text-left font-semibold">SEGURO</th>
-              <td className="border border-black px-2 py-1.5">{hoja.seguro}</td>
+              <th className="border border-black bg-[#ffe566] px-2 py-1.5 text-left font-semibold">EMPRESA</th>
+              <td className="border border-black bg-[#ffe566] px-2 py-1.5">{hoja.empresa}</td>
+              <th className="border border-black bg-[#ffe566] px-2 py-1.5 text-left font-semibold">CARRO #</th>
+              <td className="border border-black bg-[#ffe566] px-2 py-1.5">{hoja.numero}</td>
+              <th className="border border-black bg-[#ffe566] px-2 py-1.5 text-left font-semibold">SEGURO</th>
+              <td className="border border-black bg-[#ffe566] px-2 py-1.5">{hoja.seguro}</td>
             </tr>
             {hoja.filas.map((filaHoja) => (
               <tr key={filaHoja.etiqueta}>
-                <th className="border border-black px-2 py-1.5 text-left font-semibold">{filaHoja.etiqueta}</th>
-                <td className="border border-black px-2 py-1.5">{filaHoja.valor}</td>
-                <th className="border border-black px-2 py-1.5 text-left font-semibold">{filaHoja.documento}</th>
-                <td className="border border-black px-2 py-1.5" colSpan={3}>
+                <th className="border border-black bg-[#ffe566] px-2 py-1.5 text-left font-semibold">{filaHoja.etiqueta}</th>
+                <td className="border border-black bg-[#ffe566] px-2 py-1.5">{filaHoja.valor}</td>
+                <th className="border border-black bg-[#ffe566] px-2 py-1.5 text-left font-semibold">{filaHoja.documento}</th>
+                <td className="border border-black bg-[#ffe566] px-2 py-1.5" colSpan={3}>
                   {filaHoja.marca}
                 </td>
               </tr>
