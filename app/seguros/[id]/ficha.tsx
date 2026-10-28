@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent } from "react";
 import { StatusChip, Toast } from "@/components/kit";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import {
@@ -89,6 +89,30 @@ export function FichaCaso({
         return;
       }
       if (r.msg) setAviso(r.msg);
+      router.refresh();
+    });
+  }
+
+  /** Uno por uno: cada subida reescribe la lista de documentos del caso. */
+  function subirArchivos(tipo: DocTipo, archivos: File[]) {
+    if (archivos.length === 0) return;
+    setError(null);
+    start(async () => {
+      for (const archivo of archivos) {
+        const fd = new FormData();
+        fd.set("id", fila.id);
+        fd.set("tipo", tipo);
+        fd.set("archivo", archivo);
+        if (archivo.size > 8 * 1024 * 1024) {
+          setError(`${archivo.name}: el archivo pasa de 8 MB.`);
+          break;
+        }
+        const r = await subirDocumento(fd).catch(() => ({ ok: false, error: "No se pudo subir." }));
+        if (!r.ok) {
+          setError(`${archivo.name}: ${r.error ?? "No se pudo subir."}`);
+          break;
+        }
+      }
       router.refresh();
     });
   }
@@ -479,6 +503,7 @@ export function FichaCaso({
               urls={urls}
               disabled={pending}
               onRun={correr}
+              onSubir={(archivos) => subirArchivos(d.id, archivos)}
               registro={d.id === "registro" ? registro : null}
             />
           ))}
@@ -515,6 +540,7 @@ function CajaDoc({
   urls,
   disabled,
   onRun,
+  onSubir,
   registro,
 }: {
   casoId: string;
@@ -525,9 +551,11 @@ function CajaDoc({
   urls: Record<string, string>;
   disabled: boolean;
   onRun: (accion: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData) => void;
+  onSubir: (archivos: File[]) => void;
   registro?: RegistroCarro | null;
 }) {
   const traido = registroTieneDatos(registro);
+  const campo = useRef<HTMLInputElement>(null);
   return (
     <div className="rounded-lg p-3 ring-1 ring-line">
       <p className="text-sm font-medium">{label}</p>
@@ -563,22 +591,27 @@ function CajaDoc({
           </li>
         ))}
       </ul>
-      <form
-        className="mt-2"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const fd = new FormData(e.currentTarget);
-          fd.set("id", casoId);
-          fd.set("tipo", tipo);
-          onRun(subirDocumento, fd);
-          e.currentTarget.reset();
+      <input
+        ref={campo}
+        type="file"
+        accept="image/*,.pdf"
+        multiple
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(e) => {
+          const elegidos = Array.from(e.currentTarget.files ?? []);
+          e.currentTarget.value = "";
+          onSubir(elegidos);
         }}
+      />
+      <button
+        type="button"
+        className={`${SECUNDARIO} mt-3 w-full`}
+        disabled={disabled}
+        onClick={() => campo.current?.click()}
       >
-        <input name="archivo" type="file" accept="image/*,.pdf" className="block w-full text-xs text-muted" />
-        <button type="submit" className="mt-2 text-sm font-medium hover:underline" disabled={disabled}>
-          Subir
-        </button>
-      </form>
+        {disabled ? "Subiendo…" : archivos.length > 0 ? "Agregar archivo" : "Subir archivo"}
+      </button>
     </div>
   );
 }
