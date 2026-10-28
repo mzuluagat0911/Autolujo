@@ -155,29 +155,16 @@ export function BandejaCrmComercial({
   const ultimoCambio = useRef(new Date().toISOString());
   const primeraBusqueda = useRef(true);
   const fondo = useRef<HTMLDivElement>(null);
+  const hiloActivo = useRef<string | null>(null);
+  const [hiloId, setHiloId] = useState<string | null>(null);
 
   const elegido = chats.find((c) => c.id === sel) ?? null;
+  const hiloVisible = hiloId === sel ? mensajes : [];
 
   function abrirChat(id: string) {
     setSel(id);
     setFichaAbierta(false);
     setChats((prev) => prev.map((c) => (c.id === id ? { ...c, noLeidos: 0 } : c)));
-    const guardado = cache.current.get(id);
-    if (guardado) {
-      void marcarChatLeido(id);
-      setMensajes(guardado.mensajes);
-      setHayMasMensajes(guardado.hayMas);
-      return;
-    }
-    start(async () => {
-      const hilo = await cargarHiloComercial(id);
-      cache.current.set(id, { mensajes: hilo.mensajes, hayMas: hilo.hayMas });
-      if (hilo.chat?.borrador) {
-        setChats((prev) => prev.map((c) => (c.id === id ? { ...c, borrador: hilo.chat?.borrador ?? null } : c)));
-      }
-      setMensajes(hilo.mensajes);
-      setHayMasMensajes(hilo.hayMas);
-    });
   }
 
   function precargar(id: string) {
@@ -188,10 +175,44 @@ export function BandejaCrmComercial({
   }
 
   useEffect(() => {
-    if (sel && !cache.current.has(sel)) abrirChat(sel);
-    // Solo abre el chat inicial; los siguientes pasan por abrirChat.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!sel) {
+      hiloActivo.current = null;
+      setHiloId(null);
+      setMensajes([]);
+      return;
+    }
+    const chatId = sel;
+    hiloActivo.current = chatId;
+    const guardado = cache.current.get(chatId);
+    if (guardado) {
+      setHiloId(chatId);
+      setMensajes(guardado.mensajes);
+      setHayMasMensajes(guardado.hayMas);
+    } else {
+      setHiloId(null);
+      setMensajes([]);
+      setHayMasMensajes(false);
+    }
+    let viva = true;
+    start(async () => {
+      const hilo = await cargarHiloComercial(chatId);
+      if (!viva || hiloActivo.current !== chatId) return;
+      cache.current.set(chatId, { mensajes: hilo.mensajes, hayMas: hilo.hayMas });
+      if (hilo.chat?.borrador) {
+        setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, borrador: hilo.chat?.borrador ?? null } : c)));
+      }
+      setHiloId(chatId);
+      setMensajes((prev) => {
+        const pendientes = prev.filter((m) => m.id.startsWith("temp-"));
+        return pendientes.length ? unirMensajes(hilo.mensajes, pendientes) : hilo.mensajes;
+      });
+      setHayMasMensajes(hilo.hayMas);
+      void marcarChatLeido(chatId);
+    });
+    return () => {
+      viva = false;
+    };
+  }, [sel]);
 
   useEffect(() => {
     if (primeraBusqueda.current) {
@@ -225,38 +246,39 @@ export function BandejaCrmComercial({
 
   useEffect(() => {
     if (!sel) return;
+    const chatId = sel;
+    let viva = true;
     const t = setInterval(async () => {
-      if (document.hidden) return;
+      if (document.hidden || hiloActivo.current !== chatId) return;
       const ultimo = mensajes[mensajes.length - 1]?.createdAt;
       if (!ultimo) return;
-      const nuevos = await cargarMensajesNuevos(sel, ultimo);
-      if (!nuevos.length) return;
+      const nuevos = await cargarMensajesNuevos(chatId, ultimo);
+      if (!viva || hiloActivo.current !== chatId || !nuevos.length) return;
       setMensajes((prev) => {
+        if (hiloActivo.current !== chatId) return prev;
         const merged = unirMensajes(prev, nuevos);
-        cache.current.set(sel, { mensajes: merged, hayMas: hayMasMensajes });
+        cache.current.set(chatId, { mensajes: merged, hayMas: hayMasMensajes });
         return merged;
       });
     }, 2_500);
-    return () => clearInterval(t);
+    return () => {
+      viva = false;
+      clearInterval(t);
+    };
   }, [sel, mensajes, hayMasMensajes]);
 
   useEffect(() => {
     fondo.current?.scrollTo({ top: fondo.current.scrollHeight, behavior: "auto" });
   }, [sel, mensajes.length]);
 
-  useEffect(() => {
-    if (sel && mensajes.length > 0) {
-      cache.current.set(sel, { mensajes, hayMas: hayMasMensajes });
-    }
-  }, [sel, mensajes, hayMasMensajes]);
-
   function enviar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (!elegido) return;
     const cuerpo = texto.trim();
     if (!cuerpo) return;
+    const chatId = elegido.id;
     const data = new FormData();
-    data.set("conversacion_id", elegido.id);
+    data.set("conversacion_id", chatId);
     data.set("texto", cuerpo);
     const temp: MensajeComercial = {
       id: `temp-${Date.now()}`,
@@ -267,28 +289,34 @@ export function BandejaCrmComercial({
       actorNombre: sesion?.nombre ?? null,
       archivoUrl: null,
     };
-    setMensajes((prev) => [...prev, temp]);
+    setHiloId(chatId);
+    setMensajes((prev) => {
+      const merged = [...prev, temp];
+      cache.current.set(chatId, { mensajes: merged, hayMas: hayMasMensajes });
+      return merged;
+    });
     setTexto("");
-    setChats((prev) => prev.map((c) => (c.id === elegido.id ? { ...c, borrador: null } : c)));
+    setChats((prev) => prev.map((c) => (c.id === chatId ? { ...c, borrador: null } : c)));
     setAviso(null);
     start(async () => {
       const r = await enviarRespuestaComercial(data);
+      if (hiloActivo.current !== chatId) return;
       if (!r.ok) {
         setMensajes((prev) => prev.filter((m) => m.id !== temp.id));
         setAviso(r.error ?? "No se pudo enviar.");
         return;
       }
-      setMensajes((prev) =>
-        r.mensaje
-          ? prev.map((m) => (m.id === temp.id ? r.mensaje! : m))
-          : prev,
-      );
+      setMensajes((prev) => {
+        const merged = r.mensaje ? prev.map((m) => (m.id === temp.id ? r.mensaje! : m)) : prev;
+        cache.current.set(chatId, { mensajes: merged, hayMas: hayMasMensajes });
+        return merged;
+      });
       setChats((prev) =>
         prev.map((c) =>
-          c.id === elegido.id
+          c.id === chatId
             ? {
                 ...c,
-                ultimoTexto: texto,
+                ultimoTexto: cuerpo,
                 ultimoMensajeAt: r.mensaje?.createdAt ?? temp.createdAt,
               }
             : c,
@@ -378,13 +406,18 @@ export function BandejaCrmComercial({
   }
 
   function cargarAnteriores() {
-    if (!sel || !mensajes[0]) return;
+    if (!sel || hiloId !== sel || !mensajes[0]) return;
+    const chatId = sel;
+    const antes = mensajes[0].createdAt;
     start(async () => {
-      const hilo = await cargarHiloComercial(sel, mensajes[0].createdAt);
-      const merged = unirMensajes(hilo.mensajes, mensajes);
-      setMensajes(merged);
+      const hilo = await cargarHiloComercial(chatId, antes);
+      if (hiloActivo.current !== chatId) return;
+      setMensajes((prev) => {
+        const merged = unirMensajes(hilo.mensajes, prev);
+        cache.current.set(chatId, { mensajes: merged, hayMas: hilo.hayMas });
+        return merged;
+      });
       setHayMasMensajes(hilo.hayMas);
-      cache.current.set(sel, { mensajes: merged, hayMas: hilo.hayMas });
     });
   }
 
@@ -548,7 +581,7 @@ export function BandejaCrmComercial({
               </div>
 
               <div ref={fondo} className="min-h-0 flex-1 overflow-y-auto bg-paper px-4 py-4 sm:px-6">
-                {hayMasMensajes && (
+                {hayMasMensajes && hiloId === sel && (
                   <div className="mb-4 text-center">
                     <button
                       type="button"
@@ -560,7 +593,7 @@ export function BandejaCrmComercial({
                     </button>
                   </div>
                 )}
-                <Mensajes mensajes={mensajes} />
+                <Mensajes mensajes={hiloVisible} />
               </div>
 
               <form onSubmit={enviar} className="shrink-0 border-t border-line bg-surface px-4 py-3">

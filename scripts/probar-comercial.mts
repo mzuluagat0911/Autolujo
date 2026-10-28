@@ -221,7 +221,49 @@ assert.equal(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("i
 assert.ok(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("Lucía"));
 assert.equal(mensajeNaturalLucia("Hola, soy Lucía. ¿En qué le puedo ayudar?").includes("ayudar"), false);
 assert.ok(mensajeNaturalLucia("El abono inicial desde $350.").includes("$99.99"));
-assert.equal(mensajeNaturalLucia("El abono inicial desde $350.").includes("$350"), true);
+assert.equal(mensajeNaturalLucia("El abono inicial desde $350.").includes("desde $350"), false);
+assert.ok(mensajeNaturalLucia("El abono inicial desde $350.").includes("desde $25"));
+assert.equal(mensajeNaturalLucia("El 2024 manual tiene abono de $100.").includes("$100"), true);
+assert.ok(
+  mensajeNaturalLucia("El abono de $80 no lo tenemos. El más barato es $100.", "Y este del abono de 80").includes(
+    "se financia",
+  ),
+);
+assert.equal(
+  mensajeNaturalLucia("El abono de $80 no lo tenemos.", "Y este del abono de 80").includes("no lo tenemos"),
+  false,
+);
+assert.ok(mensajeNaturalLucia("Puede visitarnos en Juan Díaz.", "Tengo 20 años").includes("no podemos seguir"));
+assert.equal(mensajeNaturalLucia("Puede visitarnos en Juan Díaz.", "Tengo 20 años").includes("Juan Díaz"), false);
+assert.equal(
+  mensajeNaturalLucia("Le agendo la visita.", "Cumplo 25 el mes que viene").includes("no podemos seguir"),
+  false,
+);
+assert.ok(
+  mensajeNaturalLucia("Sí, hasta Aguadulce tenemos cobertura.", "Estoy en Aguadulce, ¿hasta acá tienen cobertura?").includes(
+    "no tenemos cobertura",
+  ),
+);
+assert.ok(
+  mensajeNaturalLucia("Los mantenimientos están incluidos durante todo el contrato.", "Y los mantenimientos").includes(
+    "12",
+  ),
+);
+assert.equal(
+  mensajeNaturalLucia("Los mantenimientos están incluidos durante todo el contrato.", "Y los mantenimientos").includes(
+    "todo el contrato",
+  ),
+  false,
+);
+assert.ok(mensajeNaturalLucia("No puedo darle un teléfono.", "Deme un teléfono para llamar").includes("6878-4560"));
+assert.ok(
+  mensajeNaturalLucia("Cuénteme qué día y a qué hora le queda.", "No gracias déjelo así").includes("Entendido"),
+);
+assert.equal(
+  mensajeNaturalLucia("Cuénteme qué día y a qué hora le queda.", "No gracias déjelo así").includes("qué día"),
+  false,
+);
+assert.ok(mensajeNaturalLucia("El automático se confirma en la visita.", "Buenos días").startsWith("Buenos días."));
 assert.ok(
   mensajeNaturalLucia("Hyundai y Kia, letras desde $25.").includes("Kia Soluto empieza en 2024"),
 );

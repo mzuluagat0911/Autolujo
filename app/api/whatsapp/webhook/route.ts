@@ -30,7 +30,7 @@ import {
 import { responderAgente } from "@/lib/ai/agente";
 import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoConArchivo } from "@/lib/comercial/archivo";
-import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "@/lib/comercial/bienvenida";
+import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA, sinBienvenidaRepetida } from "@/lib/comercial/bienvenida";
 import { mensajeNaturalLucia } from "@/lib/comercial/voz";
 import {
   ajustarMensajeDeCita,
@@ -362,11 +362,14 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         proximaAccion: r.lead.proxima_accion,
       });
     }
-    let salida = ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, ultimo), {
-      hoy: hoyPanama(),
-      fechaCita: citaPrevia?.fecha ?? null,
-      cliente: ultimo,
-    });
+    let salida = sinBienvenidaRepetida(
+      ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, ultimo), {
+        hoy: hoyPanama(),
+        fechaCita: citaPrevia?.fecha ?? null,
+        cliente: ultimo,
+      }),
+      historial,
+    );
     if (!decision.envia) {
       if (guardado.conversacionId) {
         await guardarBorradorComercial(guardado.conversacionId, salida);
@@ -448,7 +451,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       await entregarRespuestaComercial(
         from,
         guardado.conversacionId,
-        mensajeNaturalLucia(r.mensaje, texto),
+        sinBienvenidaRepetida(mensajeNaturalLucia(r.mensaje, texto), historial),
         decision.envia,
       );
       if (decision.envia && guardado.conversacionId) {

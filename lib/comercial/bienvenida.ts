@@ -20,6 +20,18 @@ export const MENSAJE_BIENVENIDA = [
   "¿Le dejo la visita en Juan Díaz o en La Chorrera? El equipo le cierra allá el carro.",
 ].join("\n");
 
+/** Si la bienvenida ya salió, un "quiero información" no la vuelve a mandar. */
+export function sinBienvenidaRepetida(
+  salida: string,
+  historial: { direccion: "in" | "out"; texto: string }[],
+): string {
+  const ya = historial.some(
+    (m) => m.direccion === "out" && m.texto.includes("tratamientodedatosautolujopanama"),
+  );
+  if (!ya || !salida.includes("tratamientodedatosautolujopanama")) return salida;
+  return "Con gusto. Letras desde $25 y abonos desde $99.99, según el año. ¿Qué carro le llama más?";
+}
+
 const PREGUNTA_CONCRETA =
   /\?|cu[aá]nto|precio|letra|abono|requisit|cita|disponible|autom[aá]tic|manual|d[oó]nde|horario|a[nñ]os?|chiriqu|chitr[eé]|david|menor|familiar|plataforma|licencia|kia|hyundai|soluto|i-?10|picanto|sed[aá]n/i;
 
