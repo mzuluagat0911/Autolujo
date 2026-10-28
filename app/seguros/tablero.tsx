@@ -62,7 +62,7 @@ export function Tablero({
         lista.push({
           id: c.id + "-aud",
           href: `/seguros/${c.id}`,
-          texto: `${carro}: audiencia el ${fechaCorta(aud)}. Avisá al cliente y a Santiago.`,
+          texto: `${carro}: audiencia el ${fechaCorta(aud)}. Avise al cliente y a Santiago.`,
         });
       }
     }
@@ -168,7 +168,7 @@ export function Tablero({
       {filtrados.length === 0 ? (
         <EmptyState
           title={casos.length === 0 ? "Todavía no hay choques" : "Ningún caso en esta sección"}
-          hint={casos.length === 0 ? "Cuando alguien reporte un choque, abrí el caso desde acá." : "Probá otra sección o borrá la búsqueda."}
+          hint={casos.length === 0 ? "Cuando alguien reporte un choque, abra el caso desde aquí." : "Pruebe otra sección o borre la búsqueda."}
           action={
             casos.length === 0 ? (
               <Link href="/seguros/nuevo" className={PRIMARIO}>

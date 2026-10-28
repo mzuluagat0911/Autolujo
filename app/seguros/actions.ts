@@ -66,9 +66,9 @@ export async function crearCaso(fd: FormData): Promise<Resultado> {
   const fecha = texto(fd.get("fecha")) || hoyPanama();
   const viaRaw = texto(fd.get("via"));
   const via = viaRaw === "fud" || viaRaw === "parte" ? viaRaw : null;
-  if (!vehiculoId) return { ok: false, error: "Elegí el carro." };
+  if (!vehiculoId) return { ok: false, error: "Elija el carro." };
   if (!fechaOk(fecha)) return { ok: false, error: "La fecha del choque no es válida." };
-  if (!via) return { ok: false, error: "Elegí si es FUD o parte policivo." };
+  if (!via) return { ok: false, error: "Elija si es FUD o parte policivo." };
 
   const carros = await carrosParaCaso();
   const carro = carros.find((c) => c.id === vehiculoId);
@@ -225,7 +225,7 @@ export async function subirDocumento(fd: FormData): Promise<Resultado> {
   const tipo = texto(fd.get("tipo")) as DocTipo;
   const archivo = fd.get("archivo");
   if (!DOCUMENTOS.some((d) => d.id === tipo)) return { ok: false, error: "Ese documento no corresponde." };
-  if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elegí un archivo." };
+  if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elija un archivo." };
   if (archivo.size > 8 * 1024 * 1024) return { ok: false, error: "El archivo pasa de 8 MB." };
   const fila = await leerCaso(id);
   if (!fila) return { ok: false, error: "No encuentro el caso." };
@@ -286,7 +286,7 @@ export async function carroVolvio(fd: FormData): Promise<Resultado> {
 export async function guardarPolizaAccion(fd: FormData): Promise<Resultado> {
   const vehiculoId = texto(fd.get("vehiculo_id"));
   const vence = texto(fd.get("vence"));
-  if (!vehiculoId) return { ok: false, error: "Elegí el carro." };
+  if (!vehiculoId) return { ok: false, error: "Elija el carro." };
   if (!fechaOk(vence)) return { ok: false, error: "La fecha de vencimiento no es válida." };
   let path: string | null = null;
   const archivo = fd.get("archivo");
@@ -315,7 +315,7 @@ export async function subirDocEmpresa(fd: FormData): Promise<Resultado> {
   if (!empresaId || (cual !== "registro" && cual !== "representante")) {
     return { ok: false, error: "Falta la empresa o el tipo de documento." };
   }
-  if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elegí el PDF." };
+  if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elija el PDF." };
   const error = await subirArchivo(
     pathEmpresa(empresaId, cual),
     new Uint8Array(await archivo.arrayBuffer()),
@@ -334,7 +334,7 @@ export async function subirDocCliente(fd: FormData): Promise<Resultado> {
   if (!clienteId || (cual !== "cedula" && cual !== "licencia")) {
     return { ok: false, error: "Falta el cliente o el tipo de documento." };
   }
-  if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elegí un archivo." };
+  if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elija un archivo." };
   if (archivo.size > 8 * 1024 * 1024) return { ok: false, error: "El archivo pasa de 8 MB." };
   const error = await subirArchivo(
     pathCliente(clienteId, cual),

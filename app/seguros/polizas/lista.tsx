@@ -93,7 +93,7 @@ export function ListaPolizas({
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Aseguradora</span>
           <select name="aseguradora" className={INPUT} defaultValue="">
-            <option value="">Elegí…</option>
+            <option value="">Elija…</option>
             {ASEGURADORAS.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.nombre}

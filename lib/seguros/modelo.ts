@@ -156,40 +156,40 @@ export function siguienteSeccion(caso: Pick<Caso, "seccion" | "via">): Seccion |
 
 export function queSigue(caso: Caso): string {
   if (caso.seccion === "reportado") {
-    if (!caso.via) return "Elegí si el otro aceptó la culpa (FUD) o hay que llamar a tránsito (parte).";
+    if (!caso.via) return "Elija si el otro aceptó la culpa (FUD) o hay que llamar a tránsito (parte).";
     if (caso.via === "fud") {
       const tel = telefonoAseguradora(caso.aseguradora);
       return tel
-        ? `Pasale al cliente el teléfono de ${nombreAseguradora(caso.aseguradora)}: ${tel}.`
-        : "Elegí la aseguradora y pasale ese teléfono al cliente.";
+        ? `Pásele al cliente el teléfono de ${nombreAseguradora(caso.aseguradora)}: ${tel}.`
+        : "Elija la aseguradora y pásele ese teléfono al cliente.";
     }
     return `El cliente llama a tránsito al ${TELEFONO_TRANSITO}. Nadie aceptó la culpa, hay lesionados, daño mecánico, grúa, o el otro carro es taxi o de empresa.`;
   }
   if (caso.seccion === "cita") {
-    return "Citá al cliente a Juan Díaz el mismo día o, a más tardar, dos días después del choque. Ahí se toman las fotos y se recibe el FUD o el parte.";
+    return "Cite al cliente a Juan Díaz el mismo día o, a más tardar, dos días después del choque. Ahí se toman las fotos y se recibe el FUD o el parte.";
   }
   if (caso.seccion === "audiencia") {
     return caso.fechaAudiencia
-      ? "Avisá al cliente y a Santiago dos o tres días antes de la audiencia."
-      : "Anotá la fecha y el lugar de la audiencia. El cliente tiene que ir.";
+      ? "Avise al cliente y a Santiago dos o tres días antes de la audiencia."
+      : "Anote la fecha y el lugar de la audiencia. El cliente tiene que ir.";
   }
   if (caso.seccion === "resolucion") {
-    return "Cuando pase la audiencia, retirá la resolución en el juzgado. Sin eso no se abre el reclamo.";
+    return "Cuando pase la audiencia, retire la resolución en el juzgado. Sin eso no se abre el reclamo.";
   }
   if (caso.seccion === "facturas") {
     return caso.via === "parte"
-      ? "Cargá las piezas y el precio. Si es parte policivo, el cliente firma el acuerdo con esos montos."
-      : "Cargá las piezas y el precio. Con FUD el cobro es a la aseguradora.";
+      ? "Cargue las piezas y el precio. Si es parte policivo, el cliente firma el acuerdo con esos montos."
+      : "Cargue las piezas y el precio. Con FUD el cobro es a la aseguradora.";
   }
   if (caso.seccion === "seguimiento") {
     return caso.numeroReclamo
-      ? "Seguí el reclamo con ese número hasta que llegue el finiquito."
-      : "Anotá el número de reclamo que dio la aseguradora.";
+      ? "Siga el reclamo con ese número hasta que llegue el finiquito."
+      : "Anote el número de reclamo que dio la aseguradora.";
   }
   if (caso.seccion === "pagado") return "La aseguradora pagó. El caso queda guardado para consultarlo.";
   return caso.motivoNoProcede
     ? "El reclamo no procede. El motivo queda en el caso."
-    : "Anotá por qué no procede.";
+    : "Anote por qué no procede.";
 }
 
 export function casoVacio(): Caso {

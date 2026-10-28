@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
 import { StatusChip, Toast } from "@/components/kit";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import {
@@ -67,7 +67,9 @@ export function FichaCaso({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [errorDoc, setErrorDoc] = useState<{ tipo: DocTipo; msg: string } | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
+  const [sucio, setSucio] = useState(false);
   const [seccion, setSeccion] = useState<Seccion>(fila.caso.seccion);
   const [via, setVia] = useState<"" | "fud" | "parte">(fila.caso.via ?? "");
   const [aseguradora, setAseguradora] = useState(fila.caso.aseguradora);
@@ -76,7 +78,29 @@ export function FichaCaso({
   const casoVista = { ...fila.caso, seccion, via: via === "fud" || via === "parte" ? via : null, aseguradora };
   const proxima = siguienteSeccion(casoVista);
 
-  function guardar(e: FormEvent<HTMLFormElement>, destino?: Seccion) {
+  useEffect(() => {
+    if (!sucio) return;
+    const alSalir = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    const alNavegar = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest("a[href]") as HTMLAnchorElement | null;
+      if (!a || a.target === "_blank" || a.dataset.guardaAntes) return;
+      if (!window.confirm("Hay cambios sin guardar. ¿Salir sin guardarlos?")) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener("beforeunload", alSalir);
+    document.addEventListener("click", alNavegar, true);
+    return () => {
+      window.removeEventListener("beforeunload", alSalir);
+      document.removeEventListener("click", alNavegar, true);
+    };
+  }, [sucio]);
+
+  function guardar(e: FormEvent<HTMLFormElement>, destino?: Seccion, luego?: () => void) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     fd.set("id", fila.id);
@@ -90,18 +114,27 @@ export function FichaCaso({
         setError(r.error ?? "No se pudo guardar.");
         return;
       }
+      setSucio(false);
       if (destino) setSeccion(destino);
       setAviso(destino ? `Pasó a ${etiquetaSeccion(destino)}.` : "Guardado.");
-      router.refresh();
+      if (luego) luego();
+      else router.refresh();
     });
   }
 
-  function correr(accion: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string }>, fd: FormData) {
+  function correr(
+    accion: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string }>,
+    fd: FormData,
+    tipo?: DocTipo,
+  ) {
     setError(null);
+    setErrorDoc(null);
     start(async () => {
-      const r = await accion(fd);
+      const r = await accion(fd).catch(() => ({ ok: false, error: "No se pudo completar.", msg: undefined }));
       if (!r.ok) {
-        setError(r.error ?? "No se pudo completar.");
+        const msg = r.error ?? "No se pudo completar.";
+        if (tipo) setErrorDoc({ tipo, msg });
+        else setError(msg);
         return;
       }
       if (r.msg) setAviso(r.msg);
@@ -112,7 +145,7 @@ export function FichaCaso({
   /** Uno por uno: cada subida reescribe la lista de documentos del caso. */
   function subirArchivos(tipo: DocTipo, archivos: File[]) {
     if (archivos.length === 0) return;
-    setError(null);
+    setErrorDoc(null);
     start(async () => {
       for (const archivo of archivos) {
         const fd = new FormData();
@@ -120,12 +153,12 @@ export function FichaCaso({
         fd.set("tipo", tipo);
         fd.set("archivo", archivo);
         if (archivo.size > 8 * 1024 * 1024) {
-          setError(`${archivo.name}: el archivo pasa de 8 MB.`);
+          setErrorDoc({ tipo, msg: `${archivo.name}: el archivo pasa de 8 MB.` });
           break;
         }
         const r = await subirDocumento(fd).catch(() => ({ ok: false, error: "No se pudo subir." }));
         if (!r.ok) {
-          setError(`${archivo.name}: ${r.error ?? "No se pudo subir."}`);
+          setErrorDoc({ tipo, msg: `${archivo.name}: ${r.error ?? "No se pudo subir."}` });
           break;
         }
       }
@@ -135,11 +168,20 @@ export function FichaCaso({
 
   const tel = telefonoAseguradora(aseguradora);
 
-  function enviar(destino?: Seccion) {
+  function enviar(destino?: Seccion, luego?: () => void) {
     const form = document.getElementById("caso") as HTMLFormElement | null;
     if (!form) return;
-    guardar({ preventDefault() {}, currentTarget: form } as FormEvent<HTMLFormElement>, destino);
+    guardar({ preventDefault() {}, currentTarget: form } as FormEvent<HTMLFormElement>, destino, luego);
   }
+
+  function moverA(destino: Seccion) {
+    if (destino === seccion) return;
+    const extra = sucio ? " También se guardan los cambios que hizo." : "";
+    if (!window.confirm(`¿Pasar el caso a ${etiquetaSeccion(destino)}?${extra}`)) return;
+    enviar(destino);
+  }
+
+  const paquete = `/seguros/${fila.id}/paquete`;
 
   return (
     <div className="flex flex-col gap-6">
@@ -156,34 +198,20 @@ export function FichaCaso({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip tone={tonoSeccion(seccion)}>{etiquetaSeccion(seccion)}</StatusChip>
-          <Link href={`/seguros/${fila.id}/paquete`} className={SECUNDARIO}>
-            Paquete para Santiago
-          </Link>
-          <button
-            type="button"
-            className={PELIGRO}
-            disabled={pending}
-            onClick={() => {
-              const ok = window.confirm(
-                "¿Eliminar este choque? Se borra el caso y sus archivos. Si el carro quedó en colisión por este registro y no tiene otro choque, vuelve a trabajar.",
-              );
-              if (!ok) return;
-              const fd = new FormData();
-              fd.set("id", fila.id);
-              setError(null);
-              start(async () => {
-                const r = await eliminarCaso(fd);
-                if (!r.ok) {
-                  setError(r.error ?? "No se pudo eliminar.");
-                  return;
-                }
-                router.push("/seguros");
-                router.refresh();
-              });
+          <Link
+            href={paquete}
+            data-guarda-antes="1"
+            className={SECUNDARIO}
+            onClick={(e) => {
+              if (!sucio) return;
+              e.preventDefault();
+              if (window.confirm("Hay cambios sin guardar. ¿Guardarlos y abrir el paquete?")) {
+                enviar(undefined, () => router.push(paquete));
+              }
             }}
           >
-            Eliminar choque
-          </button>
+            Paquete del reclamo
+          </Link>
         </div>
       </header>
 
@@ -192,7 +220,8 @@ export function FichaCaso({
           <button
             key={s.id}
             type="button"
-            onClick={() => enviar(s.id)}
+            disabled={pending}
+            onClick={() => moverA(s.id)}
             className={`rounded-lg px-3 py-1.5 text-sm ${
               seccion === s.id ? "bg-ink font-medium text-white" : "bg-surface text-muted ring-1 ring-line hover:text-ink"
             }`}
@@ -250,7 +279,7 @@ export function FichaCaso({
         </div>
       </section>
 
-      <form id="caso" onSubmit={(e) => guardar(e)} className="flex flex-col gap-6">
+      <form id="caso" onSubmit={(e) => guardar(e)} onChange={() => setSucio(true)} className="flex flex-col gap-6">
         <input type="hidden" name="seccion" value={seccion} />
         <section className="grid gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2">
           <h2 className="text-sm font-semibold sm:col-span-2">Del choque</h2>
@@ -273,10 +302,24 @@ export function FichaCaso({
           <fieldset className="sm:col-span-2">
             <legend className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Camino</legend>
             <div className="mt-2 flex flex-wrap gap-2">
-              <button type="button" onClick={() => setVia("fud")} className={via === "fud" ? PRIMARIO : SECUNDARIO}>
+              <button
+                type="button"
+                onClick={() => {
+                  setVia("fud");
+                  setSucio(true);
+                }}
+                className={via === "fud" ? PRIMARIO : SECUNDARIO}
+              >
                 FUD
               </button>
-              <button type="button" onClick={() => setVia("parte")} className={via === "parte" ? PRIMARIO : SECUNDARIO}>
+              <button
+                type="button"
+                onClick={() => {
+                  setVia("parte");
+                  setSucio(true);
+                }}
+                className={via === "parte" ? PRIMARIO : SECUNDARIO}
+              >
                 Parte policivo
               </button>
             </div>
@@ -284,7 +327,7 @@ export function FichaCaso({
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Aseguradora</span>
             <select value={aseguradora} onChange={(e) => setAseguradora(e.target.value as typeof aseguradora)} className={INPUT}>
-              <option value="">Elegí…</option>
+              <option value="">Elija…</option>
               {ASEGURADORAS.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.nombre} · {a.telefono}
@@ -319,7 +362,7 @@ export function FichaCaso({
         <section className="grid gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2">
           <h2 className="text-sm font-semibold sm:col-span-2">Portada del paquete</h2>
           <p className="text-xs text-muted sm:col-span-2">
-            Estos datos salen en la hoja amarilla que encabeza el paquete de Santiago.
+            Estos datos salen en la hoja amarilla que encabeza el paquete del reclamo.
           </p>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Conductor</span>
@@ -352,7 +395,7 @@ export function FichaCaso({
             <div>
               <h2 className="text-sm font-semibold">Piezas y precios</h2>
               <p className="mt-1 text-xs text-muted">
-                Al elegir la pieza se carga el precio con descuento y se le suma la mano de obra. En Kia Soluto esa mano de obra es la de Hyundai. Si el jefe pidió una pieza que no salió golpeada, marcala como extra.
+                Al elegir la pieza se carga el precio con descuento y se le suma la mano de obra. En Kia Soluto esa mano de obra es la de Hyundai. Si el jefe pidió una pieza que no salió golpeada, márquela como extra.
               </p>
             </div>
             <p className="text-sm font-medium tabular-nums">Total USD {plata(totalPiezas(piezas))}</p>
@@ -424,7 +467,10 @@ export function FichaCaso({
                     <button
                       type="button"
                       className="text-sm text-rojo"
-                      onClick={() => setPiezas(piezas.filter((_, j) => j !== i))}
+                      onClick={() => {
+                        setPiezas(piezas.filter((_, j) => j !== i));
+                        setSucio(true);
+                      }}
                     >
                       Quitar
                     </button>
@@ -446,9 +492,10 @@ export function FichaCaso({
           <button
             type="button"
             className={`${SECUNDARIO} mt-3`}
-            onClick={() =>
-              setPiezas([...piezas, { id: crypto.randomUUID(), pieza: "", condicion: "reparar", precio: 0, extra: false }])
-            }
+            onClick={() => {
+              setPiezas([...piezas, { id: crypto.randomUUID(), pieza: "", condicion: "reparar", precio: 0, extra: false }]);
+              setSucio(true);
+            }}
           >
             Agregar pieza
           </button>
@@ -484,29 +531,49 @@ export function FichaCaso({
           </label>
         </section>
 
-        {error && <p className="text-sm text-rojo">{error}</p>}
-
-        <div className="flex flex-wrap gap-2">
-          <button type="submit" className={PRIMARIO} disabled={pending}>
+        <div
+          className={`sticky bottom-3 z-10 flex flex-wrap items-center gap-2 rounded-xl p-3 shadow-sm ring-1 ${
+            error ? "bg-rojo-wash ring-rojo/30" : sucio ? "bg-white ring-ink/20" : "bg-white ring-line"
+          }`}
+        >
+          <p className={`mr-auto text-sm ${error ? "text-rojo" : sucio ? "font-medium text-ink" : "text-muted"}`}>
+            {error ?? (sucio ? "Hay cambios sin guardar." : "Todo guardado.")}
+          </p>
+          <button type="submit" className={PRIMARIO} disabled={pending || (!sucio && !error)}>
             {pending ? "Guardando…" : "Guardar"}
           </button>
-          <button type="button" className={SECUNDARIO} disabled={pending} onClick={() => enviar("pagado")}>
-            Marcar pagado
-          </button>
-          <button
-            type="button"
-            className="rounded-lg px-4 py-2.5 text-sm font-medium text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash disabled:opacity-50"
-            disabled={pending}
-            onClick={() => enviar("no_procede")}
-          >
-            No procede
-          </button>
+          {seccion !== "pagado" && (
+            <button
+              type="button"
+              className={SECUNDARIO}
+              disabled={pending}
+              onClick={() => {
+                if (window.confirm("¿Marcar el caso como pagado? Tiene que estar anotado el monto del finiquito.")) enviar("pagado");
+              }}
+            >
+              Marcar pagado
+            </button>
+          )}
+          {seccion !== "no_procede" && (
+            <button
+              type="button"
+              className="rounded-lg px-4 py-2.5 text-sm font-medium text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash disabled:opacity-50"
+              disabled={pending}
+              onClick={() => {
+                if (window.confirm("¿Cerrar el caso como no procede? Tiene que estar anotado el motivo.")) enviar("no_procede");
+              }}
+            >
+              No procede
+            </button>
+          )}
         </div>
       </form>
 
       <section className="rounded-xl bg-surface p-5 ring-1 ring-line">
         <h2 className="text-sm font-semibold">Documentos del paquete</h2>
-        <p className="mt-1 text-xs text-muted">Cada caja es un papel del paquete. Podés subir varios archivos en la misma.</p>
+        <p className="mt-1 text-xs text-muted">
+          Cada caja es un papel del paquete. Puede subir varios archivos en la misma. Los archivos se guardan solos al subirlos.
+        </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {DOCUMENTOS.map((d) => (
             <CajaDoc
@@ -518,7 +585,8 @@ export function FichaCaso({
               archivos={fila.caso.documentos.filter((x) => x.tipo === d.id)}
               urls={urls}
               disabled={pending}
-              onRun={correr}
+              error={errorDoc?.tipo === d.id ? errorDoc.msg : null}
+              onRun={(accion, fd) => correr(accion, fd, d.id)}
               onSubir={(archivos) => subirArchivos(d.id, archivos)}
               registro={d.id === "registro" ? registro : null}
               cliente={d.id === "cedula" || d.id === "licencia" ? cliente : null}
@@ -527,22 +595,50 @@ export function FichaCaso({
         </div>
       </section>
 
-      {fila.estadoCarro === "colision" && (
+      <div className="flex flex-wrap items-center gap-3">
+        {fila.estadoCarro === "colision" && (
+          <button
+            type="button"
+            className={SECUNDARIO}
+            disabled={pending}
+            onClick={() => {
+              const fd = new FormData();
+              fd.set("id", fila.id);
+              correr(carroVolvio, fd);
+            }}
+          >
+            El carro volvió a trabajar
+          </button>
+        )}
         <button
           type="button"
-          className={SECUNDARIO}
+          className={`${PELIGRO} ml-auto`}
           disabled={pending}
           onClick={() => {
+            const ok = window.confirm(
+              "¿Eliminar este choque? Se borra el caso y sus archivos. Si el carro quedó en colisión por este registro y no tiene otro choque, vuelve a trabajar.",
+            );
+            if (!ok) return;
             const fd = new FormData();
             fd.set("id", fila.id);
-            correr(carroVolvio, fd);
+            setError(null);
+            start(async () => {
+              const r = await eliminarCaso(fd);
+              if (!r.ok) {
+                setError(r.error ?? "No se pudo eliminar.");
+                return;
+              }
+              setSucio(false);
+              router.push("/seguros");
+              router.refresh();
+            });
           }}
         >
-          El carro volvió a trabajar
+          Eliminar choque
         </button>
-      )}
+      </div>
 
-      <p className="text-xs text-muted">Hoy es {fechaCorta(hoy)}. Publicá el resumen también en el grupo de colisiones.</p>
+      <p className="text-xs text-muted">Hoy es {fechaCorta(hoy)}. Publique el resumen también en el grupo de colisiones.</p>
       {aviso && <Toast message={aviso} tone="good" onDismiss={() => setAviso(null)} />}
     </div>
   );
@@ -556,6 +652,7 @@ function CajaDoc({
   archivos,
   urls,
   disabled,
+  error,
   onRun,
   onSubir,
   registro,
@@ -568,6 +665,7 @@ function CajaDoc({
   archivos: { id: string; nombre: string; path: string }[];
   urls: Record<string, string>;
   disabled: boolean;
+  error: string | null;
   onRun: (accion: (fd: FormData) => Promise<{ ok: boolean; error?: string }>, fd: FormData) => void;
   onSubir: (archivos: File[]) => void;
   registro?: RegistroCarro | null;
@@ -577,7 +675,7 @@ function CajaDoc({
   const campo = useRef<HTMLInputElement>(null);
   const delCliente = cliente && (tipo === "cedula" || tipo === "licencia") ? (tipo as DocCliente) : null;
   return (
-    <div className="rounded-lg p-3 ring-1 ring-line">
+    <div className={`rounded-lg p-3 ring-1 ${error ? "ring-rojo/40" : "ring-line"}`}>
       <p className="text-sm font-medium">{label}</p>
       <p className="mt-0.5 text-xs text-muted">{delCliente ? "Ya la tenemos del cliente. Va sola en el paquete." : hint}</p>
       {traido && registro && (
@@ -646,6 +744,7 @@ function CajaDoc({
           {disabled ? "Subiendo…" : archivos.length > 0 ? "Agregar archivo" : "Subir archivo"}
         </button>
       )}
+      {error && <p className="mt-2 text-xs text-rojo">{error}</p>}
     </div>
   );
 }

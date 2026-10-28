@@ -18,7 +18,7 @@ export default async function NuevoChoquePage() {
       <PageHeader
         eyebrow="Seguros"
         title="Registrar choque"
-        subtitle="Elegí el carro y si se resuelve con el seguro o con tránsito. Después se cargan las fotos y los papeles."
+        subtitle="Elija el carro y si se resuelve con el seguro o con tránsito. Después se cargan las fotos y los papeles."
       />
       <AltaChoque carros={carros} hoy={hoyPanama()} />
     </div>

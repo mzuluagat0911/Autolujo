@@ -30,7 +30,7 @@ export default async function SegurosPage() {
       <PageHeader
         eyebrow="Seguros"
         title="Choques"
-        subtitle="Un caso por choque. Seguí en qué va: oficina, audiencia, facturas, reclamo o pago."
+        subtitle="Un caso por choque. Siga en qué va: oficina, audiencia, facturas, reclamo o pago."
         action={
           <div className="flex flex-wrap gap-2">
             <Link href="/seguros/polizas" className={SECUNDARIO}>
