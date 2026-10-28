@@ -1,4 +1,4 @@
-import { nombreAseguradora, type Caso } from "./modelo";
+import { nombreAseguradora, type Caso, type DocTipo } from "./modelo";
 
 export type Papeles = {
   factura: boolean;
@@ -64,6 +64,74 @@ export function tituloCotizacion(marca: string, modelo: string): string {
   const t = `${marca} ${modelo}`.toLowerCase();
   if (t.includes("kia") || t.includes("soluto")) return "COTIZACION KIA";
   return "COTIZACION HYUNDAI";
+}
+
+export function armarPapeles(input: {
+  caso: Pick<Caso, "piezas">;
+  tiene: (tipo: DocTipo) => boolean;
+  copiaCliente: boolean;
+  representante: boolean;
+  registroPublico: boolean;
+  registroVehiculo: boolean;
+}): Papeles {
+  const { tiene } = input;
+  return {
+    factura: tiene("cotizacion"),
+    cotizacion: input.caso.piezas.length > 0 || tiene("cotizacion"),
+    cedulaLicencia: tiene("cedula") || tiene("licencia") || input.copiaCliente,
+    representante: input.representante,
+    registroVehiculo: input.registroVehiculo,
+    informe: tiene("fud") || tiene("parte"),
+    registroPublico: input.registroPublico,
+    resolucion: tiene("resolucion"),
+    fotoDano: tiene("foto_dano"),
+    fotoArreglo: tiene("foto_reparado"),
+  };
+}
+
+/** Lo que le falta al paquete, en el orden en que se consigue. La resolución solo aplica con parte. */
+export function faltantesPaquete(p: Papeles, via: Caso["via"]): string[] {
+  const out: string[] = [];
+  if (!p.fotoDano) out.push("Fotos del daño");
+  if (!p.informe) out.push(via === "parte" ? "Parte policivo" : "FUD");
+  if (via === "parte" && !p.resolucion) out.push("Resolución");
+  if (!p.cedulaLicencia) out.push("Cédula y licencia");
+  if (!p.registroVehiculo) out.push("Registro vehicular");
+  if (!p.representante) out.push("Cédula del representante legal");
+  if (!p.registroPublico) out.push("Registro público de la empresa");
+  if (!p.cotizacion) out.push("Cotización");
+  if (!p.fotoArreglo) out.push("Fotos del carro reparado");
+  return out;
+}
+
+export function totalPapeles(via: Caso["via"]): number {
+  return via === "parte" ? 9 : 8;
+}
+
+/** Solo los papeles que cambian en cada choque; los de la empresa y del cliente se dan por puestos. */
+export function faltantesDelCaso(caso: Caso): string[] {
+  const tiene = (tipo: DocTipo) => caso.documentos.some((d) => d.tipo === tipo);
+  const papeles = armarPapeles({
+    caso,
+    tiene,
+    copiaCliente: true,
+    representante: true,
+    registroPublico: true,
+    registroVehiculo: true,
+  });
+  return faltantesPaquete(papeles, caso.via);
+}
+
+/** Si nadie escribió otro conductor, maneja el cliente del carro. */
+export function conConductor(caso: Caso, cliente: { nombre: string; cedula: string } | null): Caso {
+  if (!cliente) return caso;
+  const otro = caso.conductor.trim() !== "" && caso.conductor.trim().toLowerCase() !== cliente.nombre.trim().toLowerCase();
+  if (otro) return caso;
+  return {
+    ...caso,
+    conductor: caso.conductor.trim() || cliente.nombre,
+    cedulaConductor: caso.cedulaConductor.trim() || cliente.cedula,
+  };
 }
 
 function si(ok: boolean): string {

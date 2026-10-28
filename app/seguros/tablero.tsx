@@ -11,10 +11,12 @@ import {
   fechaCorta,
   nombreAseguradora,
   tonoSeccion,
+  type Caso,
   type CasoFila,
   type Poliza,
   type Seccion,
 } from "@/lib/seguros/modelo";
+import { faltantesDelCaso } from "@/lib/seguros/portada";
 
 const PRIMARIO =
   "inline-flex rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black";
@@ -212,6 +214,7 @@ export function Tablero({
                   </td>
                   <td className="px-4 py-3">
                     <StatusChip tone={tonoSeccion(c.caso.seccion)}>{etiquetaSeccion(c.caso.seccion)}</StatusChip>
+                    <Papeles caso={c.caso} />
                   </td>
                 </tr>
               ))}
@@ -220,6 +223,17 @@ export function Tablero({
         </div>
       )}
     </div>
+  );
+}
+
+function Papeles({ caso }: { caso: Caso }) {
+  if (caso.seccion === "pagado" || caso.seccion === "no_procede") return null;
+  const faltan = faltantesDelCaso(caso);
+  if (faltan.length === 0) return <p className="mt-1 text-xs text-verde">Papeles completos</p>;
+  return (
+    <p className="mt-1 text-xs text-ambar" title={faltan.join(", ")}>
+      {faltan.length === 1 ? `Falta: ${faltan[0]}` : `Faltan ${faltan.length} papeles`}
+    </p>
   );
 }
 

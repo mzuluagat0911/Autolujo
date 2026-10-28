@@ -11,7 +11,7 @@ import {
   registroTieneDatos,
 } from "@/lib/seguros/datos";
 import { totalPiezas } from "@/lib/seguros/modelo";
-import { hojaAmarilla, type Papeles } from "@/lib/seguros/portada";
+import { armarPapeles, conConductor, faltantesPaquete, hojaAmarilla } from "@/lib/seguros/portada";
 import { plata } from "@/lib/seguros/tarifas";
 
 export const dynamic = "force-dynamic";
@@ -32,18 +32,15 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
   const delCliente = cliente ? [pathCliente(cliente.id, "cedula"), pathCliente(cliente.id, "licencia")] : [];
   const urls = await firmar([...fila.caso.documentos.map((d) => d.path), ...fijos, ...delCliente]);
   const hay = (tipo: string) => fila.caso.documentos.some((d) => d.tipo === tipo && urls[d.path]);
-  const papeles: Papeles = {
-    factura: hay("cotizacion"),
-    cotizacion: fila.caso.piezas.length > 0 || hay("cotizacion"),
-    cedulaLicencia: hay("cedula") || hay("licencia") || delCliente.some((p) => urls[p]),
+  const papeles = armarPapeles({
+    caso: fila.caso,
+    tiene: hay,
+    copiaCliente: delCliente.some((p) => urls[p]),
     representante: Boolean(empresa && urls[pathEmpresa(empresa.id, "representante")]),
-    registroVehiculo: registroListo,
-    informe: hay("fud") || hay("parte"),
     registroPublico: Boolean(empresa && urls[pathEmpresa(empresa.id, "registro")]),
-    resolucion: hay("resolucion"),
-    fotoDano: hay("foto_dano"),
-    fotoArreglo: hay("foto_reparado"),
-  };
+    registroVehiculo: registroListo,
+  });
+  const faltan = faltantesPaquete(papeles, fila.caso.via);
   const hoja = hojaAmarilla({
     empresa: fila.empresa,
     numero: fila.numero,
@@ -51,7 +48,7 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
     marca: fila.marca,
     modelo: fila.modelo,
     fecha: fila.fecha,
-    caso: fila.caso,
+    caso: conConductor(fila.caso, cliente),
     papeles,
   });
 
@@ -72,6 +69,15 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
       <p className="mb-4 text-sm text-muted print:hidden">
         La hoja amarilla es la portada. El PDF le suma la cotización, el registro del carro y los papeles cargados en el caso.
       </p>
+      {faltan.length > 0 ? (
+        <p className="mb-4 rounded-lg bg-ambar-wash px-4 py-3 text-sm text-ambar ring-1 ring-ambar/20 print:hidden">
+          Falta para el paquete: {faltan.join(", ")}.
+        </p>
+      ) : (
+        <p className="mb-4 rounded-lg bg-verde-wash px-4 py-3 text-sm text-verde ring-1 ring-verde/20 print:hidden">
+          El paquete tiene todos los papeles.
+        </p>
+      )}
 
       <article className="hoja-amarilla bg-white p-5 text-black ring-1 ring-line sm:p-8">
         <h1 className="text-center text-lg font-bold tracking-wide">RECLAMOS ASEGURADORA</h1>

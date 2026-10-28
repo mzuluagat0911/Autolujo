@@ -13,7 +13,7 @@ import {
   type DocCliente,
 } from "@/lib/seguros/datos";
 import { armarPaquetePdf, type ArchivoPaquete } from "@/lib/seguros/paquete-pdf";
-import { empresaEnHoja, type Papeles } from "@/lib/seguros/portada";
+import { armarPapeles, conConductor, empresaEnHoja } from "@/lib/seguros/portada";
 import type { DocTipo, DocumentoCaso } from "@/lib/seguros/modelo";
 
 export const dynamic = "force-dynamic";
@@ -74,18 +74,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const licenciaCliente = copiaCliente("licencia");
   const representante = empresa ? bajados.get(pathEmpresa(empresa.id, "representante")) : undefined;
   const registroPublico = empresa ? bajados.get(pathEmpresa(empresa.id, "registro")) : undefined;
-  const papeles: Papeles = {
-    factura: hay("cotizacion"),
-    cotizacion: fila.caso.piezas.length > 0 || hay("cotizacion"),
-    cedulaLicencia: hay("cedula") || hay("licencia") || Boolean(cedulaCliente || licenciaCliente),
+  const papeles = armarPapeles({
+    caso: fila.caso,
+    tiene: hay,
+    copiaCliente: Boolean(cedulaCliente || licenciaCliente),
     representante: Boolean(representante),
-    registroVehiculo: registroTieneDatos(registro),
-    informe: hay("fud") || hay("parte"),
     registroPublico: Boolean(registroPublico),
-    resolucion: hay("resolucion"),
-    fotoDano: hay("foto_dano"),
-    fotoArreglo: hay("foto_reparado"),
-  };
+    registroVehiculo: registroTieneDatos(registro),
+  });
 
   const de = (tipo: DocTipo) => fila.caso.documentos.filter((d) => d.tipo === tipo);
   const archivos: ArchivoPaquete[] = [];
@@ -110,7 +106,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     marca: fila.marca,
     modelo: fila.modelo,
     fecha: fila.fecha,
-    caso: fila.caso,
+    caso: conConductor(fila.caso, cliente),
     papeles,
     registro: registroTieneDatos(registro) ? registro : null,
     archivos,

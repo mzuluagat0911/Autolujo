@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { StatusChip, Toast } from "@/components/kit";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import {
@@ -40,6 +40,7 @@ import {
   type DocCliente,
   type RegistroCarro,
 } from "@/lib/seguros/datos";
+import { totalPapeles } from "@/lib/seguros/portada";
 import { plata, tarifasDe, totalTarifa } from "@/lib/seguros/tarifas";
 
 const INPUT =
@@ -57,12 +58,14 @@ export function FichaCaso({
   hoy,
   registro,
   cliente,
+  faltan,
 }: {
   fila: CasoFila;
   urls: Record<string, string>;
   hoy: string;
   registro: RegistroCarro | null;
   cliente: ClienteDelCaso | null;
+  faltan: string[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -77,6 +80,8 @@ export function FichaCaso({
   const tarifas = tarifasDe(fila.marca, fila.modelo, fila.anio);
   const casoVista = { ...fila.caso, seccion, via: via === "fud" || via === "parte" ? via : null, aseguradora };
   const proxima = siguienteSeccion(casoVista);
+  const total = totalPapeles(fila.caso.via);
+  const conductorCliente = !fila.caso.conductor.trim() && cliente ? cliente : null;
 
   useEffect(() => {
     if (!sucio) return;
@@ -181,6 +186,16 @@ export function FichaCaso({
     enviar(destino);
   }
 
+  /** Abre el bloque del reclamo y lleva el cursor al campo si está vacío. */
+  function pedirCampo(nombre: string, msg: string): boolean {
+    const campo = document.querySelector<HTMLInputElement>(`#caso [name="${nombre}"]`);
+    if (campo?.value.trim()) return true;
+    document.getElementById("bloque-reclamo")?.setAttribute("open", "");
+    campo?.focus();
+    setError(msg);
+    return false;
+  }
+
   const paquete = `/seguros/${fila.id}/paquete`;
 
   return (
@@ -277,12 +292,44 @@ export function FichaCaso({
             </button>
           )}
         </div>
+        {seccion !== "no_procede" && (
+          <div className="mt-5 border-t border-line pt-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Papeles del paquete</p>
+              <p className="text-xs tabular-nums text-muted">
+                {total - faltan.length} de {total}
+              </p>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
+              <div
+                className={`h-full rounded-full ${faltan.length ? "bg-ambar" : "bg-verde"}`}
+                style={{ width: `${Math.round(((total - faltan.length) / total) * 100)}%` }}
+              />
+            </div>
+            {faltan.length > 0 ? (
+              <ul className="mt-3 flex flex-wrap gap-1.5">
+                {faltan.map((f) => (
+                  <li key={f} className="rounded-md bg-ambar-wash px-2 py-1 text-xs text-ambar ring-1 ring-ambar/20">
+                    Falta: {f}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="mt-3 text-sm text-verde">El paquete tiene todos los papeles.</p>
+            )}
+          </div>
+        )}
       </section>
 
       <form id="caso" onSubmit={(e) => guardar(e)} onChange={() => setSucio(true)} className="flex flex-col gap-6">
         <input type="hidden" name="seccion" value={seccion} />
-        <section className="grid gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2">
-          <h2 className="text-sm font-semibold sm:col-span-2">Del choque</h2>
+        <Bloque
+          titulo="Del choque"
+          abierto={abre(seccion, ["reportado", "cita"])}
+          resumen={[fechaCorta(fila.fecha), via === "parte" ? "Parte policivo" : via === "fud" ? "FUD" : "", nombreAseguradora(aseguradora)]
+            .filter(Boolean)
+            .join(" · ")}
+        >
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Fecha</span>
             <input name="fecha" type="date" required defaultValue={fila.fecha} className={INPUT} />
@@ -339,11 +386,14 @@ export function FichaCaso({
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Número de parte o FUD</span>
             <input name="numero_parte" defaultValue={fila.caso.numeroParte} className={INPUT} />
           </label>
-        </section>
+        </Bloque>
 
         {via === "parte" && (
-          <section className="grid gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2">
-            <h2 className="text-sm font-semibold sm:col-span-2">Audiencia</h2>
+          <Bloque
+            titulo="Audiencia"
+            abierto={abre(seccion, ["audiencia", "resolucion"])}
+            resumen={fila.caso.fechaAudiencia ? `Audiencia ${fechaCorta(fila.caso.fechaAudiencia)}` : "Sin fecha"}
+          >
             <label className="flex flex-col gap-1.5">
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Fecha</span>
               <input name="fecha_audiencia" type="date" defaultValue={fila.caso.fechaAudiencia} className={INPUT} />
@@ -356,22 +406,34 @@ export function FichaCaso({
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Lugar</span>
               <input name="lugar_audiencia" defaultValue={fila.caso.lugarAudiencia} placeholder="Juzgado de tránsito" className={INPUT} />
             </label>
-          </section>
+          </Bloque>
         )}
 
-        <section className="grid gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2">
-          <h2 className="text-sm font-semibold sm:col-span-2">Portada del paquete</h2>
+        <Bloque
+          titulo="Portada del paquete"
+          abierto={abre(seccion, ["facturas", "seguimiento"])}
+          resumen={fila.caso.conductor || conductorCliente?.nombre || ""}
+        >
           <p className="text-xs text-muted sm:col-span-2">
             Estos datos salen en la hoja amarilla que encabeza el paquete del reclamo.
           </p>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Conductor</span>
-            <input name="conductor" defaultValue={fila.caso.conductor} className={INPUT} />
+            <input name="conductor" defaultValue={fila.caso.conductor || conductorCliente?.nombre || ""} className={INPUT} />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Cédula del conductor</span>
-            <input name="cedula_conductor" defaultValue={fila.caso.cedulaConductor} className={INPUT} />
+            <input
+              name="cedula_conductor"
+              defaultValue={fila.caso.cedulaConductor || conductorCliente?.cedula || ""}
+              className={INPUT}
+            />
           </label>
+          {conductorCliente && (
+            <p className="-mt-2 text-xs text-muted sm:col-span-2">
+              Tomado del cliente del carro. Si manejaba otra persona, cámbielo.
+            </p>
+          )}
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Placa de cupo</span>
             <input name="placa_cupo" defaultValue={fila.caso.placaCupo} className={INPUT} />
@@ -388,13 +450,17 @@ export function FichaCaso({
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Número de trámite</span>
             <input name="numero_tramite" defaultValue={fila.caso.numeroTramite} placeholder="Si queda vacío, la portada usa el reclamo" className={INPUT} />
           </label>
-        </section>
+        </Bloque>
 
-        <section className="rounded-xl bg-surface p-5 ring-1 ring-line">
+        <Bloque
+          titulo="Piezas y precios"
+          abierto={abre(seccion, ["facturas"])}
+          resumen={piezas.length ? `${piezas.length} ${piezas.length === 1 ? "pieza" : "piezas"} · USD ${plata(totalPiezas(piezas))}` : "Sin piezas"}
+          grid={false}
+        >
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold">Piezas y precios</h2>
-              <p className="mt-1 text-xs text-muted">
+              <p className="text-xs text-muted">
                 Al elegir la pieza se carga el precio con descuento y se le suma la mano de obra. En Kia Soluto esa mano de obra es la de Hyundai. Si el jefe pidió una pieza que no salió golpeada, márquela como extra.
               </p>
             </div>
@@ -483,6 +549,9 @@ export function FichaCaso({
                   {delListado && typeof p.precioPieza === "number" && typeof p.manoObra === "number" && (
                     <p className="text-xs text-muted tabular-nums">
                       Pieza con descuento USD {plata(p.precioPieza)} · mano de obra USD {plata(p.manoObra)}
+                      {p.manoObra === 0 && (
+                        <span className="text-ambar"> · El listado no trae mano de obra para esta pieza. Si lleva, ajuste el monto.</span>
+                      )}
                     </p>
                   )}
                 </div>
@@ -505,10 +574,19 @@ export function FichaCaso({
               El cliente firmó el acuerdo de pago
             </label>
           )}
-        </section>
+        </Bloque>
 
-        <section className="grid gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2">
-          <h2 className="text-sm font-semibold sm:col-span-2">Reclamo</h2>
+        <Bloque
+          id="bloque-reclamo"
+          titulo="Reclamo"
+          abierto={abre(seccion, ["seguimiento", "pagado", "no_procede"])}
+          resumen={[
+            fila.caso.numeroReclamo,
+            fila.caso.montoFiniquito != null ? `Finiquito USD ${plata(fila.caso.montoFiniquito)}` : "",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        >
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Número de reclamo</span>
             <input name="numero_reclamo" defaultValue={fila.caso.numeroReclamo} placeholder="000-00-00000" className={INPUT} />
@@ -529,7 +607,7 @@ export function FichaCaso({
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Notas</span>
             <textarea name="observaciones" rows={2} defaultValue={fila.caso.observaciones} className={`${INPUT} resize-y`} />
           </label>
-        </section>
+        </Bloque>
 
         <div
           className={`sticky bottom-3 z-10 flex flex-wrap items-center gap-2 rounded-xl p-3 shadow-sm ring-1 ${
@@ -548,7 +626,8 @@ export function FichaCaso({
               className={SECUNDARIO}
               disabled={pending}
               onClick={() => {
-                if (window.confirm("¿Marcar el caso como pagado? Tiene que estar anotado el monto del finiquito.")) enviar("pagado");
+                if (!pedirCampo("monto_finiquito", "Anote el monto del finiquito para marcarlo pagado.")) return;
+                if (window.confirm("¿Marcar el caso como pagado?")) enviar("pagado");
               }}
             >
               Marcar pagado
@@ -560,7 +639,8 @@ export function FichaCaso({
               className="rounded-lg px-4 py-2.5 text-sm font-medium text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash disabled:opacity-50"
               disabled={pending}
               onClick={() => {
-                if (window.confirm("¿Cerrar el caso como no procede? Tiene que estar anotado el motivo.")) enviar("no_procede");
+                if (!pedirCampo("motivo_no_procede", "Anote por qué no procede para cerrar el caso.")) return;
+                if (window.confirm("¿Cerrar el caso como no procede?")) enviar("no_procede");
               }}
             >
               No procede
@@ -641,6 +721,51 @@ export function FichaCaso({
       <p className="text-xs text-muted">Hoy es {fechaCorta(hoy)}. Publique el resumen también en el grupo de colisiones.</p>
       {aviso && <Toast message={aviso} tone="good" onDismiss={() => setAviso(null)} />}
     </div>
+  );
+}
+
+function abre(seccion: Seccion, en: Seccion[]): boolean {
+  return en.includes(seccion);
+}
+
+/** Los campos plegados siguen dentro del form: se guardan igual. */
+function Bloque({
+  id,
+  titulo,
+  abierto,
+  resumen,
+  grid = true,
+  children,
+}: {
+  id?: string;
+  titulo: string;
+  abierto: boolean;
+  resumen?: string;
+  grid?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <details id={id} open={abierto} className="group rounded-xl bg-surface ring-1 ring-line">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-5 [&::-webkit-details-marker]:hidden">
+        <span className="text-sm font-semibold">{titulo}</span>
+        <span className="flex min-w-0 items-center gap-3 text-xs text-muted">
+          {resumen ? <span className="truncate group-open:hidden">{resumen}</span> : null}
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            className="shrink-0 transition-transform group-open:rotate-180"
+            aria-hidden
+          >
+            <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </summary>
+      <div className={grid ? "grid gap-4 px-5 pb-5 sm:grid-cols-2" : "px-5 pb-5"}>{children}</div>
+    </details>
   );
 }
 
