@@ -36,6 +36,8 @@ import { MENSAJE_ASESOR, mensajeNaturalLucia } from "@/lib/comercial/voz";
 import {
   ajustarMensajeDeCita,
   clienteHablaDeOtraCosa,
+  esSaludoCorto,
+  mensajeSaludoConCita,
   preguntaPorElDiaDeLaCita,
   repiteCitaPorDuda,
   textoDeLaCitaAbierta,
@@ -54,7 +56,8 @@ import {
   pideAsesorHumano,
   textosDelCliente,
 } from "@/lib/comercial/lead";
-import { fechaConDia, hoyPanama, fueraHorarioOperativo, sumarDias } from "@/lib/cartera/fecha";
+import { fechaConDia, hoyPanama, horaPanama, fueraHorarioOperativo, sumarDias } from "@/lib/cartera/fecha";
+import { feriadoNacional } from "@/lib/comercial/feriados";
 import {
   cerrarLeadSinContacto,
   guardarAnalisisComercial,
@@ -342,6 +345,20 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     const citaPrevia = guardado.conversacionId
       ? await citaAbierta(guardado.conversacionId).catch(() => null)
       : null;
+    if (citaPrevia && esSaludoCorto(ultimo)) {
+      const saludo = mensajeSaludoConCita({
+        fecha: citaPrevia.fecha,
+        hora: citaPrevia.hora,
+        sede: citaPrevia.sede,
+        hoy: hoyPanama(),
+        ahora: horaPanama(),
+      });
+      if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, saludo))) {
+        return;
+      }
+      await entregarRespuestaComercial(from, guardado.conversacionId, saludo, decision.envia);
+      return;
+    }
     if (citaPrevia && (preguntaPorElDiaDeLaCita(ultimo) || repiteCitaPorDuda(ultimo, anterior))) {
       if (
         vuelta < 2 &&
@@ -392,7 +409,15 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         proximaAccion: r.lead.proxima_accion,
       });
     }
-    const voz = { hayCita: Boolean(citaPrevia), hayHistorial };
+    const voz = {
+      hayCita: Boolean(citaPrevia),
+      hayHistorial,
+      citaFecha: citaPrevia?.fecha ?? null,
+      citaHora: citaPrevia?.hora ?? null,
+      citaSede: citaPrevia?.sede ?? null,
+      hoy: hoyPanama(),
+      ahora: horaPanama(),
+    };
     let salida = sinBienvenidaRepetida(
       ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, ultimo, voz), {
         hoy: hoyPanama(),
@@ -578,7 +603,7 @@ async function atenderFotoComercial(msg: WhatsAppMessage) {
     await atenderTextoComercial(
       msg,
       textoConArchivo(visible, path),
-      "El cliente mandó una foto que no es un documento de requisito. No la trates como preaprobado.",
+      "El cliente mandó una foto de un carro o un anuncio. NO digas que no puedes verla. Si pregunta precio, da la letra de esa fila si nombra el modelo; si no, dile que en la visita se confirma. Nunca inventes un automático.",
     );
     return;
   }
@@ -689,7 +714,14 @@ function datosCampana(msg: WhatsAppMessage): {
 async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMessage, dicho = ""): Promise<string> {
   const campana = datosCampana(msg);
   const hoy = hoyPanama();
-  const partes = [`Hoy en Panamá: ${fechaConDia(hoy)} (${hoy}).`, textoSedes(), await textoInventario()];
+  const ahora = horaPanama();
+  const feriadoHoy = feriadoNacional(hoy);
+  const partes = [
+    `Hoy en Panamá: ${fechaConDia(hoy)} (${hoy}). Hora ${ahora}.`,
+    feriadoHoy ? `HOY ES FERIADO (${feriadoHoy}). Juan Díaz 8:00 a 12:00. La Chorrera no se agenda.` : "",
+    textoSedes(),
+    await textoInventario(),
+  ];
   const panapass = await notaPanapass(dicho || msg.text?.body || "", msg.from ?? null);
   if (panapass) partes.push(panapass);
   if (campana.anuncio || campana.campanaId) {
@@ -716,6 +748,13 @@ async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMes
         `CITA ABIERTA: ${cuando} Hora ${cita.hora}. Sede ${sedePorId(cita.sede)?.nombre ?? cita.sede}. Lugar ${cita.lugar ?? "sin decir"}. Confirmación ${cita.confirmacion}.`,
         nombre ? `Nombre para decirle: ${nombre}. Sin emojis ni símbolos.` : "No uses el apodo de WhatsApp.",
         "CITA YA AGENDADA. Prohibido preguntar «¿le agendo?» o pedir sede, día u hora otra vez. accion = ninguna salvo que pida cambiarla. Primera frase = lo que preguntó ahora.",
+        cita.fecha === hoy && ahora >= cita.hora.slice(0, 5)
+          ? "La hora de la cita de HOY ya pasó o está en curso. NO confirmes de nuevo ni leas la dirección. Pregunta cómo le fue o si quiere reagendar."
+          : cita.fecha === hoy
+            ? "La cita es HOY más tarde. Si solo saluda: «Lo esperamos a las X.» Sin dirección ni reconfirmación."
+            : cita.fecha < hoy
+              ? "La cita ya era de otro día. Pregunta si pudo ir o si quiere otra fecha. No reconfirmes."
+              : "",
         "Esa visita sigue en esa sede. Si preguntan otra cosa, responde eso y no ofrezcas moverla.",
       );
     }

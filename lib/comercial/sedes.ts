@@ -3,6 +3,7 @@
 // La Chorrera: lunes a viernes 8:00–16:00, sábado 8:00–12:00. Domingo cerrado.
 
 import { diaSemana } from "@/lib/cartera/fecha";
+import { esFeriadoNacional, feriadoNacional } from "./feriados";
 
 export type SedeId = "juan_diaz" | "chorrera";
 
@@ -36,8 +37,9 @@ export function sedePorId(id: string | null | undefined): Sede | null {
 /** Minutos desde medianoche en que se puede citar, o null si ese día la sede no abre. */
 export function ventanaCita(sede: SedeId, fecha: string): { desde: number; hasta: number } | null {
   const dia = diaSemana(fecha);
-  if (sede === "chorrera" && dia === 0) return null;
-  if (dia === 0 || dia === 6) return { desde: 8 * 60, hasta: 12 * 60 };
+  const feriado = esFeriadoNacional(fecha);
+  if (sede === "chorrera" && (dia === 0 || feriado)) return null;
+  if (dia === 0 || dia === 6 || feriado) return { desde: 8 * 60, hasta: 12 * 60 };
   return { desde: 8 * 60, hasta: 16 * 60 };
 }
 
@@ -60,7 +62,13 @@ export function minutosAHora(minutos: number): string {
 export function validarHorario(sede: SedeId, fecha: string, hora: string): string | null {
   const ventana = ventanaCita(sede, fecha);
   const nombre = sedePorId(sede)?.nombre ?? "esa sede";
-  if (!ventana) return `${nombre} no abre el domingo. En Juan Díaz el domingo es de 8:00 a.m. a 12:00 m.`;
+  if (!ventana) {
+    const feriado = feriadoNacional(fecha);
+    if (feriado) {
+      return `Ese día es feriado (${feriado}). La Chorrera no se agenda. Juan Díaz atiende de 8:00 a.m. a 12:00 m.`;
+    }
+    return `${nombre} no abre el domingo. En Juan Díaz el domingo es de 8:00 a.m. a 12:00 m.`;
+  }
   const minutos = horaAMinutos(hora);
   if (minutos == null) return "La hora tiene que ser en punto o y media, por ejemplo 9:00 o 9:30.";
   if (minutos < ventana.desde || minutos > ventana.hasta) {
@@ -78,6 +86,7 @@ export function textoSedes(): string {
     "- La Chorrera: lunes a viernes 8:00 a.m. a 4:00 p.m. Sábado 8:00 a.m. a 12:00 m. El domingo no se agenda.",
     `  Dirección: ${SEDES[1].direccion}.`,
     "La cita es cada 30 minutos. No ofrezcas una hora fuera de esa ventana.",
+    "Feriados nacionales: Juan Díaz atiende de 8:00 a.m. a 12:00 m. La Chorrera no se agenda. Si preguntan si abren, dilo primero.",
     "Si preguntan cómo llegar, da la dirección. El sistema manda el video de esa sede.",
   ].join("\n");
 }

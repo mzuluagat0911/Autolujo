@@ -11,6 +11,8 @@ import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
 import { nombreDeWhatsApp } from "./lead";
 import {
   aceptaSiguienteHorario,
+  clienteDiceQueNoLlega,
+  franjaHoraria,
   horaComercial,
   pedidoRepiteCita,
   preguntaLaHora,
@@ -158,6 +160,19 @@ export async function listarCitas(): Promise<{ citas: CitaComercial[]; error: st
   }
 }
 
+async function ultimaCitaCancelada(conversacionId: string): Promise<CitaComercial | null> {
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("citas_comercial")
+    .select("*")
+    .eq("conversacion_id", conversacionId)
+    .eq("estado", "cancelada")
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (error || !data?.length) return null;
+  return fila(data[0] as Record<string, unknown>);
+}
+
 export async function citaAbierta(conversacionId: string): Promise<CitaComercial | null> {
   const sb = createServerSupabase();
   const { data, error } = await sb
@@ -256,9 +271,46 @@ export async function aplicarPedidoCita(opts: {
   if (!sede) return { mensaje: "¿En cuál sede le queda mejor, Juan Díaz o La Chorrera?" };
   if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return { mensaje: "¿Qué día quiere la cita?" };
   if (fecha < hoyPanama()) return { mensaje: "Ese día ya pasó. Dígame un día de hoy en adelante." };
-  if (!hora) return { mensaje: "¿A qué hora le queda bien? Puede ser en punto o a la media." };
+  if (
+    abierta
+    && clienteDiceQueNoLlega(opts.textoCliente ?? "")
+    && (pedido.hora ?? abierta.hora) === abierta.hora
+    && (pedido.fecha ?? abierta.fecha) === abierta.fecha
+    && (pedido.sede ?? abierta.sede) === abierta.sede
+  ) {
+    const nombreSede = sedePorId(abierta.sede)?.nombre ?? "la sede";
+    const ventana = ventanaCita(abierta.sede, abierta.fecha);
+    const hasta = ventana ? minutosAHora(ventana.hasta) : "12:00";
+    return {
+      mensaje: `Esa hora no le da. En ${nombreSede} ese día se cita hasta las ${hasta}. ¿Le sirve más temprano, Juan Díaz el domingo de 8 a 12, o un día de semana?`,
+    };
+  }
+  if (!hora) {
+    const franja = franjaHoraria(opts.textoCliente ?? "");
+    if (franja === "manana") return { mensaje: "Por la mañana le dejo las 8, las 9 o las 10. ¿Cuál le sirve?" };
+    if (franja === "tarde") {
+      const dia = ventanaCita(sede, fecha);
+      if (!dia || dia.hasta <= 12 * 60) {
+        return { mensaje: "Ese día se cita hasta las 12:00. ¿Le sirve a las 10 o a las 11, o prefiere un día de semana por la tarde?" };
+      }
+      return { mensaje: "Por la tarde le dejo la 1, las 2 o las 3. ¿Cuál le sirve?" };
+    }
+    return { mensaje: "¿A qué hora le queda bien? Puede ser en punto o a la media." };
+  }
   const horario = validarHorario(sede, fecha, hora);
   if (horario) return { mensaje: horario };
+  const cancelada = await ultimaCitaCancelada(opts.conversacionId);
+  if (
+    cancelada
+    && cancelada.sede === sede
+    && cancelada.fecha === fecha
+    && cancelada.hora.slice(0, 5) === hora.slice(0, 5)
+  ) {
+    const nombreSede = sedePorId(sede)?.nombre ?? "la sede";
+    return {
+      mensaje: `Esa hora ya no le quedaba. En ${nombreSede} ese día se cita dentro del horario. ¿Le sirve más temprano, Juan Díaz el domingo, o un día de semana?`,
+    };
+  }
   if (nombre.length < 2) return { mensaje: "¿Con qué nombre dejo la cita?" };
   if (lugar.length < 2) return { mensaje: "¿De qué lugar es usted? Con eso le confirmo si la zona está dentro del alcance." };
   if (

@@ -51,9 +51,58 @@ export function preguntaLaHora(texto: string): boolean {
 export function clienteHablaDeOtraCosa(texto: string): boolean {
   const t = plano(texto);
   if (/\b(cita|agend|hora|sede|juan diaz|chorrera)\b/.test(t)) return false;
-  return /telefono|llamar|numero para|whatsapp|requisitos|documento|abono|letra|cuanto|precio|foto|video|como llegar|panapass|a[nñ]os|contrato|usad|catalogo|carros hay|quincen|cobertura|veracruz|agente|asesor|kilometr|son nuevos/.test(
+  return /telefono|llamar|numero para|whatsapp|requisitos|documento|abono|letra|cuanto|precio|foto|video|como llegar|panapass|a[nñ]os|contrato|usad|catalogo|carros hay|quincen|cobertura|veracruz|agente|asesor|kilometr|son nuevos|feriado|seguro|incluye/.test(
     t,
   );
+}
+
+/** "Por la mañana" / "por la tarde" sin una hora. */
+export function franjaHoraria(texto: string): "manana" | "tarde" | null {
+  const t = plano(texto);
+  if (/\d/.test(t)) return null;
+  if (/por la tarde|en la tarde|de tarde/.test(t)) return "tarde";
+  if (/por la manana|en la manana|de manana/.test(t)) return "manana";
+  return null;
+}
+
+export function clienteDiceQueNoLlega(texto: string): boolean {
+  const t = plano(texto);
+  return /no me da|no me dara|no (me )?lleg|no voy a llegar|no llegare|no alcanzo|muy tarde|no me va a dar/.test(t);
+}
+
+/** Un hola suelto. No es una pregunta sobre la cita. */
+export function esSaludoCorto(texto: string): boolean {
+  const t = plano(texto)
+    .replace(/[!.]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return /^(hola|buenas|buenos dias|buenas tardes|buenas noches|buen dia|hey|ola)$/.test(t);
+}
+
+export function horaCitaYaPaso(citaHora: string, ahora: string): boolean {
+  return ahora.slice(0, 5) >= citaHora.slice(0, 5);
+}
+
+/** Si solo saludó y ya tiene cita: no reconfirmar. Preguntar cómo le fue o un "lo esperamos". */
+export function mensajeSaludoConCita(opts: {
+  fecha: string;
+  hora: string;
+  sede: string;
+  hoy: string;
+  ahora: string;
+}): string {
+  const sede = sedePorId(opts.sede)?.nombre ?? "la sede";
+  const hora = horaComercial(opts.hora);
+  if (opts.fecha < opts.hoy) {
+    return "Hola. ¿Pudo ir a la visita? Si quiere, le busco otro día.";
+  }
+  if (opts.fecha === opts.hoy && horaCitaYaPaso(opts.hora, opts.ahora)) {
+    return "Hola. ¿Cómo le fue en la visita de hoy? Si necesita otra fecha, me dice y se la dejo.";
+  }
+  if (opts.fecha === opts.hoy) {
+    return `Hola. Lo esperamos hoy a las ${hora} en ${sede}.`;
+  }
+  return `Hola. Lo esperamos el ${fechaConDia(opts.fecha)} a las ${hora} en ${sede}.`;
 }
 
 function plano(texto: string): string {

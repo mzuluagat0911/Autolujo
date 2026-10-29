@@ -7,6 +7,9 @@ import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
 import {
   ajustarMensajeDeCita,
   esDudaSuelta,
+  esSaludoCorto,
+  franjaHoraria,
+  mensajeSaludoConCita,
   pedidoRepiteCita,
   preguntaPorElDiaDeLaCita,
   repiteCitaPorDuda,
@@ -14,6 +17,7 @@ import {
   textoDeLaCitaAbierta,
   textoEsConfirmacion,
 } from "../lib/comercial/cita-pedido.ts";
+import { domingoPascua, esFeriadoNacional, fechaMencionada, feriadoNacional } from "../lib/comercial/feriados.ts";
 import { validarHorario } from "../lib/comercial/sedes.ts";
 import { entregaNueva } from "../lib/comercial/entrega.ts";
 import { decisionPiloto, numeroEnPiloto, ordenarPorReciente } from "../lib/comercial/piloto.ts";
@@ -217,6 +221,9 @@ assert.ok(ms < 80, `ordenar 10.000 chats tardó ${ms.toFixed(1)} ms`);
 assert.equal(validarHorario("juan_diaz", "2026-10-14", "16:00"), null);
 assert.equal(validarHorario("chorrera", "2026-10-14", "16:30") !== null, true);
 assert.equal(validarHorario("chorrera", "2026-10-18", "10:00") !== null, true);
+assert.equal(validarHorario("juan_diaz", "2026-11-10", "10:00"), null);
+assert.ok(validarHorario("chorrera", "2026-11-10", "10:00") !== null);
+assert.ok(validarHorario("juan_diaz", "2026-11-10", "14:00") !== null);
 const marcado = textoConArchivo("📷 Documento para preaprobado", "comercial/2026/a.jpg");
 assert.equal(partirArchivo(marcado).archivo, "comercial/2026/a.jpg");
 assert.equal(partirArchivo(marcado).texto, "📷 Documento para preaprobado");
@@ -281,6 +288,65 @@ assert.equal(
 );
 assert.ok(
   mensajeNaturalLucia("¿Le agendo la visita?", "¿Qué carros hay?").includes("Hyundai"),
+);
+assert.equal(esSaludoCorto("hola"), true);
+assert.equal(esSaludoCorto("Hola!"), true);
+assert.equal(esSaludoCorto("¿cómo le fue?"), false);
+assert.equal(franjaHoraria("Por la mañana estaria bien"), "manana");
+assert.equal(franjaHoraria("Mañana a las 12"), null);
+assert.equal(domingoPascua(2026), "2026-04-05");
+assert.equal(feriadoNacional("2026-11-10"), "Primer Grito de Independencia");
+assert.equal(esFeriadoNacional("2026-11-10"), true);
+assert.equal(esFeriadoNacional("2026-10-29"), false);
+assert.equal(fechaMencionada("10 de noviembre es feriado estan abiertos", "2026-10-29"), "2026-11-10");
+assert.match(
+  mensajeNaturalLucia("¿A qué hora le queda bien? Puede ser en punto o a la media.", "10 de noviembre es feriado estan abiertos", { hoy: "2026-10-29" }),
+  /feriado/,
+);
+assert.ok(
+  mensajeNaturalLucia("¿A qué hora le queda bien? Puede ser en punto o a la media.", "Por la mañana estaria bien").includes("8"),
+);
+assert.ok(
+  mensajeNaturalLucia("No, los documentos se llevan a la sede.", "Igual le puedo mandar los documentos por esta línea para adelantarlos").includes("mándelos por aquí"),
+);
+assert.ok(
+  mensajeNaturalLucia("El seguro no está incluido, se gestiona aparte.", "¿Y qué incluye, el seguro?").includes("feriados a media"),
+);
+assert.ok(
+  mensajeNaturalLucia("Israel, no puedo ver la foto que me envió.", "Este como seria").includes("La vi"),
+);
+assert.ok(
+  mensajeNaturalLucia("El abono se entrega en un solo pago.", "Hay alguna opcion de dar el abono en cuotas semanales").includes("se conversa en la visita"),
+);
+assert.ok(
+  mensajeNaturalLucia("Ahora mismo tenemos Hyundai Grand i10 y Kia Soluto.", "Cuál sería el precio del Kia rio").includes("Soluto"),
+);
+assert.match(
+  mensajeSaludoConCita({
+    fecha: "2026-10-29",
+    hora: "11:00",
+    sede: "juan_diaz",
+    hoy: "2026-10-29",
+    ahora: "11:17",
+  }),
+  /Cómo le fue/,
+);
+assert.match(
+  mensajeSaludoConCita({
+    fecha: "2026-10-29",
+    hora: "11:00",
+    sede: "juan_diaz",
+    hoy: "2026-10-29",
+    ahora: "10:00",
+  }),
+  /Lo esperamos hoy/,
+);
+assert.ok(
+  mensajeNaturalLucia(
+    "Hola, Mateo. Su cita está confirmada para hoy a las 11:00 a.m. en Juan Díaz.",
+    "hola",
+    { citaFecha: "2026-10-29", citaHora: "11:00", citaSede: "juan_diaz", hoy: "2026-10-29", ahora: "11:17" },
+  ).includes("Cómo le fue"),
 );
 assert.equal(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("inteligencia"), false);
 assert.ok(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("Lucía"));

@@ -1,5 +1,7 @@
 import { pideAsesorHumano } from "./lead";
 import { esClicDeAnuncio } from "./bienvenida";
+import { esSaludoCorto, mensajeSaludoConCita } from "./cita-pedido";
+import { fechaMencionada, preguntaSiAbreFeriado, textoFeriado } from "./feriados";
 
 const SIGUE = "Cuénteme qué carro le llama más y le dejo la visita en la sede que le quede.";
 
@@ -155,6 +157,22 @@ const CATALOGO =
   "Según disponibilidad hay Hyundai Grand i10 y Kia Soluto. En la visita le muestran lo que hay. ¿Cuál le llama más?";
 const VISITA_CERCA =
   "Claro, de ahí sí puede venir a la sede. ¿Le queda mejor La Chorrera o Juan Díaz?";
+const FOTO_CARRO =
+  "La vi. Ese carro se confirma en la visita. Del i10 2020 la letra es $25; del 2024, $30. ¿Cuál le llama más?";
+const DOCS_CHAT =
+  "Sí, mándelos por aquí y el equipo los revisa. Igual lo esperamos en la cita con los originales.";
+const INCLUYE =
+  "En la letra van los feriados a media cuenta, el mantenimiento de esa fila y el día de cumpleaños si el año lo trae. El seguro se explica en la visita. ¿Qué año le interesa?";
+const ABONO_FLEX =
+  "El abono de la tabla es el de esa fila. Uno mayor o partido se conversa en la visita; no le armo otra letra por aquí. ¿Le agendo para verlo?";
+const RIO =
+  "Rio no lo tenemos. El Kia que manejamos es el Soluto, desde 2024. ¿Le llama más ese o el Grand i10?";
+const GRACIAS =
+  "Cuando quiera me escribe y le dejo la visita. Que le vaya bien.";
+const MANANA_HORAS =
+  "Por la mañana le dejo las 8, las 9 o las 10. ¿Cuál le sirve?";
+const TARDE_HORAS =
+  "Por la tarde le dejo la 1, las 2 o las 3. ¿Cuál le sirve?";
 
 const FILAS_LETRA: { anio: number; letra: number; cuotas: number; anios: string }[] = [
   { anio: 2027, letra: 33, cuotas: 1275, anios: "unos 3 años y medio" },
@@ -166,7 +184,15 @@ const FILAS_LETRA: { anio: number; letra: number; cuotas: number; anios: string 
   { anio: 2020, letra: 25, cuotas: 730, anios: "unos 2 años" },
 ];
 
-type OpcionesVoz = { hayCita?: boolean; hayHistorial?: boolean };
+type OpcionesVoz = {
+  hayCita?: boolean;
+  hayHistorial?: boolean;
+  citaFecha?: string | null;
+  citaHora?: string | null;
+  citaSede?: string | null;
+  hoy?: string;
+  ahora?: string;
+};
 
 function filaDe(texto: string): (typeof FILAS_LETRA)[number] | null {
   const anio = texto.match(/\b(202[0-7])\b/);
@@ -291,10 +317,50 @@ function quincenaDelContrato(texto: string, cliente: string, hayCita: boolean): 
   );
 }
 
+function pideMandarDocs(cliente: string): boolean {
+  const c = plano(cliente);
+  return /mandar los documento|enviar los documento|adelantar(los)? documento|por (esta|aqui) (lin|via)|los documento x/.test(c);
+}
+
+function pideQueIncluye(cliente: string): boolean {
+  const c = plano(cliente);
+  return /que incluye|incluye (el )?seguro|\bel seguro\b|va (el )?seguro/.test(c);
+}
+
+function pideAbonoFlex(cliente: string): boolean {
+  const c = plano(cliente);
+  return /abono.+(cuota|semanal|partir|en pagos)|dar el abono|si (yo )?abono \d/.test(c);
+}
+
+function pideKiaRio(cliente: string): boolean {
+  const c = plano(cliente);
+  return /kia rio|\bdel rio\b/.test(c) && !/rio hato/.test(c);
+}
+
+function esAgradecimientoCierre(cliente: string): boolean {
+  const c = plano(cliente);
+  return /^(a ok |ok )?(listo )?(muchas )?gracias/.test(c) && c.length < 50;
+}
+
 function corrigeRespuestaComercial(texto: string, cliente: string, opts?: OpcionesVoz): string {
   const hayCita = Boolean(opts?.hayCita);
   const c = plano(cliente);
   const t = plano(texto);
+  if (
+    opts?.citaFecha
+    && opts.hoy
+    && opts.ahora
+    && esSaludoCorto(cliente)
+    && /cita (esta )?confirmad|lo esperamos|su cita/.test(t)
+  ) {
+    return mensajeSaludoConCita({
+      fecha: opts.citaFecha,
+      hora: opts.citaHora ?? "09:00",
+      sede: opts.citaSede ?? "juan_diaz",
+      hoy: opts.hoy,
+      ahora: opts.ahora,
+    });
+  }
   if (pideAsesorHumano(cliente)) return MENSAJE_ASESOR;
   if (/\bno gracias\b|dejelo asi|ya no gracias/i.test(plano(cliente)) && /que dia|a que hora|le agendo|le queda mejor|cuenteme/i.test(t)) {
     return RETIRO;
@@ -339,6 +405,30 @@ function corrigeRespuestaComercial(texto: string, cliente: string, opts?: Opcion
   if (/cuando sepa|me avisa|cuando pueda|cuando tenga/.test(t)) return CUPO;
   if (/domingo/.test(c) && /chorrera/.test(t) && !/solo abre juan|solo juan diaz|domingo solo/.test(t)) {
     return conCierreVisita(`${texto} El domingo solo abre Juan Díaz.`, hayCita);
+  }
+  if (preguntaSiAbreFeriado(cliente) && !/feriado|juan diaz atiende/.test(t)) {
+    const fecha = fechaMencionada(cliente, opts?.hoy ?? "") ?? opts?.hoy;
+    return textoFeriado(fecha);
+  }
+  if (/por la manana|en la manana|de manana/.test(c) && /a que hora|en punto|a la media/.test(t) && !/\d/.test(c)) {
+    return MANANA_HORAS;
+  }
+  if (/por la tarde|en la tarde|de tarde/.test(c) && /a que hora|en punto|a la media/.test(t) && !/\d/.test(c)) {
+    return TARDE_HORAS;
+  }
+  if (/no (puedo|pude) ver (la )?foto|no puedo ver esa foto/.test(t)) return conCierreVisita(FOTO_CARRO, hayCita);
+  if (pideMandarDocs(cliente) && /no[,.]|se (llevan|revisan) (directamente )?a la (sede|visita)|no (los )?mande/.test(t)) {
+    return DOCS_CHAT;
+  }
+  if (pideQueIncluye(cliente) && !/feriados a media|media cuenta/.test(t)) {
+    return conCierreVisita(INCLUYE, hayCita);
+  }
+  if (pideAbonoFlex(cliente) && /un solo pago|se entrega en un solo|no se (puede|parte)/.test(t)) {
+    return conCierreVisita(ABONO_FLEX, hayCita);
+  }
+  if (pideKiaRio(cliente) && !/soluto/.test(t)) return conCierreVisita(RIO, hayCita);
+  if (esAgradecimientoCierre(cliente) && /juan diaz o la chorrera|le agendo|que sede/.test(t)) {
+    return GRACIAS;
   }
   if (hayCita && /le agendo|le dejo la visita|a que hora le queda|que dia le queda/.test(t) && clienteHablaDeTema(c)) {
     return conCierreVisita(texto, true);
