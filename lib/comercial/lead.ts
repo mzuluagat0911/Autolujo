@@ -7,7 +7,7 @@ export type LecturaLead = {
 };
 
 const NEGATIVO =
-  /\b(ya no (me )?interesa|no estoy interesad[oa]|no quiero (continuar|seguir)|no (me )?escrib(?:an|ir)?|no (me )?contact(?:en|ar)?|deje(n)? eso|no gracias|d[eé]jelo as[ií]|ya no gracias)\b/i;
+  /\b(ya no (me )?interesa|no estoy interesad[oa]|no quiero (continuar|seguir)|no (me )?escrib(?:an|ir)?|no (me )?contact(?:en|ar)?|deje(n)? eso|no gracias|d[eé]jelo as[ií]|ya no gracias|no recibir mensajes|no (quiero )?recibir (m[aá]s )?mensajes|dejar de (escribirme|contactarme)|no me escriba(n)? m[aá]s)\b/i;
 const CIERRE = /\b(agend|cita|ll[aá]m|separ|reserv|cerrar|firmar|sacar el carro|retirar)\b/i;
 const URGENCIA = /\b(hoy|mañana|esta semana|de una vez|lo antes posible|ya)\b/i;
 const CONCRETO = /\b(disponible|autom[aá]tico|manual|picanto|accent|kia|hyundai|modelo|año)\b/i;

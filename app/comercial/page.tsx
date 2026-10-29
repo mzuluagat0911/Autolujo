@@ -16,7 +16,7 @@ export default async function ComercialPage({
 }) {
   const query = await searchParams;
   const sesion = await sesionEquipo();
-  const [{ chats, error, siguienteCursor, crmDisponible }, asesores] = await Promise.all([
+  const [{ chats, error, siguienteCursor, crmDisponible, conteos }, asesores] = await Promise.all([
     listarChatsComercial({ filtro: "por_atender", asesorId: sesion?.id }),
     listarAsesoresComerciales(),
   ]);
@@ -31,6 +31,7 @@ export default async function ComercialPage({
       errorInicial={error}
       cursorInicial={siguienteCursor}
       crmDisponible={crmDisponible}
+      conteosIniciales={conteos}
       sesion={sesion}
       asesores={asesores}
       seleccionadoInicial={query.chat ?? null}

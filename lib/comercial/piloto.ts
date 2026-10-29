@@ -42,6 +42,35 @@ export function resumenPiloto(): { etiqueta: string } {
   return { etiqueta: `${agente} ${envios}` };
 }
 
+/** El poll no debe colar un chat que no pertenece al filtro activo. */
+export function pasaFiltroComercial(
+  c: {
+    cerradoAt: string | null;
+    noLeidos: number;
+    necesitaHumano: boolean;
+    seguimientoAt: string | null;
+    asesorId: string | null;
+    temperatura: string;
+    etapa: string;
+  },
+  filtro: string,
+  asesorId?: string | null,
+): boolean {
+  const cerrado = Boolean(c.cerradoAt);
+  if (filtro === "cerrados") return cerrado;
+  if (cerrado && filtro !== "todos") return false;
+  if (filtro === "mios") return Boolean(asesorId) && c.asesorId === asesorId;
+  if (filtro === "sin_asignar") return !c.asesorId;
+  if (filtro === "calientes") return c.temperatura === "caliente";
+  if (filtro === "tibios") return c.temperatura === "tibio";
+  if (filtro === "frios") return c.temperatura === "frio";
+  if (filtro === "seguimiento") return Boolean(c.seguimientoAt);
+  if (filtro === "citas") return c.etapa === "cita";
+  if (filtro === "todos") return !cerrado;
+  const vencido = c.seguimientoAt ? Date.parse(c.seguimientoAt) <= Date.now() : false;
+  return c.noLeidos > 0 || c.necesitaHumano || vencido;
+}
+
 export function ordenarPorReciente<T extends { ultimoMensajeAt: string | null }>(chats: T[]): T[] {
   return [...chats].sort((a, b) => {
     const aa = a.ultimoMensajeAt ? Date.parse(a.ultimoMensajeAt) : 0;

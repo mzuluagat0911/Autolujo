@@ -220,6 +220,11 @@ async function procesar(payload: WebhookPayload) {
 // Agente COMERCIAL (Lucía). El mensaje entra al número de ventas y se guarda
 // en conversaciones_comercial. No abre un hilo en la bandeja de cobranza.
 async function manejarMensajeComercial(msg: WhatsAppMessage) {
+  const boton = textoDeBoton(msg);
+  if (boton) {
+    await atenderTextoComercial(msg, boton);
+    return;
+  }
   const tipo = tipoMensaje(msg);
 
   if (tipo === "audio") {
@@ -856,8 +861,23 @@ function etiquetaDeMedio(tipo: string | undefined): string {
   return "Mensaje";
 }
 
+function textoDeBoton(msg: WhatsAppMessage): string | null {
+  if (msg.type === "button") {
+    const t = msg.button?.text?.trim() || msg.button?.payload?.trim();
+    return t || null;
+  }
+  if (msg.type === "interactive") {
+    const t =
+      msg.interactive?.button_reply?.title?.trim() ||
+      msg.interactive?.list_reply?.title?.trim();
+    return t || null;
+  }
+  return null;
+}
+
 function tipoMensaje(msg: WhatsAppMessage): "text" | "image" | "audio" | "ack" | "otro" {
   if (msg.type === "sticker" || msg.type === "reaction") return "ack";
+  if (msg.type === "button" || msg.type === "interactive") return "otro";
   if (msg.type === "text" || msg.text?.body) return "text";
   if (msg.type === "image" || msg.image?.id) return "image";
   // Cloud API: notas de voz = type "audio". A veces llega voice/ptt.
@@ -1281,8 +1301,14 @@ function lineaComprobante(c: Comprobante, res: ResPago): string {
 type WhatsAppMessage = {
   id?: string;
   from?: string;
-  type?: string | "text" | "image" | "audio" | "voice" | "ptt" | "sticker" | "reaction";
+  type?: string | "text" | "image" | "audio" | "voice" | "ptt" | "sticker" | "reaction" | "button" | "interactive";
   text?: { body?: string };
+  button?: { text?: string; payload?: string };
+  interactive?: {
+    type?: string;
+    button_reply?: { id?: string; title?: string };
+    list_reply?: { id?: string; title?: string };
+  };
   image?: { id?: string; mime_type?: string; caption?: string };
   audio?: { id?: string; mime_type?: string; voice?: boolean };
   // Click-to-WhatsApp: Meta adjunta de qué anuncio vino el lead (solo en el

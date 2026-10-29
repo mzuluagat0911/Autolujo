@@ -54,6 +54,16 @@ export type ChatComercial = {
   cerradoAt: string | null;
   updatedAt: string | null;
   borrador: string | null;
+  citaFecha: string | null;
+  citaHora: string | null;
+  citaSede: string | null;
+};
+
+export type ConteosBandejaComercial = {
+  por_atender: number;
+  calientes: number;
+  citas: number;
+  mios: number;
 };
 
 export type MensajeComercial = {
@@ -71,6 +81,7 @@ export type PaginaChatsComercial = {
   siguienteCursor: string | null;
   error: string | null;
   crmDisponible: boolean;
+  conteos: ConteosBandejaComercial;
 };
 
 const CHAT_SELECT_CRM =
@@ -81,6 +92,7 @@ const MENSAJE_SELECT_CRM =
   "id, direccion, texto, created_at, autor, actor:equipo!mensajes_comercial_actor_id_fkey(nombre)";
 const MENSAJE_SELECT_LEGACY = "id, direccion, texto, created_at";
 const PAGE_SIZE = 50;
+const CONTEOS_VACIOS: ConteosBandejaComercial = { por_atender: 0, calientes: 0, citas: 0, mios: 0 };
 
 function tablaAusente(message: string): boolean {
   return /conversaciones_comercial|mensajes_comercial|schema cache|could not find the table/i.test(message);
@@ -164,13 +176,14 @@ export async function listarChatsComercial(opts: {
         .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
         .limit(limite);
       if (retry.error) {
-        return { chats: [], siguienteCursor: null, error: retry.error.message, crmDisponible: false };
+        return { chats: [], siguienteCursor: null, error: retry.error.message, crmDisponible: false, conteos: CONTEOS_VACIOS };
       }
       return {
         chats: ((retry.data ?? []) as Record<string, unknown>[]).map(filaChat),
         siguienteCursor: null,
         error: "Falta aplicar la migración 0039 para activar el CRM completo.",
         crmDisponible: false,
+        conteos: CONTEOS_VACIOS,
       };
     }
     if (error) {
@@ -181,16 +194,22 @@ export async function listarChatsComercial(opts: {
           ? "Falta la migración 0037. Los chats de ventas todavía no tienen bandeja."
           : error.message,
         crmDisponible: false,
+        conteos: CONTEOS_VACIOS,
       };
     }
     const filas = ((data ?? []) as Record<string, unknown>[]).map(filaChat);
     const hayMas = filas.length > limite;
-    const chats = hayMas ? filas.slice(0, limite) : filas;
+    const recorte = hayMas ? filas.slice(0, limite) : filas;
+    const [chats, conteos] = await Promise.all([
+      anexarCitas(sb, recorte),
+      contarFiltrosComercial(opts.asesorId),
+    ]);
     return {
       chats,
       siguienteCursor: hayMas ? codificarCursor(chats[chats.length - 1]!) : null,
       error: null,
       crmDisponible: true,
+      conteos,
     };
   } catch (e) {
     return {
@@ -198,8 +217,65 @@ export async function listarChatsComercial(opts: {
       siguienteCursor: null,
       error: e instanceof Error ? e.message : "No pude leer los chats de ventas.",
       crmDisponible: false,
+      conteos: CONTEOS_VACIOS,
     };
   }
+}
+
+export async function contarFiltrosComercial(
+  asesorId?: string | null,
+): Promise<ConteosBandejaComercial> {
+  try {
+    const sb = createServerSupabase();
+    const ahora = new Date().toISOString();
+    const abiertos = () =>
+      sb.from("conversaciones_comercial").select("id", { count: "exact", head: true }).is("cerrado_at", null);
+    const [porAtender, calientes, citas, mios] = await Promise.all([
+      abiertos().or(`no_leidos.gt.0,necesita_humano.eq.true,seguimiento_at.lte.${ahora}`),
+      abiertos().eq("temperatura", "caliente"),
+      abiertos().eq("etapa", "cita"),
+      asesorId ? abiertos().eq("asesor_id", asesorId) : Promise.resolve({ count: 0 }),
+    ]);
+    return {
+      por_atender: porAtender.count ?? 0,
+      calientes: calientes.count ?? 0,
+      citas: citas.count ?? 0,
+      mios: mios.count ?? 0,
+    };
+  } catch {
+    return CONTEOS_VACIOS;
+  }
+}
+
+async function anexarCitas(
+  sb: ReturnType<typeof createServerSupabase>,
+  chats: ChatComercial[],
+): Promise<ChatComercial[]> {
+  if (!chats.length) return chats;
+  const { data, error } = await sb
+    .from("citas_comercial")
+    .select("conversacion_id, fecha, hora, sede")
+    .in("conversacion_id", chats.map((c) => c.id))
+    .eq("estado", "programada");
+  if (error || !data?.length) {
+    return chats.map((c) => ({ ...c, citaFecha: c.citaFecha, citaHora: c.citaHora, citaSede: c.citaSede }));
+  }
+  const map = new Map<string, { fecha: string; hora: string; sede: string }>();
+  for (const row of data as { conversacion_id?: string; fecha?: string; hora?: string; sede?: string }[]) {
+    const id = String(row.conversacion_id ?? "");
+    if (!id || map.has(id)) continue;
+    map.set(id, {
+      fecha: String(row.fecha ?? "").slice(0, 10),
+      hora: String(row.hora ?? "").slice(0, 5),
+      sede: row.sede === "chorrera" ? "chorrera" : "juan_diaz",
+    });
+  }
+  return chats.map((c) => {
+    const cita = map.get(c.id);
+    return cita
+      ? { ...c, citaFecha: cita.fecha, citaHora: cita.hora, citaSede: cita.sede }
+      : { ...c, citaFecha: null, citaHora: null, citaSede: null };
+  });
 }
 
 export async function cambiosChatsComercial(desde: string): Promise<ChatComercial[]> {
@@ -213,7 +289,7 @@ export async function cambiosChatsComercial(desde: string): Promise<ChatComercia
     .order("updated_at", { ascending: true })
     .limit(100);
   if (error) return [];
-  return ((data ?? []) as Record<string, unknown>[]).map(filaChat);
+  return anexarCitas(sb, ((data ?? []) as Record<string, unknown>[]).map(filaChat));
 }
 
 export async function hiloComercial(
@@ -249,8 +325,9 @@ export async function hiloComercial(
   const hayMas = filas.length > limite;
   const pagina = (hayMas ? filas.slice(0, limite) : filas).reverse();
   const mensajes = await Promise.all(pagina.map((fila) => conFoto(sb, filaMensaje(fila))));
+  const [chat] = await anexarCitas(sb, [filaChat(raw as Record<string, unknown>)]);
   return {
-    chat: filaChat(raw as Record<string, unknown>),
+    chat: chat ?? null,
     mensajes,
     hayMas,
   };
@@ -659,6 +736,13 @@ export async function tomarChatComercial(
 ): Promise<{ ok: boolean; error?: string }> {
   const sb = createServerSupabase();
   const ahora = new Date().toISOString();
+  const { data: previa } = await sb
+    .from("conversaciones_comercial")
+    .select("etapa")
+    .eq("id", conversacionId)
+    .maybeSingle();
+  const etapaActual = String(previa?.etapa ?? "");
+  const etapa = ETAPA_SIN_SEGUIMIENTO.has(etapaActual) ? etapaActual : "conversacion";
   const { data, error } = await sb
     .from("conversaciones_comercial")
     .update({
@@ -666,7 +750,7 @@ export async function tomarChatComercial(
       modo_atencion: "humano",
       necesita_humano: false,
       motivo: null,
-      etapa: "conversacion",
+      etapa,
       updated_at: ahora,
     })
     .eq("id", conversacionId)
@@ -677,6 +761,25 @@ export async function tomarChatComercial(
   if (!data) return { ok: false, error: "Otro asesor ya tomó este chat." };
   await cancelarSeguimientosComercial(conversacionId, "Un asesor tomó el chat.");
   await registrarEventoComercial(conversacionId, "chat_tomado", asesorId);
+  return { ok: true };
+}
+
+export async function devolverChatComercial(
+  conversacionId: string,
+  actorId: string,
+): Promise<{ ok: boolean; error?: string }> {
+  const sb = createServerSupabase();
+  const { error } = await sb
+    .from("conversaciones_comercial")
+    .update({
+      modo_atencion: "lucia",
+      necesita_humano: false,
+      motivo: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", conversacionId);
+  if (error) return { ok: false, error: error.message };
+  await registrarEventoComercial(conversacionId, "chat_devuelto", actorId);
   return { ok: true };
 }
 
@@ -986,6 +1089,9 @@ function filaChat(row: Record<string, unknown>): ChatComercial {
     cerradoAt: (row.cerrado_at as string | null) ?? null,
     updatedAt: (row.updated_at as string | null) ?? null,
     borrador: (row.borrador as string | null) ?? null,
+    citaFecha: null,
+    citaHora: null,
+    citaSede: null,
   };
 }
 

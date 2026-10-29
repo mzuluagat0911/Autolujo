@@ -54,8 +54,9 @@ export async function uploadWhatsAppMedia(
   bytes: Buffer,
   mime: string,
   filename: string,
+  phoneIdOverride?: string,
 ): Promise<string> {
-  const { phoneId, token } = creds();
+  const { phoneId, token } = creds(phoneIdOverride);
   const form = new FormData();
   form.append("messaging_product", "whatsapp");
   form.append("type", mime.split(";")[0]!.trim());
@@ -76,13 +77,16 @@ export async function uploadWhatsAppMedia(
 }
 
 /** Audio dentro de la ventana de 24h. `voz` lo muestra como nota de voz (OGG Opus). */
-export async function sendAudio(to: string, mediaId: string, voz = false) {
-  return post({
-    messaging_product: "whatsapp",
-    to,
-    type: "audio",
-    audio: voz ? { id: mediaId, voice: true } : { id: mediaId },
-  });
+export async function sendAudio(to: string, mediaId: string, voz = false, phoneId?: string) {
+  return post(
+    {
+      messaging_product: "whatsapp",
+      to,
+      type: "audio",
+      audio: voz ? { id: mediaId, voice: true } : { id: mediaId },
+    },
+    phoneId,
+  );
 }
 
 /** Sube bytes y envía el audio en un solo paso. */
@@ -92,9 +96,10 @@ export async function sendAudioBytes(
   mime: string,
   filename = "nota.ogg",
   voz = false,
+  phoneId?: string,
 ) {
-  const id = await uploadWhatsAppMedia(bytes, mime, filename);
-  return sendAudio(to, id, voz);
+  const id = await uploadWhatsAppMedia(bytes, mime, filename, phoneId);
+  return sendAudio(to, id, voz, phoneId);
 }
 
 /** Video dentro de la ventana de 24h. `link` tiene que ser HTTPS y bajar el mp4 directo. */
