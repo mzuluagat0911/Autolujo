@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { partirArchivo, textoConArchivo } from "../lib/comercial/archivo.ts";
 import { pideUbicacion, sedesParaVideo } from "../lib/comercial/video-sede.ts";
-import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA } from "../lib/comercial/bienvenida.ts";
-import { mensajeNaturalLucia } from "../lib/comercial/voz.ts";
+import { esClicDeAnuncio, esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA, sinBienvenidaRepetida } from "../lib/comercial/bienvenida.ts";
+import { MENSAJE_ASESOR, mensajeNaturalLucia } from "../lib/comercial/voz.ts";
 import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
 import {
   ajustarMensajeDeCita,
@@ -25,6 +25,10 @@ import {
   lecturaLeadConReglas,
   nombreDeWhatsApp,
   textosDelCliente,
+  pideAsesorHumano,
+  preguntaSiEsBot,
+  esPausaPorAsesor,
+  MOTIVO_PIDIO_ASESOR,
 } from "../lib/comercial/lead.ts";
 import { PLANTILLAS_SEGUIMIENTO, plantillaAunNoLista, plantillaSeguimiento } from "../lib/comercial/plantillas.ts";
 
@@ -61,6 +65,30 @@ assert.deepEqual(textosDelCliente([
 assert.equal(nombreDeWhatsApp("Mateo Zuluaga"), "Mateo Zuluaga");
 assert.equal(nombreDeWhatsApp("12345"), null);
 assert.equal(nombreDeWhatsApp("❤#Adorada❤#"), "Adorada");
+assert.equal(nombreDeWhatsApp("Maria de los Angeles"), "Maria de los Angeles");
+assert.equal(nombreDeWhatsApp("José de Dios"), "José de Dios");
+assert.equal(nombreDeWhatsApp("alabado sea el señor"), null);
+assert.equal(nombreDeWhatsApp("Fe amor paz"), null);
+assert.equal(nombreDeWhatsApp("productos milanesa"), null);
+assert.equal(nombreDeWhatsApp("Infraestructura J M B"), null);
+assert.equal(nombreDeWhatsApp("Dios es Bueno"), null);
+assert.equal(nombreDeWhatsApp("Dios"), null);
+assert.equal(pideAsesorHumano("Háblale con un agente"), true);
+assert.equal(pideAsesorHumano("Pueden llamarme"), true);
+assert.equal(pideAsesorHumano("¿Eres un agente?"), false);
+assert.equal(preguntaSiEsBot("¿Eres un agente?"), true);
+assert.equal(esPausaPorAsesor(MOTIVO_PIDIO_ASESOR), true);
+assert.equal(esClicDeAnuncio("¡Hola! Quiero más información"), true);
+assert.equal(esClicDeAnuncio("¿A cuántos años es el contrato?"), false);
+assert.equal(
+  sinBienvenidaRepetida(MENSAJE_BIENVENIDA, [
+    { direccion: "in", texto: "Hola" },
+    { direccion: "out", texto: MENSAJE_BIENVENIDA },
+    { direccion: "in", texto: "¡Hola! Quiero más información" },
+  ]).includes("tratamientodedatos"),
+  false,
+);
+assert.match(plantillaSeguimiento("alabado sea el señor", 2).texto, /Hola, buenas/);
 assert.equal(telefonoVisible("50766432422", null), "6643-2422");
 assert.equal(telefonoVisible("573135076319", null), "+57 313 507 6319");
 assert.equal(esSolicitudNoContacto(["No me interesa ese Kia, ¿tienen otro?"]), false);
@@ -216,6 +244,43 @@ assert.equal(mensajeNaturalLucia(eco, eco).includes("Por aquí le atiendo"), fal
 assert.equal(
   mensajeNaturalLucia("Claro, le paso con un compañero. Enseguida le escriben por aquí.").includes("compañero"),
   false,
+);
+assert.ok(
+  mensajeNaturalLucia("Claro, le paso con un compañero. Enseguida le escriben por aquí.", "Háblale con un agente").includes(
+    "6878-4560",
+  ),
+);
+assert.equal(
+  mensajeNaturalLucia("Claro, le paso con un compañero.", "Háblale con un agente").includes("qué carro"),
+  false,
+);
+assert.equal(mensajeNaturalLucia("ok", "Háblale con un agente"), MENSAJE_ASESOR);
+assert.ok(
+  mensajeNaturalLucia("¿A qué hora le queda bien?", "Son usados?").includes("usados"),
+);
+assert.ok(
+  mensajeNaturalLucia("El Kia Soluto 2026 tiene 1275 cuotas.", "¿A cuántos años sería el contrato?").includes(
+    "3 años y medio",
+  ),
+);
+assert.ok(
+  mensajeNaturalLucia("La letra del i10 2020 es $25.", "¿Cuánto sería la quincena del i10 2020?").includes("$375"),
+);
+assert.ok(
+  mensajeNaturalLucia("Por el momento no tenemos cobertura en esa zona.", "Soy de Veracruz").includes("sí puede venir"),
+);
+assert.equal(
+  mensajeNaturalLucia("Por el momento no tenemos cobertura en esa zona.", "Soy de Veracruz").includes("no tenemos cobertura"),
+  false,
+);
+assert.equal(
+  mensajeNaturalLucia("El contrato son 1275 cuotas diarias, unos 3 años y medio. ¿Le agendo la visita para verlo?", "¿A cuántos años sería el contrato?", { hayCita: true }).includes(
+    "agendo",
+  ),
+  false,
+);
+assert.ok(
+  mensajeNaturalLucia("¿Le agendo la visita?", "¿Qué carros hay?").includes("Hyundai"),
 );
 assert.equal(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("inteligencia"), false);
 assert.ok(mensajeNaturalLucia("Soy una inteligencia artificial.").includes("Lucía"));

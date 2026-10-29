@@ -1,3 +1,5 @@
+import { nombreDeWhatsApp } from "./lead";
+
 /** Una plantilla por seguimiento 1–7. El 8 archiva y no manda mensaje. */
 export const PLANTILLAS_SEGUIMIENTO = [
   {
@@ -68,7 +70,7 @@ export function plantillaSeguimiento(nombre: string | null, intento: number): {
 } {
   const indice = Math.min(PLANTILLAS_SEGUIMIENTO.length, Math.max(1, intento)) - 1;
   const modelo = PLANTILLAS_SEGUIMIENTO[indice];
-  const persona = parametro(nombre ?? "", "buenas");
+  const persona = parametro(nombreDeWhatsApp(nombre) ?? "", "buenas");
   return {
     name: modelo.name,
     componentes: componentesPlantilla([persona]),

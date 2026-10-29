@@ -68,7 +68,21 @@ export function textosDelCliente(historial: { direccion: "in" | "out"; texto: st
   return historial.filter((m) => m.direccion === "in").map((m) => m.texto);
 }
 
-/** Nombre del perfil de WhatsApp. Sin emojis ni símbolos. Vacío si queda un número o basura. */
+const FRASE_NO_NOMBRE =
+  /alabado|aleluya|bendicion|gloria a dios|dios es|sea el senor|fe amor|amor paz|productos|infraestructura|milanesa|\bchannel\b|\binavic\b|facebook user|usuario de facebook/;
+const SOLO_NO_NOMBRE =
+  /^(dios|jesus|cristo|amen|aleluya|senor|channel|oficial|official|user|unknown|negocio|empresa|productos)$/;
+
+function planoLead(texto: string): string {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Nombre del perfil de WhatsApp. Sin emojis, slogans ni apodos que no son de persona. */
 export function nombreDeWhatsApp(valor: string | null | undefined): string | null {
   const limpio = (valor ?? "")
     .replace(/[^\p{L}\p{N}\s.'-]/gu, " ")
@@ -76,7 +90,40 @@ export function nombreDeWhatsApp(valor: string | null | undefined): string | nul
     .trim();
   if (limpio.length < 2 || limpio.length > 80) return null;
   if (!/\p{L}/u.test(limpio)) return null;
+  const plano = planoLead(limpio);
+  if (!plano) return null;
+  if (FRASE_NO_NOMBRE.test(plano) || SOLO_NO_NOMBRE.test(plano)) return null;
+  const tokens = plano.split(" ").filter(Boolean);
+  if (tokens.length > 4) return null;
+  if (tokens.filter((t) => t.length === 1).length >= 2) return null;
+  if (/\b(es|sea|somos|son|tiene|vive)\b/.test(plano)) return null;
   return limpio;
+}
+
+export const MOTIVO_PIDIO_ASESOR = "Pidió hablar con un asesor";
+
+export function esPausaPorAsesor(motivo: string | null | undefined): boolean {
+  return /pidi[oó] hablar con un asesor|quiere (un )?asesor|que lo llamen/i.test(motivo ?? "");
+}
+
+/** Pregunta si Lucía es un bot, no pide una persona. */
+export function preguntaSiEsBot(texto: string): boolean {
+  return /eres (un |una )?(bot|agente|ia|inteligencia)|es (un |una )?(bot|agente|ia)\b/.test(planoLead(texto));
+}
+
+/** Quiere un asesor, un humano o que lo llamen. Lucía da el teléfono y se calla. */
+export function pideAsesorHumano(texto: string): boolean {
+  if (preguntaSiEsBot(texto)) return false;
+  const t = planoLead(texto);
+  return (
+    /habl(?:a|e|ale|arle|ame|en) con (un |una )?(agente|asesor|persona|humano|alguien)/.test(t)
+    || /pasar(me)? con (un |una )?(agente|asesor|persona|humano)/.test(t)
+    || /quiero (hablar con |un |una )?(asesor|agente|persona)/.test(t)
+    || /hablar con alguien/.test(t)
+    || /un (asesor|humano)( por favor)?$/.test(t)
+    || /que me llamen|pueden llamarme|puede llamarme|necesito que me llamen|quiero que me llamen/.test(t)
+    || /^(llameme|llamame)$/.test(t)
+  );
 }
 
 /** 1–3 van cerca. 4–7 son un día, tres días, una semana y diez días. El 8 archiva. */
@@ -103,7 +150,7 @@ export function textoSeguimientoLead(opts: {
   proximaAccion: string | null;
   intento: number;
 }): string {
-  const nombre = opts.nombre?.trim();
+  const nombre = nombreDeWhatsApp(opts.nombre);
   const saludo = nombre ? `Hola, ${nombre}.` : "Hola.";
   const paso = pasoPendiente(opts.proximaAccion);
   if (opts.intento <= 1) {

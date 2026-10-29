@@ -20,16 +20,37 @@ export const MENSAJE_BIENVENIDA = [
   "¿Le dejo la visita en Juan Díaz o en La Chorrera? El equipo le cierra allá el carro.",
 ].join("\n");
 
+const SIGUE_SIN_BIENVENIDA =
+  "Con gusto. Letras desde $25 y abonos desde $99.99, según el año. ¿Qué carro le llama más?";
+
+function pareceBienvenida(salida: string): boolean {
+  return (
+    salida.includes("tratamientodedatosautolujopanama")
+    || (/autolujo panam/i.test(salida) && /letra desde/i.test(salida))
+  );
+}
+
+/** El clic del anuncio de Meta. Si ya hay chat, no es una pregunta nueva. */
+export function esClicDeAnuncio(texto: string): boolean {
+  const t = texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  return /^(hola )?(quiero mas informacion|mas informacion|me interesa|enviar mensaje|learn more|more info)[.!]*$/.test(
+    t,
+  );
+}
+
 /** Si la bienvenida ya salió, un "quiero información" no la vuelve a mandar. */
 export function sinBienvenidaRepetida(
   salida: string,
   historial: { direccion: "in" | "out"; texto: string }[],
 ): string {
-  const ya = historial.some(
-    (m) => m.direccion === "out" && m.texto.includes("tratamientodedatosautolujopanama"),
-  );
-  if (!ya || !salida.includes("tratamientodedatosautolujopanama")) return salida;
-  return "Con gusto. Letras desde $25 y abonos desde $99.99, según el año. ¿Qué carro le llama más?";
+  const yaHablo = historial.some((m) => m.direccion === "out");
+  if (yaHablo && pareceBienvenida(salida)) return SIGUE_SIN_BIENVENIDA;
+  return salida;
 }
 
 const PREGUNTA_CONCRETA =

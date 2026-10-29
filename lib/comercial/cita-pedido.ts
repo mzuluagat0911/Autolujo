@@ -51,7 +51,9 @@ export function preguntaLaHora(texto: string): boolean {
 export function clienteHablaDeOtraCosa(texto: string): boolean {
   const t = plano(texto);
   if (/\b(cita|agend|hora|sede|juan diaz|chorrera)\b/.test(t)) return false;
-  return /telefono|llamar|numero para|whatsapp|requisitos|documento|abono|letra|cuanto|precio|foto|video|como llegar|panapass|a[nñ]os|contrato/.test(t);
+  return /telefono|llamar|numero para|whatsapp|requisitos|documento|abono|letra|cuanto|precio|foto|video|como llegar|panapass|a[nñ]os|contrato|usad|catalogo|carros hay|quincen|cobertura|veracruz|agente|asesor|kilometr|son nuevos/.test(
+    t,
+  );
 }
 
 function plano(texto: string): string {

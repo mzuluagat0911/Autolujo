@@ -4,7 +4,7 @@ import { parseRol } from "@/lib/equipo/modulos";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { partirArchivo } from "./archivo";
 import { entregaNueva } from "./entrega";
-import { horasHastaSeguimiento, nombreDeWhatsApp } from "./lead";
+import { esPausaPorAsesor, horasHastaSeguimiento, nombreDeWhatsApp } from "./lead";
 
 const ETAPA_SIN_SEGUIMIENTO = new Set(["cita", "visito", "ganado", "perdido"]);
 export const MOTIVO_ARCHIVO_SILENCIO = "No respondió después de los seguimientos.";
@@ -383,14 +383,16 @@ export async function textoEstadoLead(conversacionId: string): Promise<string> {
     data.etapa ? `Etapa: ${data.etapa}.` : "",
     nombreDeWhatsApp(String(data.nombre ?? ""))
       ? `Nombre para decirle: ${nombreDeWhatsApp(String(data.nombre ?? ""))}. Sin emojis ni símbolos.`
-      : "",
+      : "No uses el apodo de WhatsApp; no parece un nombre de persona. Pídelo al agendar.",
     data.interes ? `Busca: ${data.interes}.` : "",
     data.lugar ? `Lugar: ${data.lugar}.` : "",
     data.resumen ? `Resumen: ${data.resumen}` : "",
     data.temperatura_motivo ? `Por qué: ${data.temperatura_motivo}` : "",
     data.proxima_accion ? `Falta: ${data.proxima_accion}.` : "",
     data.necesita_humano
-      ? `Ya pediste ayuda al equipo${data.motivo ? `: ${data.motivo}` : ""}. Sigues en el chat hasta que lo tomen.`
+      ? esPausaPorAsesor(String(data.motivo ?? ""))
+        ? "El cliente pidió un asesor. NO escribas más. El equipo lo toma."
+        : `Ya pediste ayuda al equipo${data.motivo ? `: ${data.motivo}` : ""}. Sigues en el chat hasta que lo tomen.`
       : "",
   ]
     .filter(Boolean)
@@ -859,13 +861,27 @@ export async function guardarAnalisisComercial(opts: {
 
 export async function luciaPuedeResponder(conversacionId: string): Promise<boolean> {
   const sb = createServerSupabase();
-  const { data, error } = await sb
+  const primero = await sb
     .from("conversaciones_comercial")
-    .select("modo_atencion, cerrado_at")
+    .select("modo_atencion, cerrado_at, motivo")
     .eq("id", conversacionId)
     .maybeSingle();
-  if (error && /modo_atencion|cerrado_at/i.test(error.message)) return true;
-  return Boolean(data && data.modo_atencion !== "humano" && !data.cerrado_at);
+  const res = primero.error && /motivo/i.test(primero.error.message)
+    ? await sb
+        .from("conversaciones_comercial")
+        .select("modo_atencion, cerrado_at")
+        .eq("id", conversacionId)
+        .maybeSingle()
+    : primero;
+  if (res.error && /modo_atencion|cerrado_at/i.test(res.error.message)) return true;
+  const data = res.data as {
+    modo_atencion?: string | null;
+    cerrado_at?: string | null;
+    motivo?: string | null;
+  } | null;
+  if (!data || data.modo_atencion === "humano" || data.cerrado_at) return false;
+  if (esPausaPorAsesor(data.motivo)) return false;
+  return true;
 }
 
 export async function cancelarSeguimientosComercial(

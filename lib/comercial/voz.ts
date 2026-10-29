@@ -1,3 +1,6 @@
+import { pideAsesorHumano } from "./lead";
+import { esClicDeAnuncio } from "./bienvenida";
+
 const SIGUE = "Cuénteme qué carro le llama más y le dejo la visita en la sede que le quede.";
 
 const QUIEN = "Soy Lucía, de Auto Lujo. ¿Qué carro está buscando?";
@@ -133,6 +136,8 @@ function clientePideMensual(cliente: string): boolean {
 
 const ZONA_FUERA =
   /\baguadulce\b|\bnat[aá]\b|\bchitr[eé]\b|\bchiriqu[ií]\b|\bdavid\b|\bsantiago\b|\blas tablas\b|\bbocas\b/i;
+const ZONA_VISITA =
+  /\bveracruz\b|\barraij[aá]n\b|\bchorrera\b|\bjuan diaz\b|\bpanam[aá]\b|\bsan miguelito\b|\btocumen\b|\bpacora\b|\bchepo\b|\bcol[oó]n\b|\br[ií]o hato\b|\bcoronado\b|\bcapira\b|\bbetania\b|\bchanis\b|\balbrook\b|\bhoward\b|\bburunga\b/i;
 const SIN_COBERTURA =
   "Lamentablemente por el momento no tenemos cobertura en esa zona. Guardamos su contacto y, apenas ampliemos la zona, le avisamos. Gracias por su interés.";
 const MENOR =
@@ -141,7 +146,46 @@ const ENGANCHE_80 =
   "Ese aviso de $80 es para que venga a ver los carros. El resto del abono se financia, y en la sede le explican cómo queda. ¿Qué carro le llama más?";
 const TELEFONO =
   "Claro. El teléfono de la asesora en Panamá es 6878-4560. La puede llamar, y también la esperan en la sede. ¿Qué carro le interesa ver?";
+export const MENSAJE_ASESOR =
+  "Claro. El teléfono de la asesora en Panamá es 6878-4560. Un compañero le escribe por aquí.";
 const RETIRO = "Entendido. Aquí quedo por si más adelante quiere ver el carro. Que le vaya bien.";
+const USADOS =
+  "Sí, hay usados de poco kilometraje, de 2026 y 2027, y según el anuncio también puede haber cero kilómetros. ¿Cuál año le llama más?";
+const CATALOGO =
+  "Según disponibilidad hay Hyundai Grand i10 y Kia Soluto. En la visita le muestran lo que hay. ¿Cuál le llama más?";
+const VISITA_CERCA =
+  "Claro, de ahí sí puede venir a la sede. ¿Le queda mejor La Chorrera o Juan Díaz?";
+
+const FILAS_LETRA: { anio: number; letra: number; cuotas: number; anios: string }[] = [
+  { anio: 2027, letra: 33, cuotas: 1275, anios: "unos 3 años y medio" },
+  { anio: 2026, letra: 31, cuotas: 1275, anios: "unos 3 años y medio" },
+  { anio: 2025, letra: 30, cuotas: 1275, anios: "unos 3 años y medio" },
+  { anio: 2024, letra: 30, cuotas: 1275, anios: "unos 3 años y medio" },
+  { anio: 2023, letra: 30, cuotas: 1095, anios: "unos 3 años" },
+  { anio: 2022, letra: 27, cuotas: 915, anios: "unos 2 años y medio" },
+  { anio: 2020, letra: 25, cuotas: 730, anios: "unos 2 años" },
+];
+
+type OpcionesVoz = { hayCita?: boolean; hayHistorial?: boolean };
+
+function filaDe(texto: string): (typeof FILAS_LETRA)[number] | null {
+  const anio = texto.match(/\b(202[0-7])\b/);
+  if (!anio) return null;
+  return FILAS_LETRA.find((f) => f.anio === Number(anio[1])) ?? null;
+}
+
+function conCierreVisita(frase: string, hayCita: boolean): string {
+  if (!hayCita) return frase;
+  const limpio = frase
+    .replace(/\s*¿Le agendo(?: la visita)?(?: para verlo)?\??/gi, "")
+    .replace(/\s*¿Le dejo la visita[^?]*\??/gi, "")
+    .replace(/\s*¿Sigue con la visita[^?]*\??/gi, "")
+    .replace(/\s*¿A qué hora le queda(?: bien)?\??/gi, "")
+    .replace(/\s*¿Qué día le queda(?: mejor)?\??/gi, "")
+    .replace(/\s*¿Le queda mejor (?:Juan Díaz o La Chorrera|La Chorrera o Juan Díaz)\??/gi, "")
+    .trim();
+  return limpio || "¿Qué más quiere saber del carro?";
+}
 
 function cumpleVeinticincoPronto(cliente: string): boolean {
   const q = plano(cliente);
@@ -163,6 +207,12 @@ function afirmaCobertura(texto: string): boolean {
   return /tenemos cobertura|si hasta|hasta alla|hasta ahi|le agendo|puede pasar|le dejo la visita|le queda mejor/.test(q);
 }
 
+function niegaCobertura(texto: string): boolean {
+  return /no tenemos cobertura|no contamos con cobertura|fuera de (zona|cobertura)|no llegamos (hasta|alla|ahi)/i.test(
+    texto,
+  );
+}
+
 function mantenimientoSegunAnio(texto: string, cliente: string): string | null {
   const junto = `${cliente} ${texto}`;
   if (!/mantenim/i.test(junto)) return null;
@@ -180,61 +230,126 @@ function mantenimientoSegunAnio(texto: string, cliente: string): string | null {
 function pideAniosContrato(cliente: string): boolean {
   const c = plano(cliente);
   return (
-    /cuantos a[nñ]os|a[nñ]os (seria|dura|es|del) contrato|duracion del contrato|plazo del contrato/.test(c)
+    /cuantos a[nñ]os|a[nñ]os (seria|dura|es|del) contrato|duracion del contrato|plazo del contrato|a que plazo|en cuantos a[nñ]os/.test(c)
     || (/contrato/.test(c) && /a[nñ]os/.test(c))
+    || (/opcion a compra/.test(c) && /a[nñ]os|plazo|cuantos/.test(c))
   );
 }
 
-function aniosDelContrato(texto: string, cliente: string): string | null {
+function pideQuincena(cliente: string): boolean {
+  return /quincen|cada 15|quince dias|15 dias/.test(plano(cliente));
+}
+
+function pideUsados(cliente: string): boolean {
+  return /usad[oa]s?|son nuevos|cero kilomet|0 km|kilometr/.test(plano(cliente));
+}
+
+function pideCatalogo(cliente: string): boolean {
+  return /que carros|catalogo|modelos hay|carros hay|que vehicul|que tienen (disponible|en sede|de carros)/.test(
+    plano(cliente),
+  );
+}
+
+function aniosDelContrato(texto: string, cliente: string, hayCita: boolean): string | null {
   if (!pideAniosContrato(cliente)) return null;
   const t = plano(texto);
-  if (/a[nñ]os/.test(t) && /\d{3,4}/.test(t)) return null;
+  if (/a[nñ]os/.test(t) && /\d{3,4}/.test(t)) return conCierreVisita(texto, hayCita);
   const m = texto.match(/(\d{3,4})\s*cuotas/i);
   const n = m ? Number(m[1]) : null;
+  const filaTabla = filaDe(`${cliente} ${texto}`);
   const fila =
     n === 1095 ? { cuotas: 1095, anios: "unos 3 años" }
     : n === 915 ? { cuotas: 915, anios: "unos 2 años y medio" }
     : n === 730 ? { cuotas: 730, anios: "unos 2 años" }
     : n === 365 ? { cuotas: 365, anios: "1 año" }
-    : { cuotas: n && n > 200 ? n : 1275, anios: "unos 3 años y medio" };
-  return `El contrato son ${fila.cuotas} cuotas diarias, ${fila.anios}. ¿Le agendo la visita para verlo?`;
+    : filaTabla
+      ? { cuotas: filaTabla.cuotas, anios: filaTabla.anios }
+      : { cuotas: n && n > 200 ? n : 1275, anios: "unos 3 años y medio" };
+  return conCierreVisita(
+    `El contrato son ${fila.cuotas} cuotas diarias, ${fila.anios}. ¿Le agendo la visita para verlo?`,
+    hayCita,
+  );
 }
 
-function corrigeRespuestaComercial(texto: string, cliente: string): string {
+function quincenaDelContrato(texto: string, cliente: string, hayCita: boolean): string | null {
+  if (!pideQuincena(cliente)) return null;
+  const fila = filaDe(`${cliente} ${texto}`);
+  if (fila) {
+    const quincena = fila.letra * 15;
+    if (texto.includes(`$${quincena}`) || texto.includes(String(quincena))) {
+      return conCierreVisita(texto, hayCita);
+    }
+    return conCierreVisita(
+      `La quincena queda en $${quincena}, que es la letra de $${fila.letra} por 15 días. ¿Le agendo la visita para verlo?`,
+      hayCita,
+    );
+  }
+  if (/\$\s*\d+/.test(texto) && /quincen|15/.test(plano(texto))) return conCierreVisita(texto, hayCita);
+  return conCierreVisita(
+    "La quincena es la letra diaria por 15. Del i10 2020 son $375; del 2024, $450. ¿Qué año le interesa?",
+    hayCita,
+  );
+}
+
+function corrigeRespuestaComercial(texto: string, cliente: string, opts?: OpcionesVoz): string {
+  const hayCita = Boolean(opts?.hayCita);
   const c = plano(cliente);
   const t = plano(texto);
+  if (pideAsesorHumano(cliente)) return MENSAJE_ASESOR;
   if (/\bno gracias\b|dejelo asi|ya no gracias/i.test(plano(cliente)) && /que dia|a que hora|le agendo|le queda mejor|cuenteme/i.test(t)) {
     return RETIRO;
   }
   if (edadMenor(cliente)) return MENOR;
-  if (ZONA_FUERA.test(cliente) && afirmaCobertura(texto) && !/no tenemos cobertura|no contamos con cobertura/i.test(texto)) {
+  if (ZONA_FUERA.test(cliente) && afirmaCobertura(texto) && !niegaCobertura(texto)) {
     return SIN_COBERTURA;
+  }
+  if (ZONA_VISITA.test(cliente) && niegaCobertura(texto)) {
+    return conCierreVisita(VISITA_CERCA, hayCita);
   }
   if (/\$?\s*80\b/.test(`${cliente} ${texto}`) && /no (lo |la |los )?tenemos|no contamos|no manejamos|no lo ofrecemos/i.test(texto)) {
     return ENGANCHE_80;
   }
-  if (/telefono|que me llam|llameme|numero para llamar|un numero|deme un numero|su numero/.test(c) && !/6878/.test(texto)) {
+  if (pideAsesorHumano(cliente) === false && /telefono|numero para llamar|un numero|deme un numero|su numero/.test(c) && !/6878/.test(texto)) {
     return TELEFONO;
   }
-  const anios = aniosDelContrato(texto, cliente);
+  const anios = aniosDelContrato(texto, cliente, hayCita);
   if (anios) return anios;
+  const quincena = quincenaDelContrato(texto, cliente, hayCita);
+  if (quincena) return quincena;
+  if (pideUsados(cliente) && !/usad|kilometr|cero kilomet/.test(t)) {
+    return conCierreVisita(USADOS, hayCita);
+  }
+  if (pideCatalogo(cliente) && !/hyundai|i10|soluto|disponib/.test(t)) {
+    return conCierreVisita(CATALOGO, hayCita);
+  }
   const mantenimiento = mantenimientoSegunAnio(texto, cliente);
-  if (mantenimiento) return mantenimiento;
+  if (mantenimiento) return conCierreVisita(mantenimiento, hayCita);
   const faltaRequisitos = pideRequisitos(cliente) && !respondeRequisitos(texto);
   const malPago = ofrecePagoMal(texto) || (clientePideMensual(cliente) && !explicaPago(texto));
-  if (faltaRequisitos && malPago) return REQUISITOS_Y_PAGOS;
-  if (faltaRequisitos) return REQUISITOS;
-  if (malPago) return PAGOS;
-  if (cotizaAutomatico(texto)) return AUTOMATICO;
-  if (kiaFueraDeCatalogo(texto)) return KIA;
-  if ((/llanta/.test(c) || /llanta/.test(t)) && !/asume usted|usted las paga|por su cuenta/.test(t)) return LLANTAS;
-  if (/colision|choque|siniestr|accidente/.test(c) && !/\bavis/.test(t)) return COLISION;
-  if (/recibo/.test(t) && /familiar/.test(t)) return RECIBO;
+  if (faltaRequisitos && malPago) return conCierreVisita(REQUISITOS_Y_PAGOS, hayCita);
+  if (faltaRequisitos) return conCierreVisita(REQUISITOS, hayCita);
+  if (malPago) return conCierreVisita(PAGOS, hayCita);
+  if (cotizaAutomatico(texto)) return conCierreVisita(AUTOMATICO, hayCita);
+  if (kiaFueraDeCatalogo(texto)) return conCierreVisita(KIA, hayCita);
+  if ((/llanta/.test(c) || /llanta/.test(t)) && !/asume usted|usted las paga|por su cuenta/.test(t)) {
+    return conCierreVisita(LLANTAS, hayCita);
+  }
+  if (/colision|choque|siniestr|accidente/.test(c) && !/\bavis/.test(t)) return conCierreVisita(COLISION, hayCita);
+  if (/recibo/.test(t) && /familiar/.test(t)) return conCierreVisita(RECIBO, hayCita);
   if (/cuando sepa|me avisa|cuando pueda|cuando tenga/.test(t)) return CUPO;
   if (/domingo/.test(c) && /chorrera/.test(t) && !/solo abre juan|solo juan diaz|domingo solo/.test(t)) {
-    return `${texto} El domingo solo abre Juan Díaz.`;
+    return conCierreVisita(`${texto} El domingo solo abre Juan Díaz.`, hayCita);
   }
-  return texto;
+  if (hayCita && /le agendo|le dejo la visita|a que hora le queda|que dia le queda/.test(t) && clienteHablaDeTema(c)) {
+    return conCierreVisita(texto, true);
+  }
+  return conCierreVisita(texto, hayCita);
+}
+
+function clienteHablaDeTema(c: string): boolean {
+  return /usad|catalogo|carros|a[nñ]os|quincen|requisit|abono|letra|precio|como llegar|cobertura|agente|telefono|contrato|kilometr/.test(
+    c,
+  );
 }
 
 function quitaAdornos(texto: string): string {
@@ -251,13 +366,22 @@ function conSaludo(texto: string, cliente: string): string {
 }
 
 /** Lo que sale a WhatsApp. Lucía no se presenta como sistema ni repite al cliente. */
-export function mensajeNaturalLucia(mensaje: string, ultimoCliente?: string | null): string {
+export function mensajeNaturalLucia(
+  mensaje: string,
+  ultimoCliente?: string | null,
+  opts?: OpcionesVoz,
+): string {
   const cliente = ultimoCliente ?? "";
   let texto = quitaAdornos(corrigeLetraI10(mensaje.replace(/\s+/g, " ").trim()));
-  texto = corrigeRespuestaComercial(texto, cliente);
+  texto = corrigeRespuestaComercial(texto, cliente, opts);
   if (!texto) return "¿Qué carro está buscando?";
   if (cliente && esEco(texto, cliente)) texto = SIGUE;
   else if (admiteMaquina(texto)) texto = QUIEN;
-  else if (anunciaTraspaso(texto) || suenaARecepcion(texto)) texto = SIGUE;
+  else if (anunciaTraspaso(texto) || suenaARecepcion(texto)) {
+    texto = pideAsesorHumano(cliente) ? MENSAJE_ASESOR : SIGUE;
+  }
+  if (opts?.hayHistorial && esClicDeAnuncio(cliente) && /autolujo panam|tratamientodedatos/i.test(texto)) {
+    texto = SIGUE;
+  }
   return corrigePisoAbono(conSaludo(texto, cliente));
 }

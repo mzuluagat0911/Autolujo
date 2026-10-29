@@ -31,8 +31,8 @@ import { responderAgente } from "@/lib/ai/agente";
 import { hablaDeChoque, reportarChoqueDesdeChat } from "@/lib/seguros/datos";
 import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoConArchivo } from "@/lib/comercial/archivo";
-import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA, sinBienvenidaRepetida } from "@/lib/comercial/bienvenida";
-import { mensajeNaturalLucia } from "@/lib/comercial/voz";
+import { esClicDeAnuncio, esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA, sinBienvenidaRepetida } from "@/lib/comercial/bienvenida";
+import { MENSAJE_ASESOR, mensajeNaturalLucia } from "@/lib/comercial/voz";
 import {
   ajustarMensajeDeCita,
   clienteHablaDeOtraCosa,
@@ -46,7 +46,14 @@ import { notaPanapass } from "@/lib/comercial/panapass-consulta";
 import { sedePorId, textoSedes } from "@/lib/comercial/sedes";
 import { aplicarPedidoCita, citaAbierta } from "@/lib/comercial/citas";
 import { enviarVideoSede, pideUbicacion, sedesParaVideo } from "@/lib/comercial/video-sede";
-import { esSolicitudNoContacto, lecturaLeadConReglas, nombreDeWhatsApp, textosDelCliente } from "@/lib/comercial/lead";
+import {
+  esSolicitudNoContacto,
+  lecturaLeadConReglas,
+  MOTIVO_PIDIO_ASESOR,
+  nombreDeWhatsApp,
+  pideAsesorHumano,
+  textosDelCliente,
+} from "@/lib/comercial/lead";
 import { fechaConDia, hoyPanama, fueraHorarioOperativo, sumarDias } from "@/lib/cartera/fecha";
 import {
   cerrarLeadSinContacto,
@@ -62,6 +69,7 @@ import {
   reiniciarCadenciaSeguimiento,
   textoEstadoLead,
   marcarEscaladaComercial,
+  cancelarSeguimientosComercial,
   programarSiguienteSeguimiento,
   guardarBorradorComercial,
   registrarEntradaComercial,
@@ -300,6 +308,17 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     );
     const cierra = !hayMas || vuelta === 2;
     if (!cierra) continue;
+    if (pideAsesorHumano(ultimo)) {
+      if (guardado.conversacionId) {
+        await marcarEscaladaComercial(guardado.conversacionId, MOTIVO_PIDIO_ASESOR);
+        await cancelarSeguimientosComercial(guardado.conversacionId, MOTIVO_PIDIO_ASESOR);
+      }
+      if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, MENSAJE_ASESOR))) {
+        return;
+      }
+      await entregarRespuestaComercial(from, guardado.conversacionId, MENSAJE_ASESOR, decision.envia);
+      return;
+    }
     if (esSaludoDeClienteNuevo(historial)) {
       if (guardado.conversacionId) {
         await guardarAnalisisComercial({
@@ -344,8 +363,12 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       await entregarRespuestaComercial(from, guardado.conversacionId, tarjeta, decision.envia);
       return;
     }
+    const hayHistorial = historial.some((m) => m.direccion === "out");
     const base = await contextoParaLucia(guardado.conversacionId, msg, texto);
-    const contexto = nota ? `${base}\n${nota}` : base;
+    const extraClic = esClicDeAnuncio(ultimo) && hayHistorial
+      ? "El último mensaje es el BOTÓN DEL ANUNCIO de Meta. NO es una pregunta nueva. NO mandes la bienvenida ni la política. Sigue el último tema del historial. Si ya hay cita, no la vuelvas a pedir."
+      : "";
+    const contexto = [base, nota, extraClic].filter(Boolean).join("\n");
     const r = await responderComercial({
       historial: historial.length > 0 ? historial : [{ direccion: "in", texto: texto.trim() }],
       contexto,
@@ -369,8 +392,9 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         proximaAccion: r.lead.proxima_accion,
       });
     }
+    const voz = { hayCita: Boolean(citaPrevia), hayHistorial };
     let salida = sinBienvenidaRepetida(
-      ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, ultimo), {
+      ajustarMensajeDeCita(mensajeNaturalLucia(r.mensaje, ultimo, voz), {
         hoy: hoyPanama(),
         fechaCita: citaPrevia?.fecha ?? null,
         cliente: ultimo,
@@ -416,7 +440,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         contexto: `${contexto}\nNO copies tu último mensaje. El cliente acaba de escribir: "${ultimo}". Contesta ESO con un dato que todavía no le hayas dado. Si preguntó los años del contrato, di las cuotas y cuántos años son.`,
       });
       salida = sinBienvenidaRepetida(
-        ajustarMensajeDeCita(mensajeNaturalLucia(otra.mensaje, ultimo), {
+        ajustarMensajeDeCita(mensajeNaturalLucia(otra.mensaje, ultimo, voz), {
           hoy: hoyPanama(),
           fechaCita: citaPrevia?.fecha ?? null,
           cliente: ultimo,
@@ -474,7 +498,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       await entregarRespuestaComercial(
         from,
         guardado.conversacionId,
-        sinBienvenidaRepetida(mensajeNaturalLucia(r.mensaje, texto), historial),
+        sinBienvenidaRepetida(mensajeNaturalLucia(r.mensaje, texto, { hayHistorial: true }), historial),
         decision.envia,
       );
       if (decision.envia && guardado.conversacionId) {
@@ -582,13 +606,27 @@ async function atenderFotoComercial(msg: WhatsAppMessage) {
     );
   }
   if (!sigue) return;
-  await avisarMedioComercial(
-    msg,
-    "Recibí su documento. El equipo lo revisa para la preaprobación. Yo sigo aquí: si quiere, adelantamos la cita.",
-    guardado.conversacionId,
-  );
-  if (guardado.conversacionId) {
-    await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
+  const avisoDoc =
+    "Recibí su documento. El equipo lo revisa para la preaprobación. Yo sigo aquí: si quiere, adelantamos la cita.";
+  const marcaDoc = msg.id ?? "";
+  let turnoDoc = false;
+  try {
+    if (guardado.conversacionId && marcaDoc) {
+      const turno = await reclamarTurnoLucia(guardado.conversacionId, marcaDoc);
+      if (turno === "ocupado") return;
+      if (turno === "mio") turnoDoc = true;
+    }
+    if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, avisoDoc))) {
+      return;
+    }
+    await avisarMedioComercial(msg, avisoDoc, guardado.conversacionId);
+    if (guardado.conversacionId) {
+      await programarSiguienteSeguimiento(guardado.conversacionId, "tibio");
+    }
+  } finally {
+    if (turnoDoc && guardado.conversacionId && marcaDoc) {
+      await soltarTurnoLucia(guardado.conversacionId, marcaDoc);
+    }
   }
 }
 
@@ -677,6 +715,7 @@ async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMes
       partes.push(
         `CITA ABIERTA: ${cuando} Hora ${cita.hora}. Sede ${sedePorId(cita.sede)?.nombre ?? cita.sede}. Lugar ${cita.lugar ?? "sin decir"}. Confirmación ${cita.confirmacion}.`,
         nombre ? `Nombre para decirle: ${nombre}. Sin emojis ni símbolos.` : "No uses el apodo de WhatsApp.",
+        "CITA YA AGENDADA. Prohibido preguntar «¿le agendo?» o pedir sede, día u hora otra vez. accion = ninguna salvo que pida cambiarla. Primera frase = lo que preguntó ahora.",
         "Esa visita sigue en esa sede. Si preguntan otra cosa, responde eso y no ofrezcas moverla.",
       );
     }
