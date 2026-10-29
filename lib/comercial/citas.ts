@@ -4,12 +4,19 @@ import { ventanaAbierta } from "@/lib/cartera/pipeline";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { fechaConDia, hoyPanama, sumarDias } from "@/lib/cartera/fecha";
 import { avisoCitaPendiente } from "./avisos-cita";
-import { sedePorId, validarHorario, type SedeId } from "./sedes";
+import { horaAMinutos, minutosAHora, sedePorId, validarHorario, ventanaCita, type SedeId } from "./sedes";
 import { sendTemplate, sendText } from "@/lib/whatsapp/client";
 import { idMensajeEnviado } from "./entrega";
 import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
 import { nombreDeWhatsApp } from "./lead";
-import { pedidoRepiteCita, telefonoVisible, textoEsConfirmacion } from "./cita-pedido";
+import {
+  aceptaSiguienteHorario,
+  horaComercial,
+  pedidoRepiteCita,
+  preguntaLaHora,
+  telefonoVisible,
+  textoEsConfirmacion,
+} from "./cita-pedido";
 import { enviarVideoSede } from "./video-sede";
 import { plantillaCita } from "./plantillas";
 
@@ -44,6 +51,65 @@ export type PedidoCita = {
 
 function tablaAusente(message: string): boolean {
   return /citas_comercial|schema cache|could not find the table/i.test(message);
+}
+
+async function horasTomadas(
+  sb: ReturnType<typeof createServerSupabase>,
+  sede: SedeId,
+  fecha: string,
+  excludeId: string | null,
+): Promise<Set<string>> {
+  const { data } = await sb
+    .from("citas_comercial")
+    .select("id, hora")
+    .eq("sede", sede)
+    .eq("fecha", fecha)
+    .eq("estado", "programada");
+  const tomadas = new Set<string>();
+  for (const row of (data ?? []) as { id?: string; hora?: string }[]) {
+    if (excludeId && row.id === excludeId) continue;
+    const h = String(row.hora ?? "").slice(0, 5);
+    if (h) tomadas.add(h);
+  }
+  return tomadas;
+}
+
+function siguienteHueco(sede: SedeId, fecha: string, hora: string, tomadas: Set<string>): string | null {
+  const ventana = ventanaCita(sede, fecha);
+  const inicio = horaAMinutos(hora);
+  if (!ventana || inicio == null) return null;
+  for (let mins = inicio + 30; mins <= ventana.hasta; mins += 30) {
+    const h = minutosAHora(mins);
+    if (!tomadas.has(h)) return h;
+  }
+  return null;
+}
+
+async function resolverHorarioLibre(
+  sb: ReturnType<typeof createServerSupabase>,
+  opts: { sede: SedeId; fecha: string; hora: string; excludeId: string | null; textoCliente: string },
+): Promise<{ hora: string | null; mensaje: string | null }> {
+  const tomadas = await horasTomadas(sb, opts.sede, opts.fecha, opts.excludeId);
+  if (!tomadas.has(opts.hora)) return { hora: opts.hora, mensaje: null };
+  const siguiente = siguienteHueco(opts.sede, opts.fecha, opts.hora, tomadas);
+  const sedeNombre = sedePorId(opts.sede)?.nombre ?? "la sede";
+  if (!siguiente) {
+    return {
+      hora: null,
+      mensaje: `Ese horario en ${sedeNombre} ya está lleno. ¿Qué otra hora le queda, en punto o a la media?`,
+    };
+  }
+  if (aceptaSiguienteHorario(opts.textoCliente)) return { hora: siguiente, mensaje: null };
+  if (preguntaLaHora(opts.textoCliente)) {
+    return {
+      hora: null,
+      mensaje: `Quedaría a las ${horaComercial(siguiente)} en ${sedeNombre}. ¿Se la dejo?`,
+    };
+  }
+  return {
+    hora: null,
+    mensaje: `Las ${horaComercial(opts.hora)} en ${sedeNombre} ya están tomadas. Le puedo dejar las ${horaComercial(siguiente)}. ¿Se las dejo?`,
+  };
 }
 
 function fila(row: Record<string, unknown>): CitaComercial {
@@ -208,25 +274,22 @@ export async function aplicarPedidoCita(opts: {
   }
 
   const sb = createServerSupabase();
-  const ocupada = await sb
-    .from("citas_comercial")
-    .select("id")
-    .eq("sede", sede)
-    .eq("fecha", fecha)
-    .eq("hora", hora)
-    .eq("estado", "programada")
-    .neq("id", abierta?.id ?? "00000000-0000-0000-0000-000000000000")
-    .limit(1);
-  if (!ocupada.error && (ocupada.data?.length ?? 0) > 0) {
-    return { mensaje: `Esa hora en ${sedePorId(sede)?.nombre ?? "la sede"} ya está ocupada. ¿Le sirve la media hora siguiente?` };
-  }
+  const hueco = await resolverHorarioLibre(sb, {
+    sede,
+    fecha,
+    hora,
+    excludeId: abierta?.id ?? null,
+    textoCliente: opts.textoCliente ?? "",
+  });
+  if (hueco.mensaje && !hueco.hora) return { mensaje: hueco.mensaje };
+  const horaFinal = hueco.hora ?? hora;
   const ahora = new Date().toISOString();
   const campos = {
     nombre,
     celular,
     sede,
     fecha,
-    hora,
+    hora: horaFinal,
     lugar,
     confirmacion: "pendiente" as const,
     estado: "programada" as const,

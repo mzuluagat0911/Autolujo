@@ -1138,20 +1138,18 @@ export async function soltarTurnoLucia(conversacionId: string, marca: string): P
   if (error && !sinColumnaTurno(error.message)) console.error("[comercial] soltar turno", error.message);
 }
 
-/** El mismo texto ya salió hace menos de un minuto y medio. */
+/** El último mensaje saliente ya dijo exactamente esto. No lo mandamos otra vez. */
 export async function salidaRecienteIgual(conversacionId: string, texto: string): Promise<boolean> {
   const sb = createServerSupabase();
   const { data } = await sb
     .from("mensajes_comercial")
-    .select("texto, created_at")
+    .select("texto")
     .eq("conversacion_id", conversacionId)
     .eq("direccion", "out")
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const ultimo = (data as { texto?: string | null; created_at?: string | null } | null)?.texto ?? "";
-  const cuando = (data as { created_at?: string | null } | null)?.created_at;
-  if (!ultimo || !cuando) return false;
-  const igual = ultimo.replace(/\s+/g, " ").trim() === texto.replace(/\s+/g, " ").trim();
-  return igual && Date.now() - new Date(cuando).getTime() < 90_000;
+  const ultimo = (data as { texto?: string | null } | null)?.texto ?? "";
+  if (!ultimo) return false;
+  return ultimo.replace(/\s+/g, " ").trim() === texto.replace(/\s+/g, " ").trim();
 }

@@ -177,6 +177,29 @@ function mantenimientoSegunAnio(texto: string, cliente: string): string | null {
   return "Ese año no trae mantenimiento incluido. ¿Quiere que veamos un año que sí lo trae?";
 }
 
+function pideAniosContrato(cliente: string): boolean {
+  const c = plano(cliente);
+  return (
+    /cuantos a[nñ]os|a[nñ]os (seria|dura|es|del) contrato|duracion del contrato|plazo del contrato/.test(c)
+    || (/contrato/.test(c) && /a[nñ]os/.test(c))
+  );
+}
+
+function aniosDelContrato(texto: string, cliente: string): string | null {
+  if (!pideAniosContrato(cliente)) return null;
+  const t = plano(texto);
+  if (/a[nñ]os/.test(t) && /\d{3,4}/.test(t)) return null;
+  const m = texto.match(/(\d{3,4})\s*cuotas/i);
+  const n = m ? Number(m[1]) : null;
+  const fila =
+    n === 1095 ? { cuotas: 1095, anios: "unos 3 años" }
+    : n === 915 ? { cuotas: 915, anios: "unos 2 años y medio" }
+    : n === 730 ? { cuotas: 730, anios: "unos 2 años" }
+    : n === 365 ? { cuotas: 365, anios: "1 año" }
+    : { cuotas: n && n > 200 ? n : 1275, anios: "unos 3 años y medio" };
+  return `El contrato son ${fila.cuotas} cuotas diarias, ${fila.anios}. ¿Le agendo la visita para verlo?`;
+}
+
 function corrigeRespuestaComercial(texto: string, cliente: string): string {
   const c = plano(cliente);
   const t = plano(texto);
@@ -193,6 +216,8 @@ function corrigeRespuestaComercial(texto: string, cliente: string): string {
   if (/telefono|que me llam|llameme|numero para llamar|un numero|deme un numero|su numero/.test(c) && !/6878/.test(texto)) {
     return TELEFONO;
   }
+  const anios = aniosDelContrato(texto, cliente);
+  if (anios) return anios;
   const mantenimiento = mantenimientoSegunAnio(texto, cliente);
   if (mantenimiento) return mantenimiento;
   const faltaRequisitos = pideRequisitos(cliente) && !respondeRequisitos(texto);

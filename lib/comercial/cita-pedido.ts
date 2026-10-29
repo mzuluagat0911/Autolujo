@@ -26,7 +26,32 @@ export function textoEsConfirmacion(texto: string): boolean {
     .replace(/[❓❔]/g, "?")
     .replace(/[!.,]+$/g, "");
   if (!t || t.length > 40 || t.includes("?")) return false;
-  return /^(?:s[ií]|ok|okay|okey|dale|confirmo|confirmad[oa]|listo|va|de acuerdo|perfecto|ah[ií] (?:voy|estar[eé]))$/.test(t);
+  return /^(?:s[ií]|ok|okay|okey|dale|dele|confirmo|confirmad[oa]|listo|va|de acuerdo|perfecto|ah[ií] (?:voy|estar[eé]))$/.test(t);
+}
+
+/** Acepta el horario que Lucía acaba de ofrecer (la media hora siguiente). */
+export function aceptaSiguienteHorario(texto: string): boolean {
+  const t = plano(texto);
+  if (!t) return false;
+  if (/^(dele|dale|de le|si|ok|okay|okey|va|listo|de acuerdo|perfecto|esa|esa hora|la media|la siguiente|si dele|si dale)$/.test(t)) {
+    return true;
+  }
+  return /\b(dele|dale|la media hora|la siguiente|esa hora|si se la deja|si se las deja)\b/.test(t)
+    && !/\b(no|otra hora|otro dia|cambiar)\b/.test(t);
+}
+
+/** Pregunta a qué hora quedó, sin proponer otra. */
+export function preguntaLaHora(texto: string): boolean {
+  const t = plano(texto);
+  return /a que hora|que hora|hora (ay|ahi|ahi|voy|estare|estaria)|cuando (voy|quedo|es)/.test(t)
+    && !/\b(cambiar|otra hora|otro dia)\b/.test(t);
+}
+
+/** Preguntó teléfono, requisitos, precio… no está agendando en este turno. */
+export function clienteHablaDeOtraCosa(texto: string): boolean {
+  const t = plano(texto);
+  if (/\b(cita|agend|hora|sede|juan diaz|chorrera)\b/.test(t)) return false;
+  return /telefono|llamar|numero para|whatsapp|requisitos|documento|abono|letra|cuanto|precio|foto|video|como llegar|panapass|a[nñ]os|contrato/.test(t);
 }
 
 function plano(texto: string): string {

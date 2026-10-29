@@ -35,6 +35,7 @@ import { esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA, sinBienvenidaRepetida } fro
 import { mensajeNaturalLucia } from "@/lib/comercial/voz";
 import {
   ajustarMensajeDeCita,
+  clienteHablaDeOtraCosa,
   preguntaPorElDiaDeLaCita,
   repiteCitaPorDuda,
   textoDeLaCitaAbierta,
@@ -391,9 +392,6 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
     ) {
       continue;
     }
-    if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, salida))) {
-      return;
-    }
     let agendo = false;
     if (guardado.conversacionId && r.cita && r.cita.accion !== "ninguna") {
       const hilo = await hiloComercial(guardado.conversacionId);
@@ -405,8 +403,27 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
         campanaId: campana.campanaId ?? hilo.chat?.campanaId ?? null,
         textoCliente: ultimo,
       });
-      if (aplicada.mensaje) salida = aplicada.mensaje;
-      agendo = aplicada.agendo === true;
+      if (aplicada.agendo && aplicada.mensaje) {
+        salida = aplicada.mensaje;
+        agendo = true;
+      } else if (aplicada.mensaje && !clienteHablaDeOtraCosa(ultimo)) {
+        salida = aplicada.mensaje;
+      }
+    }
+    if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, salida))) {
+      const otra = await responderComercial({
+        historial: historial.length > 0 ? historial : [{ direccion: "in", texto: ultimo }],
+        contexto: `${contexto}\nNO copies tu último mensaje. El cliente acaba de escribir: "${ultimo}". Contesta ESO con un dato que todavía no le hayas dado. Si preguntó los años del contrato, di las cuotas y cuántos años son.`,
+      });
+      salida = sinBienvenidaRepetida(
+        ajustarMensajeDeCita(mensajeNaturalLucia(otra.mensaje, ultimo), {
+          hoy: hoyPanama(),
+          fechaCita: citaPrevia?.fecha ?? null,
+          cliente: ultimo,
+        }),
+        historial,
+      );
+      if (await salidaRecienteIgual(guardado.conversacionId, salida)) return;
     }
     const enviado = await enviarComercial(from, salida);
     if (enviado) yaSalio = true;
