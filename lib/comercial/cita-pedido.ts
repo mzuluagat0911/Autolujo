@@ -79,6 +79,14 @@ export function esSaludoCorto(texto: string): boolean {
   return /^(hola|buenas|buenos dias|buenas tardes|buenas noches|buen dia|hey|ola)$/.test(t);
 }
 
+/** La espera de 2 s solo junta un "hola" u "ok". Un botón o una frase ya se responde. */
+export function convieneEsperarOtroMensaje(texto: string): boolean {
+  const t = texto.trim();
+  if (!t) return false;
+  if (t.length > 16) return false;
+  return esSaludoCorto(t) || /^(ok|okay|okey|si|sí|dale|va|listo)$/i.test(t);
+}
+
 export function horaCitaYaPaso(citaHora: string, ahora: string): boolean {
   return ahora.slice(0, 5) >= citaHora.slice(0, 5);
 }

@@ -422,7 +422,7 @@ export async function historialParaLucia(conversacionId: string): Promise<{ dire
     .select("direccion, texto")
     .eq("conversacion_id", conversacionId)
     .order("created_at", { ascending: false })
-    .limit(40);
+    .limit(24);
   return ((data ?? []) as { direccion: string; texto: string | null }[])
     .reverse()
     .map((m) => ({ ...m, texto: partirArchivo(m.texto).texto }))

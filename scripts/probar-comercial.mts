@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { partirArchivo, textoConArchivo } from "../lib/comercial/archivo.ts";
 import { pideUbicacion, sedesParaVideo } from "../lib/comercial/video-sede.ts";
 import { esClicDeAnuncio, esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA, sinBienvenidaRepetida } from "../lib/comercial/bienvenida.ts";
-import { MENSAJE_ASESOR, mensajeNaturalLucia } from "../lib/comercial/voz.ts";
+import { MENSAJE_ASESOR, mensajeNaturalLucia, mensajeSiSeRepite } from "../lib/comercial/voz.ts";
 import { avisoCitaPendiente } from "../lib/comercial/avisos-cita.ts";
 import {
   ajustarMensajeDeCita,
   esDudaSuelta,
+  convieneEsperarOtroMensaje,
   esSaludoCorto,
   franjaHoraria,
   mensajeSaludoConCita,
@@ -23,8 +24,10 @@ import { entregaNueva } from "../lib/comercial/entrega.ts";
 import { decisionPiloto, numeroEnPiloto, ordenarPorReciente } from "../lib/comercial/piloto.ts";
 import { medianaMinutos } from "../lib/comercial/resultados.ts";
 import {
+  atajoBotonRetomar,
   esSolicitudNoContacto,
   horasHastaSeguimiento,
+  textoAtajoRetomar,
   textoSeguimientoLead,
   lecturaLeadConReglas,
   nombreDeWhatsApp,
@@ -292,6 +295,15 @@ assert.ok(
 assert.equal(esSaludoCorto("hola"), true);
 assert.equal(esSaludoCorto("Hola!"), true);
 assert.equal(esSaludoCorto("¿cómo le fue?"), false);
+assert.equal(convieneEsperarOtroMensaje("hola"), true);
+assert.equal(convieneEsperarOtroMensaje("ok"), true);
+assert.equal(convieneEsperarOtroMensaje("Sí, quiero agendar"), false);
+assert.equal(atajoBotonRetomar("Sí, quiero agendar"), "agendar");
+assert.equal(atajoBotonRetomar("Ver carros disponibles"), "ver_carros");
+assert.equal(atajoBotonRetomar("No recibir mensajes"), "no_contactar");
+assert.equal(atajoBotonRetomar("¿Cuánto es la letra?"), null);
+assert.ok(textoAtajoRetomar("agendar").includes("Juan Díaz"));
+assert.ok(mensajeSiSeRepite().includes("Chorrera"));
 assert.equal(franjaHoraria("Por la mañana estaria bien"), "manana");
 assert.equal(franjaHoraria("Mañana a las 12"), null);
 assert.equal(domingoPascua(2026), "2026-04-05");

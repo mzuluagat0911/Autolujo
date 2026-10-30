@@ -455,6 +455,11 @@ function conSaludo(texto: string, cliente: string): string {
   return `${saludo} ${texto}`;
 }
 
+/** Si el modelo iba a repetir el mensaje anterior, no se vuelve a llamar: se empuja la visita. */
+export function mensajeSiSeRepite(): string {
+  return "¿Juan Díaz o La Chorrera le queda mejor? Si ya tiene día, se lo dejo.";
+}
+
 /** Lo que sale a WhatsApp. Lucía no se presenta como sistema ni repite al cliente. */
 export function mensajeNaturalLucia(
   mensaje: string,

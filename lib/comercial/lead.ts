@@ -63,6 +63,28 @@ export function esSolicitudNoContacto(textos: string[]): boolean {
   return NEGATIVO.test(textos.join("\n").slice(-5000));
 }
 
+export type AtajoRetomar = "agendar" | "ver_carros" | "no_contactar";
+
+/** Botones de `retomar_venta`. Van por texto fijo, sin modelo. */
+export function atajoBotonRetomar(texto: string): AtajoRetomar | null {
+  const t = planoLead(texto);
+  if (!t) return null;
+  if (t === "si quiero agendar") return "agendar";
+  if (t === "ver carros disponibles" || t === "ver carros") return "ver_carros";
+  if (t === "no recibir mensajes") return "no_contactar";
+  return null;
+}
+
+export function textoAtajoRetomar(atajo: AtajoRetomar): string {
+  if (atajo === "agendar") {
+    return "¿Le queda mejor Juan Díaz o La Chorrera? Si ya tiene día, se lo dejo.";
+  }
+  if (atajo === "ver_carros") {
+    return "Tenemos Hyundai Grand i10 desde 2020 y Kia Soluto desde 2024. Letras desde $25. ¿Cuál le llama más?";
+  }
+  return "Listo, no le escribo más. Si cambia de opinión, aquí estamos.";
+}
+
 /** Solo lo que escribió la persona. Lo que mandó Lucía no sube ni baja el interés. */
 export function textosDelCliente(historial: { direccion: "in" | "out"; texto: string }[]): string[] {
   return historial.filter((m) => m.direccion === "in").map((m) => m.texto);

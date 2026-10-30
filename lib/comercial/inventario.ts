@@ -13,7 +13,13 @@ function letraDe(contratos: ContratoMini[]): number | null {
   return letra == null ? null : Number(letra);
 }
 
+let inventarioMemo: { at: number; texto: string } | null = null;
+const INVENTARIO_TTL_MS = 90_000;
+
 export async function textoInventario(): Promise<string> {
+  if (inventarioMemo && Date.now() - inventarioMemo.at < INVENTARIO_TTL_MS) {
+    return inventarioMemo.texto;
+  }
   const sb = createServerSupabase();
   const { data, error } = await sb
     .from("vehiculos")
@@ -28,20 +34,20 @@ export async function textoInventario(): Promise<string> {
     anio: number | null;
     contratos: ContratoMini[] | null;
   }[];
-  if (filas.length === 0) {
-    return "DISPONIBLES: ahora no hay carros por entregar. No inventes uno. Invítalo a la visita y dile que la disponibilidad se confirma ahí.";
-  }
-  const lineas = filas.map((v) => {
-    const nombre = [v.marca, v.modelo].filter(Boolean).join(" ") || "sedán";
-    const anio = v.anio ?? "año por confirmar";
-    const letra = letraDe(v.contratos ?? []);
-    const precio = letra != null ? `letra $${Math.round(letra)}` : "letra según el carro, entre $25 y $35";
-    return `- ${v.numero}: ${nombre} ${anio}, ${precio}`;
-  });
-  return [
-    "DISPONIBLES (estado por entregar; solo estos se pueden ofrecer):",
-    ...lineas,
-    "Si preguntan por otro modelo que no está en esta lista, no lo ofrezcas: dile que está sujeto a lo que haya en sede.",
-    "Todavía no hay fotos cargadas. No prometas ni describas una foto.",
-  ].join("\n");
+  const texto = filas.length === 0
+    ? "DISPONIBLES: ahora no hay carros por entregar. No inventes uno. Invítalo a la visita y dile que la disponibilidad se confirma ahí."
+    : [
+      "DISPONIBLES (estado por entregar; solo estos se pueden ofrecer):",
+      ...filas.map((v) => {
+        const nombre = [v.marca, v.modelo].filter(Boolean).join(" ") || "sedán";
+        const anio = v.anio ?? "año por confirmar";
+        const letra = letraDe(v.contratos ?? []);
+        const precio = letra != null ? `letra $${Math.round(letra)}` : "letra según el carro, entre $25 y $35";
+        return `- ${v.numero}: ${nombre} ${anio}, ${precio}`;
+      }),
+      "Si preguntan por otro modelo que no está en esta lista, no lo ofrezcas: dile que está sujeto a lo que haya en sede.",
+      "Todavía no hay fotos cargadas. No prometas ni describas una foto.",
+    ].join("\n");
+  inventarioMemo = { at: Date.now(), texto };
+  return texto;
 }

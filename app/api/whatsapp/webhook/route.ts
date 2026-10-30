@@ -32,10 +32,11 @@ import { hablaDeChoque, reportarChoqueDesdeChat } from "@/lib/seguros/datos";
 import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoConArchivo } from "@/lib/comercial/archivo";
 import { esClicDeAnuncio, esSaludoDeClienteNuevo, MENSAJE_BIENVENIDA, sinBienvenidaRepetida } from "@/lib/comercial/bienvenida";
-import { MENSAJE_ASESOR, mensajeNaturalLucia } from "@/lib/comercial/voz";
+import { MENSAJE_ASESOR, mensajeNaturalLucia, mensajeSiSeRepite } from "@/lib/comercial/voz";
 import {
   ajustarMensajeDeCita,
   clienteHablaDeOtraCosa,
+  convieneEsperarOtroMensaje,
   esSaludoCorto,
   mensajeSaludoConCita,
   preguntaPorElDiaDeLaCita,
@@ -49,11 +50,13 @@ import { sedePorId, textoSedes } from "@/lib/comercial/sedes";
 import { aplicarPedidoCita, citaAbierta } from "@/lib/comercial/citas";
 import { enviarVideoSede, pideUbicacion, sedesParaVideo } from "@/lib/comercial/video-sede";
 import {
+  atajoBotonRetomar,
   esSolicitudNoContacto,
   lecturaLeadConReglas,
   MOTIVO_PIDIO_ASESOR,
   nombreDeWhatsApp,
   pideAsesorHumano,
+  textoAtajoRetomar,
   textosDelCliente,
 } from "@/lib/comercial/lead";
 import { fechaConDia, hoyPanama, horaPanama, fueraHorarioOperativo, sumarDias } from "@/lib/cartera/fecha";
@@ -284,8 +287,23 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
   if (guardado.conversacionId && !(await retomarCadencia(guardado.conversacionId))) return;
   const decision = decisionPiloto(from);
   if (!decision.responde) return;
-  await new Promise((resolver) => setTimeout(resolver, 2000));
-  if (guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))) {
+  const atajo = atajoBotonRetomar(texto);
+  if (!atajo && convieneEsperarOtroMensaje(texto)) {
+    await new Promise((resolver) => setTimeout(resolver, 2000));
+    if (guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null))) {
+      return;
+    }
+  }
+  if (atajo) {
+    if (!(guardado.conversacionId && (await entradaFueSuperada(guardado.conversacionId, msg.id ?? null)))) {
+      await responderAtajoComercial({
+        from,
+        conversacionId: guardado.conversacionId,
+        atajo,
+        envia: decision.envia,
+        marca: msg.id ?? "",
+      });
+    }
     return;
   }
 
@@ -460,18 +478,7 @@ async function atenderTextoComercial(msg: WhatsAppMessage, texto: string, nota?:
       }
     }
     if (guardado.conversacionId && (await salidaRecienteIgual(guardado.conversacionId, salida))) {
-      const otra = await responderComercial({
-        historial: historial.length > 0 ? historial : [{ direccion: "in", texto: ultimo }],
-        contexto: `${contexto}\nNO copies tu último mensaje. El cliente acaba de escribir: "${ultimo}". Contesta ESO con un dato que todavía no le hayas dado. Si preguntó los años del contrato, di las cuotas y cuántos años son.`,
-      });
-      salida = sinBienvenidaRepetida(
-        ajustarMensajeDeCita(mensajeNaturalLucia(otra.mensaje, ultimo, voz), {
-          hoy: hoyPanama(),
-          fechaCita: citaPrevia?.fecha ?? null,
-          cliente: ultimo,
-        }),
-        historial,
-      );
+      salida = mensajeSiSeRepite();
       if (await salidaRecienteIgual(guardado.conversacionId, salida)) return;
     }
     const enviado = await enviarComercial(from, salida);
@@ -760,6 +767,44 @@ async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMes
     }
   }
   return partes.filter(Boolean).join("\n");
+}
+
+async function responderAtajoComercial(opts: {
+  from: string;
+  conversacionId: string | null;
+  atajo: NonNullable<ReturnType<typeof atajoBotonRetomar>>;
+  envia: boolean;
+  marca: string;
+}): Promise<void> {
+  const salida = textoAtajoRetomar(opts.atajo);
+  let turnoMio = false;
+  try {
+    if (opts.conversacionId && opts.marca) {
+      const turno = await reclamarTurnoLucia(opts.conversacionId, opts.marca);
+      if (turno === "ocupado") return;
+      if (turno === "mio") turnoMio = true;
+    }
+    if (opts.conversacionId && (await salidaRecienteIgual(opts.conversacionId, salida))) return;
+    await entregarRespuestaComercial(opts.from, opts.conversacionId, salida, opts.envia);
+    if (!opts.conversacionId) return;
+    if (opts.atajo === "no_contactar") {
+      await cerrarLeadSinContacto(opts.conversacionId);
+      return;
+    }
+    await guardarAnalisisComercial({
+      conversacionId: opts.conversacionId,
+      temperatura: opts.atajo === "agendar" ? "caliente" : "tibio",
+      score: opts.atajo === "agendar" ? 80 : 45,
+      motivo: opts.atajo === "agendar" ? "Pidió agendar desde la plantilla." : "Pidió ver carros desde la plantilla.",
+      resumen: opts.atajo === "agendar" ? "Quiere cita. Falta sede o día." : "Pidió ver carros. Falta modelo y sede.",
+      interes: null,
+      lugar: null,
+      proximaAccion: opts.atajo === "agendar" ? "Pedir sede y día." : "Confirmar carro y sede.",
+    });
+    await programarSiguienteSeguimiento(opts.conversacionId, opts.atajo === "agendar" ? "caliente" : "tibio");
+  } finally {
+    if (opts.conversacionId && turnoMio) await soltarTurnoLucia(opts.conversacionId, opts.marca);
+  }
 }
 
 /** Manda un texto DESDE el número comercial (no el de cartera). */
