@@ -276,6 +276,35 @@ export function cuotasAtraso(e: {
   return atrasadas + (debeLetraHoy ? 1 : 0);
 }
 
+/**
+ * Cuotas por delante: crédito de letra, o un pago con fecha > hoy.
+ * Un pago fechado a futuro (acuerdo del domingo, Excel) NO adelanta letras
+ * si todavía hay que cobrar hoy. KW 104: $71 el 1 nov no tapa $88.95 de cuenta.
+ */
+export function diasAdelantadosDe(opts: {
+  letra: number;
+  saldoVista: number;
+  domingoSaldo: number;
+  faltaHoy: number;
+  cuenta: number;
+  hoy: string;
+  diasPagoFuturo: number;
+}): { dias: number; hastaCredito: string | null } {
+  const reservadoDomingo = esDomingo(opts.hoy) ? 0 : Math.max(Number(opts.domingoSaldo) || 0, 0);
+  const netoConHoy =
+    (Number(opts.saldoVista) || 0) - reservadoDomingo + (Number(opts.faltaHoy) || 0);
+  const credito = Math.max(-netoConHoy, 0);
+  const letra = Number(opts.letra) || 0;
+  const diasPorCredito = letra > 0 ? Math.floor(credito / letra) : 0;
+  const diasPorPagoFuturo = Math.max(0, Math.floor(Number(opts.diasPagoFuturo) || 0));
+  const sigueDebiendo = (Number(opts.cuenta) || 0) > 0.009;
+  const dias = sigueDebiendo ? diasPorCredito : Math.max(diasPorCredito, diasPorPagoFuturo);
+  return {
+    dias,
+    hastaCredito: diasPorCredito > 0 ? sumarDias(opts.hoy, diasPorCredito) : null,
+  };
+}
+
 /** ¿Ya tiene al menos 1 cuota pagada por delante del día operativo? */
 export function esAdelantado(e: { diasAdelantados: number }): boolean {
   return (Number(e.diasAdelantados) || 0) >= 1;
@@ -397,13 +426,18 @@ function armar(
   const emp = c.vehiculo?.empresa ?? null;
 
   // Crédito de LETRA (el domingo reservado no cuenta como adelanto).
-  const reservadoDomingo = esDomingo(extra.hoy) ? 0 : cifras.domingoSaldo;
-  const netoConHoy = cifras.saldoVista - reservadoDomingo + cifras.faltaHoy;
-  const credito = Math.max(-netoConHoy, 0);
-  const diasPorCredito = cifras.letra > 0 ? Math.floor(credito / cifras.letra) : 0;
-  const diasPorPagoFuturo = Math.max(0, Math.floor(Number(extra.diasPagoFuturo) || 0));
-  const diasAdelantados = Math.max(diasPorCredito, diasPorPagoFuturo);
-  const hastaCredito = diasPorCredito > 0 ? sumarDias(extra.hoy, diasPorCredito) : null;
+  // Un pago con fecha futura no adelanta si todavía hay cuenta que cobrar hoy.
+  const adelanto = diasAdelantadosDe({
+    letra: cifras.letra,
+    saldoVista: cifras.saldoVista,
+    domingoSaldo: cifras.domingoSaldo,
+    faltaHoy: cifras.faltaHoy,
+    cuenta: cifras.cuenta,
+    hoy: extra.hoy,
+    diasPagoFuturo: extra.diasPagoFuturo ?? 0,
+  });
+  const diasAdelantados = adelanto.dias;
+  const hastaCredito = adelanto.hastaCredito;
   const hastaPago = extra.cubiertoHastaPago ?? null;
   // La fecha “cubierto hasta” debe coincidir con las cuotas por delante:
   // max(crédito, última fecha de pago futuro) o hoy+N.
@@ -1156,7 +1190,8 @@ async function domingoPorContrato(
 
 /** Pagos con fecha > hoy → cuotas adelantadas (cierre del día = 00:00).
  *  Mandan las fechas etiquetadas del pago (col. del día / Excel). El monto
- *  puede incluir multa/acuerdo y NO debe inflar días (ej. G23 $90 = 1 día). */
+ *  puede incluir multa/acuerdo y NO debe inflar días (ej. G23 $90 = 1 día).
+ *  `armar` ignora estos días si todavía hay cuenta que cobrar hoy. */
 async function adelantoFuturoPorContrato(
   contratoIds: string[],
   hoy: string,

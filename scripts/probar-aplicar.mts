@@ -13,6 +13,7 @@ import {
 import type { Obligacion } from "@/lib/cartera/types";
 import { debeCobrarCierreSemana } from "@/lib/cartera/cierre-semana";
 import { cargosPendientesActivos, cubetaDeCargoAjuste } from "@/lib/cartera/cargos-ajustables";
+import { diasAdelantadosDe } from "@/lib/cartera/estado-cuenta";
 
 let fallos = 0;
 function check(nombre: string, obtenido: unknown, esperado: unknown) {
@@ -221,6 +222,47 @@ const ajuste = cargosPendientesActivos(
   ],
 );
 check("los cierres pagados salen de ajustar", ajuste.map((c) => c.id), ["mant"]);
+
+console.log("\n· Situación: pago futuro no adelanta si todavía debe");
+check(
+  "KW 104: $71 fechado domingo no adelanta con $88.95 de cuenta",
+  diasAdelantadosDe({
+    letra: 35,
+    saldoVista: 88.95,
+    domingoSaldo: 0,
+    faltaHoy: 0,
+    cuenta: 88.95,
+    hoy: "2026-10-30",
+    diasPagoFuturo: 1,
+  }).dias,
+  0,
+);
+check(
+  "al día con un pago mañana sí es 1 cuota adelantada",
+  diasAdelantadosDe({
+    letra: 35,
+    saldoVista: 0,
+    domingoSaldo: 0,
+    faltaHoy: 0,
+    cuenta: 0,
+    hoy: "2026-10-30",
+    diasPagoFuturo: 1,
+  }).dias,
+  1,
+);
+check(
+  "crédito de dos letras cuenta aunque no haya pago futuro",
+  diasAdelantadosDe({
+    letra: 35,
+    saldoVista: -70,
+    domingoSaldo: 0,
+    faltaHoy: 0,
+    cuenta: 0,
+    hoy: "2026-10-30",
+    diasPagoFuturo: 0,
+  }).dias,
+  2,
+);
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);
