@@ -65,82 +65,110 @@ export async function resumenComercial(): Promise<ResumenComercial> {
   };
   try {
     const sb = createServerSupabase();
-    const leads: Lead[] = [];
-    let conRespuesta = true;
-    for (let desde = 0; desde < 5000; desde += 1000) {
-      const base = "etapa, temperatura, anuncio, asesor_id, created_at, seguimiento_at, cerrado_at, intentos_seguimiento";
-      const columnas = conRespuesta ? `${base}, primera_respuesta_at` : base;
-      const { data, error } = await sb
-        .from("conversaciones_comercial")
-        .select(columnas)
-        .order("created_at", { ascending: false })
-        .range(desde, desde + 999);
-      if (error && conRespuesta && /primera_respuesta_at/i.test(error.message)) {
-        conRespuesta = false;
-        desde -= 1000;
-        continue;
-      }
-      if (error) {
-        const falta = /etapa|temperatura|seguimiento_at|intentos_seguimiento|schema cache/i.test(error.message);
-        return {
-          ...vacio,
-          error: falta ? "Falta aplicar la migración 0039 para ver resultados." : error.message,
-        };
-      }
-      const pagina = (data ?? []) as unknown as Lead[];
-      leads.push(...pagina);
-      if (pagina.length < 1000) break;
+    const ahoraIso = new Date().toISOString();
+    const contarLeads = async (aplicar: (q: any) => any): Promise<number | null> => {
+      const { count, error } = await aplicar(
+        sb.from("conversaciones_comercial").select("id", { count: "exact", head: true }),
+      );
+      if (error) return null;
+      return count ?? 0;
+    };
+    const abiertos = (q: any) => q.is("cerrado_at", null);
+
+    const [
+      leadsTotal,
+      conCitaN,
+      visitasN,
+      ganadosN,
+      perdidosN,
+      calientesN,
+      tibiosN,
+      friosN,
+      cad1,
+      cad2,
+      cad3,
+      vencidosN,
+    ] = await Promise.all([
+      contarLeads((q) => q),
+      contarLeads((q) => q.in("etapa", ["cita", "visito", "ganado"])),
+      contarLeads((q) => q.in("etapa", ["visito", "ganado"])),
+      contarLeads((q) => q.eq("etapa", "ganado")),
+      contarLeads((q) => q.eq("etapa", "perdido")),
+      contarLeads((q) => abiertos(q).eq("temperatura", "caliente")),
+      contarLeads((q) => abiertos(q).eq("temperatura", "tibio")),
+      contarLeads((q) => abiertos(q).eq("temperatura", "frio")),
+      contarLeads((q) => abiertos(q).eq("intentos_seguimiento", 1)),
+      contarLeads((q) => abiertos(q).eq("intentos_seguimiento", 2)),
+      contarLeads((q) => abiertos(q).eq("intentos_seguimiento", 3)),
+      contarLeads((q) => abiertos(q).lt("seguimiento_at", ahoraIso)),
+    ]);
+    if (leadsTotal == null) {
+      return { ...vacio, error: "Falta aplicar la migración 0039 para ver resultados." };
     }
 
-    const ahora = Date.now();
-    const minutos: number[] = [];
+    const nombres = new Map((await listarAsesoresComerciales()).map((a) => [a.id, a.nombre]));
     const campanas = new Map<string, FilaResultado>();
     const asesores = new Map<string, FilaResultado>();
-    const nombres = new Map((await listarAsesoresComerciales()).map((a) => [a.id, a.nombre]));
     const suma = (map: Map<string, FilaResultado>, nombre: string, campo: keyof FilaResultado) => {
       const fila = map.get(nombre) ?? { nombre, leads: 0, citas: 0, ganados: 0 };
       if (campo !== "nombre") fila[campo] += 1;
       map.set(nombre, fila);
     };
-
-    let conCita = 0;
-    let visitas = 0;
-    let ganados = 0;
-    let perdidos = 0;
-    let vencidos = 0;
-    let calientes = 0;
-    let tibios = 0;
-    let frios = 0;
-    const cadencia = { uno: 0, dos: 0, tres: 0 };
-    for (const lead of leads) {
-      const cita = lead.etapa === "cita" || lead.etapa === "visito" || lead.etapa === "ganado";
-      const visita = lead.etapa === "visito" || lead.etapa === "ganado";
-      if (cita) conCita += 1;
-      if (visita) visitas += 1;
-      if (lead.etapa === "ganado") ganados += 1;
-      if (lead.etapa === "perdido") perdidos += 1;
-      if (!lead.cerrado_at && lead.temperatura === "caliente") calientes += 1;
-      if (!lead.cerrado_at && lead.temperatura === "tibio") tibios += 1;
-      if (!lead.cerrado_at && lead.temperatura === "frio") frios += 1;
-      if (!lead.cerrado_at && lead.intentos_seguimiento === 1) cadencia.uno += 1;
-      if (!lead.cerrado_at && lead.intentos_seguimiento === 2) cadencia.dos += 1;
-      if (!lead.cerrado_at && lead.intentos_seguimiento === 3) cadencia.tres += 1;
-      if (lead.seguimiento_at && !lead.cerrado_at && new Date(lead.seguimiento_at).getTime() < ahora) vencidos += 1;
-      if (lead.primera_respuesta_at) {
-        minutos.push((new Date(lead.primera_respuesta_at).getTime() - new Date(lead.created_at).getTime()) / 60000);
+    const minutos: number[] = [];
+    for (let desde = 0; desde < 8000; desde += 1000) {
+      const { data, error } = await sb
+        .from("conversaciones_comercial")
+        .select("etapa, anuncio, asesor_id, created_at, primera_respuesta_at")
+        .order("created_at", { ascending: false })
+        .range(desde, desde + 999);
+      if (error && /primera_respuesta_at/i.test(error.message)) {
+        const retry = await sb
+          .from("conversaciones_comercial")
+          .select("etapa, anuncio, asesor_id")
+          .order("created_at", { ascending: false })
+          .range(desde, desde + 999);
+        if (retry.error) break;
+        for (const lead of (retry.data ?? []) as Lead[]) {
+          const campana = lead.anuncio?.trim() || "Sin campaña";
+          const asesor = nombres.get(lead.asesor_id ?? "") ?? "Sin asignar";
+          suma(campanas, campana, "leads");
+          suma(asesores, asesor, "leads");
+          const cita = lead.etapa === "cita" || lead.etapa === "visito" || lead.etapa === "ganado";
+          if (cita) {
+            suma(campanas, campana, "citas");
+            suma(asesores, asesor, "citas");
+          }
+          if (lead.etapa === "ganado") {
+            suma(campanas, campana, "ganados");
+            suma(asesores, asesor, "ganados");
+          }
+        }
+        if ((retry.data ?? []).length < 1000) break;
+        continue;
       }
-      const campana = lead.anuncio?.trim() || "Sin campaña";
-      const asesor = nombres.get(lead.asesor_id ?? "") ?? "Sin asignar";
-      suma(campanas, campana, "leads");
-      suma(asesores, asesor, "leads");
-      if (cita) {
-        suma(campanas, campana, "citas");
-        suma(asesores, asesor, "citas");
+      if (error) break;
+      const pagina = (data ?? []) as Lead[];
+      for (const lead of pagina) {
+        const campana = lead.anuncio?.trim() || "Sin campaña";
+        const asesor = nombres.get(lead.asesor_id ?? "") ?? "Sin asignar";
+        suma(campanas, campana, "leads");
+        suma(asesores, asesor, "leads");
+        const cita = lead.etapa === "cita" || lead.etapa === "visito" || lead.etapa === "ganado";
+        if (cita) {
+          suma(campanas, campana, "citas");
+          suma(asesores, asesor, "citas");
+        }
+        if (lead.etapa === "ganado") {
+          suma(campanas, campana, "ganados");
+          suma(asesores, asesor, "ganados");
+        }
+        if (lead.primera_respuesta_at) {
+          minutos.push(
+            (new Date(lead.primera_respuesta_at).getTime() - new Date(lead.created_at).getTime()) / 60000,
+          );
+        }
       }
-      if (lead.etapa === "ganado") {
-        suma(campanas, campana, "ganados");
-        suma(asesores, asesor, "ganados");
-      }
+      if (pagina.length < 1000) break;
     }
 
     const contar = async (estado: string) => {
@@ -178,16 +206,16 @@ export async function resumenComercial(): Promise<ResumenComercial> {
     ]);
 
     return {
-      leads: leads.length,
-      conCita,
-      visitas,
-      ganados,
-      perdidos,
-      vencidos,
-      calientes,
-      tibios,
-      frios,
-      cadencia,
+      leads: leadsTotal,
+      conCita: conCitaN ?? 0,
+      visitas: visitasN ?? 0,
+      ganados: ganadosN ?? 0,
+      perdidos: perdidosN ?? 0,
+      vencidos: vencidosN ?? 0,
+      calientes: calientesN ?? 0,
+      tibios: tibiosN ?? 0,
+      frios: friosN ?? 0,
+      cadencia: { uno: cad1 ?? 0, dos: cad2 ?? 0, tres: cad3 ?? 0 },
       avisosFallidos,
       entregas: {
         enviados: soloEnviados + entregados + leidos,

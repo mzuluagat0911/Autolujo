@@ -21,7 +21,7 @@ import {
 import { domingoPascua, esFeriadoNacional, fechaMencionada, feriadoNacional } from "../lib/comercial/feriados.ts";
 import { validarHorario } from "../lib/comercial/sedes.ts";
 import { entregaNueva } from "../lib/comercial/entrega.ts";
-import { decisionPiloto, numeroEnPiloto, ordenarPorReciente } from "../lib/comercial/piloto.ts";
+import { decisionPiloto, numeroEnPiloto, ordenarPorReciente, pasaFiltroComercial } from "../lib/comercial/piloto.ts";
 import { medianaMinutos } from "../lib/comercial/resultados.ts";
 import {
   atajoBotonRetomar,
@@ -304,6 +304,38 @@ assert.equal(atajoBotonRetomar("No recibir mensajes"), "no_contactar");
 assert.equal(atajoBotonRetomar("¿Cuánto es la letra?"), null);
 assert.ok(textoAtajoRetomar("agendar").includes("Juan Díaz"));
 assert.ok(mensajeSiSeRepite().includes("Chorrera"));
+assert.equal(
+  pasaFiltroComercial(
+    {
+      cerradoAt: null,
+      noLeidos: 0,
+      necesitaHumano: false,
+      seguimientoAt: null,
+      asesorId: null,
+      temperatura: "tibio",
+      etapa: "nuevo",
+      ultimoEntranteAt: new Date().toISOString(),
+    },
+    "hoy",
+  ),
+  true,
+);
+assert.equal(
+  pasaFiltroComercial(
+    {
+      cerradoAt: null,
+      noLeidos: 0,
+      necesitaHumano: false,
+      seguimientoAt: null,
+      asesorId: null,
+      temperatura: "tibio",
+      etapa: "nuevo",
+      ultimoEntranteAt: null,
+    },
+    "hoy",
+  ),
+  false,
+);
 assert.equal(franjaHoraria("Por la mañana estaria bien"), "manana");
 assert.equal(franjaHoraria("Mañana a las 12"), null);
 assert.equal(domingoPascua(2026), "2026-04-05");

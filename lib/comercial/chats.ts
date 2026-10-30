@@ -2,6 +2,7 @@
 
 import { parseRol } from "@/lib/equipo/modulos";
 import { createServerSupabase } from "@/lib/supabase/server";
+import { hoyPanama, rangoDiaPanama } from "@/lib/cartera/fecha";
 import { partirArchivo } from "./archivo";
 import { entregaNueva } from "./entrega";
 import { esPausaPorAsesor, horasHastaSeguimiento, nombreDeWhatsApp } from "./lead";
@@ -13,6 +14,7 @@ export type EtapaComercial = "nuevo" | "conversacion" | "cita" | "visito" | "gan
 export type TemperaturaLead = "caliente" | "tibio" | "frio";
 export type ModoAtencionComercial = "lucia" | "humano";
 export type FiltroBandejaComercial =
+  | "hoy"
   | "por_atender"
   | "mios"
   | "sin_asignar"
@@ -60,6 +62,7 @@ export type ChatComercial = {
 };
 
 export type ConteosBandejaComercial = {
+  hoy: number;
   por_atender: number;
   calientes: number;
   citas: number;
@@ -92,7 +95,7 @@ const MENSAJE_SELECT_CRM =
   "id, direccion, texto, created_at, autor, actor:equipo!mensajes_comercial_actor_id_fkey(nombre)";
 const MENSAJE_SELECT_LEGACY = "id, direccion, texto, created_at";
 const PAGE_SIZE = 50;
-const CONTEOS_VACIOS: ConteosBandejaComercial = { por_atender: 0, calientes: 0, citas: 0, mios: 0 };
+const CONTEOS_VACIOS: ConteosBandejaComercial = { hoy: 0, por_atender: 0, calientes: 0, citas: 0, mios: 0 };
 
 function tablaAusente(message: string): boolean {
   return /conversaciones_comercial|mensajes_comercial|schema cache|could not find the table/i.test(message);
@@ -130,8 +133,12 @@ export async function listarChatsComercial(opts: {
       .order("id", { ascending: false })
       .limit(limite + 1);
 
-    const filtro = opts.filtro ?? "por_atender";
-    if (filtro === "por_atender") {
+    const filtro = opts.filtro ?? "hoy";
+    if (filtro === "hoy") {
+      query = query
+        .is("cerrado_at", null)
+        .gte("ultimo_entrante_at", rangoDiaPanama(hoyPanama()).desde.toISOString());
+    } else if (filtro === "por_atender") {
       query = query
         .is("cerrado_at", null)
         .or(`no_leidos.gt.0,necesita_humano.eq.true,seguimiento_at.lte.${new Date().toISOString()}`);
@@ -228,15 +235,18 @@ export async function contarFiltrosComercial(
   try {
     const sb = createServerSupabase();
     const ahora = new Date().toISOString();
+    const inicioHoy = rangoDiaPanama(hoyPanama()).desde.toISOString();
     const abiertos = () =>
       sb.from("conversaciones_comercial").select("id", { count: "exact", head: true }).is("cerrado_at", null);
-    const [porAtender, calientes, citas, mios] = await Promise.all([
+    const [hoy, porAtender, calientes, citas, mios] = await Promise.all([
+      abiertos().gte("ultimo_entrante_at", inicioHoy),
       abiertos().or(`no_leidos.gt.0,necesita_humano.eq.true,seguimiento_at.lte.${ahora}`),
       abiertos().eq("temperatura", "caliente"),
       abiertos().eq("etapa", "cita"),
       asesorId ? abiertos().eq("asesor_id", asesorId) : Promise.resolve({ count: 0 }),
     ]);
     return {
+      hoy: hoy.count ?? 0,
       por_atender: porAtender.count ?? 0,
       calientes: calientes.count ?? 0,
       citas: citas.count ?? 0,
@@ -281,13 +291,14 @@ async function anexarCitas(
 export async function cambiosChatsComercial(desde: string): Promise<ChatComercial[]> {
   const fecha = new Date(desde);
   if (Number.isNaN(fecha.getTime())) return [];
+  const corte = fecha.toISOString();
   const sb = createServerSupabase();
   const { data, error } = await sb
     .from("conversaciones_comercial")
     .select(CHAT_SELECT_CRM)
-    .gt("updated_at", fecha.toISOString())
+    .or(`ultimo_entrante_at.gt.${corte},and(necesita_humano.eq.true,updated_at.gt.${corte}),and(modo_atencion.eq.humano,updated_at.gt.${corte})`)
     .order("updated_at", { ascending: true })
-    .limit(100);
+    .limit(40);
   if (error) return [];
   return anexarCitas(sb, ((data ?? []) as Record<string, unknown>[]).map(filaChat));
 }

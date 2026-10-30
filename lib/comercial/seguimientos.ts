@@ -50,7 +50,7 @@ export async function ejecutarSeguimientosComercial(): Promise<{
     .eq("estado", "pendiente")
     .lte("programado_at", ahora)
     .order("programado_at", { ascending: true })
-    .limit(25);
+    .limit(40);
   if (error || !data?.length) return { enviados: 0, cancelados: 0, archivados: 0, fallidos: error ? 1 : 0 };
 
   const seguimientos = data as Seguimiento[];

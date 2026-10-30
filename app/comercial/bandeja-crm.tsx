@@ -41,6 +41,7 @@ import {
 } from "./actions";
 
 const FILTROS_MAIN: { value: FiltroBandejaComercial; label: string; conteo?: keyof ConteosBandejaComercial }[] = [
+  { value: "hoy", label: "Hoy", conteo: "hoy" },
   { value: "por_atender", label: "Por atender", conteo: "por_atender" },
   { value: "calientes", label: "Calientes", conteo: "calientes" },
   { value: "citas", label: "Con cita", conteo: "citas" },
@@ -196,7 +197,7 @@ export function BandejaCrmComercial({
   const [chats, setChats] = useState(inicial);
   const [error, setError] = useState(errorInicial);
   const [cursor, setCursor] = useState(cursorInicial);
-  const [filtro, setFiltro] = useState<FiltroBandejaComercial>("por_atender");
+  const [filtro, setFiltro] = useState<FiltroBandejaComercial>("hoy");
   const [buscar, setBuscar] = useState("");
   const [conteos, setConteos] = useState(conteosIniciales);
   const buscarDiferido = useDeferredValue(buscar);
@@ -616,7 +617,7 @@ export function BandejaCrmComercial({
                 );
               })}
               {masActivo && (
-                <FilterChip active onClick={() => setFiltro("por_atender")}>
+                <FilterChip active onClick={() => setFiltro("hoy")}>
                   {masActivo.label}
                 </FilterChip>
               )}

@@ -43,6 +43,16 @@ export function resumenPiloto(): { etiqueta: string } {
 }
 
 /** El poll no debe colar un chat que no pertenece al filtro activo. */
+function inicioHoyPanamaMs(): number {
+  const hoy = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Panama",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+  return new Date(`${hoy}T00:00:00-05:00`).getTime();
+}
+
 export function pasaFiltroComercial(
   c: {
     cerradoAt: string | null;
@@ -52,6 +62,7 @@ export function pasaFiltroComercial(
     asesorId: string | null;
     temperatura: string;
     etapa: string;
+    ultimoEntranteAt?: string | null;
   },
   filtro: string,
   asesorId?: string | null,
@@ -59,6 +70,10 @@ export function pasaFiltroComercial(
   const cerrado = Boolean(c.cerradoAt);
   if (filtro === "cerrados") return cerrado;
   if (cerrado && filtro !== "todos") return false;
+  if (filtro === "hoy") {
+    const t = c.ultimoEntranteAt ? Date.parse(c.ultimoEntranteAt) : NaN;
+    return Number.isFinite(t) && t >= inicioHoyPanamaMs();
+  }
   if (filtro === "mios") return Boolean(asesorId) && c.asesorId === asesorId;
   if (filtro === "sin_asignar") return !c.asesorId;
   if (filtro === "calientes") return c.temperatura === "caliente";
