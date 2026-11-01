@@ -28,8 +28,9 @@ async function getData() {
         .select(
           "id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, origen, contrato_id, comprobante_url, notas, created_at, rubro, destino_interior, contrato:contratos(id, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo)))",
         )
+        .eq("estado_conciliacion", "pendiente")
         .order("created_at", { ascending: false })
-        .limit(100),
+        .limit(400),
       sb
         .from("contratos")
         .select("id, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo))")
@@ -45,8 +46,9 @@ async function getData() {
         .select(
           "id, fecha, monto, banco, referencia, numero_carro, estado_conciliacion, origen, contrato_id, comprobante_url, notas, created_at",
         )
+        .eq("estado_conciliacion", "pendiente")
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(400);
       if (retry.error) throw retry.error;
       rows = retry.data as typeof pagosRes.data;
       error = null;
