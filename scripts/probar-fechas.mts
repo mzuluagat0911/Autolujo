@@ -142,6 +142,18 @@ check("y no inventa cuota encima del balde", domConBalde.faltaHoy, 0);
 check("desglose nombra domingo $30", domConBalde.lineas.some((l) => l.concepto === "domingo" && l.monto === 30), true);
 check("resto del balde queda pendiente $60", domConBalde.lineas.some((l) => l.concepto === "domingo (pendiente)" && l.monto === 60), true);
 
+const domPotFuturo = calcularCifras(base({
+  hoy: "2026-11-01",
+  terminos: { letra_diaria: 30, descuento_puntual: 0, cobra_domingo: true, cuota_domingo: 30 },
+  saldo: 90,
+  domingoEnSaldo: 90,
+  domingoAlCorte: 0,
+  hoyYaDevengado: false,
+  sinDevengoRenta: true,
+}));
+check("domingo con pot del próximo domingo: al día $0", domPotFuturo.totalHoy, 0);
+check("domingo con pot futuro: no cobra tajada hoy", domPotFuturo.lineas.some((l) => l.concepto === "domingo" && l.monto === 30), false);
+
 const letraDom = calcularCifras(base({
   hoy: "2026-10-11",
   terminos: letraDomingo,
@@ -305,6 +317,28 @@ const armDomingoSinAcuerdo = armarExtractoDiario(fakeDomingoAcuerdo, {
 check(
   "domingo sin acuerdo: la tajada sigue en el total",
   armDomingoSinAcuerdo.lineas.some((l) => l.etiqueta === "domingo" && l.monto === 30 && !l.aviso),
+  true,
+);
+
+const fakeDomPotFuturo = {
+  ...domPotFuturo,
+  cobraDomingo: true,
+  cuotaDomingo: 30,
+  faltaAcuerdo: 0,
+  acuerdoHoy: 0,
+  domingoAlCorte: 0,
+  hoyIso: "2026-11-01",
+} as unknown as EstadoCuenta;
+const armDomPotFuturo = armarExtractoDiario(fakeDomPotFuturo, {
+  acuerdoSaldo: 0,
+  extras: [{ etiqueta: "domingo", monto: 90 }],
+  hoy: "2026-11-01",
+});
+check("extracto domingo con pot futuro: no cobra $30 de cuenta", armDomPotFuturo.totalCobrarHoy, 0);
+check(
+  "extracto domingo con pot futuro: el pot es aviso",
+  armDomPotFuturo.lineas.some((l) => l.aviso && /domingo pendiente: \$90/.test(l.etiqueta)) &&
+    !armDomPotFuturo.lineas.some((l) => l.etiqueta === "cuenta"),
   true,
 );
 

@@ -198,9 +198,11 @@ export function armarExtractoDiario(
   // Solo descontar lo embebido en pendienteAnterior (anti-duplicado real).
   cuenta = Math.max(cuenta - embebidosSum, 0);
 
-  // Domingo: la tajada sale de la cuenta. Si el acuerdo la pausa, no se cobra.
-  if (hoyEsDomingo && tajada > 0.009 && !letraEnDomingo) {
-    cuenta = Math.max(cuenta - tajada, 0);
+  // Domingo: no se abre letra nueva. "cuenta" es solo atraso de letra.
+  // La tajada va en la línea domingo. Un pot fechado para el próximo domingo
+  // no se disfraza de cuenta (KW 176).
+  if (hoyEsDomingo && !letraEnDomingo) {
+    cuenta = Math.max(pa - embebidosSum, 0);
   }
 
   const lineasBase: LineaExtracto[] = [];

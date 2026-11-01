@@ -129,21 +129,28 @@ export async function contratosQueCubrieronElDia(fecha: string): Promise<Set<str
  * No bajan el saldo, pero sí congelan el recargo: el cliente ya mandó el
  * dinero y que nadie lo haya conciliado todavía es problema nuestro, no suyo.
  */
-export async function contratosConComprobantePendienteEnDia(fecha: string): Promise<Set<string>> {
+export async function montosComprobantePendienteEnDia(
+  fecha: string,
+): Promise<Map<string, number>> {
   const sb = createServerSupabase();
   const { desde, hasta } = rangoDiaPanama(fecha);
   const { data } = await sb
     .from("pagos")
-    .select("contrato_id")
+    .select("contrato_id, monto")
     .eq("estado_conciliacion", "pendiente")
     .not("contrato_id", "is", null)
     .gte("pagado_at", desde.toISOString())
     .lt("pagado_at", hasta.toISOString());
-  return new Set(
-    ((data ?? []) as { contrato_id: string | null }[])
-      .map((p) => p.contrato_id)
-      .filter((id): id is string => Boolean(id)),
-  );
+  const out = new Map<string, number>();
+  for (const p of (data ?? []) as { contrato_id: string | null; monto: number | null }[]) {
+    if (!p.contrato_id) continue;
+    out.set(p.contrato_id, Math.round(((out.get(p.contrato_id) ?? 0) + Number(p.monto ?? 0)) * 100) / 100);
+  }
+  return out;
+}
+
+export async function contratosConComprobantePendienteEnDia(fecha: string): Promise<Set<string>> {
+  return new Set((await montosComprobantePendienteEnDia(fecha)).keys());
 }
 
 /** Para un solo contrato: ¿mandó comprobante ese día y sigue sin validarse? */

@@ -92,6 +92,11 @@ export type EntradaCifras = {
    * dentro del saldo. La letra de hoy no se reserva dentro de ese monto.
    */
   cargosExtraEnSaldo?: number;
+  /**
+   * Balde DOMINGOS con fecha hasta el domingo de esta semana.
+   * Lo fechado después es el próximo domingo: aviso, no tajada de hoy.
+   */
+  domingoAlCorte?: number;
 };
 
 /**
@@ -168,8 +173,14 @@ export function calcularCifras(e: EntradaCifras): Cifras {
   // Letra diaria el domingo (sin cuota de domingo): se cobra como un día de semana.
   if (hoyEsDomingo && !letraDiariaEnDomingo(e.terminos)) {
     // Una sola tajada por domingo. Lo ya pagado hoy a ese concepto no abre otra.
+    // El pot fechado para un domingo futuro no se cobra hoy (KW 176: alta el
+    // domingo, Domingos 3×$30 con fecha el próximo).
+    const bucketHoy =
+      typeof e.domingoAlCorte === "number"
+        ? Math.min(Math.max(e.domingoAlCorte, 0), domingoEnSaldo)
+        : domingoEnSaldo;
     const tajada = tajadaDomingoQueFalta({
-      bucketNeto: domingoEnSaldo,
+      bucketNeto: bucketHoy,
       pagadoHoy: pagadoDomingoHoy,
       cuota: cuotaHoy,
     });
