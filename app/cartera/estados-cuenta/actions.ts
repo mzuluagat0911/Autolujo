@@ -495,7 +495,7 @@ export async function cargarHistorialPagos(
   }
 }
 
-export type ResultadoEditarPago = { ok: boolean; msg: string };
+export type ResultadoEditarPago = { ok: boolean; msg: string; pagoId?: string };
 
 const ESTADOS_PAGO = new Set(["conciliado", "manual", "pendiente", "rechazado"]);
 const METODOS_PAGO = new Set(["transferencia", "efectivo", "tarjeta"]);
@@ -867,7 +867,7 @@ export async function agregarPagoHistorial(
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
   await invalidarLecturaEstados(contratoId);
-  return { ok: true, msg: "Pago agregado y aplicado." };
+  return { ok: true, msg: "Pago agregado y aplicado.", pagoId };
 }
 
 /** Elimina un pago del historial (revierte acuerdos y borra la fila). */

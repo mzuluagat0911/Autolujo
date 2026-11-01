@@ -359,6 +359,9 @@ function FormAgregarPago({
             setErr(res.msg);
             return;
           }
+          if (res.pagoId) {
+            window.open(`/cartera/pagos/${res.pagoId}/recibo?imprimir=1`, "_blank", "noopener,noreferrer");
+          }
           onSaved(res.msg);
         });
       }}
@@ -369,7 +372,7 @@ function FormAgregarPago({
       </p>
       <p className="text-xs text-muted">
         Úsalo si el cliente pagó un día y no quedó registrado. Se aplica al instante con el
-        waterfall del agente.
+        waterfall del agente y abre el recibo de caja para imprimir.
       </p>
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
         <Field label="Monto" name="monto" type="number" step="0.01" min="0.01" required />
@@ -603,7 +606,19 @@ export function HistorialPagosSeccion({
                               : ""}
                         </p>
                       </button>
-                      <Money amount={p.monto} className="shrink-0 text-sm font-semibold text-ink" />
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <Money amount={p.monto} className="text-sm font-semibold text-ink" />
+                        {(p.estado === "conciliado" || p.estado === "manual") && (
+                          <a
+                            href={`/cartera/pagos/${p.id}/recibo?imprimir=1`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[11px] font-medium text-ink underline-offset-2 hover:underline"
+                          >
+                            Imprimir recibo
+                          </a>
+                        )}
+                      </div>
                     </div>
 
                     {abiertoAhora && !editando && !asignando && (
@@ -649,6 +664,16 @@ export function HistorialPagosSeccion({
                         )}
 
                         <div className="flex flex-wrap gap-2">
+                          {(p.estado === "conciliado" || p.estado === "manual") && (
+                            <a
+                              href={`/cartera/pagos/${p.id}/recibo?imprimir=1`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-lg bg-ink px-3 py-1.5 text-xs font-medium text-white hover:bg-black"
+                            >
+                              Imprimir recibo
+                            </a>
+                          )}
                           <button
                             type="button"
                             onClick={() => setModo("editar")}
