@@ -71,6 +71,60 @@ export function esFeriadoNacional(fecha: string): boolean {
   return feriadoNacional(fecha) != null;
 }
 
+/** Cómo abre el área comercial ese día. Manda sobre la regla genérica de feriado. */
+export type JornadaOperativa =
+  | { tipo: "habitual" }
+  | { tipo: "media" }
+  | { tipo: "cerrado" }
+  | { tipo: "sabado_confirmar" };
+
+/** Noviembre 2026: calendario que pasó el equipo, no el feriado de ley. */
+const OPERATIVA: Record<string, JornadaOperativa> = {
+  "2026-11-03": { tipo: "media" },
+  "2026-11-04": { tipo: "habitual" },
+  "2026-11-05": { tipo: "cerrado" },
+  "2026-11-10": { tipo: "media" },
+  "2026-11-28": { tipo: "sabado_confirmar" },
+};
+
+export function jornadaOperativa(fecha: string): JornadaOperativa | null {
+  return OPERATIVA[fecha] ?? null;
+}
+
+/** Bloque para el contexto de Lucía mientras rige este noviembre. */
+export function textoNoviembre2026(hoy: string): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(hoy) || hoy > "2026-11-28") return null;
+  return [
+    "NOVIEMBRE 2026 (manda sobre la regla genérica de feriado):",
+    "- Lunes 2: jornada habitual (8:00 a 4:00 entre semana).",
+    "- Martes 3: 8:00 a.m. a 12:00 m., medio equipo, Juan Díaz y La Chorrera. No agendes tarde.",
+    "- Miércoles 4: jornada habitual, aunque sea Día de la Bandera. Las dos sedes 8:00 a 4:00.",
+    "- Jueves 5: CERRADO por descanso obligatorio. No agendes. Ofrece el 4 o el 6.",
+    "- Martes 10: 8:00 a.m. a 12:00 m., medio equipo, las dos sedes. No agendes tarde.",
+    "- Sábado 28: Independencia de España. Por ahora se agenda como sábado (8 a 12, las dos sedes). Aún se confirma si se labora; no lo cierres.",
+  ].join("\n");
+}
+
+/** Línea de HOY para el contexto. null si no hay nada especial. */
+export function textoJornadaHoy(fecha: string): string | null {
+  const op = jornadaOperativa(fecha);
+  const nombre = feriadoNacional(fecha);
+  if (!op) {
+    if (!nombre) return null;
+    return `HOY ES FERIADO (${nombre}). Juan Díaz 8:00 a 12:00. La Chorrera no se agenda.`;
+  }
+  if (op.tipo === "cerrado") {
+    return `HOY CERRADO por descanso obligatorio${nombre ? ` (${nombre})` : ""}. No agendes. Ofrece el hábil anterior o el siguiente.`;
+  }
+  if (op.tipo === "media") {
+    return `HOY ${nombre ? `es feriado (${nombre}). ` : ""}Comercial atiende 8:00 a.m. a 12:00 m. en Juan Díaz y La Chorrera, medio equipo. No agendes tarde.`;
+  }
+  if (op.tipo === "habitual") {
+    return `HOY ${nombre ? `es ${nombre}, pero ` : ""}comercial trabaja jornada habitual. Las dos sedes 8:00 a.m. a 4:00 p.m.`;
+  }
+  return `HOY ${nombre ? `es ${nombre}. ` : ""}Por ahora se agenda como sábado, 8:00 a.m. a 12:00 m. en las dos sedes. Aún se confirma si se labora.`;
+}
+
 /** "10 de noviembre", "10 nov", "2026-11-10". Si el día ya pasó, usa el año siguiente. */
 export function fechaMencionada(texto: string, hoy: string): string | null {
   const t = plano(texto);
@@ -94,7 +148,21 @@ export function preguntaSiAbreFeriado(texto: string): boolean {
 }
 
 export function textoFeriado(fecha?: string | null): string {
+  const op = fecha ? jornadaOperativa(fecha) : null;
   const nombre = fecha ? feriadoNacional(fecha) : null;
+  const etiqueta = nombre ? ` (${nombre})` : "";
+  if (op?.tipo === "cerrado") {
+    return `Ese día está cerrado por descanso obligatorio${etiqueta}. ¿Le sirve el hábil anterior o el siguiente?`;
+  }
+  if (op?.tipo === "media") {
+    return `Ese día es feriado${etiqueta}. El área comercial atiende de 8:00 a.m. a 12:00 m. en Juan Díaz y La Chorrera, con medio equipo. ¿Le sirve esa mañana?`;
+  }
+  if (op?.tipo === "habitual") {
+    return `Ese día${etiqueta ? ` es ${nombre}` : " es feriado"}, pero comercial trabaja jornada habitual. Juan Díaz y La Chorrera de 8:00 a.m. a 4:00 p.m. ¿A qué hora le queda?`;
+  }
+  if (op?.tipo === "sabado_confirmar") {
+    return `Ese sábado es feriado${etiqueta}. Por ahora se agenda de 8:00 a.m. a 12:00 m. en las dos sedes, como un sábado. Si cambia, le avisamos. ¿Le sirve esa mañana?`;
+  }
   const dia = nombre ? `Ese día es feriado (${nombre}). ` : "Ese día es feriado. ";
   return `${dia}Juan Díaz atiende de 8:00 a.m. a 12:00 m. La Chorrera no se agenda. ¿Le sirve esa mañana o el hábil siguiente?`;
 }

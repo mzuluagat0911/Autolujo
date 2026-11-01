@@ -60,7 +60,7 @@ import {
   textosDelCliente,
 } from "@/lib/comercial/lead";
 import { fechaConDia, hoyPanama, horaPanama, fueraHorarioOperativo, sumarDias } from "@/lib/cartera/fecha";
-import { feriadoNacional } from "@/lib/comercial/feriados";
+import { textoJornadaHoy } from "@/lib/comercial/feriados";
 import {
   cerrarLeadSinContacto,
   guardarAnalisisComercial,
@@ -722,11 +722,10 @@ async function contextoParaLucia(conversacionId: string | null, msg: WhatsAppMes
   const campana = datosCampana(msg);
   const hoy = hoyPanama();
   const ahora = horaPanama();
-  const feriadoHoy = feriadoNacional(hoy);
   const partes = [
     `Hoy en Panamá: ${fechaConDia(hoy)} (${hoy}). Hora ${ahora}.`,
-    feriadoHoy ? `HOY ES FERIADO (${feriadoHoy}). Juan Díaz 8:00 a 12:00. La Chorrera no se agenda.` : "",
-    textoSedes(),
+    textoJornadaHoy(hoy) ?? "",
+    textoSedes(hoy),
     await textoInventario(),
   ];
   const panapass = await notaPanapass(dicho || msg.text?.body || "", msg.from ?? null);

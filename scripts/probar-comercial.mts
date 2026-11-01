@@ -18,7 +18,16 @@ import {
   textoDeLaCitaAbierta,
   textoEsConfirmacion,
 } from "../lib/comercial/cita-pedido.ts";
-import { domingoPascua, esFeriadoNacional, fechaMencionada, feriadoNacional } from "../lib/comercial/feriados.ts";
+import {
+  domingoPascua,
+  esFeriadoNacional,
+  fechaMencionada,
+  feriadoNacional,
+  jornadaOperativa,
+  textoFeriado,
+  textoJornadaHoy,
+  textoNoviembre2026,
+} from "../lib/comercial/feriados.ts";
 import { validarHorario } from "../lib/comercial/sedes.ts";
 import { entregaNueva } from "../lib/comercial/entrega.ts";
 import { decisionPiloto, numeroEnPiloto, ordenarPorReciente, pasaFiltroComercial } from "../lib/comercial/piloto.ts";
@@ -224,9 +233,19 @@ assert.ok(ms < 80, `ordenar 10.000 chats tardó ${ms.toFixed(1)} ms`);
 assert.equal(validarHorario("juan_diaz", "2026-10-14", "16:00"), null);
 assert.equal(validarHorario("chorrera", "2026-10-14", "16:30") !== null, true);
 assert.equal(validarHorario("chorrera", "2026-10-18", "10:00") !== null, true);
+assert.equal(validarHorario("juan_diaz", "2026-11-02", "15:00"), null);
+assert.equal(validarHorario("juan_diaz", "2026-11-03", "10:00"), null);
+assert.equal(validarHorario("chorrera", "2026-11-03", "11:00"), null);
+assert.ok(validarHorario("juan_diaz", "2026-11-03", "14:00") !== null);
+assert.equal(validarHorario("juan_diaz", "2026-11-04", "16:00"), null);
+assert.equal(validarHorario("chorrera", "2026-11-04", "15:00"), null);
+assert.ok(validarHorario("juan_diaz", "2026-11-05", "10:00") !== null);
+assert.ok(validarHorario("chorrera", "2026-11-05", "10:00") !== null);
 assert.equal(validarHorario("juan_diaz", "2026-11-10", "10:00"), null);
-assert.ok(validarHorario("chorrera", "2026-11-10", "10:00") !== null);
+assert.equal(validarHorario("chorrera", "2026-11-10", "10:00"), null);
 assert.ok(validarHorario("juan_diaz", "2026-11-10", "14:00") !== null);
+assert.equal(validarHorario("chorrera", "2026-11-28", "10:00"), null);
+assert.ok(validarHorario("chorrera", "2026-11-28", "14:00") !== null);
 const marcado = textoConArchivo("📷 Documento para preaprobado", "comercial/2026/a.jpg");
 assert.equal(partirArchivo(marcado).archivo, "comercial/2026/a.jpg");
 assert.equal(partirArchivo(marcado).texto, "📷 Documento para preaprobado");
@@ -342,11 +361,18 @@ assert.equal(domingoPascua(2026), "2026-04-05");
 assert.equal(feriadoNacional("2026-11-10"), "Primer Grito de Independencia");
 assert.equal(esFeriadoNacional("2026-11-10"), true);
 assert.equal(esFeriadoNacional("2026-10-29"), false);
+assert.equal(jornadaOperativa("2026-11-05")?.tipo, "cerrado");
+assert.equal(jornadaOperativa("2026-11-04")?.tipo, "habitual");
 assert.equal(fechaMencionada("10 de noviembre es feriado estan abiertos", "2026-10-29"), "2026-11-10");
 assert.match(
   mensajeNaturalLucia("¿A qué hora le queda bien? Puede ser en punto o a la media.", "10 de noviembre es feriado estan abiertos", { hoy: "2026-10-29" }),
-  /feriado/,
+  /8:00/,
 );
+assert.match(textoFeriado("2026-11-05"), /cerrado|descanso/i);
+assert.match(textoFeriado("2026-11-04"), /jornada habitual/);
+assert.match(textoJornadaHoy("2026-11-03") ?? "", /8:00/);
+assert.match(textoNoviembre2026("2026-11-01") ?? "", /Jueves 5: CERRADO/);
+assert.equal(textoNoviembre2026("2026-12-01"), null);
 assert.ok(
   mensajeNaturalLucia("¿A qué hora le queda bien? Puede ser en punto o a la media.", "Por la mañana estaria bien").includes("8"),
 );

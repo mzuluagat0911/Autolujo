@@ -2,8 +2,13 @@
 // Panamá (Juan Díaz): lunes a viernes 8:00–16:00, sábado y domingo 8:00–12:00.
 // La Chorrera: lunes a viernes 8:00–16:00, sábado 8:00–12:00. Domingo cerrado.
 
-import { diaSemana } from "@/lib/cartera/fecha";
-import { esFeriadoNacional, feriadoNacional } from "./feriados";
+import { diaSemana, hoyPanama } from "@/lib/cartera/fecha";
+import {
+  esFeriadoNacional,
+  feriadoNacional,
+  jornadaOperativa,
+  textoNoviembre2026,
+} from "./feriados";
 
 export type SedeId = "juan_diaz" | "chorrera";
 
@@ -34,8 +39,21 @@ export function sedePorId(id: string | null | undefined): Sede | null {
   return SEDES.find((s) => s.id === id) ?? null;
 }
 
+function ventanaHabitual(sede: SedeId, fecha: string): { desde: number; hasta: number } | null {
+  const dia = diaSemana(fecha);
+  if (sede === "chorrera" && dia === 0) return null;
+  if (dia === 0 || dia === 6) return { desde: 8 * 60, hasta: 12 * 60 };
+  return { desde: 8 * 60, hasta: 16 * 60 };
+}
+
 /** Minutos desde medianoche en que se puede citar, o null si ese día la sede no abre. */
 export function ventanaCita(sede: SedeId, fecha: string): { desde: number; hasta: number } | null {
+  const op = jornadaOperativa(fecha);
+  if (op?.tipo === "cerrado") return null;
+  if (op?.tipo === "media" || op?.tipo === "sabado_confirmar") {
+    return { desde: 8 * 60, hasta: 12 * 60 };
+  }
+  if (op?.tipo === "habitual") return ventanaHabitual(sede, fecha);
   const dia = diaSemana(fecha);
   const feriado = esFeriadoNacional(fecha);
   if (sede === "chorrera" && (dia === 0 || feriado)) return null;
@@ -63,6 +81,11 @@ export function validarHorario(sede: SedeId, fecha: string, hora: string): strin
   const ventana = ventanaCita(sede, fecha);
   const nombre = sedePorId(sede)?.nombre ?? "esa sede";
   if (!ventana) {
+    const op = jornadaOperativa(fecha);
+    if (op?.tipo === "cerrado") {
+      const feriado = feriadoNacional(fecha);
+      return `Ese día está cerrado por descanso obligatorio${feriado ? ` (${feriado})` : ""}. ¿Le sirve el hábil anterior o el siguiente?`;
+    }
     const feriado = feriadoNacional(fecha);
     if (feriado) {
       return `Ese día es feriado (${feriado}). La Chorrera no se agenda. Juan Díaz atiende de 8:00 a.m. a 12:00 m.`;
@@ -78,15 +101,18 @@ export function validarHorario(sede: SedeId, fecha: string, hora: string): strin
   return null;
 }
 
-export function textoSedes(): string {
-  return [
+export function textoSedes(hoy = hoyPanama()): string {
+  const lineas = [
     "SEDES PARA LA VISITA:",
     "- Juan Díaz: lunes a viernes 8:00 a.m. a 4:00 p.m. Sábado y domingo 8:00 a.m. a 12:00 m.",
     `  Dirección: ${SEDES[0].direccion}.`,
     "- La Chorrera: lunes a viernes 8:00 a.m. a 4:00 p.m. Sábado 8:00 a.m. a 12:00 m. El domingo no se agenda.",
     `  Dirección: ${SEDES[1].direccion}.`,
     "La cita es cada 30 minutos. No ofrezcas una hora fuera de esa ventana.",
-    "Feriados nacionales: Juan Díaz atiende de 8:00 a.m. a 12:00 m. La Chorrera no se agenda. Si preguntan si abren, dilo primero.",
+    "Feriados nacionales (si el contexto no trae otra jornada): Juan Díaz 8:00 a.m. a 12:00 m. La Chorrera no se agenda. Si preguntan si abren, dilo primero.",
     "Si preguntan cómo llegar, da la dirección. El sistema manda el video de esa sede.",
-  ].join("\n");
+  ];
+  const noviembre = textoNoviembre2026(hoy);
+  if (noviembre) lineas.push(noviembre);
+  return lineas.join("\n");
 }
