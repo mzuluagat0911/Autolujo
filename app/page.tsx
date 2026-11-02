@@ -31,10 +31,11 @@ export default function Landing() {
           muted
           loop
           playsInline
-          preload="auto"
+          preload="metadata"
+          poster="/hero.jpg"
           className="absolute inset-0 h-full w-full object-cover opacity-70"
         >
-          <source src="/6331328-uhd_4096_2160_24fps.mp4" type="video/mp4" />
+          <source src="/hero.mp4" type="video/mp4" />
         </video>
         {/* Degradado para legibilidad del texto (filtro más suave) */}
         <div className="absolute inset-0 bg-gradient-to-r from-black/90 via-black/50 to-black/10" />

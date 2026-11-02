@@ -2,18 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { casaDe, parseRol, puedeVerRuta } from "@/lib/equipo/modulos";
 
-const PUBLICAS = new Set(["/", "/privacidad", "/terminos", "/ingreso"]);
-
-function esPublica(path: string): boolean {
-  if (PUBLICAS.has(path)) return true;
-  if (path.startsWith("/api/whatsapp")) return true;
-  if (path.startsWith("/api/cron")) return true;
-  return false;
-}
-
 export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname;
-  if (esPublica(path)) return NextResponse.next();
 
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -63,5 +53,21 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)"],
+  // Solo el panel. Landing, login, WhatsApp y crons no pagan esta función.
+  matcher: [
+    "/admin",
+    "/admin/:path*",
+    "/cartera",
+    "/cartera/:path*",
+    "/comercial",
+    "/comercial/:path*",
+    "/operaciones",
+    "/operaciones/:path*",
+    "/seguros",
+    "/seguros/:path*",
+    "/usuarios",
+    "/usuarios/:path*",
+    "/administrativo",
+    "/administrativo/:path*",
+  ],
 };
