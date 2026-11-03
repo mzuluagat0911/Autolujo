@@ -139,9 +139,7 @@ export async function listarChatsComercial(opts: {
         .is("cerrado_at", null)
         .gte("ultimo_entrante_at", rangoDiaPanama(hoyPanama()).desde.toISOString());
     } else if (filtro === "por_atender") {
-      query = query
-        .is("cerrado_at", null)
-        .or(`no_leidos.gt.0,necesita_humano.eq.true,seguimiento_at.lte.${new Date().toISOString()}`);
+      query = query.is("cerrado_at", null).eq("necesita_humano", true);
     } else if (filtro === "mios" && opts.asesorId) {
       query = query.eq("asesor_id", opts.asesorId).is("cerrado_at", null);
     } else if (filtro === "sin_asignar") {
@@ -234,13 +232,12 @@ export async function contarFiltrosComercial(
 ): Promise<ConteosBandejaComercial> {
   try {
     const sb = createServerSupabase();
-    const ahora = new Date().toISOString();
     const inicioHoy = rangoDiaPanama(hoyPanama()).desde.toISOString();
     const abiertos = () =>
       sb.from("conversaciones_comercial").select("id", { count: "exact", head: true }).is("cerrado_at", null);
     const [hoy, porAtender, calientes, citas, mios] = await Promise.all([
       abiertos().gte("ultimo_entrante_at", inicioHoy),
-      abiertos().or(`no_leidos.gt.0,necesita_humano.eq.true,seguimiento_at.lte.${ahora}`),
+      abiertos().eq("necesita_humano", true),
       abiertos().eq("temperatura", "caliente"),
       abiertos().eq("etapa", "cita"),
       asesorId ? abiertos().eq("asesor_id", asesorId) : Promise.resolve({ count: 0 }),

@@ -22,6 +22,7 @@ import type {
   MensajeComercial,
   TemperaturaLead,
 } from "@/lib/comercial/chats";
+import { etiquetaPendienteComercial } from "@/lib/comercial/lead";
 import { ordenarPorReciente, pasaFiltroComercial } from "@/lib/comercial/piloto";
 import { sedePorId } from "@/lib/comercial/sedes";
 import {
@@ -118,6 +119,13 @@ function nombreChat(c: ChatComercial): string {
 
 function tonoTemperatura(t: TemperaturaLead): "warn" | "azul" | "neutral" {
   return t === "caliente" ? "warn" : t === "tibio" ? "azul" : "neutral";
+}
+
+function chipPendiente(necesitaHumano: boolean, motivo: string | null) {
+  const tipo = etiquetaPendienteComercial(necesitaHumano, motivo);
+  if (tipo === "documento") return <StatusChip tone="azul">Documento</StatusChip>;
+  if (tipo === "revision") return <StatusChip tone="warn">Revisión humana</StatusChip>;
+  return null;
 }
 
 function etiquetaEtapa(etapa: EtapaComercial): string {
@@ -647,7 +655,14 @@ export function BandejaCrmComercial({
           <div className="min-h-0 flex-1 overflow-y-auto bg-paper">
             {chats.length === 0 ? (
               <div className="p-5">
-                <EmptyState title="No hay leads en esta vista" hint="Pruebe otro filtro o búsqueda." />
+                <EmptyState
+                  title={filtro === "por_atender" ? "Nada pendiente de revisión" : "No hay leads en esta vista"}
+                  hint={
+                    filtro === "por_atender"
+                      ? "Solo entran documentos y chats que piden una persona. Lo que Lucía puede tomar está en Todos."
+                      : "Pruebe otro filtro o búsqueda."
+                  }
+                />
               </div>
             ) : (
               chats.map((c) => {
@@ -667,13 +682,15 @@ export function BandejaCrmComercial({
                       className={`absolute inset-y-3 left-0 w-0.5 rounded-full ${
                         activo
                           ? "bg-ink"
-                          : c.necesitaHumano
-                            ? "bg-ambar"
-                            : c.temperatura === "caliente"
-                              ? "bg-ambar/70"
-                              : c.noLeidos > 0
-                                ? "bg-ink/40"
-                                : "bg-transparent"
+                          : etiquetaPendienteComercial(c.necesitaHumano, c.motivo) === "documento"
+                            ? "bg-azul"
+                            : c.necesitaHumano
+                              ? "bg-ambar"
+                              : c.temperatura === "caliente"
+                                ? "bg-ambar/70"
+                                : c.noLeidos > 0
+                                  ? "bg-ink/40"
+                                  : "bg-transparent"
                       }`}
                     />
                     <div className="flex items-start justify-between gap-2 pl-2">
@@ -686,7 +703,7 @@ export function BandejaCrmComercial({
                         {c.temperatura === "caliente" ? "Caliente" : c.temperatura === "tibio" ? "Tibio" : "Frío"}
                       </StatusChip>
                       <span className="text-[11px] text-muted">{etiquetaEtapa(c.etapa)}</span>
-                      {c.necesitaHumano && <StatusChip tone="warn">Asesor</StatusChip>}
+                      {chipPendiente(c.necesitaHumano, c.motivo)}
                       {c.noLeidos > 0 && (
                         <span className="ml-auto rounded-full bg-ink px-1.5 text-[10px] font-semibold text-white">
                           {c.noLeidos}
@@ -785,7 +802,7 @@ export function BandejaCrmComercial({
                   <StatusChip tone={elegido.modoAtencion === "humano" ? "azul" : "good"}>
                     {elegido.modoAtencion === "humano" ? "Atiende una persona" : "Lucía activa"}
                   </StatusChip>
-                  {elegido.necesitaHumano && <StatusChip tone="warn">Necesita asesor</StatusChip>}
+                  {chipPendiente(elegido.necesitaHumano, elegido.motivo)}
                   <span className="text-[11px] text-muted">{elegido.asesorNombre || "Sin responsable"}</span>
                 </div>
               </div>

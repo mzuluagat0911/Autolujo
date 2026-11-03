@@ -124,6 +124,24 @@ export function nombreDeWhatsApp(valor: string | null | undefined): string | nul
 
 export const MOTIVO_PIDIO_ASESOR = "Pidió hablar con un asesor";
 
+export type EtiquetaPendienteComercial = "documento" | "revision";
+
+/** Por atender: documento para preaprobado, o una persona tiene que entrar. */
+export function etiquetaPendienteComercial(
+  necesitaHumano: boolean,
+  motivo: string | null | undefined,
+): EtiquetaPendienteComercial | null {
+  if (!necesitaHumano) return null;
+  const t = (motivo ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (/documento|preaprobado|licencia|paz y salvo|historial|record|cedula|c[eé]dula/.test(t)) {
+    return "documento";
+  }
+  return "revision";
+}
+
 export function esPausaPorAsesor(motivo: string | null | undefined): boolean {
   return /pidi[oó] hablar con un asesor|quiere (un )?asesor|que lo llamen/i.test(motivo ?? "");
 }

@@ -82,6 +82,7 @@ export function pasaFiltroComercial(
   if (filtro === "seguimiento") return Boolean(c.seguimientoAt);
   if (filtro === "citas") return c.etapa === "cita";
   if (filtro === "todos") return !cerrado;
+  if (filtro === "por_atender") return c.necesitaHumano;
   const vencido = c.seguimientoAt ? Date.parse(c.seguimientoAt) <= Date.now() : false;
   return c.noLeidos > 0 || c.necesitaHumano || vencido;
 }

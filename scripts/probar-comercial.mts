@@ -44,6 +44,7 @@ import {
   pideAsesorHumano,
   preguntaSiEsBot,
   esPausaPorAsesor,
+  etiquetaPendienteComercial,
   MOTIVO_PIDIO_ASESOR,
 } from "../lib/comercial/lead.ts";
 import { PLANTILLAS_SEGUIMIENTO, plantillaAunNoLista, plantillaSeguimiento } from "../lib/comercial/plantillas.ts";
@@ -356,6 +357,44 @@ assert.equal(
   ),
   false,
 );
+assert.equal(
+  pasaFiltroComercial(
+    {
+      cerradoAt: null,
+      noLeidos: 3,
+      necesitaHumano: false,
+      seguimientoAt: new Date(Date.now() - 60_000).toISOString(),
+      asesorId: null,
+      temperatura: "tibio",
+      etapa: "conversacion",
+      ultimoEntranteAt: new Date().toISOString(),
+    },
+    "por_atender",
+  ),
+  false,
+);
+assert.equal(
+  pasaFiltroComercial(
+    {
+      cerradoAt: null,
+      noLeidos: 0,
+      necesitaHumano: true,
+      seguimientoAt: null,
+      asesorId: null,
+      temperatura: "caliente",
+      etapa: "conversacion",
+      ultimoEntranteAt: new Date().toISOString(),
+    },
+    "por_atender",
+  ),
+  true,
+);
+assert.equal(
+  etiquetaPendienteComercial(true, "Preaprobado: llegó un documento (licencia de conducir)."),
+  "documento",
+);
+assert.equal(etiquetaPendienteComercial(true, MOTIVO_PIDIO_ASESOR), "revision");
+assert.equal(etiquetaPendienteComercial(false, "Preaprobado: llegó un documento."), null);
 assert.equal(franjaHoraria("Por la mañana estaria bien"), "manana");
 assert.equal(franjaHoraria("Mañana a las 12"), null);
 assert.equal(domingoPascua(2026), "2026-04-05");
