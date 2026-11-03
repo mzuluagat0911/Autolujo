@@ -133,7 +133,7 @@ export async function listarChatsComercial(opts: {
       .order("id", { ascending: false })
       .limit(limite + 1);
 
-    const filtro = opts.filtro ?? "hoy";
+    const filtro = opts.filtro ?? "todos";
     if (filtro === "hoy") {
       query = query
         .is("cerrado_at", null)

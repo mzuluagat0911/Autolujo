@@ -41,6 +41,7 @@ import {
 } from "./actions";
 
 const FILTROS_MAIN: { value: FiltroBandejaComercial; label: string; conteo?: keyof ConteosBandejaComercial }[] = [
+  { value: "todos", label: "Todos" },
   { value: "hoy", label: "Hoy", conteo: "hoy" },
   { value: "por_atender", label: "Por atender", conteo: "por_atender" },
   { value: "calientes", label: "Calientes", conteo: "calientes" },
@@ -54,7 +55,6 @@ const FILTROS_MAS: { value: FiltroBandejaComercial; label: string }[] = [
   { value: "tibios", label: "Tibios" },
   { value: "frios", label: "Fríos" },
   { value: "seguimiento", label: "Seguimiento" },
-  { value: "todos", label: "Todos" },
 ];
 
 const ETAPAS: { value: EtapaComercial; label: string }[] = [
@@ -197,7 +197,7 @@ export function BandejaCrmComercial({
   const [chats, setChats] = useState(inicial);
   const [error, setError] = useState(errorInicial);
   const [cursor, setCursor] = useState(cursorInicial);
-  const [filtro, setFiltro] = useState<FiltroBandejaComercial>("hoy");
+  const [filtro, setFiltro] = useState<FiltroBandejaComercial>("todos");
   const [buscar, setBuscar] = useState("");
   const [conteos, setConteos] = useState(conteosIniciales);
   const buscarDiferido = useDeferredValue(buscar);
@@ -617,7 +617,7 @@ export function BandejaCrmComercial({
                 );
               })}
               {masActivo && (
-                <FilterChip active onClick={() => setFiltro("hoy")}>
+                <FilterChip active onClick={() => setFiltro("todos")}>
                   {masActivo.label}
                 </FilterChip>
               )}
