@@ -261,7 +261,8 @@ assert.equal(
   ]),
   false,
 );
-assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Hola, ¿cuánto es la letra?" }]), false);
+assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Hola, ¿cuánto es la letra?" }]), true);
+assert.equal(esSaludoDeClienteNuevo([{ direccion: "in", texto: "Quiero el Kia Soluto 2024" }]), true);
 assert.ok(MENSAJE_BIENVENIDA.includes("https://bit.ly/tratamientodedatosautolujopanama"));
 assert.ok(MENSAJE_BIENVENIDA.includes("desde $25"));
 assert.ok(MENSAJE_BIENVENIDA.includes("$99.99"));

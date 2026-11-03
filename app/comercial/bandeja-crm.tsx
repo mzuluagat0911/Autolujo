@@ -213,6 +213,7 @@ export function BandejaCrmComercial({
   const [fichaAbierta, setFichaAbierta] = useState(false);
   const [agendar, setAgendar] = useState(false);
   const [pending, start] = useTransition();
+  const [cargandoMas, setCargandoMas] = useState(false);
   const cache = useRef(new Map<string, { mensajes: MensajeComercial[]; hayMas: boolean }>());
   const ultimoCambio = useRef(new Date().toISOString());
   const primeraBusqueda = useRef(true);
@@ -532,13 +533,18 @@ export function BandejaCrmComercial({
   }
 
   function cargarMasChats() {
-    if (!cursor) return;
-    start(async () => {
-      const pagina = await cargarBandejaComercial({ filtro, buscar: buscarDiferido, cursor });
-      setChats((prev) => unirChatsSinReordenar(prev, pagina.chats));
-      setCursor(pagina.siguienteCursor);
-      setConteos(pagina.conteos);
-    });
+    if (!cursor || cargandoMas) return;
+    setCargandoMas(true);
+    void (async () => {
+      try {
+        const pagina = await cargarBandejaComercial({ filtro, buscar: buscarDiferido, cursor });
+        setChats((prev) => unirChatsSinReordenar(prev, pagina.chats));
+        setCursor(pagina.siguienteCursor);
+        if (pagina.error) setError(pagina.error);
+      } finally {
+        setCargandoMas(false);
+      }
+    })();
   }
 
   function cargarAnteriores() {
@@ -697,11 +703,11 @@ export function BandejaCrmComercial({
             {cursor && (
               <button
                 type="button"
-                disabled={pending}
+                disabled={cargandoMas}
                 onClick={cargarMasChats}
                 className="m-3 w-[calc(100%-1.5rem)] rounded-lg bg-white px-3 py-2 text-xs font-medium ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
               >
-                Cargar más
+                {cargandoMas ? "Cargando…" : "Cargar más"}
               </button>
             )}
           </div>

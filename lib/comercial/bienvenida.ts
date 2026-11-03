@@ -53,20 +53,10 @@ export function sinBienvenidaRepetida(
   return salida;
 }
 
-const PREGUNTA_CONCRETA =
-  /\?|cu[aá]nto|precio|letra|abono|requisit|cita|disponible|autom[aá]tic|manual|d[oó]nde|horario|a[nñ]os?|chiriqu|chitr[eé]|david|menor|familiar|plataforma|licencia|kia|hyundai|soluto|i-?10|picanto|sed[aá]n/i;
-
-/** Primer contacto sin una pregunta concreta. «Hola» y «quiero carro» reciben la oferta. */
+/** Primer contacto: Lucía todavía no habló. Ahí sale la bienvenida, aunque pregunten precio o un modelo. */
 export function esSaludoDeClienteNuevo(
   historial: { direccion: "in" | "out"; texto: string }[],
 ): boolean {
   if (historial.some((m) => m.direccion === "out")) return false;
-  const textos = historial
-    .filter((m) => m.direccion === "in")
-    .map((m) => m.texto.replace(/^🎤\s*/, "").trim())
-    .filter(Boolean);
-  if (textos.length === 0 || textos.length > 3) return false;
-  const junto = textos.join(" ");
-  if (junto.length > 180 || PREGUNTA_CONCRETA.test(junto)) return false;
-  return true;
+  return historial.some((m) => m.direccion === "in" && m.texto.replace(/^🎤\s*/, "").trim());
 }

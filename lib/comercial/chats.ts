@@ -209,7 +209,7 @@ export async function listarChatsComercial(opts: {
     const recorte = hayMas ? filas.slice(0, limite) : filas;
     const [chats, conteos] = await Promise.all([
       anexarCitas(sb, recorte),
-      contarFiltrosComercial(opts.asesorId),
+      opts.cursor ? Promise.resolve(CONTEOS_VACIOS) : contarFiltrosComercial(opts.asesorId),
     ]);
     return {
       chats,
