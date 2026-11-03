@@ -22,11 +22,13 @@ import {
   tonoSeccion,
   totalPiezas,
   type CasoFila,
+  type DestinoCarro,
   type DocTipo,
   type Pieza,
   type Seccion,
 } from "@/lib/seguros/modelo";
 import {
+  carroQuedoEnTaller,
   carroVolvio,
   confirmarChoque,
   eliminarCaso,
@@ -36,6 +38,7 @@ import {
   subirDocCliente,
   subirDocumento,
 } from "../actions";
+import { DestinoCarroOpciones } from "../destino";
 import { BloqueRegistro } from "../registro";
 import {
   pathCliente,
@@ -80,12 +83,15 @@ export function FichaCaso({
   const [seccion, setSeccion] = useState<Seccion>(fila.caso.seccion);
   const [via, setVia] = useState<"" | "fud" | "parte">(fila.caso.via ?? "");
   const [aseguradora, setAseguradora] = useState(fila.caso.aseguradora);
+  const [destino, setDestino] = useState<DestinoCarro>("");
   const [piezas, setPiezas] = useState<Pieza[]>(fila.caso.piezas);
   const tarifas = tarifasDe(fila.marca, fila.modelo, fila.anio);
   const casoVista = { ...fila.caso, seccion, via: via === "fud" || via === "parte" ? via : null, aseguradora };
   const proxima = siguienteSeccion(casoVista);
   const total = totalPapeles(fila.caso.via);
   const porConfirmar = fila.caso.porConfirmar;
+  const circula = !porConfirmar && fila.caso.destinoCarro === "circulando" && fila.estadoCarro !== "colision";
+  const enTaller = fila.estadoCarro === "colision";
   const dias = diasEnSeccion(fila, hoy);
   const trabado = atraso(fila, hoy);
   const conductorCliente = !fila.caso.conductor.trim() && cliente ? cliente : null;
@@ -237,6 +243,8 @@ export function FichaCaso({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <StatusChip tone={tonoSeccion(seccion)}>{etiquetaSeccion(seccion)}</StatusChip>
+          {circula && <StatusChip tone="good">Sigue circulando</StatusChip>}
+          {enTaller && <StatusChip tone="crit">En taller</StatusChip>}
           <Link
             href={paquete}
             data-guarda-antes="1"
@@ -258,19 +266,23 @@ export function FichaCaso({
         <section className="rounded-xl bg-ambar-wash p-5 ring-1 ring-ambar/30">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-ambar">Reportado por WhatsApp</p>
           <p className="mt-2 max-w-2xl text-sm">
-            El cliente avisó un choque en el chat de cartera. El carro sigue trabajando y el cobro no cambia hasta que lo
-            confirme.
+            El cliente avisó un choque en el chat de cartera. Confirme y diga si el carro sigue circulando o queda en
+            taller. Si sigue circulando, el cobro no se corta.
           </p>
           {fila.caso.relato && <p className="mt-3 max-w-2xl rounded-lg bg-white px-3 py-2 text-sm ring-1 ring-line">“{fila.caso.relato}”</p>}
+          <div className="mt-4">
+            <DestinoCarroOpciones valor={destino} onChange={setDestino} />
+          </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
             <button
               type="button"
               className={PRIMARIO}
-              disabled={pending}
+              disabled={pending || !destino}
               onClick={() => {
-                if (!window.confirm("¿Confirmar el choque? El carro queda en colisión desde la fecha del choque.")) return;
+                if (!destino) return;
                 const fd = new FormData();
                 fd.set("id", fila.id);
+                fd.set("destino_carro", destino);
                 correr(confirmarChoque, fd);
               }}
             >
@@ -294,6 +306,28 @@ export function FichaCaso({
             )}
           </div>
           {error && <p className="mt-3 text-sm text-rojo">{error}</p>}
+        </section>
+      )}
+
+      {circula && (
+        <section className="rounded-xl bg-verde-wash p-5 ring-1 ring-verde/30">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-verde">El carro sigue circulando</p>
+          <p className="mt-2 max-w-2xl text-sm">
+            El choque está confirmado y el cliente sigue usando el carro. Claudia cobra la letra igual que cualquier día.
+          </p>
+          <button
+            type="button"
+            className={`${SECUNDARIO} mt-4`}
+            disabled={pending}
+            onClick={() => {
+              if (!window.confirm("¿El carro ya no rueda? Queda en taller y se pausa el cobro desde hoy.")) return;
+              const fd = new FormData();
+              fd.set("id", fila.id);
+              correr(carroQuedoEnTaller, fd);
+            }}
+          >
+            El carro quedó en taller
+          </button>
         </section>
       )}
 
@@ -750,7 +784,7 @@ export function FichaCaso({
       </section>
 
       <div className="flex flex-wrap items-center gap-3">
-        {fila.estadoCarro === "colision" && (
+        {enTaller && (
           <button
             type="button"
             className={SECUNDARIO}

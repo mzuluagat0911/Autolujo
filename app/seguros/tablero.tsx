@@ -143,7 +143,7 @@ export function Tablero({
           <div className="border-b border-ambar/20 px-4 py-3">
             <h2 className="text-sm font-semibold">Reportados por WhatsApp</h2>
             <p className="mt-0.5 text-xs text-muted">
-              El cliente avisó un choque en el chat. Confirme o descarte; mientras tanto el carro sigue trabajando.
+              El cliente avisó un choque en el chat. Confirme o descarte. Al confirmar, diga si el carro sigue circulando o queda en taller.
             </p>
           </div>
           <ul>
@@ -269,6 +269,12 @@ export function Tablero({
                         </p>
                         <p className="truncate text-xs text-muted">
                           {c.caso.clienteNombre || "Sin cliente activo"} · choque {fechaCorta(c.fecha)}
+                          {!c.caso.porConfirmar &&
+                            (c.caso.destinoCarro === "circulando" && c.estadoCarro !== "colision"
+                              ? " · Circula"
+                              : c.caso.destinoCarro === "taller" || c.estadoCarro === "colision"
+                                ? " · En taller"
+                                : "")}
                         </p>
                       </div>
                       <StatusChip tone={tonoSeccion(c.caso.seccion)}>{etiquetaSeccion(c.caso.seccion)}</StatusChip>
@@ -312,7 +318,17 @@ export function Tablero({
                       <td className="px-4 py-3">
                         {c.caso.clienteNombre || "Sin cliente activo"}
                         <span className="mt-0.5 block text-xs text-muted">
-                          {[c.caso.via === "parte" ? "Parte" : c.caso.via === "fud" ? "FUD" : "", nombreAseguradora(c.caso.aseguradora)]
+                          {[
+                            c.caso.via === "parte" ? "Parte" : c.caso.via === "fud" ? "FUD" : "",
+                            nombreAseguradora(c.caso.aseguradora),
+                            c.caso.porConfirmar
+                              ? ""
+                              : c.caso.destinoCarro === "circulando" && c.estadoCarro !== "colision"
+                                ? "Circula"
+                                : c.caso.destinoCarro === "taller" || c.estadoCarro === "colision"
+                                  ? "En taller"
+                                  : "",
+                          ]
                             .filter(Boolean)
                             .join(" · ")}
                         </span>

@@ -255,7 +255,8 @@ export function hablaDeChoque(texto: string): boolean {
 
 /**
  * El cliente avisó un choque por el chat de cartera. Deja el caso en Seguros
- * por confirmar; no pone el carro en colisión ni toca el cobro.
+ * por confirmar; no pone el carro en colisión ni toca el cobro. El cobro solo
+ * se pausa si, al confirmar, marcan que el carro quedó en taller.
  */
 export async function reportarChoqueDesdeChat(input: {
   contratoId: string;

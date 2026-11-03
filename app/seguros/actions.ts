@@ -25,8 +25,10 @@ import {
   ASEGURADORAS,
   DOCUMENTOS,
   casoVacio,
+  destinoCarroDe,
   type AseguradoraId,
   type Caso,
+  type DestinoCarro,
   type DocTipo,
   type Pieza,
   type Seccion,
@@ -62,14 +64,36 @@ function seccionOk(v: string): Seccion | null {
   return SECCIONES.some((s) => s.id === v) ? (v as Seccion) : null;
 }
 
+function destinoElegido(v: string): Exclude<DestinoCarro, ""> | null {
+  const d = destinoCarroDe(v);
+  return d === "" ? null : d;
+}
+
+async function pausarSiQuedaEnTaller(vehiculoId: string, fecha: string, destino: Exclude<DestinoCarro, "">) {
+  if (destino !== "taller") return { ok: true, msg: "" };
+  return aplicarEstadoProductivo({
+    vehiculoId,
+    estado: "colision",
+    fechaIngreso: fecha,
+  });
+}
+
+function msgChoque(destino: Exclude<DestinoCarro, "">, pausa: { ok: boolean; msg: string }, abierto: boolean): string {
+  const verbo = abierto ? "Caso abierto" : "Choque confirmado";
+  if (destino === "circulando") return `${verbo}. El carro sigue circulando y el cobro no se corta.`;
+  return pausa.ok ? `${verbo}. El carro quedó en taller y se pausó el cobro.` : `${verbo}. ${pausa.msg}`;
+}
+
 export async function crearCaso(fd: FormData): Promise<Resultado> {
   const vehiculoId = texto(fd.get("vehiculo_id"));
   const fecha = texto(fd.get("fecha")) || hoyPanama();
   const viaRaw = texto(fd.get("via"));
   const via = viaRaw === "fud" || viaRaw === "parte" ? viaRaw : null;
+  const destino = destinoElegido(texto(fd.get("destino_carro")));
   if (!vehiculoId) return { ok: false, error: "Elija el carro." };
   if (!fechaOk(fecha)) return { ok: false, error: "La fecha del choque no es válida." };
   if (!via) return { ok: false, error: "Elija si es FUD o parte policivo." };
+  if (!destino) return { ok: false, error: "Diga si el carro sigue circulando o queda en taller." };
 
   const carros = await carrosParaCaso();
   const carro = carros.find((c) => c.id === vehiculoId);
@@ -85,21 +109,18 @@ export async function crearCaso(fd: FormData): Promise<Resultado> {
   caso.clienteNombre = carro.cliente;
   caso.contratoId = carro.contratoId;
   caso.aseguradora = aseguradoraOk(texto(fd.get("aseguradora")));
+  caso.destinoCarro = destino;
 
   const creado = await crearFila({ vehiculoId, fecha, caso });
   if ("error" in creado) return { ok: false, error: creado.error };
 
-  const pausa = await aplicarEstadoProductivo({
-    vehiculoId,
-    estado: "colision",
-    fechaIngreso: fecha,
-  });
+  const pausa = await pausarSiQuedaEnTaller(vehiculoId, fecha, destino);
 
   revalidar(creado.id);
   return {
     ok: true,
     id: creado.id,
-    msg: pausa.ok ? "Caso abierto. El carro quedó en colisión." : `Caso abierto. ${pausa.msg}`,
+    msg: msgChoque(destino, pausa, true),
   };
 }
 
@@ -280,27 +301,26 @@ export async function marcarAviso(fd: FormData): Promise<Resultado> {
   return { ok: true };
 }
 
-/** El choque que avisó el chat es real: desde aquí el carro queda en colisión como un caso abierto a mano. */
+/** El choque que avisó el chat es real. El cobro solo se pausa si el carro queda en taller. */
 export async function confirmarChoque(fd: FormData): Promise<Resultado> {
   const id = texto(fd.get("id"));
+  const destino = destinoElegido(texto(fd.get("destino_carro")));
   const fila = await leerCaso(id);
   if (!fila) return { ok: false, error: "No encuentro el caso." };
   if (!fila.caso.porConfirmar) return { ok: true, msg: "El choque ya estaba confirmado." };
+  if (!destino) return { ok: false, error: "Diga si el carro sigue circulando o queda en taller." };
   fila.caso.porConfirmar = false;
+  fila.caso.destinoCarro = destino;
   fila.caso.seccionDesde = hoyPanama();
   const error = await guardarFila(id, fila.vehiculoId, fila.fecha, fila.km, fila.caso.lugar, fila.caso);
   if (error) return { ok: false, error };
   await notaColisionReportada(fila.vehiculoId, fila.fecha);
-  const pausa = await aplicarEstadoProductivo({
-    vehiculoId: fila.vehiculoId,
-    estado: "colision",
-    fechaIngreso: fila.fecha,
-  });
+  const pausa = await pausarSiQuedaEnTaller(fila.vehiculoId, fila.fecha, destino);
   revalidar(id);
   revalidatePath("/cartera/estados-cuenta");
   return {
     ok: true,
-    msg: pausa.ok ? "Choque confirmado. El carro quedó en colisión." : `Choque confirmado. ${pausa.msg}`,
+    msg: msgChoque(destino, pausa, false),
   };
 }
 
@@ -308,13 +328,40 @@ export async function carroVolvio(fd: FormData): Promise<Resultado> {
   const id = texto(fd.get("id"));
   const fila = await leerCaso(id);
   if (!fila) return { ok: false, error: "No encuentro el caso." };
+  fila.caso.destinoCarro = "circulando";
+  const error = await guardarFila(id, fila.vehiculoId, fila.fecha, fila.km, fila.caso.lugar, fila.caso);
+  if (error) return { ok: false, error };
   const pausa = await aplicarEstadoProductivo({
     vehiculoId: fila.vehiculoId,
     estado: "activo",
     fechaIngreso: null,
   });
   revalidar(id);
-  return pausa.ok ? { ok: true, msg: "El carro volvió a trabajar." } : { ok: false, error: pausa.msg };
+  revalidatePath("/cartera/estados-cuenta");
+  return pausa.ok
+    ? { ok: true, msg: "El carro volvió a trabajar. El cobro de la letra se reanuda." }
+    : { ok: false, error: pausa.msg };
+}
+
+/** El carro que seguía circulando ya no rueda: pasa a colisión y se pausa el cobro. */
+export async function carroQuedoEnTaller(fd: FormData): Promise<Resultado> {
+  const id = texto(fd.get("id"));
+  const fila = await leerCaso(id);
+  if (!fila) return { ok: false, error: "No encuentro el caso." };
+  if (fila.caso.porConfirmar) return { ok: false, error: "Primero confirme el choque." };
+  fila.caso.destinoCarro = "taller";
+  const error = await guardarFila(id, fila.vehiculoId, fila.fecha, fila.km, fila.caso.lugar, fila.caso);
+  if (error) return { ok: false, error };
+  const pausa = await aplicarEstadoProductivo({
+    vehiculoId: fila.vehiculoId,
+    estado: "colision",
+    fechaIngreso: hoyPanama(),
+  });
+  revalidar(id);
+  revalidatePath("/cartera/estados-cuenta");
+  return pausa.ok
+    ? { ok: true, msg: "El carro quedó en taller. Se pausó el cobro desde hoy." }
+    : { ok: false, error: pausa.msg };
 }
 
 export async function guardarPolizaAccion(fd: FormData): Promise<Resultado> {

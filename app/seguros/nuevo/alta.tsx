@@ -3,8 +3,9 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Toast } from "@/components/kit";
-import { ASEGURADORAS } from "@/lib/seguros/modelo";
+import { ASEGURADORAS, type DestinoCarro } from "@/lib/seguros/modelo";
 import { crearCaso } from "../actions";
+import { DestinoCarroOpciones } from "../destino";
 import type { CarroParaCaso } from "@/lib/seguros/datos";
 
 const INPUT =
@@ -16,6 +17,7 @@ export function AltaChoque({ carros, hoy }: { carros: CarroParaCaso[]; hoy: stri
   const [q, setQ] = useState("");
   const [carroId, setCarroId] = useState("");
   const [via, setVia] = useState<"fud" | "parte" | "">("");
+  const [destino, setDestino] = useState<DestinoCarro>("");
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
@@ -33,6 +35,7 @@ export function AltaChoque({ carros, hoy }: { carros: CarroParaCaso[]; hoy: stri
     const fd = new FormData(e.currentTarget);
     fd.set("vehiculo_id", carroId);
     fd.set("via", via);
+    fd.set("destino_carro", destino);
     setError(null);
     start(async () => {
       const r = await crearCaso(fd);
@@ -107,6 +110,8 @@ export function AltaChoque({ carros, hoy }: { carros: CarroParaCaso[]; hoy: stri
         </div>
       </fieldset>
 
+      <DestinoCarroOpciones valor={destino} onChange={setDestino} />
+
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Fecha del choque</span>
@@ -138,7 +143,7 @@ export function AltaChoque({ carros, hoy }: { carros: CarroParaCaso[]; hoy: stri
 
       <button
         type="submit"
-        disabled={pending || !carroId || !via}
+        disabled={pending || !carroId || !via || !destino}
         className="w-fit rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
       >
         {pending ? "Abriendo…" : "Abrir el caso"}

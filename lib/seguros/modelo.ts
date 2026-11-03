@@ -64,6 +64,8 @@ export type DocumentoCaso = {
   path: string;
 };
 
+export type DestinoCarro = "circulando" | "taller" | "";
+
 export type Caso = {
   v: 1;
   seccion: Seccion;
@@ -99,6 +101,12 @@ export type Caso = {
   /** Lo abrió el chat de cartera. El carro sigue trabajando hasta que alguien lo confirme. */
   porConfirmar: boolean;
   conversacionId: string | null;
+  /**
+   * Al confirmar o registrar: si sigue en la calle el cobro no se corta.
+   * Si queda en taller, el carro pasa a colisión y se pausa la letra.
+   * Vacío en casos viejos, que se pausaban siempre.
+   */
+  destinoCarro: DestinoCarro;
 };
 
 export type CasoFila = {
@@ -163,7 +171,7 @@ export function siguienteSeccion(caso: Pick<Caso, "seccion" | "via">): Seccion |
 
 export function queSigue(caso: Caso): string {
   if (caso.porConfirmar) {
-    return "El cliente avisó un choque por WhatsApp. Lea el chat y confirme el choque o descártelo. Mientras tanto el carro sigue trabajando.";
+    return "El cliente avisó un choque por WhatsApp. Confirme el choque y diga si el carro sigue circulando o queda en taller. Si sigue circulando, el cobro no se corta.";
   }
   if (caso.seccion === "reportado") {
     if (!caso.via) return "Elija si el otro aceptó la culpa (FUD) o hay que llamar a tránsito (parte).";
@@ -236,7 +244,12 @@ export function casoVacio(): Caso {
     seccionDesde: "",
     porConfirmar: false,
     conversacionId: null,
+    destinoCarro: "",
   };
+}
+
+export function destinoCarroDe(v: unknown): DestinoCarro {
+  return v === "circulando" || v === "taller" ? v : "";
 }
 
 function texto(v: unknown): string {
@@ -305,6 +318,7 @@ export function parseCaso(raw: string | null | undefined): Caso | null {
       seccionDesde: texto(j.seccionDesde),
       porConfirmar: Boolean(j.porConfirmar),
       conversacionId: typeof j.conversacionId === "string" ? j.conversacionId : null,
+      destinoCarro: destinoCarroDe(j.destinoCarro),
       piezas: Array.isArray(j.piezas) ? j.piezas.filter((p) => p && p.pieza).map(piezaGuardada) : [],
       documentos: Array.isArray(j.documentos) ? j.documentos.filter((d) => d && d.path) : [],
     };
