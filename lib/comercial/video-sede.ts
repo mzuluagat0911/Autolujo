@@ -26,7 +26,7 @@ export function pideUbicacion(texto: string): boolean {
 /** Panama si nombran Juan Díaz. Chorrera si la nombran. Si no, la de la cita. Si tampoco, las dos. */
 export function sedesParaVideo(texto: string, sedeCita: SedeId | null): SedeId[] {
   const t = texto.toLowerCase();
-  const panama = /juan\s*d[ií]az|panam[aá]|candelaria|san fernando/.test(t);
+  const panama = /juan\s*d[ií]a[sz]?|panam[aá]|candelaria|san fernando/.test(t);
   const chorrera = /chorrera/.test(t);
   if (panama && chorrera) return ["juan_diaz", "chorrera"];
   if (panama) return ["juan_diaz"];

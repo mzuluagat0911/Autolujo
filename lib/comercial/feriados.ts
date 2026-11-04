@@ -158,7 +158,7 @@ export function textoFeriado(fecha?: string | null): string {
     return `Ese día es feriado${etiqueta}. El área comercial atiende de 8:00 a.m. a 12:00 m. en Juan Díaz y La Chorrera, con medio equipo. ¿Le sirve esa mañana?`;
   }
   if (op?.tipo === "habitual") {
-    return `Ese día${etiqueta ? ` es ${nombre}` : " es feriado"}, pero comercial trabaja jornada habitual. Juan Díaz y La Chorrera de 8:00 a.m. a 4:00 p.m. ¿A qué hora le queda?`;
+    return `Ese día${etiqueta ? ` es ${nombre}` : " es feriado"}, pero comercial trabaja jornada habitual. Juan Díaz y La Chorrera de 8:00 a.m. a 4:00 p.m. ¿Le sirve a las 8, las 9 o las 10, o por la tarde a la 1, las 2 o las 3?`;
   }
   if (op?.tipo === "sabado_confirmar") {
     return `Ese sábado es feriado${etiqueta}. Por ahora se agenda de 8:00 a.m. a 12:00 m. en las dos sedes, como un sábado. Si cambia, le avisamos. ¿Le sirve esa mañana?`;

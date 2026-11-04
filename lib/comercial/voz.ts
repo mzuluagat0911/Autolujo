@@ -1,7 +1,8 @@
 import { pideAsesorHumano } from "./lead";
 import { esClicDeAnuncio } from "./bienvenida";
 import { esSaludoCorto, mensajeSaludoConCita } from "./cita-pedido";
-import { fechaMencionada, preguntaSiAbreFeriado, textoFeriado } from "./feriados";
+import { fechaMencionada, jornadaOperativa, preguntaSiAbreFeriado, textoFeriado } from "./feriados";
+import { mensajePedirHora, sedeDesdeTexto } from "./sedes";
 
 const SIGUE = "Cuénteme qué carro le llama más y le dejo la visita en la sede que le quede.";
 
@@ -173,6 +174,12 @@ const MANANA_HORAS =
   "Por la mañana le dejo las 8, las 9 o las 10. ¿Cuál le sirve?";
 const TARDE_HORAS =
   "Por la tarde le dejo la 1, las 2 o las 3. ¿Cuál le sirve?";
+const RECORD_ENTREVISTA =
+  "Con el récord manchado igual lo esperamos en una entrevista: el equipo revisa el caso. ¿Le queda mejor Juan Díaz o La Chorrera?";
+const ENTREGA_NORMAL =
+  "Si viene a la sede, el equipo le atiende y la entrega es normal ese mismo día. ¿Le queda mejor Juan Díaz o La Chorrera?";
+const ENTREGA_NORMAL_MANANA =
+  "Hoy abrimos de 8 a 12. Si viene a la sede, la entrega es normal. ¿Juan Díaz o La Chorrera, a las 8, las 9 o las 10?";
 
 const FILAS_LETRA: { anio: number; letra: number; cuotas: number; anios: string }[] = [
   { anio: 2027, letra: 33, cuotas: 1275, anios: "unos 3 años y medio" },
@@ -342,6 +349,46 @@ function esAgradecimientoCierre(cliente: string): boolean {
   return /^(a ok |ok )?(listo )?(muchas )?gracias/.test(c) && c.length < 50;
 }
 
+function clienteRecordManchado(cliente: string): boolean {
+  const c = plano(cliente);
+  return /record/.test(c) && /sucio|manchad|no (esta |sta )?limpio|con mancha/.test(c);
+}
+
+function invitaEntrevistaRecord(texto: string): boolean {
+  const t = plano(texto);
+  return /entrevista/.test(t) && /revisa|revisamos|el caso|el reporte/.test(t);
+}
+
+function pideCarroHoy(cliente: string): boolean {
+  const c = plano(cliente);
+  return /hoy mismo|el carro hoy|darian (el carro|hoy)|me (lo |la )?darian|me dan (el carro )?hoy|retirar hoy|llevar(melo|lo)? hoy/.test(
+    c,
+  );
+}
+
+function niegaEntregaMismoDia(texto: string): boolean {
+  const t = plano(texto);
+  return (
+    /entregas? no se (hacen|realizan)/.test(t)
+    || /no se (hace|hacen) (la |las )?entrega/.test(t)
+    || /no (se )?(entrega|entregan) (el |ese )?mismo dia/.test(t)
+    || (/feriado/.test(t) && /no (entreg|podemos entregar|hay entrega)/.test(t))
+  );
+}
+
+function pideHoraVaga(texto: string): boolean {
+  const t = plano(texto);
+  if (!/en punto o (a )?la media|en punto o y media/.test(t)) return false;
+  return !/\b(8|9|10)\b/.test(t);
+}
+
+function entregaSegunJornada(hoy?: string): string {
+  const op = hoy ? jornadaOperativa(hoy) : null;
+  if (op?.tipo === "cerrado") return textoFeriado(hoy);
+  if (op?.tipo === "media" || op?.tipo === "sabado_confirmar") return ENTREGA_NORMAL_MANANA;
+  return ENTREGA_NORMAL;
+}
+
 function corrigeRespuestaComercial(texto: string, cliente: string, opts?: OpcionesVoz): string {
   const hayCita = Boolean(opts?.hayCita);
   const c = plano(cliente);
@@ -366,6 +413,16 @@ function corrigeRespuestaComercial(texto: string, cliente: string, opts?: Opcion
     return RETIRO;
   }
   if (edadMenor(cliente)) return MENOR;
+  if (clienteRecordManchado(cliente) && !invitaEntrevistaRecord(texto)) {
+    return RECORD_ENTREVISTA;
+  }
+  if (niegaEntregaMismoDia(texto) || (pideCarroHoy(cliente) && /feriado/.test(t) && /entrega/.test(t))) {
+    return entregaSegunJornada(opts?.hoy);
+  }
+  const sedeDicha = sedeDesdeTexto(cliente);
+  if (sedeDicha && /juan diaz o la chorrera|chorrera o juan|cual sede|que sede|le gustaria visitar/.test(t)) {
+    return mensajePedirHora(sedeDicha, opts?.hoy ?? opts?.citaFecha);
+  }
   if (ZONA_FUERA.test(cliente) && afirmaCobertura(texto) && !niegaCobertura(texto)) {
     return SIN_COBERTURA;
   }
@@ -415,6 +472,9 @@ function corrigeRespuestaComercial(texto: string, cliente: string, opts?: Opcion
   }
   if (/por la tarde|en la tarde|de tarde/.test(c) && /a que hora|en punto|a la media/.test(t) && !/\d/.test(c)) {
     return TARDE_HORAS;
+  }
+  if (pideHoraVaga(texto) || (sedeDicha && /a que hora le queda/.test(t) && !/\b(8|9|10)\b/.test(t))) {
+    return mensajePedirHora(sedeDicha, opts?.hoy ?? opts?.citaFecha);
   }
   if (/no (puedo|pude) ver (la )?foto|no puedo ver esa foto/.test(t)) return conCierreVisita(FOTO_CARRO, hayCita);
   if (pideMandarDocs(cliente) && /no[,.]|se (llevan|revisan) (directamente )?a la (sede|visita)|no (los )?mande/.test(t)) {

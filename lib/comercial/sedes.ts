@@ -39,6 +39,43 @@ export function sedePorId(id: string | null | undefined): Sede | null {
   return SEDES.find((s) => s.id === id) ?? null;
 }
 
+function planoSede(texto: string): string {
+  return texto
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** "Juan días", "juandiaz" y "La Chorrera" cuentan como sede. null si nombró las dos o ninguna. */
+export function sedeDesdeTexto(texto: string): SedeId | null {
+  const t = planoSede(texto);
+  const juan = /juan\s*dia[sz]?/.test(t) || /\bjuandia[sz]?\b/.test(t);
+  const chorrera = /\bchorrera\b/.test(t);
+  if (juan && chorrera) return null;
+  if (juan) return "juan_diaz";
+  if (chorrera) return "chorrera";
+  return null;
+}
+
+/** Horas concretas según la ventana. Nunca "en punto o a la media". */
+export function mensajePedirHora(sede: SedeId | null, fecha?: string | null): string {
+  const dia = fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null;
+  if (!dia) return "Le dejo las 8, las 9 o las 10. ¿Cuál le sirve?";
+  const ventana = ventanaCita(sede ?? "juan_diaz", dia);
+  if (!ventana) {
+    if (sede === "chorrera" && ventanaCita("juan_diaz", dia)) {
+      return "Ese día La Chorrera no abre. En Juan Díaz le dejo las 8, las 9 o las 10. ¿Cuál le sirve?";
+    }
+    return validarHorario(sede ?? "juan_diaz", dia, "09:00") ?? "¿Qué otro día le queda?";
+  }
+  if (ventana.hasta <= 12 * 60) {
+    return "Por la mañana le dejo las 8, las 9 o las 10. ¿Cuál le sirve?";
+  }
+  return "Le dejo las 8, las 9 o las 10 por la mañana, o la 1, las 2 o las 3 por la tarde. ¿Cuál le sirve?";
+}
+
 function ventanaHabitual(sede: SedeId, fecha: string): { desde: number; hasta: number } | null {
   const dia = diaSemana(fecha);
   if (sede === "chorrera" && dia === 0) return null;
@@ -108,8 +145,9 @@ export function textoSedes(hoy = hoyPanama()): string {
     `  Dirección: ${SEDES[0].direccion}.`,
     "- La Chorrera: lunes a viernes 8:00 a.m. a 4:00 p.m. Sábado 8:00 a.m. a 12:00 m. El domingo no se agenda.",
     `  Dirección: ${SEDES[1].direccion}.`,
-    "La cita es cada 30 minutos. No ofrezcas una hora fuera de esa ventana.",
+    "La cita es cada 30 minutos. No ofrezcas una hora fuera de esa ventana. Si falta la hora, ofrece 8, 9 o 10 (y 1, 2 o 3 si ese día hay tarde). Prohibido preguntar «en punto o a la media».",
     "Feriados nacionales (si el contexto no trae otra jornada): Juan Díaz 8:00 a.m. a 12:00 m. La Chorrera no se agenda. Si preguntan si abren, dilo primero.",
+    "Si comercial abre ese día, también feriado, la visita y la entrega son normales: sí se puede llevar el carro el mismo día.",
     "Si preguntan cómo llegar, da la dirección. El sistema manda el video de esa sede.",
   ];
   const noviembre = textoNoviembre2026(hoy);

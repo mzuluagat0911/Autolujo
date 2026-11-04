@@ -28,7 +28,7 @@ import {
   textoJornadaHoy,
   textoNoviembre2026,
 } from "../lib/comercial/feriados.ts";
-import { validarHorario } from "../lib/comercial/sedes.ts";
+import { mensajePedirHora, sedeDesdeTexto, validarHorario } from "../lib/comercial/sedes.ts";
 import { entregaNueva } from "../lib/comercial/entrega.ts";
 import { decisionPiloto, numeroEnPiloto, ordenarPorReciente, pasaFiltroComercial } from "../lib/comercial/piloto.ts";
 import { medianaMinutos } from "../lib/comercial/resultados.ts";
@@ -629,5 +629,45 @@ assert.equal(pideUbicacion("qué carros hay disponibles"), false);
 assert.deepEqual(sedesParaVideo("donde queda la de panama", null), ["juan_diaz"]);
 assert.deepEqual(sedesParaVideo("como llegar", "chorrera"), ["chorrera"]);
 assert.deepEqual(sedesParaVideo("donde quedan", null), ["juan_diaz", "chorrera"]);
+assert.deepEqual(sedesParaVideo("Juan días", null), ["juan_diaz"]);
+assert.equal(sedeDesdeTexto("Juan días"), "juan_diaz");
+assert.equal(sedeDesdeTexto("juandiaz"), "juan_diaz");
+assert.match(mensajePedirHora("juan_diaz", "2026-11-03"), /8/);
+assert.equal(mensajePedirHora("juan_diaz", "2026-11-03").includes("las 2"), false);
+assert.ok(
+  mensajeNaturalLucia(
+    "Si el récord policivo no está limpio, no podemos avanzar. ¿De qué lugar es usted?",
+    "Lo digo e el récord sta sucio",
+  ).includes("entrevista"),
+);
+assert.equal(
+  mensajeNaturalLucia(
+    "Si el récord policivo no está limpio, no podemos avanzar. ¿De qué lugar es usted?",
+    "Lo digo e el récord sta sucio",
+  ).includes("no podemos avanzar"),
+  false,
+);
+const entregaHoy = mensajeNaturalLucia(
+  "No, hoy es feriado y las entregas no se hacen el mismo día de la visita. Primero lo esperamos en la sede.",
+  "Perro me darían el carro hoy mismo",
+  { hoy: "2026-11-03" },
+);
+assert.ok(entregaHoy.includes("entrega es normal"));
+assert.equal(entregaHoy.includes("no se hacen"), false);
+assert.ok(
+  mensajeNaturalLucia(
+    "¿A qué hora le queda bien? Puede ser en punto o a la media.",
+    "Juan días",
+    { hoy: "2026-11-03" },
+  ).includes("8"),
+);
+assert.equal(
+  mensajeNaturalLucia(
+    "¿A qué hora le queda bien? Puede ser en punto o a la media.",
+    "Juan días",
+    { hoy: "2026-11-03" },
+  ).includes("en punto"),
+  false,
+);
 
 console.log("CRM comercial: clasificación, citas, piloto y resultados OK");

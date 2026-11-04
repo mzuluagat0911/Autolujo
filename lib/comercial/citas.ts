@@ -4,7 +4,16 @@ import { ventanaAbierta } from "@/lib/cartera/pipeline";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { fechaConDia, hoyPanama, sumarDias } from "@/lib/cartera/fecha";
 import { avisoCitaPendiente } from "./avisos-cita";
-import { horaAMinutos, minutosAHora, sedePorId, validarHorario, ventanaCita, type SedeId } from "./sedes";
+import {
+  horaAMinutos,
+  mensajePedirHora,
+  minutosAHora,
+  sedeDesdeTexto,
+  sedePorId,
+  validarHorario,
+  ventanaCita,
+  type SedeId,
+} from "./sedes";
 import { sendTemplate, sendText } from "@/lib/whatsapp/client";
 import { idMensajeEnviado } from "./entrega";
 import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
@@ -98,7 +107,7 @@ async function resolverHorarioLibre(
   if (!siguiente) {
     return {
       hora: null,
-      mensaje: `Ese horario en ${sedeNombre} ya está lleno. ¿Qué otra hora le queda, en punto o a la media?`,
+      mensaje: `Ese horario en ${sedeNombre} ya está lleno. ${mensajePedirHora(opts.sede, opts.fecha)}`,
     };
   }
   if (aceptaSiguienteHorario(opts.textoCliente)) return { hora: siguiente, mensaje: null };
@@ -252,7 +261,7 @@ export async function aplicarPedidoCita(opts: {
     };
   }
 
-  const sede = pedido.sede ?? abierta?.sede ?? null;
+  const sede = pedido.sede ?? sedeDesdeTexto(opts.textoCliente ?? "") ?? abierta?.sede ?? null;
   const fecha = pedido.fecha ?? (pedido.accion === "reagendar" ? null : abierta?.fecha ?? null);
   const hora = pedido.hora ?? (pedido.accion === "reagendar" ? null : abierta?.hora ?? null);
   let nombre = (pedido.nombre ?? abierta?.nombre ?? "").trim();
@@ -295,7 +304,7 @@ export async function aplicarPedidoCita(opts: {
       }
       return { mensaje: "Por la tarde le dejo la 1, las 2 o las 3. ¿Cuál le sirve?" };
     }
-    return { mensaje: "¿A qué hora le queda bien? Puede ser en punto o a la media." };
+    return { mensaje: mensajePedirHora(sede, fecha) };
   }
   const horario = validarHorario(sede, fecha, hora);
   if (horario) return { mensaje: horario };
