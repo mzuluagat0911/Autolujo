@@ -353,6 +353,40 @@ function parseAsignaciones(raw: unknown): ResultadoPago | null {
  * hay que poner un cargo `tipo=acuerdo` por la misma plata para que la letra
  * no se coma lo del arreglo.
  */
+/** El abono inicial no es letra. Si el pago lo trae, el cargo entra al confirmar. */
+export async function asegurarCargoAbonoDelPago(opts: {
+  contratoId: string;
+  pagoId: string;
+  fecha: string;
+  asignaciones: AsignacionPago[];
+}): Promise<void> {
+  const monto = r2(
+    opts.asignaciones
+      .filter((a) => a.tipo === "abono" && (Number(a.aplicado) || 0) > 0.009)
+      .reduce((s, a) => s + Number(a.aplicado), 0),
+  );
+  if (monto <= 0.009) return;
+  const sb = createServerSupabase();
+  const ya = await sb.from("cargos").select("id").eq("pago_id", opts.pagoId).eq("tipo", "afiliacion").limit(1);
+  if (ya.error && !/pago_id/i.test(ya.error.message)) return;
+  if ((ya.data ?? []).length > 0) return;
+  const fila: Record<string, unknown> = {
+    contrato_id: opts.contratoId,
+    pago_id: opts.pagoId,
+    fecha: opts.fecha,
+    tipo: "afiliacion",
+    concepto_codigo: "AFILIACION",
+    concepto: "Abono inicial",
+    monto,
+  };
+  const ins = await sb.from("cargos").insert(fila);
+  if (ins.error && /pago_id|concepto_codigo/i.test(ins.error.message)) {
+    delete fila.pago_id;
+    delete fila.concepto_codigo;
+    await sb.from("cargos").insert(fila);
+  }
+}
+
 export async function asegurarCargosAcuerdoDelPago(opts: {
   contratoId: string;
   pagoId: string;
@@ -874,6 +908,12 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const ya = parseAsignaciones(pago.asignaciones);
   if (ya) {
     await asegurarCargosAcuerdoDelPago({
+      contratoId: pago.contrato_id,
+      pagoId,
+      fecha: fechaContable(pago.pagado_at),
+      asignaciones: ya.asignaciones,
+    });
+    await asegurarCargoAbonoDelPago({
       contratoId: pago.contrato_id,
       pagoId,
       fecha: fechaContable(pago.pagado_at),
