@@ -362,7 +362,7 @@ export async function asegurarCargoAbonoDelPago(opts: {
 }): Promise<void> {
   const monto = r2(
     opts.asignaciones
-      .filter((a) => a.tipo === "abono" && (Number(a.aplicado) || 0) > 0.009)
+      .filter((a) => String(a.tipo) === "abono" && (Number(a.aplicado) || 0) > 0.009)
       .reduce((s, a) => s + Number(a.aplicado), 0),
   );
   if (monto <= 0.009) return;
