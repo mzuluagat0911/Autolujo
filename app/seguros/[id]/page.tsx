@@ -8,6 +8,7 @@ import {
   leerCaso,
   pathCliente,
   pathEmpresa,
+  pathVehiculo,
   registroDeVehiculo,
   registroTieneDatos,
 } from "@/lib/seguros/datos";
@@ -28,15 +29,16 @@ export default async function CasoPage({ params }: { params: Promise<{ id: strin
   ]);
   const copiasCliente = cliente ? [pathCliente(cliente.id, "cedula"), pathCliente(cliente.id, "licencia")] : [];
   const deEmpresa = empresa ? [pathEmpresa(empresa.id, "representante"), pathEmpresa(empresa.id, "registro")] : [];
-  const urls = await firmar([...fila.caso.documentos.map((d) => d.path), ...copiasCliente, ...deEmpresa]);
+  const delCarro = [pathVehiculo(fila.vehiculoId, "registro"), pathVehiculo(fila.vehiculoId, "cedula-licencia")];
+  const urls = await firmar([...fila.caso.documentos.map((d) => d.path), ...copiasCliente, ...deEmpresa, ...delCarro]);
   const hay = (tipo: DocTipo) => fila.caso.documentos.some((d) => d.tipo === tipo && urls[d.path]);
   const papeles = armarPapeles({
     caso: fila.caso,
     tiene: hay,
-    copiaCliente: copiasCliente.some((p) => urls[p]),
+    copiaCliente: copiasCliente.some((p) => urls[p]) || Boolean(urls[pathVehiculo(fila.vehiculoId, "cedula-licencia")]),
     representante: Boolean(empresa && urls[pathEmpresa(empresa.id, "representante")]),
     registroPublico: Boolean(empresa && urls[pathEmpresa(empresa.id, "registro")]),
-    registroVehiculo: registroTieneDatos(registro),
+    registroVehiculo: registroTieneDatos(registro) || Boolean(urls[pathVehiculo(fila.vehiculoId, "registro")]),
   });
   return (
     <div className="mx-auto max-w-4xl py-10">

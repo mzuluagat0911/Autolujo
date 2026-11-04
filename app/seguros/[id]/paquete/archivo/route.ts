@@ -8,6 +8,7 @@ import {
   leerCaso,
   pathCliente,
   pathEmpresa,
+  pathVehiculo,
   registroDeVehiculo,
   registroTieneDatos,
   type DocCliente,
@@ -58,6 +59,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   if (cliente) {
     paths.push(pathCliente(cliente.id, "cedula"), pathCliente(cliente.id, "licencia"));
   }
+  paths.push(pathVehiculo(fila.vehiculoId, "registro"), pathVehiculo(fila.vehiculoId, "cedula-licencia"));
   const bajados = new Map<string, Uint8Array>();
   await Promise.all(
     paths.map(async (path) => {
@@ -74,18 +76,22 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const licenciaCliente = copiaCliente("licencia");
   const representante = empresa ? bajados.get(pathEmpresa(empresa.id, "representante")) : undefined;
   const registroPublico = empresa ? bajados.get(pathEmpresa(empresa.id, "registro")) : undefined;
+  const registroScan = bajados.get(pathVehiculo(fila.vehiculoId, "registro"));
+  const cedulaDelCarro = bajados.get(pathVehiculo(fila.vehiculoId, "cedula-licencia"));
   const papeles = armarPapeles({
     caso: fila.caso,
     tiene: hay,
-    copiaCliente: Boolean(cedulaCliente || licenciaCliente),
+    copiaCliente: Boolean(cedulaCliente || licenciaCliente || cedulaDelCarro),
     representante: Boolean(representante),
     registroPublico: Boolean(registroPublico),
-    registroVehiculo: registroTieneDatos(registro),
+    registroVehiculo: registroTieneDatos(registro) || Boolean(registroScan),
   });
 
   const de = (tipo: DocTipo) => fila.caso.documentos.filter((d) => d.tipo === tipo);
   const archivos: ArchivoPaquete[] = [];
   meter(archivos, de("cotizacion"), bajados);
+  if (registroScan) archivos.push({ nombre: "Registro vehicular", bytes: registroScan });
+  if (cedulaDelCarro) archivos.push({ nombre: "Cedula y licencia", bytes: cedulaDelCarro });
   meter(archivos, de("cedula"), bajados);
   if (cedulaCliente) archivos.push({ nombre: "Cedula", bytes: cedulaCliente });
   meter(archivos, de("licencia"), bajados);
@@ -108,7 +114,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     fecha: fila.fecha,
     caso: conConductor(fila.caso, cliente),
     papeles,
-    registro: registroTieneDatos(registro) ? registro : null,
+    registro: registroScan ? null : registroTieneDatos(registro) ? registro : null,
     archivos,
   });
 

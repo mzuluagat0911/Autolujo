@@ -166,7 +166,7 @@ export function hojaAmarilla(input: {
     filas: [
       { etiqueta: "PLACA PARTICULAR", valor: input.placa.trim(), documento: "FACTURA + DGI", marca: si(p.factura) },
       { etiqueta: "PLACA CUPO", valor: c.placaCupo.trim(), documento: cotizacion, marca: si(p.cotizacion) },
-      { etiqueta: "CONDUCTOR", valor: c.conductor.trim(), documento: "CEDULA Y LICENCIA CONDUCTOR", marca: si(p.cedulaLicencia) },
+      { etiqueta: "CONDUCTOR", valor: c.conductor.trim(), documento: "CEDULA Y LICENCIA CONDUCTOR", marca: si(p.cedulaLicencia || Boolean(c.cedulaConductor.trim())) },
       { etiqueta: "CEDULA", valor: c.cedulaConductor.trim(), documento: "COPIA CEDULA REPRES LEGAL", marca: si(p.representante) },
       { etiqueta: "ASISTENCIA COLISION", valor: c.asistencia.trim(), documento: "REGISTRO VEHICULAR", marca: si(p.registroVehiculo) },
       { etiqueta: "# PARTE POLICIAL", valor: c.numeroParte.trim(), documento: "INFORME ACCIDENTE", marca: si(p.informe) },

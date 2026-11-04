@@ -19,6 +19,7 @@ import {
   leerCaso,
   pathCliente,
   pathEmpresa,
+  pathVehiculo,
   subirArchivo,
 } from "@/lib/seguros/datos";
 import {
@@ -40,6 +41,7 @@ export type Resultado = { ok: boolean; error?: string; id?: string; msg?: string
 function revalidar(id?: string) {
   revalidatePath("/seguros");
   revalidatePath("/seguros/polizas");
+  revalidatePath("/seguros/registros");
   if (id) {
     revalidatePath(`/seguros/${id}`);
     revalidatePath(`/seguros/${id}/paquete`);
@@ -105,22 +107,28 @@ export async function crearCaso(fd: FormData): Promise<Resultado> {
   caso.seccionDesde = hoyPanama();
   caso.lugar = texto(fd.get("lugar"));
   caso.relato = texto(fd.get("relato"));
-  caso.clienteId = carro.clienteId;
-  caso.clienteNombre = carro.cliente;
-  caso.contratoId = carro.contratoId;
+  const exCliente = fd.get("ex_cliente") === "1";
+  caso.exCliente = exCliente;
+  caso.clienteId = exCliente ? null : carro.clienteId;
+  caso.clienteNombre = exCliente ? texto(fd.get("ex_nombre")) || "Ex cliente" : carro.cliente;
+  caso.contratoId = exCliente ? null : carro.contratoId;
+  caso.cedulaConductor = exCliente ? texto(fd.get("ex_cedula")) : "";
   caso.aseguradora = aseguradoraOk(texto(fd.get("aseguradora")));
   caso.destinoCarro = destino;
 
   const creado = await crearFila({ vehiculoId, fecha, caso });
   if ("error" in creado) return { ok: false, error: creado.error };
 
-  const pausa = await pausarSiQuedaEnTaller(vehiculoId, fecha, destino);
+  const pausa = exCliente ? null : await pausarSiQuedaEnTaller(vehiculoId, fecha, destino);
 
   revalidar(creado.id);
+  const msg = exCliente
+    ? "Caso abierto del ex cliente. El cobro del cliente actual no se toca."
+    : msgChoque(destino, pausa!, true);
   return {
     ok: true,
     id: creado.id,
-    msg: msgChoque(destino, pausa, true),
+    msg,
   };
 }
 
@@ -429,4 +437,20 @@ export async function subirDocCliente(fd: FormData): Promise<Resultado> {
 
 export async function empresaDelCaso(vehiculoId: string) {
   return empresaDeVehiculo(vehiculoId);
+}
+
+export async function subirRegistroVehiculo(fd: FormData): Promise<Resultado> {
+  const vehiculoId = texto(fd.get("vehiculo_id"));
+  const archivo = fd.get("archivo");
+  if (!vehiculoId) return { ok: false, error: "Falta el carro." };
+  if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elija el registro." };
+  if (archivo.size > 12 * 1024 * 1024) return { ok: false, error: "El archivo pasa de 12 MB." };
+  const error = await subirArchivo(
+    pathVehiculo(vehiculoId, "registro"),
+    new Uint8Array(await archivo.arrayBuffer()),
+    archivo.type || "application/octet-stream",
+  );
+  if (error) return { ok: false, error };
+  revalidar();
+  return { ok: true, msg: "Registro del carro guardado." };
 }

@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { PDFDocument, StandardFonts, degrees, rgb, type PDFFont, type PDFImage, type PDFPage } from "pdf-lib";
 import type { Caso } from "./modelo";
 import { totalPiezas } from "./modelo";
 import type { RegistroCarro } from "./datos";
@@ -183,6 +183,30 @@ function registro(doc: PDFDocument, font: PDFFont, bold: PDFFont, registroCarro:
   );
 }
 
+/** Foto horizontal: se gira a vertical para que llene la hoja. */
+function dibujarFoto(page: PDFPage, img: PDFImage) {
+  const margen = 16;
+  const maxW = A4[0] - margen * 2;
+  const maxH = A4[1] - margen * 2;
+  const horizontal = img.width > img.height;
+  const ancho = horizontal ? img.height : img.width;
+  const alto = horizontal ? img.width : img.height;
+  const escala = Math.min(maxW / ancho, maxH / alto);
+  const w = img.width * escala;
+  const h = img.height * escala;
+  if (!horizontal) {
+    page.drawImage(img, { x: (A4[0] - w) / 2, y: (A4[1] - h) / 2, width: w, height: h });
+    return;
+  }
+  page.drawImage(img, {
+    x: (A4[0] + h) / 2,
+    y: (A4[1] - w) / 2,
+    width: w,
+    height: h,
+    rotate: degrees(90),
+  });
+}
+
 async function anexar(doc: PDFDocument, font: PDFFont, archivo: ArchivoPaquete) {
   const b = archivo.bytes;
   const esPdf = b.length >= 4 && b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46;
@@ -197,13 +221,7 @@ async function anexar(doc: PDFDocument, font: PDFFont, archivo: ArchivoPaquete) 
     }
     if (esJpg || esPng) {
       const img = esJpg ? await doc.embedJpg(b) : await doc.embedPng(b);
-      const page = doc.addPage(A4);
-      const maxW = A4[0] - 36;
-      const maxH = A4[1] - 36;
-      const escala = Math.min(maxW / img.width, maxH / img.height);
-      const w = img.width * escala;
-      const h = img.height * escala;
-      page.drawImage(img, { x: (A4[0] - w) / 2, y: (A4[1] - h) / 2, width: w, height: h });
+      dibujarFoto(doc.addPage(A4), img);
       return;
     }
   } catch {

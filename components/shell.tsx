@@ -69,10 +69,17 @@ const NAV: Group[] = [
     ],
   },
   {
-    // Los demás módulos del negocio — la visión de la plataforma.
+    section: "Seguros",
+    items: [
+      { label: "Choques", href: "/seguros", status: "active", modulo: "seguros" },
+      { label: "Registrar choque", href: "/seguros/nuevo", status: "active", modulo: "seguros" },
+      { label: "Pólizas", href: "/seguros/polizas", status: "active", modulo: "seguros" },
+      { label: "Registros vehiculares", href: "/seguros/registros", status: "active", modulo: "seguros" },
+    ],
+  },
+  {
     section: "Módulos del negocio",
     items: [
-      { label: "Seguros", href: "/seguros", status: "active", modulo: "seguros" },
       { label: "Administrativo", href: "/administrativo", status: "pronto", modulo: "resumen" },
     ],
   },
@@ -83,6 +90,15 @@ function isActive(pathname: string, href: string) {
   // Paneles raíz: solo exacto (si no, /cartera marca todo Cartera).
   if (href === "/admin" || href === "/cartera" || href === "/operaciones" || href === "/comercial") {
     return pathname === href;
+  }
+  if (href === "/seguros") {
+    return (
+      pathname === "/seguros" ||
+      (pathname.startsWith("/seguros/") &&
+        !pathname.startsWith("/seguros/nuevo") &&
+        !pathname.startsWith("/seguros/polizas") &&
+        !pathname.startsWith("/seguros/registros"))
+    );
   }
   return pathname === href || pathname.startsWith(href + "/");
 }

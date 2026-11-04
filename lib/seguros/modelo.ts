@@ -21,9 +21,19 @@ export const SECCIONES = [
 export type Seccion = (typeof SECCIONES)[number]["id"];
 
 export const ASEGURADORAS = [
-  { id: "fedpa", nombre: "Fedpa", telefono: "340-5400" },
-  { id: "sura", nombre: "Sura", telefono: "800-8888" },
+  { id: "assa", nombre: "ASSA", telefono: "" },
+  { id: "mapfre", nombre: "MAPFRE", telefono: "" },
+  { id: "ancon", nombre: "ANCON", telefono: "" },
+  { id: "sura", nombre: "SURA", telefono: "800-8888" },
+  { id: "fedpa", nombre: "FEDPA", telefono: "340-5400" },
+  { id: "internacional", nombre: "Internacional de Seguros", telefono: "" },
   { id: "optima", nombre: "Óptima", telefono: "269-5000" },
+  { id: "acerta", nombre: "Acerta", telefono: "" },
+  { id: "global_bank", nombre: "Global Bank", telefono: "" },
+  { id: "mb", nombre: "MB Seguros", telefono: "" },
+  { id: "general", nombre: "General de Seguros", telefono: "" },
+  { id: "regional", nombre: "Regional de Seguros", telefono: "" },
+  { id: "intecar", nombre: "Intecar S.A.", telefono: "" },
 ] as const;
 
 export type AseguradoraId = (typeof ASEGURADORAS)[number]["id"] | "";
@@ -35,8 +45,8 @@ export const DOCUMENTOS = [
   { id: "fud", label: "FUD", hint: "Cuando el otro carro acepta la culpa y el daño es leve." },
   { id: "parte", label: "Parte policivo", hint: "Placa, cédula, fecha del choque y de la audiencia." },
   { id: "resolucion", label: "Resolución de tránsito", hint: "Se retira después de la audiencia." },
-  { id: "cedula", label: "Cédula", hint: "Copia de quien manejaba." },
-  { id: "licencia", label: "Licencia", hint: "Copia de quien manejaba." },
+  { id: "cedula", label: "Cédula y licencia", hint: "Un solo archivo, las dos juntas, de quien manejaba." },
+  { id: "licencia", label: "Licencia", hint: "Si ya estaba aparte. Lo nuevo va en cédula y licencia." },
   { id: "registro", label: "Registro vehicular", hint: "Sale de la ficha del carro." },
   { id: "foto_reparado", label: "Fotos del carro reparado", hint: "Cuando ya salió del taller." },
   { id: "cotizacion", label: "Cotización o facturas", hint: "Lo que se lleva a la aseguradora." },
@@ -100,6 +110,8 @@ export type Caso = {
   seccionDesde: string;
   /** Lo abrió el chat de cartera. El carro sigue trabajando hasta que alguien lo confirme. */
   porConfirmar: boolean;
+  /** El choque es de quien ya entregó el carro. No se pausa el cobro del cliente actual. */
+  exCliente: boolean;
   conversacionId: string | null;
   /**
    * Al confirmar o registrar: si sigue en la calle el cobro no se corta.
@@ -243,6 +255,7 @@ export function casoVacio(): Caso {
     avisoAudiencia: null,
     seccionDesde: "",
     porConfirmar: false,
+    exCliente: false,
     conversacionId: null,
     destinoCarro: "",
   };
@@ -317,6 +330,7 @@ export function parseCaso(raw: string | null | undefined): Caso | null {
       avisoAudiencia: j.avisoAudiencia ?? null,
       seccionDesde: texto(j.seccionDesde),
       porConfirmar: Boolean(j.porConfirmar),
+      exCliente: Boolean(j.exCliente),
       conversacionId: typeof j.conversacionId === "string" ? j.conversacionId : null,
       destinoCarro: destinoCarroDe(j.destinoCarro),
       piezas: Array.isArray(j.piezas) ? j.piezas.filter((p) => p && p.pieza).map(piezaGuardada) : [],

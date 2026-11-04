@@ -7,6 +7,7 @@ import {
   leerCaso,
   pathCliente,
   pathEmpresa,
+  pathVehiculo,
   registroDeVehiculo,
   registroTieneDatos,
 } from "@/lib/seguros/datos";
@@ -30,15 +31,16 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
     ? [pathEmpresa(empresa.id, "registro"), pathEmpresa(empresa.id, "representante")]
     : [];
   const delCliente = cliente ? [pathCliente(cliente.id, "cedula"), pathCliente(cliente.id, "licencia")] : [];
-  const urls = await firmar([...fila.caso.documentos.map((d) => d.path), ...fijos, ...delCliente]);
+  const delCarro = [pathVehiculo(fila.vehiculoId, "registro"), pathVehiculo(fila.vehiculoId, "cedula-licencia")];
+  const urls = await firmar([...fila.caso.documentos.map((d) => d.path), ...fijos, ...delCliente, ...delCarro]);
   const hay = (tipo: string) => fila.caso.documentos.some((d) => d.tipo === tipo && urls[d.path]);
   const papeles = armarPapeles({
     caso: fila.caso,
     tiene: hay,
-    copiaCliente: delCliente.some((p) => urls[p]),
+    copiaCliente: delCliente.some((p) => urls[p]) || Boolean(urls[pathVehiculo(fila.vehiculoId, "cedula-licencia")]),
     representante: Boolean(empresa && urls[pathEmpresa(empresa.id, "representante")]),
     registroPublico: Boolean(empresa && urls[pathEmpresa(empresa.id, "registro")]),
-    registroVehiculo: registroListo,
+    registroVehiculo: registroListo || Boolean(urls[pathVehiculo(fila.vehiculoId, "registro")]),
   });
   const faltan = faltantesPaquete(papeles, fila.caso.via);
   const hoja = hojaAmarilla({

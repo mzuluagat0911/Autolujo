@@ -42,6 +42,7 @@ import { DestinoCarroOpciones } from "../destino";
 import { BloqueRegistro } from "../registro";
 import {
   pathCliente,
+  pathVehiculo,
   registroTieneDatos,
   type ClienteDelCaso,
   type DocCliente,
@@ -485,7 +486,7 @@ export function FichaCaso({
               <option value="">Elija…</option>
               {ASEGURADORAS.map((a) => (
                 <option key={a.id} value={a.id}>
-                  {a.nombre} · {a.telefono}
+                  {a.telefono ? `${a.nombre} · ${a.telefono}` : a.nombre}
                 </option>
               ))}
             </select>
@@ -763,21 +764,28 @@ export function FichaCaso({
           Cada caja es un papel del paquete. Puede subir varios archivos en la misma. Los archivos se guardan solos al subirlos.
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {DOCUMENTOS.map((d) => (
+          {DOCUMENTOS.filter((d) => d.id !== "licencia").map((d) => (
             <CajaDoc
               key={d.id}
               casoId={fila.id}
               tipo={d.id}
               label={d.label}
               hint={d.hint}
-              archivos={fila.caso.documentos.filter((x) => x.tipo === d.id)}
+              archivos={fila.caso.documentos.filter((x) => x.tipo === d.id || (d.id === "cedula" && x.tipo === "licencia"))}
               urls={urls}
               disabled={pending}
               error={errorDoc?.tipo === d.id ? errorDoc.msg : null}
               onRun={(accion, fd) => correr(accion, fd, d.id)}
               onSubir={(archivos) => subirArchivos(d.id, archivos)}
               registro={d.id === "registro" ? registro : null}
-              cliente={d.id === "cedula" || d.id === "licencia" ? cliente : null}
+              cliente={d.id === "cedula" ? cliente : null}
+              copiaCarro={
+                d.id === "cedula"
+                  ? urls[pathVehiculo(fila.vehiculoId, "cedula-licencia")]
+                  : d.id === "registro"
+                    ? urls[pathVehiculo(fila.vehiculoId, "registro")]
+                    : undefined
+              }
             />
           ))}
         </div>
@@ -876,6 +884,7 @@ function CajaDoc({
   onSubir,
   registro,
   cliente,
+  copiaCarro,
 }: {
   casoId: string;
   tipo: DocTipo;
@@ -889,6 +898,7 @@ function CajaDoc({
   onSubir: (archivos: File[]) => void;
   registro?: RegistroCarro | null;
   cliente?: ClienteDelCaso | null;
+  copiaCarro?: string;
 }) {
   const traido = registroTieneDatos(registro);
   const campo = useRef<HTMLInputElement>(null);
@@ -898,7 +908,12 @@ function CajaDoc({
   return (
     <div className={`rounded-lg p-3 ring-1 ${error ? "ring-rojo/40" : "ring-line"}`}>
       <p className="text-sm font-medium">{label}</p>
-      <p className="mt-0.5 text-xs text-muted">{delCliente ? "Ya la tenemos del cliente. Va sola en el paquete." : hint}</p>
+      <p className="mt-0.5 text-xs text-muted">{delCliente ? "Un solo archivo, cédula y licencia juntas. Si el carro ya la tiene, va sola en el paquete." : hint}</p>
+      {copiaCarro && (
+        <a href={copiaCarro} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-medium hover:underline">
+          Ver el archivo del carro
+        </a>
+      )}
       {traido && registro && (
         <div className="mt-3">
           <BloqueRegistro registro={registro} />

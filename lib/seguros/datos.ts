@@ -529,6 +529,13 @@ export function pathCliente(clienteId: string, cual: DocCliente): string {
   return `seguros/clientes/${clienteId}/${cual}`;
 }
 
+export type DocVehiculo = "registro" | "cedula-licencia";
+
+/** Registro vehicular o la cédula con la licencia, archivados por carro. */
+export function pathVehiculo(vehiculoId: string, cual: DocVehiculo): string {
+  return `seguros/vehiculos/${vehiculoId}/${cual}`;
+}
+
 export type ClienteDelCaso = {
   id: string;
   nombre: string;

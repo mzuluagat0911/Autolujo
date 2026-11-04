@@ -18,6 +18,7 @@ export function AltaChoque({ carros, hoy }: { carros: CarroParaCaso[]; hoy: stri
   const [carroId, setCarroId] = useState("");
   const [via, setVia] = useState<"fud" | "parte" | "">("");
   const [destino, setDestino] = useState<DestinoCarro>("");
+  const [exCliente, setExCliente] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aviso, setAviso] = useState<string | null>(null);
 
@@ -36,6 +37,7 @@ export function AltaChoque({ carros, hoy }: { carros: CarroParaCaso[]; hoy: stri
     fd.set("vehiculo_id", carroId);
     fd.set("via", via);
     fd.set("destino_carro", destino);
+    if (exCliente) fd.set("ex_cliente", "1");
     setError(null);
     start(async () => {
       const r = await crearCaso(fd);
@@ -110,6 +112,33 @@ export function AltaChoque({ carros, hoy }: { carros: CarroParaCaso[]; hoy: stri
         </div>
       </fieldset>
 
+      <label className="flex items-start gap-3 rounded-xl bg-surface p-4 ring-1 ring-line">
+        <input
+          type="checkbox"
+          checked={exCliente}
+          onChange={(e) => setExCliente(e.target.checked)}
+          className="mt-0.5"
+        />
+        <span>
+          <span className="block text-sm font-medium">Es un ex cliente</span>
+          <span className="mt-0.5 block text-xs text-muted">
+            Ya no tiene este carro. El caso queda a su nombre y no se pausa el cobro de quien lo tiene ahora.
+          </span>
+        </span>
+      </label>
+      {exCliente && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Nombre del ex cliente</span>
+            <input name="ex_nombre" required className={INPUT} />
+          </label>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Cédula</span>
+            <input name="ex_cedula" className={INPUT} />
+          </label>
+        </div>
+      )}
+
       <DestinoCarroOpciones valor={destino} onChange={setDestino} />
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -123,7 +152,7 @@ export function AltaChoque({ carros, hoy }: { carros: CarroParaCaso[]; hoy: stri
             <option value="">Todavía no sé</option>
             {ASEGURADORAS.map((a) => (
               <option key={a.id} value={a.id}>
-                {a.nombre} · {a.telefono}
+                {a.telefono ? `${a.nombre} · ${a.telefono}` : a.nombre}
               </option>
             ))}
           </select>
