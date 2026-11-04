@@ -263,6 +263,18 @@ check(
   }).dias,
   2,
 );
+const g42 = diasAdelantadosDe({
+  letra: 35,
+  saldoVista: -348,
+  domingoSaldo: 0,
+  faltaHoy: 0,
+  cuenta: 0,
+  hoy: "2026-11-04",
+  diasPagoFuturo: 0,
+  terminos: { cobra_domingo: false, cuota_domingo: 0, letra_diaria: 35, descuento_puntual: 5 },
+});
+check("G42: 9 letras y el domingo 8 no acorta la fecha", g42.dias, 9);
+check("G42 queda cubierto hasta el 14, no el 13", g42.hastaCredito, "2026-11-14");
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);
 process.exit(fallos === 0 ? 0 : 1);

@@ -9,7 +9,6 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, pasoCorte, fechaLarga, sumarDias, esDomingo, domingoDelCiclo, rangoDiaPanama } from "./fecha";
-import type { TerminosCuota } from "./cuota";
 import { calcularCifras, textoDesglose, cubrioCuotaDelDia, type Cifras } from "./cifras";
 import {
   contratosConPagoEnDia,
@@ -28,7 +27,7 @@ import { programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
 import { ajustarCobroDevolucion, devolucionDeVehiculo, devolucionVigente, devolucionesAbiertas } from "./devolucion";
 import { ajustarCobroInactivo, inactivacionDeVehiculo, inactivacionVigente, inactivacionesAbiertas } from "./inactivo";
 import { ajustarCobroPausa, etiquetaPausa, pausaDeVehiculo, pausaVigente, pausasAbiertas } from "./pausa-productiva";
-import { correLetraNueva, cuotaDeFecha, esCumpleanos, tienePermanencia } from "./cuota";
+import { correLetraNueva, cuotaDeFecha, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
 import { tratamientoCliente } from "./tratamiento";
 import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
 import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
@@ -282,6 +281,19 @@ export function cuotasAtraso(e: {
  * Un pago fechado a futuro (acuerdo del domingo, Excel) NO adelanta letras
  * si todavía hay que cobrar hoy. KW 104: $71 el 1 nov no tapa $88.95 de cuenta.
  */
+/** Último día de letra que cubre el crédito. El domingo sin letra no cuenta. */
+export function hastaPorLetras(hoy: string, cuotas: number, terminos?: TerminosCuota): string | null {
+  if (cuotas <= 0) return null;
+  if (!terminos) return sumarDias(hoy, cuotas);
+  let fecha = hoy;
+  let quedan = cuotas;
+  for (let i = 0; quedan > 0 && i < cuotas + 20; i++) {
+    fecha = sumarDias(fecha, 1);
+    if (correLetraNueva(terminos, fecha)) quedan--;
+  }
+  return fecha;
+}
+
 export function diasAdelantadosDe(opts: {
   letra: number;
   saldoVista: number;
@@ -290,6 +302,7 @@ export function diasAdelantadosDe(opts: {
   cuenta: number;
   hoy: string;
   diasPagoFuturo: number;
+  terminos?: TerminosCuota;
 }): { dias: number; hastaCredito: string | null } {
   const reservadoDomingo = esDomingo(opts.hoy) ? 0 : Math.max(Number(opts.domingoSaldo) || 0, 0);
   const netoConHoy =
@@ -302,7 +315,7 @@ export function diasAdelantadosDe(opts: {
   const dias = sigueDebiendo ? diasPorCredito : Math.max(diasPorCredito, diasPorPagoFuturo);
   return {
     dias,
-    hastaCredito: diasPorCredito > 0 ? sumarDias(opts.hoy, diasPorCredito) : null,
+    hastaCredito: hastaPorLetras(opts.hoy, diasPorCredito, opts.terminos),
   };
 }
 
@@ -436,18 +449,16 @@ function armar(
     cuenta: cifras.cuenta,
     hoy: extra.hoy,
     diasPagoFuturo: extra.diasPagoFuturo ?? 0,
+    terminos: c,
   });
   const diasAdelantados = adelanto.dias;
   const hastaCredito = adelanto.hastaCredito;
   const hastaPago = extra.cubiertoHastaPago ?? null;
-  // La fecha “cubierto hasta” debe coincidir con las cuotas por delante:
-  // max(crédito, última fecha de pago futuro) o hoy+N.
+  // La fecha es el último día de letra cubierto, o un pago fechado más adelante.
+  // No se suma N días de calendario: un domingo sin letra alargaría mal la fecha.
   const cubiertoHasta =
     diasAdelantados > 0
-      ? [hastaCredito, hastaPago, sumarDias(extra.hoy, diasAdelantados)]
-          .filter((x): x is string => Boolean(x))
-          .sort()
-          .at(-1) ?? null
+      ? [hastaCredito, hastaPago].filter((x): x is string => Boolean(x)).sort().at(-1) ?? null
       : null;
 
   // Adelantado (crédito o pago con fecha futura): NO aplica multa de “no pago” hoy.
