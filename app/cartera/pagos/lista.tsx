@@ -286,23 +286,38 @@ function Fila({
         >
           <input type="hidden" name="pago_id" value={p.id} />
           <input type="hidden" name="accion" value="conciliar" />
-          {necesitaContrato && (
-            <select
-              name="contrato_id"
-              required
-              defaultValue=""
-              className="max-w-xs rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line"
-            >
-              <option value="" disabled>
-                Anclar a contrato…
-              </option>
-              {contratos.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          )}
+          <select
+            name="contrato_id"
+            required={necesitaContrato}
+            defaultValue={p.contrato_id ?? ""}
+            className="max-w-md rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line"
+          >
+            <option value="" disabled>
+              Anclar a contrato…
+            </option>
+            {contratos.some((c) => c.activo) && (
+              <optgroup label="Activos">
+                {contratos
+                  .filter((c) => c.activo)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+              </optgroup>
+            )}
+            {contratos.some((c) => !c.activo) && (
+              <optgroup label="Inactivos">
+                {contratos
+                  .filter((c) => !c.activo)
+                  .map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+              </optgroup>
+            )}
+          </select>
           {p.notas?.includes("EXCEDENTE_SIN_CONCEPTO") && (
             <label className="w-full text-xs text-muted">
               A dónde va el excedente

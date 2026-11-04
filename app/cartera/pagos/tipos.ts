@@ -23,4 +23,9 @@ export type PagoFila = {
   empresa: string | null;
 };
 
-export type ContratoOpt = { id: string; label: string; empresa: string | null };
+export type ContratoOpt = {
+  id: string;
+  label: string;
+  empresa: string | null;
+  activo: boolean;
+};

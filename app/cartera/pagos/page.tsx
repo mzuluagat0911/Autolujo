@@ -33,9 +33,8 @@ async function getData() {
         .limit(400),
       sb
         .from("contratos")
-        .select("id, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo))")
-        .eq("estado", "activo")
-        .limit(400),
+        .select("id, estado, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo))")
+        .limit(1000),
     ]);
 
     let rows = pagosRes.data;
@@ -123,13 +122,25 @@ async function getData() {
 
     const contratos: ContratoOpt[] = ((contratosRes.data ?? []) as unknown as {
       id: string;
+      estado: string;
       cliente: { nombre: string } | null;
       vehiculo: { numero: string; empresa: { codigo: string } | null } | null;
-    }[]).map((c) => ({
-      id: c.id,
-      empresa: siglaEmpresa(c.vehiculo?.empresa?.codigo) || null,
-      label: `${etiquetaCarroUi(c.vehiculo?.empresa?.codigo, c.vehiculo?.numero)} · ${c.cliente?.nombre ?? "sin nombre"}`,
-    }));
+    }[])
+      .map((c) => {
+        const activo = c.estado === "activo";
+        const carro = etiquetaCarroUi(c.vehiculo?.empresa?.codigo, c.vehiculo?.numero);
+        const nombre = c.cliente?.nombre ?? "sin nombre";
+        return {
+          id: c.id,
+          empresa: siglaEmpresa(c.vehiculo?.empresa?.codigo) || null,
+          activo,
+          label: activo ? `${carro} · ${nombre}` : `${carro} · ${nombre} · inactivo`,
+        };
+      })
+      .sort((a, b) => {
+        if (a.activo !== b.activo) return a.activo ? -1 : 1;
+        return a.label.localeCompare(b.label, "es", { numeric: true, sensitivity: "base" });
+      });
 
     return { pendientes, contratos, error: null as string | null };
   } catch (e) {
