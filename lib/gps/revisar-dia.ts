@@ -72,7 +72,8 @@ async function primerOdometroHoy(fecha: string): Promise<Map<string, number>> {
     .from("gps_posiciones")
     .select("id_dispositivo, odometro, tomado_at")
     .eq("fecha", fecha)
-    .order("tomado_at", { ascending: true });
+    .order("tomado_at", { ascending: true })
+    .limit(4000);
   if (error) return new Map();
   const m = new Map<string, number>();
   for (const r of (data ?? []) as { id_dispositivo: string; odometro: number | null }[]) {

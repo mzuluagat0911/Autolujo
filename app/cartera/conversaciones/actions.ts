@@ -327,7 +327,7 @@ export async function pulsoBandeja(huella: string | null): Promise<{
     const { data, error } = await sb
       .from("conversaciones")
       .select(SEL_VIGIA)
-      .or(`necesita_humano.eq.true,modo.eq.humano,ultimo_mensaje_at.gte."${recientes}"`)
+      .gte("ultimo_mensaje_at", recientes)
       .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
       .limit(400);
     if (error) throw error;
