@@ -332,7 +332,7 @@ export async function hiloComercial(
   }
   const hayMas = filas.length > limite;
   const pagina = (hayMas ? filas.slice(0, limite) : filas).reverse();
-  const mensajes = await Promise.all(pagina.map((fila) => conFoto(sb, filaMensaje(fila))));
+  const mensajes = await firmarFotos(sb, pagina.map(filaMensaje));
   const [chat] = await anexarCitas(sb, [filaChat(raw as Record<string, unknown>)]);
   return {
     chat: chat ?? null,
@@ -366,7 +366,7 @@ export async function mensajesNuevosComercial(
       .limit(100);
     filas = (retry.data ?? []) as unknown as Record<string, unknown>[];
   }
-  return Promise.all(filas.map((fila) => conFoto(sb, filaMensaje(fila))));
+  return firmarFotos(sb, filas.map(filaMensaje));
 }
 
 /** Lo que Lucía tiene que leer antes de contestar: interés, resumen y qué falta. */
@@ -1067,14 +1067,22 @@ function filaMensaje(row: Record<string, unknown>): MensajeComercial & { archivo
   };
 }
 
-async function conFoto(
+async function firmarFotos(
   sb: ReturnType<typeof createServerSupabase>,
-  mensaje: MensajeComercial & { archivoPath?: string | null },
-): Promise<MensajeComercial> {
-  const { archivoPath, ...resto } = mensaje;
-  if (!archivoPath) return resto;
-  const { data } = await sb.storage.from("comprobantes").createSignedUrl(archivoPath, 60 * 60);
-  return { ...resto, archivoUrl: data?.signedUrl ?? null };
+  mensajes: (MensajeComercial & { archivoPath?: string | null })[],
+): Promise<MensajeComercial[]> {
+  const paths = [...new Set(mensajes.map((m) => m.archivoPath).filter((p): p is string => !!p))];
+  const porPath = new Map<string, string>();
+  if (paths.length > 0) {
+    const { data } = await sb.storage.from("comprobantes").createSignedUrls(paths, 3600);
+    for (const item of data ?? []) {
+      if (item.path && item.signedUrl) porPath.set(item.path, item.signedUrl);
+    }
+  }
+  return mensajes.map(({ archivoPath, ...resto }) => ({
+    ...resto,
+    archivoUrl: archivoPath ? (porPath.get(archivoPath) ?? null) : null,
+  }));
 }
 
 function filaChat(row: Record<string, unknown>): ChatComercial {

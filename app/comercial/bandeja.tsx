@@ -10,7 +10,7 @@ import {
 } from "./actions";
 import type { ChatComercial, MensajeComercial } from "@/lib/comercial/chats";
 
-const POLL_MS = 6_000;
+const POLL_MS = 15_000;
 
 function hora(iso: string | null): string {
   if (!iso) return "";

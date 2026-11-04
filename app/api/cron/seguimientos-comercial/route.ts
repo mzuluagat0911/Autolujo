@@ -1,4 +1,3 @@
-import { enviarAvisosCitas } from "@/lib/comercial/citas";
 import { ejecutarSeguimientosComercial } from "@/lib/comercial/seguimientos";
 
 export const runtime = "nodejs";
@@ -11,9 +10,6 @@ export async function GET(req: Request) {
     const auth = req.headers.get("authorization");
     if (auth !== `Bearer ${secret}`) return new Response("Unauthorized", { status: 401 });
   }
-  const [seguimientos, citas] = await Promise.all([
-    ejecutarSeguimientosComercial(),
-    enviarAvisosCitas(),
-  ]);
-  return Response.json({ ok: true, seguimientos, citas });
+  const seguimientos = await ejecutarSeguimientosComercial();
+  return Response.json({ ok: true, seguimientos });
 }

@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { PT_Serif, Inter, Montserrat } from "next/font/google";
 import "./globals.css";
 import { Shell } from "@/components/shell";
@@ -38,7 +39,9 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const equipo = await sesionEquipo();
+  const jar = await cookies();
+  const haySesion = jar.getAll().some((c) => c.name.includes("-auth-token"));
+  const equipo = haySesion ? await sesionEquipo() : null;
   return (
     <html lang="es" className={`${brandSerif.variable} ${brandUi.variable} ${brandSans.variable}`}>
       <body className="min-h-screen font-sans antialiased">

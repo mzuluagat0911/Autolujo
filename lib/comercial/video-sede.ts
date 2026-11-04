@@ -9,6 +9,17 @@ const ARCHIVO: Record<SedeId, string> = {
   chorrera: "comercial/sedes/chorrera.mp4",
 };
 
+const PUBLICO: Record<SedeId, string> = {
+  juan_diaz: "/sedes/juan-diaz.mp4",
+  chorrera: "/sedes/chorrera.mp4",
+};
+
+function origenVideoPublico(): string | null {
+  const raw = process.env.VIDEO_SEDE_PUBLIC_ORIGIN?.trim();
+  if (!raw) return null;
+  return raw.replace(/\/$/, "");
+}
+
 const UBICACION =
   /ubicaci[oó]n|c[oó]mo (?:puedo |se |hago para )?llegar|d[oó]nde queda|direcci[oó]n|por d[oó]nde/i;
 
@@ -29,6 +40,8 @@ export function sedesParaVideo(texto: string, sedeCita: SedeId | null): SedeId[]
 }
 
 async function enlaceVideo(sede: SedeId): Promise<string> {
+  const publico = origenVideoPublico();
+  if (publico) return `${publico}${PUBLICO[sede]}`;
   const sb = createServerSupabase();
   const { data, error } = await sb.storage.from("comprobantes").createSignedUrl(ARCHIVO[sede], 60 * 60);
   if (error || !data?.signedUrl) throw new Error(error?.message ?? "Sin enlace del video.");

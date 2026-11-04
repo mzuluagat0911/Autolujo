@@ -29,7 +29,7 @@ import {
   soportaNotificaciones,
 } from "@/lib/aviso-asesor";
 
-const POLL_MS = 12_000;
+const POLL_MS = 30_000;
 const TITULO_BASE = "AutoLujo — Plataforma";
 
 type Ctx = {
@@ -124,6 +124,7 @@ export function AlertasAsesorProvider({
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {
+      if (typeof document !== "undefined" && document.hidden) return;
       const next = await cargarAlertasEscalada();
       if (cancelled) return;
       const huellas = new Set(next.map((a) => a.huella));
@@ -144,9 +145,14 @@ export function AlertasAsesorProvider({
     if (!escucha.cartera && !escucha.comercial) return;
     void tick();
     const id = window.setInterval(tick, POLL_MS);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       cancelled = true;
       window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [avisar, escucha.cartera, escucha.comercial]);
 

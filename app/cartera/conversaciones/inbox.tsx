@@ -58,9 +58,9 @@ const PLANTILLAS_MORA = [
   { id: "mora_pago_inmediato", label: "Pago inmediato" },
 ] as const;
 
-/** Lista: cada 6s. Chat abierto: cada 2.5s. Pausa si la pestaña está oculta. */
-const POLL_LISTA_MS = 6_000;
-const POLL_CHAT_MS = 2_500;
+/** Lista: cada 12s. Chat abierto: cada 6s. Pausa si la pestaña está oculta. */
+const POLL_LISTA_MS = 12_000;
+const POLL_CHAT_MS = 6_000;
 
 function ventanaCliente(iso: string | null): boolean {
   if (!iso) return false;

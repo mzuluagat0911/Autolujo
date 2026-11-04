@@ -720,12 +720,6 @@ export async function salidasAlertasPendientes(): Promise<
     const { hoyPanama, sumarDias } = await import("@/lib/cartera/fecha");
     const hoy = hoyPanama();
     const desdeFecha = sumarDias(hoy, -1);
-    // Alertas de salida/GPS de hace más de un día ya no sirven en la campana.
-    await sb
-      .from("salidas_alertas")
-      .update({ vista_at: new Date().toISOString() })
-      .lt("fecha", desdeFecha)
-      .is("vista_at", null);
 
     const { data, error } = await sb
       .from("salidas_alertas")

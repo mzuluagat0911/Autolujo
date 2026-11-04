@@ -323,10 +323,13 @@ export async function pulsoBandeja(huella: string | null): Promise<{
 }> {
   try {
     const sb = createServerSupabase();
+    const recientes = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
     const { data, error } = await sb
       .from("conversaciones")
       .select(SEL_VIGIA)
-      .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false });
+      .or(`necesita_humano.eq.true,modo.eq.humano,ultimo_mensaje_at.gte."${recientes}"`)
+      .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
+      .limit(400);
     if (error) throw error;
     const filas = (data as unknown as VigiaChat[]) ?? [];
     const marca = huellaBandeja(filas);
@@ -541,7 +544,8 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
         "id, etiqueta, motivo_escalada, escalada_at, ultimo_texto, ultimo_mensaje_at, cliente:clientes(nombre), vehiculo:vehiculos(numero)",
       )
       .eq("necesita_humano", true)
-      .order("escalada_at", { ascending: true, nullsFirst: false });
+      .order("escalada_at", { ascending: true, nullsFirst: false })
+      .limit(80);
     if (error && oye.cartera) throw error;
     const chats = !oye.cartera
       ? []
@@ -573,7 +577,8 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
         .select("id, nombre, wa_numero, motivo, ultimo_texto, ultimo_mensaje_at, asesor_id")
         .eq("necesita_humano", true)
         .is("asesor_id", null)
-        .order("ultimo_mensaje_at", { ascending: true, nullsFirst: false });
+        .order("ultimo_mensaje_at", { ascending: true, nullsFirst: false })
+        .limit(80);
       const comercialesRes = await consultaComercial;
       comercialesData = comercialesRes.data as unknown as Record<string, unknown>[] | null;
       if (comercialesRes.error && /asesor_id/i.test(comercialesRes.error.message)) {
@@ -581,7 +586,8 @@ export async function cargarAlertasEscalada(): Promise<AlertaEscalada[]> {
           .from("conversaciones_comercial")
           .select("id, wa_numero, motivo, ultimo_texto, ultimo_mensaje_at")
           .eq("necesita_humano", true)
-          .order("ultimo_mensaje_at", { ascending: true, nullsFirst: false });
+          .order("ultimo_mensaje_at", { ascending: true, nullsFirst: false })
+          .limit(80);
         comercialesData = retry.data as unknown as Record<string, unknown>[] | null;
       }
     }

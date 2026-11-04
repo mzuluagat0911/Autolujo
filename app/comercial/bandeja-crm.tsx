@@ -224,6 +224,7 @@ export function BandejaCrmComercial({
   const [cargandoMas, setCargandoMas] = useState(false);
   const cache = useRef(new Map<string, { mensajes: MensajeComercial[]; hayMas: boolean }>());
   const ultimoCambio = useRef(new Date().toISOString());
+  const ticksSinConteo = useRef(0);
   const primeraBusqueda = useRef(true);
   const fondo = useRef<HTMLDivElement>(null);
   const hiloActivo = useRef<string | null>(null);
@@ -349,16 +350,17 @@ export function BandejaCrmComercial({
     const t = setInterval(async () => {
       if (document.hidden || !crmDisponible) return;
       const corte = new Date().toISOString();
-      const [cambios, siguientes] = await Promise.all([
-        cargarCambiosComercial(ultimoCambio.current),
-        cargarConteosComercial(),
-      ]);
+      const cambios = await cargarCambiosComercial(ultimoCambio.current);
       ultimoCambio.current = corte;
-      setConteos(siguientes);
+      ticksSinConteo.current += 1;
+      if (cambios.length || ticksSinConteo.current >= 4) {
+        ticksSinConteo.current = 0;
+        setConteos(await cargarConteosComercial());
+      }
       if (cambios.length) {
         setChats((prev) => mezclarChats(prev, cambios, filtro, sesion?.id ?? null, buscarDiferido));
       }
-    }, 6_000);
+    }, 15_000);
     return () => clearInterval(t);
   }, [crmDisponible, filtro, sesion?.id, buscarDiferido]);
 
@@ -378,7 +380,7 @@ export function BandejaCrmComercial({
         cache.current.set(chatId, { mensajes: merged, hayMas: hayMasMensajes });
         return merged;
       });
-    }, 2_500);
+    }, 6_000);
     return () => {
       viva = false;
       clearInterval(t);

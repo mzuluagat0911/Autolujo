@@ -309,7 +309,6 @@ export async function alertasGpsPendientes(): Promise<{
   try {
     const sb = createServerSupabase();
     const hoy = hoyPanama();
-    await cerrarAlertasSinRecorridoTodas();
     const desdeFecha = sumarDias(hoy, -1);
 
     const { data, error } = await sb
