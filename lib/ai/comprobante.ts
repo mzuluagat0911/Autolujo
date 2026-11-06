@@ -129,6 +129,39 @@ function mejor(a: Comprobante, b: Comprobante): Comprobante {
   return puntaje(b) > puntaje(a) ? b : a;
 }
 
+/**
+ * El modelo barato lee primero. Si se cae o la lectura queda floja, habla el
+ * de respaldo. Un fallo del barato no puede saltarse el respaldo: si no, la
+ * foto se queda sin pago.
+ */
+export async function conRespaldo<T>(opts: {
+  primaria: () => Promise<T>;
+  respaldo: () => Promise<T>;
+  floja: (valor: T) => boolean;
+  mejor: (a: T, b: T) => T;
+  etiqueta: string;
+}): Promise<T> {
+  let primera: T | undefined;
+  let falloPrimera: unknown;
+  try {
+    primera = await opts.primaria();
+  } catch (e) {
+    falloPrimera = e;
+    console.error(`[comprobante] el modelo principal (${opts.etiqueta}) falló:`, e);
+  }
+  if (primera !== undefined && !opts.floja(primera)) return primera;
+
+  try {
+    const segunda = await opts.respaldo();
+    if (primera === undefined) return segunda;
+    return opts.mejor(primera, segunda);
+  } catch (e) {
+    console.error(`[comprobante] el modelo de respaldo (${opts.etiqueta}) falló:`, e);
+    if (primera !== undefined) return primera;
+    throw falloPrimera ?? e;
+  }
+}
+
 async function extraer(
   modelo: ReturnType<typeof modeloVision>,
   imagePart: string,
@@ -168,16 +201,13 @@ export async function leerComprobante(
       ? image
       : `data:${mime};base64,${image.toString("base64")}`;
 
-  const primera = await extraer(modeloVision(), imagePart);
-  if (!lecturaFloja(primera)) return primera;
-
-  try {
-    const segunda = await extraer(modeloVisionFallback(), imagePart);
-    return mejor(primera, segunda);
-  } catch (e) {
-    console.error("[comprobante] el modelo de respaldo falló:", e);
-    return primera;
-  }
+  return conRespaldo({
+    etiqueta: "uno",
+    primaria: () => extraer(modeloVision(), imagePart),
+    respaldo: () => extraer(modeloVisionFallback(), imagePart),
+    floja: lecturaFloja,
+    mejor,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -247,14 +277,11 @@ export async function leerComprobantes(
   const imagePart =
     typeof image === "string" ? image : `data:${mime};base64,${image.toString("base64")}`;
 
-  const primera = await extraerLista(modeloVision(), imagePart);
-  if (!listaFloja(primera)) return primera;
-
-  try {
-    const segunda = await extraerLista(modeloVisionFallback(), imagePart);
-    return puntajeLista(segunda) > puntajeLista(primera) ? segunda : primera;
-  } catch (e) {
-    console.error("[comprobante] el modelo de respaldo (lista) falló:", e);
-    return primera;
-  }
+  return conRespaldo({
+    etiqueta: "lista",
+    primaria: () => extraerLista(modeloVision(), imagePart),
+    respaldo: () => extraerLista(modeloVisionFallback(), imagePart),
+    floja: listaFloja,
+    mejor: (a, b) => (puntajeLista(b) > puntajeLista(a) ? b : a),
+  });
 }

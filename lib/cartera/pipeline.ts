@@ -881,6 +881,20 @@ export async function tomarLecturaImagen(mensajeId: string): Promise<"tomar" | "
   return upd && upd.length > 0 ? "tomar" : "ocupada";
 }
 
+/**
+ * La lectura se cayó antes de crear el pago. Suelta el candado para que el
+ * reintento de Meta vuelva a leer la misma foto. No toca una lectura ya cerrada.
+ */
+export async function soltarLecturaImagen(mensajeId: string): Promise<void> {
+  const sb = createServerSupabase();
+  await sb
+    .from("mensajes")
+    .update({ enviado_por: null })
+    .eq("id", mensajeId)
+    .is("pago_id", null)
+    .like("enviado_por", `${LECTURA_PREFIJO}%`);
+}
+
 /** La foto ya se leyó. Con pago, queda enlazada; sin pago, no se vuelve a crear. */
 export async function cerrarLecturaImagen(mensajeId: string, pagoId: string | null): Promise<void> {
   const sb = createServerSupabase();

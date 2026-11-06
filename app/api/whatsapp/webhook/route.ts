@@ -15,6 +15,7 @@ import {
   bajarArchivoComprobante,
   tomarLecturaImagen,
   cerrarLecturaImagen,
+  soltarLecturaImagen,
   historialReciente,
   marcarEscalada,
   marcarNecesitaHumano,
@@ -1279,20 +1280,11 @@ async function procesarComprobante(
     if (!msg.id || !(await idImagenPorRetomar(msg.id))) return;
     const guardada = await mediaDeMensaje(mensajeId);
     if (!guardada) throw new ComprobanteEnProceso();
-    await cerrarLecturaImagen(mensajeId, null);
-    if (callado) {
-      await marcarPendienteDeRespuesta(
-        conversacionId,
-        "La foto quedó en el chat, pero no se pudo leer el comprobante.",
-      );
-      return;
-    }
-    await responderYEscalar(
-      conversacionId,
-      from,
-      "La foto ya quedó en el chat. No pude leer el monto; el equipo la revisa.",
-      "La foto quedó guardada, pero falló la lectura del comprobante.",
-    );
+    // No se sella la foto ni se le dice al cliente que no se leyó. El modelo
+    // se cayó: Meta vuelve a llamar, se relee la misma imagen y el pago entra
+    // a Comprobantes. Sellar acá lo dejaba fuera de la cola para siempre.
+    await soltarLecturaImagen(mensajeId);
+    throw new ComprobanteEnProceso();
   }
 }
 
