@@ -91,11 +91,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   const archivos: ArchivoPaquete[] = [];
   meter(archivos, de("cotizacion"), bajados);
   if (registroScan) archivos.push({ nombre: "Registro vehicular", bytes: registroScan });
-  if (cedulaDelCarro) archivos.push({ nombre: "Cedula y licencia", bytes: cedulaDelCarro });
-  meter(archivos, de("cedula"), bajados);
-  if (cedulaCliente) archivos.push({ nombre: "Cedula", bytes: cedulaCliente });
-  meter(archivos, de("licencia"), bajados);
-  if (licenciaCliente) archivos.push({ nombre: "Licencia", bytes: licenciaCliente });
+  // La cédula y la licencia no van en el PDF: se imprimen aparte, a tamaño fiel.
   if (representante) archivos.push({ nombre: "Cedula del representante", bytes: representante });
   meter(archivos, de("fud"), bajados);
   meter(archivos, de("parte"), bajados);

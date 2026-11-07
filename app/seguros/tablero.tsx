@@ -138,6 +138,8 @@ export function Tablero({
         />
       </div>
 
+      <ChoquesDelMes casos={casos} hoy={hoy} />
+
       {porConfirmar.length > 0 && (
         <section className="rounded-xl bg-ambar-wash ring-1 ring-ambar/30">
           <div className="border-b border-ambar/20 px-4 py-3">
@@ -353,6 +355,121 @@ export function Tablero({
         </>
       )}
     </div>
+  );
+}
+
+const NOMBRE_MES = [
+  "enero",
+  "febrero",
+  "marzo",
+  "abril",
+  "mayo",
+  "junio",
+  "julio",
+  "agosto",
+  "septiembre",
+  "octubre",
+  "noviembre",
+  "diciembre",
+];
+
+function etiquetaMes(ym: string): string {
+  const [y, m] = ym.split("-");
+  return `${NOMBRE_MES[Number(m) - 1] ?? ym} ${y}`;
+}
+
+function mesesHasta(desde: string, hasta: string): string[] {
+  const out: string[] = [];
+  let y = Number(hasta.slice(0, 4));
+  let m = Number(hasta.slice(5, 7));
+  const fin = desde.slice(0, 7);
+  for (let i = 0; i < 36; i++) {
+    const ym = `${y}-${String(m).padStart(2, "0")}`;
+    out.push(ym);
+    if (ym === fin) break;
+    m -= 1;
+    if (m === 0) {
+      m = 12;
+      y -= 1;
+    }
+  }
+  return out;
+}
+
+function mesAnterior(ym: string): string {
+  let y = Number(ym.slice(0, 4));
+  let m = Number(ym.slice(5, 7)) - 1;
+  if (m === 0) {
+    m = 12;
+    y -= 1;
+  }
+  return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+/** Choques del mes, y cuántos había a la misma fecha en los meses anteriores. */
+function ChoquesDelMes({ casos, hoy }: { casos: CasoFila[]; hoy: string }) {
+  const esteMes = hoy.slice(0, 7);
+  const dia = Number(hoy.slice(8, 10));
+  const primero = casos.reduce((min, c) => (c.fecha.slice(0, 7) < min ? c.fecha.slice(0, 7) : min), esteMes);
+  const meses = mesesHasta(primero, esteMes);
+  const [mes, setMes] = useState(esteMes);
+  const delMes = casos
+    .filter((c) => c.fecha.startsWith(mes))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha) || a.numero.localeCompare(b.numero, "es", { numeric: true }));
+  const comparar = [mes, mesAnterior(mes), mesAnterior(mesAnterior(mes)), mesAnterior(mesAnterior(mesAnterior(mes)))];
+  const alDia = (ym: string) =>
+    casos.filter((c) => c.fecha.startsWith(ym) && Number(c.fecha.slice(8, 10)) <= dia).length;
+
+  return (
+    <section className="rounded-xl bg-surface ring-1 ring-line">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold">Choques del mes</h2>
+          <p className="mt-0.5 text-xs text-muted">
+            Al día {dia} de {etiquetaMes(mes)}: {alDia(mes)} {alDia(mes) === 1 ? "choque" : "choques"}.
+          </p>
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Mes</span>
+          <select
+            value={mes}
+            onChange={(e) => setMes(e.target.value)}
+            className="rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line"
+          >
+            {meses.map((ym) => (
+              <option key={ym} value={ym}>
+                {etiquetaMes(ym)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="border-b border-line px-4 py-3 text-xs text-muted">
+        Misma fecha, día {dia}:{" "}
+        {comparar.map((ym, i) => (
+          <span key={ym}>
+            {i > 0 ? " · " : ""}
+            <span className="font-medium text-ink">{alDia(ym)}</span> en {etiquetaMes(ym)}
+          </span>
+        ))}
+      </p>
+      {delMes.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-muted">Ese mes no tiene choques.</p>
+      ) : (
+        <ul>
+          {delMes.map((c) => (
+            <li key={c.id} className="border-b border-line last:border-0">
+              <Link href={`/seguros/${c.id}`} className="flex flex-wrap items-baseline gap-x-2 px-4 py-3 text-sm hover:bg-surface-2">
+                <span className="font-medium">
+                  {etiquetaCarroUi(c.empresa, c.numero)} {c.placa}
+                </span>
+                <span className="text-muted">{fechaCorta(c.fecha)}</span>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   );
 }
 

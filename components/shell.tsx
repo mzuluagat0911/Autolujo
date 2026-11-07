@@ -75,6 +75,7 @@ const NAV: Group[] = [
       { label: "Registrar choque", href: "/seguros/nuevo", status: "active", modulo: "seguros" },
       { label: "Pólizas", href: "/seguros/polizas", status: "active", modulo: "seguros" },
       { label: "Registros vehiculares", href: "/seguros/registros", status: "active", modulo: "seguros" },
+      { label: "Registros públicos", href: "/seguros/registros-publicos", status: "active", modulo: "seguros" },
     ],
   },
   {

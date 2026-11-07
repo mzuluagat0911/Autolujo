@@ -69,7 +69,7 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
         </a>
       </div>
       <p className="mb-4 text-sm text-muted print:hidden">
-        La hoja amarilla es la portada. El PDF le suma la cotización, el registro del carro y los papeles cargados en el caso.
+        La hoja amarilla es la portada. El PDF le suma la cotización, el registro del carro y los papeles del caso. La cédula y la licencia no van: se imprimen aparte.
       </p>
       {faltan.length > 0 ? (
         <p className="mb-4 rounded-lg bg-ambar-wash px-4 py-3 text-sm text-ambar ring-1 ring-ambar/20 print:hidden">

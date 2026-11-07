@@ -12,7 +12,7 @@ export default async function RegistrosPage() {
       <PageHeader
         eyebrow="Seguros"
         title="Registros vehiculares"
-        subtitle="El registro de cada carro, aparte del paquete del choque. Desde aquí se abre o se cambia."
+        subtitle="Solo consulta. El registro de cada carro ya está cargado y entra solo al paquete. Desde aquí se ve o se imprime."
       />
       <ListaRegistros carros={carros} urls={urls} />
     </div>

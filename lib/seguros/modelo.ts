@@ -53,7 +53,7 @@ export const DOCUMENTOS = [
   { id: "finiquito", label: "Finiquito", hint: "El monto que la aseguradora va a pagar." },
 ] as const;
 
-export type DocTipo = (typeof DOCUMENTOS)[number]["id"];
+export type DocTipo = (typeof DOCUMENTOS)[number]["id"] | "foto_km";
 
 export type Pieza = {
   id: string;

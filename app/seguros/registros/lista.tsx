@@ -1,16 +1,11 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { Toast } from "@/components/kit";
+import { useMemo, useState } from "react";
 import type { CarroParaCaso } from "@/lib/seguros/datos";
 import { pathVehiculo } from "@/lib/seguros/datos";
-import { subirRegistroVehiculo } from "../actions";
 
 export function ListaRegistros({ carros, urls }: { carros: CarroParaCaso[]; urls: Record<string, string> }) {
   const [q, setQ] = useState("");
-  const [aviso, setAviso] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
 
   const filas = useMemo(() => {
     const t = q.trim().toLowerCase();
@@ -19,21 +14,6 @@ export function ListaRegistros({ carros, urls }: { carros: CarroParaCaso[]; urls
       : carros;
     return [...lista].sort((a, b) => a.etiqueta.localeCompare(b.etiqueta, "es", { numeric: true }));
   }, [carros, q]);
-
-  function subir(vehiculoId: string, archivo: File) {
-    const fd = new FormData();
-    fd.set("vehiculo_id", vehiculoId);
-    fd.set("archivo", archivo);
-    setError(null);
-    start(async () => {
-      const r = await subirRegistroVehiculo(fd);
-      if (!r.ok) {
-        setError(r.error ?? "No se pudo guardar.");
-        return;
-      }
-      setAviso(r.msg ?? "Registro guardado.");
-    });
-  }
 
   return (
     <div>
@@ -60,29 +40,18 @@ export function ListaRegistros({ carros, urls }: { carros: CarroParaCaso[]; urls
                   <td className="px-4 py-3 font-medium">{c.etiqueta}</td>
                   <td className="px-4 py-3 tabular-nums text-muted">{c.placa || "—"}</td>
                   <td className="px-4 py-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      {url ? (
+                    {url ? (
+                      <span className="flex flex-wrap gap-3">
                         <a href={url} target="_blank" rel="noreferrer" className="font-medium hover:underline">
                           Ver
                         </a>
-                      ) : (
-                        <span className="text-muted">Sin archivo</span>
-                      )}
-                      <label className="cursor-pointer text-sm font-medium hover:underline">
-                        {url ? "Cambiar" : "Subir"}
-                        <input
-                          type="file"
-                          accept="image/*,.pdf"
-                          className="sr-only"
-                          disabled={pending}
-                          onChange={(e) => {
-                            const archivo = e.currentTarget.files?.[0];
-                            e.currentTarget.value = "";
-                            if (archivo) subir(c.id, archivo);
-                          }}
-                        />
-                      </label>
-                    </div>
+                        <a href={url} target="_blank" rel="noreferrer" className="font-medium hover:underline">
+                          Imprimir
+                        </a>
+                      </span>
+                    ) : (
+                      <span className="text-muted">Sin archivo</span>
+                    )}
                   </td>
                 </tr>
               );
@@ -97,8 +66,6 @@ export function ListaRegistros({ carros, urls }: { carros: CarroParaCaso[]; urls
           </tbody>
         </table>
       </div>
-      {aviso && <Toast message={aviso} tone="good" onDismiss={() => setAviso(null)} />}
-      {error && <p className="mt-3 text-sm text-rojo">{error}</p>}
     </div>
   );
 }

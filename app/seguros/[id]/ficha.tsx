@@ -435,7 +435,12 @@ export function FichaCaso({
         <Bloque
           titulo="Del choque"
           abierto={abre(seccion, ["reportado", "cita"])}
-          resumen={[fechaCorta(fila.fecha), via === "parte" ? "Parte policivo" : via === "fud" ? "FUD" : "", nombreAseguradora(aseguradora)]
+          resumen={[
+            fechaCorta(fila.fecha),
+            fila.km != null ? `${fila.km.toLocaleString("es-PA")} km` : "",
+            via === "parte" ? "Parte policivo" : via === "fud" ? "FUD" : "",
+            nombreAseguradora(aseguradora),
+          ]
             .filter(Boolean)
             .join(" · ")}
         >
@@ -443,10 +448,23 @@ export function FichaCaso({
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Fecha</span>
             <input name="fecha" type="date" required defaultValue={fila.fecha} className={INPUT} />
           </label>
-          <label className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Kilometraje</span>
             <input name="km" inputMode="numeric" defaultValue={fila.km ?? ""} placeholder="180000" className={INPUT} />
-          </label>
+            <FotoKm
+              fotos={fila.caso.documentos.filter((d) => d.tipo === "foto_km")}
+              urls={urls}
+              disabled={pending}
+              error={errorDoc?.tipo === "foto_km" ? errorDoc.msg : null}
+              onSubir={(archivo) => subirArchivos("foto_km", [archivo])}
+              onQuitar={(docId) => {
+                const fd = new FormData();
+                fd.set("id", fila.id);
+                fd.set("doc_id", docId);
+                correr(quitarDocumento, fd);
+              }}
+            />
+          </div>
           <label className="flex flex-col gap-1.5 sm:col-span-2">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Dónde fue</span>
             <input name="lugar" defaultValue={fila.caso.lugar} className={INPUT} />
@@ -961,7 +979,9 @@ function CajaDoc({
           onSubir(elegidos);
         }}
       />
-      {delCliente ? (
+      {tipo === "registro" ? (
+        <p className="mt-3 text-xs text-muted">Se carga solo desde el registro del carro. No se sube en el caso.</p>
+      ) : delCliente ? (
         <button
           type="button"
           className="mt-3 text-xs text-muted hover:text-ink hover:underline"
@@ -1083,6 +1103,63 @@ function CopiaCliente({
           {copia ? "Cambiar" : "Agregar copia"}
         </button>
       </div>
+    </div>
+  );
+}
+
+function FotoKm({
+  fotos,
+  urls,
+  disabled,
+  error,
+  onSubir,
+  onQuitar,
+}: {
+  fotos: { id: string; nombre: string; path: string }[];
+  urls: Record<string, string>;
+  disabled: boolean;
+  error: string | null;
+  onSubir: (archivo: File) => void;
+  onQuitar: (docId: string) => void;
+}) {
+  const campo = useRef<HTMLInputElement>(null);
+  return (
+    <div className="mt-1">
+      <input
+        ref={campo}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="sr-only"
+        tabIndex={-1}
+        onChange={(e) => {
+          const archivo = e.currentTarget.files?.[0];
+          e.currentTarget.value = "";
+          if (archivo) onSubir(archivo);
+        }}
+      />
+      <button type="button" className="text-xs font-medium hover:underline" disabled={disabled} onClick={() => campo.current?.click()}>
+        {fotos.length ? "Otra foto del tablero" : "Foto del kilometraje"}
+      </button>
+      {fotos.length > 0 && (
+        <ul className="mt-2 flex flex-col gap-1">
+          {fotos.map((f) => (
+            <li key={f.id} className="flex items-center justify-between gap-2 text-xs">
+              {urls[f.path] ? (
+                <a href={urls[f.path]} target="_blank" rel="noreferrer" className="truncate hover:underline">
+                  {f.nombre || "Foto del tablero"}
+                </a>
+              ) : (
+                <span className="truncate">{f.nombre || "Foto del tablero"}</span>
+              )}
+              <button type="button" className="shrink-0 text-rojo" disabled={disabled} onClick={() => onQuitar(f.id)}>
+                Quitar
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && <p className="mt-1 text-xs text-rojo">{error}</p>}
     </div>
   );
 }

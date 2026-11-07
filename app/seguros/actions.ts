@@ -38,10 +38,19 @@ import {
 
 export type Resultado = { ok: boolean; error?: string; id?: string; msg?: string };
 
+/** 180.000, 180,000 o 180000 quedan en 180000. Vacío es null. */
+function kmDe(raw: string): number | null {
+  const digits = raw.replace(/\D/g, "");
+  if (!digits) return null;
+  const n = Number(digits);
+  return Number.isFinite(n) && n >= 0 && n < 10_000_000 ? n : null;
+}
+
 function revalidar(id?: string) {
   revalidatePath("/seguros");
   revalidatePath("/seguros/polizas");
   revalidatePath("/seguros/registros");
+  revalidatePath("/seguros/registros-publicos");
   if (id) {
     revalidatePath(`/seguros/${id}`);
     revalidatePath(`/seguros/${id}/paquete`);
@@ -214,8 +223,8 @@ export async function guardarCaso(fd: FormData): Promise<Resultado> {
   const seccion = seccionOk(texto(fd.get("seccion"))) ?? fila.caso.seccion;
   const montoRaw = texto(fd.get("monto_finiquito")).replace(",", ".");
   const monto = montoRaw === "" ? null : Number(montoRaw);
-  const kmRaw = texto(fd.get("km"));
-  const km = kmRaw === "" ? null : Math.round(Number(kmRaw));
+  // Si el bloque va cerrado, el navegador no manda el campo y antes se borraba el km.
+  const km = fd.has("km") ? kmDe(texto(fd.get("km"))) : fila.km;
 
   const caso: Caso = {
     ...fila.caso,
@@ -253,7 +262,7 @@ export async function guardarCaso(fd: FormData): Promise<Resultado> {
   if (caso.seccion === "pagado" && !caso.fechaPago) caso.fechaPago = hoyPanama();
   if (caso.avisoAudiencia && caso.avisoAudiencia !== caso.fechaAudiencia) caso.avisoAudiencia = null;
 
-  const error = await guardarFila(id, fila.vehiculoId, fecha, Number.isFinite(km) ? km : null, caso.lugar, caso);
+  const error = await guardarFila(id, fila.vehiculoId, fecha, km, caso.lugar, caso);
   if (error) return { ok: false, error };
   revalidar(id);
   return { ok: true };
@@ -263,7 +272,9 @@ export async function subirDocumento(fd: FormData): Promise<Resultado> {
   const id = texto(fd.get("id"));
   const tipo = texto(fd.get("tipo")) as DocTipo;
   const archivo = fd.get("archivo");
-  if (!DOCUMENTOS.some((d) => d.id === tipo)) return { ok: false, error: "Ese documento no corresponde." };
+  if (!DOCUMENTOS.some((d) => d.id === tipo) && tipo !== "foto_km") {
+    return { ok: false, error: "Ese documento no corresponde." };
+  }
   if (!(archivo instanceof File) || archivo.size === 0) return { ok: false, error: "Elija un archivo." };
   if (archivo.size > 8 * 1024 * 1024) return { ok: false, error: "El archivo pasa de 8 MB." };
   const fila = await leerCaso(id);
