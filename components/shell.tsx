@@ -65,6 +65,7 @@ const NAV: Group[] = [
     items: [
       { label: "Chats", href: "/comercial", status: "active", modulo: "comercial" },
       { label: "Citas", href: "/comercial/citas", status: "active", modulo: "comercial" },
+      { label: "Actividad", href: "/comercial/actividad", status: "active", modulo: "comercial" },
       { label: "Resultados", href: "/comercial/resultados", status: "active", modulo: "comercial" },
     ],
   },

@@ -536,6 +536,7 @@ export function BandejaCrmComercial({
         seguimientoAt: seguimientoRaw ? new Date(seguimientoRaw).toISOString() : null,
         resultado: String(data.get("resultado") ?? "") || null,
         motivoPerdida: String(data.get("motivo_perdida") ?? "") || null,
+        observaciones: String(data.get("observaciones") ?? "") || null,
         cerradoAt: etapa === "ganado" || etapa === "perdido" ? new Date().toISOString() : null,
         updatedAt: new Date().toISOString(),
       });
@@ -1326,6 +1327,16 @@ function FichaLead({
         <Campo label="Carro o interés" name="interes" defaultValue={chat.interes ?? ""} />
         <Campo label="Ubicación" name="lugar" defaultValue={chat.lugar ?? ""} />
         <Campo label="Próxima acción" name="proxima_accion" defaultValue={chat.proximaAccion ?? ""} />
+        <label className="block">
+          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted">Observaciones</span>
+          <textarea
+            name="observaciones"
+            rows={4}
+            defaultValue={chat.observaciones ?? ""}
+            placeholder="Llamada, lo que dijo, lo que falta"
+            className="mt-1.5 w-full resize-y rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
+          />
+        </label>
         <Campo
           label="Seguimiento"
           name="seguimiento_at"

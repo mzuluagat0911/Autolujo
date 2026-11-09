@@ -53,6 +53,7 @@ export type ChatComercial = {
   intentosSeguimiento: number;
   resultado: string | null;
   motivoPerdida: string | null;
+  observaciones: string | null;
   cerradoAt: string | null;
   updatedAt: string | null;
   borrador: string | null;
@@ -88,6 +89,8 @@ export type PaginaChatsComercial = {
 };
 
 const CHAT_SELECT_CRM =
+  "id, wa_numero, nombre, ultimo_texto, ultimo_mensaje_at, ultimo_entrante_at, no_leidos, necesita_humano, motivo, anuncio, campana_id, etapa, temperatura, temperatura_score, temperatura_motivo, asesor_id, modo_atencion, interes, lugar, resumen, proxima_accion, observaciones, seguimiento_at, intentos_seguimiento, resultado, motivo_perdida, cerrado_at, updated_at, asesor:equipo!conversaciones_comercial_asesor_id_fkey(nombre)";
+const CHAT_SELECT_SIN_NOTA =
   "id, wa_numero, nombre, ultimo_texto, ultimo_mensaje_at, ultimo_entrante_at, no_leidos, necesita_humano, motivo, anuncio, campana_id, etapa, temperatura, temperatura_score, temperatura_motivo, asesor_id, modo_atencion, interes, lugar, resumen, proxima_accion, seguimiento_at, intentos_seguimiento, resultado, motivo_perdida, cerrado_at, updated_at, asesor:equipo!conversaciones_comercial_asesor_id_fkey(nombre)";
 const CHAT_SELECT_LEGACY =
   "id, wa_numero, ultimo_texto, ultimo_mensaje_at, ultimo_entrante_at, no_leidos, necesita_humano, motivo, anuncio, campana_id";
@@ -126,54 +129,61 @@ export async function listarChatsComercial(opts: {
   try {
     const sb = createServerSupabase();
     const limite = Math.min(Math.max(opts.limite ?? PAGE_SIZE, 1), 100);
-    let query = sb
-      .from("conversaciones_comercial")
-      .select(CHAT_SELECT_CRM)
-      .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
-      .order("id", { ascending: false })
-      .limit(limite + 1);
+    const armar = (select: string) => {
+      let query = sb
+        .from("conversaciones_comercial")
+        .select(select)
+        .order("ultimo_mensaje_at", { ascending: false, nullsFirst: false })
+        .order("id", { ascending: false })
+        .limit(limite + 1);
 
-    const filtro = opts.filtro ?? "todos";
-    if (filtro === "hoy") {
-      query = query
-        .is("cerrado_at", null)
-        .gte("ultimo_entrante_at", rangoDiaPanama(hoyPanama()).desde.toISOString());
-    } else if (filtro === "por_atender") {
-      query = query.is("cerrado_at", null).eq("necesita_humano", true);
-    } else if (filtro === "mios" && opts.asesorId) {
-      query = query.eq("asesor_id", opts.asesorId).is("cerrado_at", null);
-    } else if (filtro === "sin_asignar") {
-      query = query.is("asesor_id", null).is("cerrado_at", null);
-    } else if (filtro === "calientes") {
-      query = query.eq("temperatura", "caliente").is("cerrado_at", null);
-    } else if (filtro === "tibios") {
-      query = query.eq("temperatura", "tibio").is("cerrado_at", null);
-    } else if (filtro === "frios") {
-      query = query.eq("temperatura", "frio").is("cerrado_at", null);
-    } else if (filtro === "seguimiento") {
-      query = query.not("seguimiento_at", "is", null).is("cerrado_at", null);
-    } else if (filtro === "citas") {
-      query = query.eq("etapa", "cita").is("cerrado_at", null);
-    } else if (filtro === "cerrados") {
-      query = query.not("cerrado_at", "is", null);
-    } else {
-      query = query.is("cerrado_at", null);
-    }
+      const filtro = opts.filtro ?? "todos";
+      if (filtro === "hoy") {
+        query = query
+          .is("cerrado_at", null)
+          .gte("ultimo_entrante_at", rangoDiaPanama(hoyPanama()).desde.toISOString());
+      } else if (filtro === "por_atender") {
+        query = query.is("cerrado_at", null).eq("necesita_humano", true);
+      } else if (filtro === "mios" && opts.asesorId) {
+        query = query.eq("asesor_id", opts.asesorId).is("cerrado_at", null);
+      } else if (filtro === "sin_asignar") {
+        query = query.is("asesor_id", null).is("cerrado_at", null);
+      } else if (filtro === "calientes") {
+        query = query.eq("temperatura", "caliente").is("cerrado_at", null);
+      } else if (filtro === "tibios") {
+        query = query.eq("temperatura", "tibio").is("cerrado_at", null);
+      } else if (filtro === "frios") {
+        query = query.eq("temperatura", "frio").is("cerrado_at", null);
+      } else if (filtro === "seguimiento") {
+        query = query.not("seguimiento_at", "is", null).is("cerrado_at", null);
+      } else if (filtro === "citas") {
+        query = query.eq("etapa", "cita").is("cerrado_at", null);
+      } else if (filtro === "cerrados") {
+        query = query.not("cerrado_at", "is", null);
+      } else {
+        query = query.is("cerrado_at", null);
+      }
 
-    const buscar = (opts.buscar ?? "").trim().slice(0, 80);
-    if (buscar) {
-      const limpio = buscar.replace(/[%(),]/g, " ");
-      query = query.or(`nombre.ilike.%${limpio}%,wa_numero.ilike.%${limpio}%,interes.ilike.%${limpio}%`);
-    }
+      const buscar = (opts.buscar ?? "").trim().slice(0, 80);
+      if (buscar) {
+        const limpio = buscar.replace(/[%(),]/g, " ");
+        query = query.or(`nombre.ilike.%${limpio}%,wa_numero.ilike.%${limpio}%,interes.ilike.%${limpio}%`);
+      }
 
-    const cursor = decodificarCursor(opts.cursor);
-    if (cursor) {
-      query = query.or(
-        `ultimo_mensaje_at.lt.${cursor.at},and(ultimo_mensaje_at.eq.${cursor.at},id.lt.${cursor.id})`,
-      );
-    }
+      const cursor = decodificarCursor(opts.cursor);
+      if (cursor) {
+        query = query.or(
+          `ultimo_mensaje_at.lt.${cursor.at},and(ultimo_mensaje_at.eq.${cursor.at},id.lt.${cursor.id})`,
+        );
+      }
+      return query;
+    };
 
-    const { data, error } = await query;
+    const pedido = await armar(CHAT_SELECT_CRM);
+    const usable =
+      pedido.error && /observaciones/i.test(pedido.error.message) ? await armar(CHAT_SELECT_SIN_NOTA) : pedido;
+    const data = (usable.data ?? null) as Record<string, unknown>[] | null;
+    const error = usable.error;
     if (error && /nombre|etapa|temperatura|asesor_id|modo_atencion|seguimiento_at|schema cache|relationship/i.test(error.message)) {
       const retry = await sb
         .from("conversaciones_comercial")
@@ -290,12 +300,22 @@ export async function cambiosChatsComercial(desde: string): Promise<ChatComercia
   if (Number.isNaN(fecha.getTime())) return [];
   const corte = fecha.toISOString();
   const sb = createServerSupabase();
-  const { data, error } = await sb
+  const pedido = await sb
     .from("conversaciones_comercial")
     .select(CHAT_SELECT_CRM)
     .or(`ultimo_entrante_at.gt.${corte},and(necesita_humano.eq.true,updated_at.gt.${corte}),and(modo_atencion.eq.humano,updated_at.gt.${corte})`)
     .order("updated_at", { ascending: true })
     .limit(40);
+  const usable = pedido.error && /observaciones/i.test(pedido.error.message)
+    ? await sb
+        .from("conversaciones_comercial")
+        .select(CHAT_SELECT_SIN_NOTA)
+        .or(`ultimo_entrante_at.gt.${corte},and(necesita_humano.eq.true,updated_at.gt.${corte}),and(modo_atencion.eq.humano,updated_at.gt.${corte})`)
+        .order("updated_at", { ascending: true })
+        .limit(40)
+    : pedido;
+  const data = (usable.data ?? null) as Record<string, unknown>[] | null;
+  const error = usable.error;
   if (error) return [];
   return anexarCitas(sb, ((data ?? []) as Record<string, unknown>[]).map(filaChat));
 }
@@ -686,6 +706,11 @@ export async function registrarSalidaComercial(
       .eq("id", conversacionId);
   }
   if (insertado.error || !insertado.data) return null;
+  if (opts.autor === "humano" && opts.actorId) {
+    await registrarEventoComercial(conversacionId, "mensaje", opts.actorId, {
+      texto: texto.replace(/\s+/g, " ").trim().slice(0, 160),
+    });
+  }
   return filaMensaje(insertado.data as Record<string, unknown>);
 }
 
@@ -725,7 +750,7 @@ export async function listarAsesoresComerciales(): Promise<AsesorComercial[]> {
   return ((data ?? []) as AsesorComercial[]).filter((a) => parseRol(a.rol).includes("comercial"));
 }
 
-async function registrarEventoComercial(
+export async function registrarEventoComercial(
   conversacionId: string,
   tipo: string,
   actorId: string | null,
@@ -805,6 +830,7 @@ export async function actualizarFichaComercial(opts: {
   seguimientoAt?: string | null;
   resultado?: string | null;
   motivoPerdida?: string | null;
+  observaciones?: string | null;
   asesorId?: string | null;
   modoAtencion?: ModoAtencionComercial;
 }): Promise<{ ok: boolean; error?: string }> {
@@ -816,6 +842,7 @@ export async function actualizarFichaComercial(opts: {
   if ("interes" in opts) patch.interes = opts.interes || null;
   if ("lugar" in opts) patch.lugar = opts.lugar || null;
   if ("proximaAccion" in opts) patch.proxima_accion = opts.proximaAccion || null;
+  if ("observaciones" in opts) patch.observaciones = opts.observaciones?.slice(0, 2000) || null;
   if ("seguimientoAt" in opts) patch.seguimiento_at = opts.seguimientoAt || null;
   if ("resultado" in opts) patch.resultado = opts.resultado || null;
   if ("motivoPerdida" in opts) patch.motivo_perdida = opts.motivoPerdida || null;
@@ -827,12 +854,28 @@ export async function actualizarFichaComercial(opts: {
   } else if (opts.etapa) {
     patch.cerrado_at = null;
   }
-  const { error } = await sb.from("conversaciones_comercial").update(patch).eq("id", opts.conversacionId);
-  if (error) return { ok: false, error: error.message };
+  let guardado = await sb.from("conversaciones_comercial").update(patch).eq("id", opts.conversacionId);
+  let notaPendiente = false;
+  if (guardado.error && /observaciones/i.test(guardado.error.message)) {
+    notaPendiente = "observaciones" in patch;
+    const sinNota = { ...patch };
+    delete sinNota.observaciones;
+    guardado = await sb.from("conversaciones_comercial").update(sinNota).eq("id", opts.conversacionId);
+  }
+  if (guardado.error) return { ok: false, error: guardado.error.message };
   if (opts.etapa === "ganado" || opts.etapa === "perdido") {
     await cancelarSeguimientosComercial(opts.conversacionId, `Lead cerrado como ${opts.etapa}.`);
   }
-  await registrarEventoComercial(opts.conversacionId, "ficha_actualizada", opts.actorId, patch);
+  const detalle: Record<string, unknown> = {};
+  for (const [clave, valor] of Object.entries(patch)) {
+    if (clave === "updated_at" || clave === "cerrado_at") continue;
+    if (notaPendiente && clave === "observaciones") continue;
+    detalle[clave] = clave === "observaciones" ? String(valor ?? "").slice(0, 400) : valor;
+  }
+  await registrarEventoComercial(opts.conversacionId, "ficha_actualizada", opts.actorId, detalle);
+  if (notaPendiente) {
+    return { ok: false, error: "Guardé la ficha, menos las observaciones. Falta aplicar la migración 0051." };
+  }
   return { ok: true };
 }
 
@@ -1118,6 +1161,7 @@ function filaChat(row: Record<string, unknown>): ChatComercial {
     intentosSeguimiento: Number(row.intentos_seguimiento ?? 0),
     resultado: (row.resultado as string | null) ?? null,
     motivoPerdida: (row.motivo_perdida as string | null) ?? null,
+    observaciones: (row.observaciones as string | null) ?? null,
     cerradoAt: (row.cerrado_at as string | null) ?? null,
     updatedAt: (row.updated_at as string | null) ?? null,
     borrador: (row.borrador as string | null) ?? null,

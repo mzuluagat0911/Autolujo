@@ -14,6 +14,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { sesionEquipo } from "@/lib/equipo/sesion";
 import {
   actualizarFichaComercial,
+  registrarEventoComercial,
   cambiosChatsComercial,
   contarFiltrosComercial,
   devolverChatComercial,
@@ -37,6 +38,7 @@ import {
 function refrescar() {
   revalidatePath("/comercial");
   revalidatePath("/comercial/citas");
+  revalidatePath("/comercial/actividad");
 }
 
 export async function marcarAsistencia(
@@ -151,6 +153,7 @@ export async function guardarFichaComercial(formData: FormData): Promise<{ ok: b
     seguimientoAt,
     resultado: String(formData.get("resultado") ?? "").trim() || null,
     motivoPerdida: String(formData.get("motivo_perdida") ?? "").trim() || null,
+    observaciones: String(formData.get("observaciones") ?? "").trim() || null,
     asesorId: String(formData.get("asesor_id") ?? "").trim() || null,
     modoAtencion,
   });
@@ -291,6 +294,13 @@ export async function agendarCitaComercial(formData: FormData): Promise<{
   if (!aplicada.agendo) {
     return { ok: false, error: aplicada.mensaje ?? "No pude agendar la cita." };
   }
+  await registrarEventoComercial(id, chat.citaFecha ? "cita_reagendada" : "cita_agendada", sesion.id, {
+    nombre: nombre || chat.nombre,
+    fecha,
+    hora,
+    sede,
+    lugar: lugar || chat.lugar,
+  });
   const texto = aplicada.mensaje ?? "Cita agendada.";
   if (phoneId && ventanaAbierta(chat.ultimoEntranteAt)) {
     try {
