@@ -63,6 +63,11 @@ export function etiquetaCargo(concepto: string | null, codigo: string | null, ti
   if (c === "DOMINGOS") return "domingo";
   if (c === "PANAPASS") return "panapass";
   if (c === "AFILIACION") return "abono inicial";
+  if (c === "EXTENSION") return "extensión";
+  if (c === "PIRATERIA") return "piratería";
+  if (c === "SEGURO_MENOR") return "seguro menor de edad";
+  if (c === "AREA_GEOGRAFICA") return "área geográfica";
+  if (c === "BENEFICIARIO") return "beneficiario adicional";
   if (tipo === "panapass") return "panapass";
   if (tipo === "afiliacion") return "abono inicial";
   const t = (concepto ?? "").trim().toLowerCase();
@@ -77,7 +82,10 @@ export function etiquetaCargo(concepto: string | null, codigo: string | null, ti
   if (/domingo/.test(t)) return "domingo";
   if (/penonom/.test(t)) return "extensión a penonomé";
   if (/extensi[oó]n/.test(t) && /contrato/.test(t)) return "extensión en el contrato";
-  if (/seguro/.test(t) && /edad|menor/.test(t)) return "seguro menor edad";
+  if (/pirater/.test(t)) return "piratería";
+  if (/seguro/.test(t) && /edad|menor/.test(t)) return "seguro menor de edad";
+  if (/geogr[aá]fica/.test(t)) return "área geográfica";
+  if (/beneficiario/.test(t)) return "beneficiario adicional";
   if (/aguadulce|agua\s*dulce/.test(t)) return "salida a aguadulce";
   return concepto!.trim();
 }

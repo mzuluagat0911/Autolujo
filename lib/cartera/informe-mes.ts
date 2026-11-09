@@ -154,7 +154,7 @@ export function conceptoDeCargo(
   const et = etiquetaCargo(concepto ?? null, codigo ?? null, tipo ?? "").toLowerCase();
   if (et === "abono inicial") return "Abono inicial financiado";
   if (et === "gastos administrativos") return "Gastos Administrativos";
-  if (et === "seguro menor edad") return "Seguro menor de edad";
+  if (et === "seguro menor de edad" || et === "seguro menor edad") return "Seguro menor de edad";
   if (et === "exceso de kilometraje") return "Exceso Km";
   if (et === "mantenimiento") return "Mantenimiento";
   if (et === "panapass") return "Panapass";

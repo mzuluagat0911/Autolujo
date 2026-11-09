@@ -151,7 +151,8 @@ export function AltaContratoForm({
   const [prepagoLetras, setPrepagoLetras] = useState("0");
   const [prepagoDomingos, setPrepagoDomingos] = useState("0");
   const [extMotivo, setExtMotivo] = useState<"" | MotivoExtension>("");
-  const [extSaldo, setExtSaldo] = useState("0");
+  const [extPactado, setExtPactado] = useState("");
+  const [extPagado, setExtPagado] = useState("");
   const [extFrecuencia, setExtFrecuencia] = useState<FrecuenciaAcuerdo>("dia");
   const [extCuota, setExtCuota] = useState("5");
   const [extDomingo, setExtDomingo] = useState("0");
@@ -191,6 +192,9 @@ export function AltaContratoForm({
   const abonoP = Math.max(Number(String(abonoPactado).replace(",", ".")) || 0, 0);
   const abonoPay = Math.max(Number(String(abonoPagado).replace(",", ".")) || 0, 0);
   const restante = Math.max(Math.round((abonoP - abonoPay) * 100) / 100, 0);
+  const extP = Math.max(Number(String(extPactado).replace(",", ".")) || 0, 0);
+  const extPay = Math.max(Number(String(extPagado).replace(",", ".")) || 0, 0);
+  const extRestante = Math.max(Math.round((extP - extPay) * 100) / 100, 0);
   const panPay = Math.max(Number(String(panapassPagado).replace(",", ".")) || 0, 0);
   const domPay = Math.max(Number(String(domingosPagado).replace(",", ".")) || 0, 0);
   const preL = Math.max(Number(String(prepagoLetras).replace(",", ".")) || 0, 0);
@@ -200,17 +204,18 @@ export function AltaContratoForm({
   const cuotaN = Math.max(Number(String(cuotaDomingo).replace(",", ".")) || 0, 0);
   const totalDom = cobraDomingo ? Math.round(diasN * cuotaN * 100) / 100 : 0;
 
-  const totalPago = Math.round((panPay + domPay + abonoPay + preL + preD) * 100) / 100;
+  const totalPago = Math.round((panPay + domPay + abonoPay + extPay + preL + preD) * 100) / 100;
 
   const desglose = useMemo(() => {
     const rows: { label: string; monto: number }[] = [];
     if (panPay > 0) rows.push({ label: "Panapass", monto: panPay });
     if (domPay > 0) rows.push({ label: "Domingos (entrada)", monto: domPay });
     if (abonoPay > 0) rows.push({ label: "Abono inicial", monto: abonoPay });
+    if (extPay > 0) rows.push({ label: "Extensión", monto: extPay });
     if (preL > 0) rows.push({ label: "Letras adelantadas", monto: preL });
     if (preD > 0) rows.push({ label: "Domingos adelantados", monto: preD });
     return rows;
-  }, [panPay, domPay, abonoPay, preL, preD]);
+  }, [panPay, domPay, abonoPay, extPay, preL, preD]);
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -473,7 +478,7 @@ export function AltaContratoForm({
           Extensión
         </h3>
         <p className="text-sm text-muted sm:col-span-2 lg:col-span-3">
-          Opcional. El saldo se cobra con la cuota y la frecuencia, igual que un acuerdo. Entra a la cola: se cobra cuando los planes de adelante llegan a cero.
+          Opcional. Lo que paguen hoy queda cubierto. El restante se cobra con la cuota, igual que el abono, y entra a la cola cuando los planes de adelante llegan a cero.
         </p>
         <Select
           label="Motivo"
@@ -487,18 +492,45 @@ export function AltaContratoForm({
         />
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-            Saldo
+            Pactado
           </span>
           <input
-            name="extension_saldo"
+            name="extension_pactado"
             type="number"
             step="0.01"
             min="0"
-            value={extSaldo}
-            onChange={(e) => setExtSaldo(e.target.value)}
-            className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+            placeholder="300"
+            value={extPactado}
+            onChange={(e) => {
+              setExtPactado(e.target.value);
+              if (!extPagado) setExtPagado(e.target.value);
+            }}
+            className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
           />
         </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+            Pagado hoy
+          </span>
+          <input
+            name="extension_pagado"
+            type="number"
+            step="0.01"
+            min="0"
+            placeholder="150"
+            value={extPagado}
+            onChange={(e) => setExtPagado(e.target.value)}
+            className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
+          />
+        </label>
+        {extPay - extP > 0.009 && (
+          <p className="text-sm text-rojo sm:col-span-2 lg:col-span-3">Lo pagado no puede pasar de lo pactado.</p>
+        )}
+        {extRestante <= 0.009 && extP > 0 && extPay - extP <= 0.009 && (
+          <p className="text-sm text-verde sm:col-span-2 lg:col-span-3">Extensión cubierta completa hoy.</p>
+        )}
+        {extRestante > 0.009 && (
+        <>
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
             Cada
@@ -544,6 +576,9 @@ export function AltaContratoForm({
             onChange={(e) => setExtCuota(e.target.value)}
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
           />
+          <span className="text-xs text-muted">
+            Resta {money(extRestante)} → se cobra {money(Number(extCuota) || 0)} hasta liquidar.
+          </span>
         </label>
         {(extFrecuencia === "dia" || extFrecuencia === "domingo") && (
           <label className="flex flex-col gap-1.5">
@@ -607,6 +642,8 @@ export function AltaContratoForm({
               className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
             />
           </label>
+        )}
+        </>
         )}
       </section>
 

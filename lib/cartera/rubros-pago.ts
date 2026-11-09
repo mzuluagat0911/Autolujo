@@ -57,6 +57,10 @@ export const CONCEPTOS_PAGO = [
   { value: "recogida", label: "Recogida de vehículo", cubeta: "recogida de vehículo" },
   { value: "cobro_presencial", label: "Cobro presencial", cubeta: "cobro presencial" },
   { value: "salida_interior", label: "Salida al interior", cubeta: "salida al interior" },
+  { value: "pirateria", label: "Piratería", cubeta: "piratería" },
+  { value: "seguro_menor", label: "Seguro menor de edad", cubeta: "seguro menor de edad" },
+  { value: "area_geografica", label: "Área geográfica", cubeta: "área geográfica" },
+  { value: "beneficiario", label: "Beneficiario adicional", cubeta: "beneficiario adicional" },
 ] as const;
 
 export const CUBETA_SALIDA = "salida al interior";
@@ -84,6 +88,7 @@ export const CARGO_DE_CONCEPTO: Record<
   { tipo: string; codigo: string | null; concepto: string }
 > = {
   abono: { tipo: "afiliacion", codigo: "AFILIACION", concepto: "Abono inicial" },
+  extension: { tipo: "otras", codigo: "EXTENSION", concepto: "Extensión" },
   domingo: { tipo: "otras", codigo: "DOMINGOS", concepto: "Domingo" },
   mantenimiento: { tipo: "otras", codigo: "124", concepto: "Mantenimiento" },
   panapass: { tipo: "panapass", codigo: "PANAPASS", concepto: "Panapass" },
@@ -92,6 +97,10 @@ export const CARGO_DE_CONCEPTO: Record<
   ajuste: { tipo: "ajuste", codigo: null, concepto: "Ajuste / negociación" },
   recogida: { tipo: "otras", codigo: "RECOGIDA", concepto: "Recogida de vehículo" },
   cobro_presencial: { tipo: "otras", codigo: "PRESENCIAL", concepto: "Cobro presencial" },
+  pirateria: { tipo: "otras", codigo: "PIRATERIA", concepto: "Piratería" },
+  seguro_menor: { tipo: "otras", codigo: "SEGURO_MENOR", concepto: "Seguro menor de edad" },
+  area_geografica: { tipo: "otras", codigo: "AREA_GEOGRAFICA", concepto: "Área geográfica" },
+  beneficiario: { tipo: "otras", codigo: "BENEFICIARIO", concepto: "Beneficiario adicional" },
 };
 
 export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string | null {
@@ -108,6 +117,11 @@ export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string
   if (/cierre(\s+de)?\s+semana/.test(et)) return "cierre de semana";
   if (/recargo|por no pagar/.test(et)) return "por no pagar";
   if (/abono\s*inicial|afiliaci[oó]n/.test(et)) return "abono inicial";
+  if (/pirater/.test(et)) return "piratería";
+  if (/seguro/.test(et) && /menor|edad/.test(et)) return "seguro menor de edad";
+  if (/geogr[aá]fica/.test(et)) return "área geográfica";
+  if (/beneficiario/.test(et)) return "beneficiario adicional";
+  if (/^extensi[oó]n$/.test(et) || et.startsWith("extensión ·") || et.startsWith("extension ·")) return "extensión";
   if (/domingo/.test(et)) return "domingo";
   if (/manten/.test(et)) return "mantenimiento";
   if (/panapass/.test(et)) return "panapass";
@@ -115,5 +129,6 @@ export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string
   if (/negociaci[oó]n|^ajuste\b/.test(et)) return "ajuste";
   if (/recogida/.test(et)) return "recogida de vehículo";
   if (/presencial/.test(et)) return "cobro presencial";
+  if (t === "extension") return "extensión";
   return null;
 }

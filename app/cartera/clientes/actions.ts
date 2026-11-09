@@ -14,7 +14,8 @@ import { referenciasPersonales } from "@/lib/cartera/referencias-alta";
 import { numeroDeContrato } from "@/lib/cartera/contrato-numero";
 import { enviarBienvenidaCartera } from "@/lib/cartera/bienvenida-cartera";
 import { registrarEntrega } from "@/lib/cartera/sucursal";
-import { descripcionExtension, motivoExtensionDe } from "@/lib/cartera/extension";
+import { CONCEPTO_DE_EXTENSION, descripcionExtension, motivoExtensionDe } from "@/lib/cartera/extension";
+import { CARGO_DE_CONCEPTO } from "@/lib/cartera/rubros-pago";
 import type { FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
 
 const PANAPASS_ENTRADA = 20;
@@ -301,7 +302,11 @@ export async function createClienteConContrato(
   }
 
   const extensionMotivo = motivoExtensionDe(formData.get("extension_motivo"));
-  const extensionSaldo = Math.max(num(formData.get("extension_saldo")) ?? 0, 0);
+  const extensionPactado = Math.max(
+    num(formData.get("extension_pactado")) ?? num(formData.get("extension_saldo")) ?? 0,
+    0,
+  );
+  const extensionPagado = Math.max(num(formData.get("extension_pagado")) ?? 0, 0);
   const extensionCuota = Math.max(num(formData.get("extension_cuota")) ?? 0, 0);
   const extensionDomingo = Math.max(num(formData.get("extension_cuota_domingo")) ?? 0, 0);
   const frecuencias = new Set(["dia", "domingo", "semana", "quincena", "mes", "fecha"]);
@@ -310,14 +315,18 @@ export async function createClienteConContrato(
     ? (extensionFreqRaw as FrecuenciaAcuerdo)
     : "dia";
   const extensionEmpieza = str(formData.get("extension_empieza"));
-  if (extensionMotivo && extensionSaldo <= 0.009) {
-    return { ok: false, error: "Si hay extensión, indicá el saldo." };
+  if (extensionPagado - extensionPactado > 0.009) {
+    return { ok: false, error: "Lo pagado de la extensión no puede ser mayor a lo pactado." };
   }
-  if (!extensionMotivo && extensionSaldo > 0.009) {
+  const extensionRestante = r2(Math.max(extensionPactado - extensionPagado, 0));
+  if (extensionMotivo && extensionPactado <= 0.009) {
+    return { ok: false, error: "Si hay extensión, indicá lo pactado." };
+  }
+  if (!extensionMotivo && extensionPactado > 0.009) {
     return { ok: false, error: "Elegí el motivo de la extensión." };
   }
-  if (extensionMotivo && extensionFreq !== "fecha" && extensionCuota <= 0.009) {
-    return { ok: false, error: "Indicá la cuota de la extensión." };
+  if (extensionMotivo && extensionRestante > 0.009 && extensionFreq !== "fecha" && extensionCuota <= 0.009) {
+    return { ok: false, error: "Si queda extensión pendiente, indicá la cuota." };
   }
 
   if (panapassPagado + 0.009 < panapassCargo) {
@@ -333,7 +342,7 @@ export async function createClienteConContrato(
       ? metodoRaw
       : null;
   const totalPago = r2(
-    panapassPagado + domingosPagado + abonoPagado + prepagoLetras + prepagoDomingos,
+    panapassPagado + domingosPagado + abonoPagado + extensionPagado + prepagoLetras + prepagoDomingos,
   );
   if (totalPago > 0.009 && !metodo) {
     return { ok: false, error: "Elegí el método de pago (efectivo, tarjeta o transferencia)." };
@@ -494,6 +503,17 @@ export async function createClienteConContrato(
       monto: abonoPagado,
     });
   }
+  if (extensionMotivo && extensionPagado > 0.009) {
+    const spec = CARGO_DE_CONCEPTO[CONCEPTO_DE_EXTENSION[extensionMotivo]];
+    cargos.push({
+      contrato_id: contratoId,
+      fecha: fechaInicio,
+      tipo: spec.tipo,
+      concepto_codigo: spec.codigo,
+      concepto: spec.concepto,
+      monto: extensionPagado,
+    });
+  }
   if (cargos.length) {
     const { error: cargoErr } = await sb.from("cargos").insert(cargos);
     if (cargoErr) {
@@ -525,13 +545,13 @@ export async function createClienteConContrato(
     acuerdoId = (ac as { id: string } | null)?.id ?? null;
   }
 
-  if (extensionMotivo && extensionSaldo > 0.009) {
+  if (extensionMotivo && extensionRestante > 0.009) {
     const fila = {
       contrato_id: contratoId,
       tipo: "otro" as const,
       descripcion: descripcionExtension(extensionMotivo),
-      monto_total: extensionSaldo,
-      saldo: extensionSaldo,
+      monto_total: extensionRestante,
+      saldo: extensionRestante,
       cuota_diaria: extensionCuota,
       cuota_domingo: extensionFreq === "dia" ? extensionDomingo : 0,
       frecuencia: extensionFreq,
@@ -559,6 +579,14 @@ export async function createClienteConContrato(
   if (abonoPagado > 0.009) {
     partes.push({ tipo: "abono", aplicado: abonoPagado, etiqueta: "abono inicial" });
   }
+  if (extensionPagado > 0.009 && extensionMotivo) {
+    const spec = CARGO_DE_CONCEPTO[CONCEPTO_DE_EXTENSION[extensionMotivo]];
+    partes.push({
+      tipo: CONCEPTO_DE_EXTENSION[extensionMotivo],
+      aplicado: extensionPagado,
+      etiqueta: spec.concepto,
+    });
+  }
   if (prepagoLetras > 0.009) {
     partes.push({
       tipo: "prepago_letra",
@@ -584,6 +612,9 @@ export async function createClienteConContrato(
       desgloseTxt ? `Desglose: ${desgloseTxt}.` : null,
       abonoRestante > 0.009
         ? `Abono restante $${abonoRestante} a $${abonoCuota}/día.`
+        : null,
+      extensionRestante > 0.009
+        ? `Extensión restante $${extensionRestante} a $${extensionCuota}.`
         : null,
       str(formData.get("pago_notas")),
     ]

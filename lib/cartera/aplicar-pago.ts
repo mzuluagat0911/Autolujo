@@ -745,6 +745,13 @@ function cubetaDeCargoFila(c: {
   if (codigo === "AFILIACION" || c.tipo === "afiliacion" || /abono\s*inicial|afiliaci[oó]n/i.test(c.concepto ?? "")) {
     return "abono inicial";
   }
+  if (codigo === "PIRATERIA" || /pirater/i.test(c.concepto ?? "")) return "piratería";
+  if (codigo === "SEGURO_MENOR" || (/seguro/i.test(c.concepto ?? "") && /menor|edad/i.test(c.concepto ?? ""))) {
+    return "seguro menor de edad";
+  }
+  if (codigo === "AREA_GEOGRAFICA" || /geogr[aá]fica/i.test(c.concepto ?? "")) return "área geográfica";
+  if (codigo === "BENEFICIARIO" || /beneficiario/i.test(c.concepto ?? "")) return "beneficiario adicional";
+  if (codigo === "EXTENSION" || /^extensi[oó]n\b/i.test(c.concepto ?? "")) return "extensión";
   if (codigo === "CIERRE_SEMANA" || /cierre(\s+de)?\s+semana/i.test(c.concepto ?? "")) return "cierre de semana";
   if (codigo === "122" || (/exceso/i.test(c.concepto ?? "") && /km|kilom/i.test(c.concepto ?? ""))) {
     return "exceso de kilometraje";

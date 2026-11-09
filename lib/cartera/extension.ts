@@ -28,6 +28,14 @@ export function descripcionExtension(motivo: MotivoExtension): string {
   return `${PREFIJO}${label}`;
 }
 
+/** Concepto del desglose de pagos para cada motivo. */
+export const CONCEPTO_DE_EXTENSION = {
+  pirateria: "pirateria",
+  seguro_menor: "seguro_menor",
+  area_geografica: "area_geografica",
+  beneficiario: "beneficiario",
+} as const satisfies Record<MotivoExtension, string>;
+
 export function motivoExtensionDe(valor: unknown): MotivoExtension | null {
   const id = String(valor ?? "").trim();
   return MOTIVOS_EXTENSION.some((m) => m.id === id) ? (id as MotivoExtension) : null;
