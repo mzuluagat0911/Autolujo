@@ -1,3 +1,4 @@
+import { fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { esDomingo, hoyPanama, sumarDias } from "@/lib/cartera/fecha";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
@@ -23,7 +24,9 @@ export async function cargarVehiculosGps(): Promise<VehiculoGps[]> {
     gps_id: string | null;
     estado: string | null;
     empresa: { codigo: string } | null;
-  }[]).map((v) => ({
+  }[])
+    .filter((v) => !fueraDeFlota(v.estado))
+    .map((v) => ({
     id: v.id,
     numero: v.numero,
     placa: v.placa,

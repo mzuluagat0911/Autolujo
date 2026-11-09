@@ -64,21 +64,31 @@ export type FilaVehiculo = {
 const ESTADOS: Record<string, string> = {
   activo: "Activo",
   mantenimiento: "Mantenimiento",
+  mecanica: "Mecánica",
   chapisteria: "Chapistería",
   colision: "Colisión",
+  grua: "Grúa",
   por_entregar: "Por entregar",
   improductivo: "Improductivo",
   entregado: "Entregado",
+  perdida_total: "Pérdida total",
+  terminacion: "Terminación de contrato",
+  pagado: "Carro pagado",
 };
 
 const OPCIONES_ESTADO = [
   "activo",
   "mantenimiento",
+  "mecanica",
   "chapisteria",
   "colision",
+  "grua",
   "por_entregar",
   "improductivo",
   "entregado",
+  "perdida_total",
+  "terminacion",
+  "pagado",
 ];
 
 function estadoMostrado(v: { estado: string; pausaEstado: string | null }): string {
@@ -87,8 +97,8 @@ function estadoMostrado(v: { estado: string; pausaEstado: string | null }): stri
 
 function estadoTone(e: string): "good" | "warn" | "crit" | "neutral" {
   if (e === "activo") return "good";
-  if (e === "mantenimiento" || e === "chapisteria") return "warn";
-  if (e === "improductivo" || e === "colision") return "crit";
+  if (e === "mantenimiento" || e === "chapisteria" || e === "mecanica" || e === "grua") return "warn";
+  if (e === "improductivo" || e === "colision" || e === "perdida_total") return "crit";
   return "neutral";
 }
 
@@ -646,9 +656,15 @@ function PanelEditarCarro({
   const [bajaAbierta, setBajaAbierta] = useState(false);
   const [motivoBaja, setMotivoBaja] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  const enTaller = estado === "mantenimiento" || estado === "chapisteria" || estado === "colision";
+  const enTaller =
+    estado === "mantenimiento" ||
+    estado === "chapisteria" ||
+    estado === "colision" ||
+    estado === "mecanica" ||
+    estado === "grua";
   const entregado = estado === "entregado";
   const inactivo = estado === "improductivo";
+  const salidaFlota = estado === "pagado" || estado === "perdida_total" || estado === "terminacion";
   const [pending, start] = useTransition();
   const [descValor, setDescValor] = useState("");
   const [descFecha, setDescFecha] = useState(hoyInput());
@@ -765,7 +781,12 @@ function PanelEditarCarro({
               onChange={(e) => {
                 const next = e.target.value;
                 setEstado(next);
-                const pausa = next === "mantenimiento" || next === "chapisteria" || next === "colision";
+                const pausa =
+                  next === "mantenimiento" ||
+                  next === "chapisteria" ||
+                  next === "colision" ||
+                  next === "mecanica" ||
+                  next === "grua";
                 if (pausa && !ingreso) setIngreso(hoyInput());
                 if (next === "entregado" && !devolucion) setDevolucion(hoyInput());
                 if (next === "improductivo" && !inactivoDesde) setInactivoDesde(hoyInput());
@@ -779,6 +800,13 @@ function PanelEditarCarro({
               ))}
             </select>
           </label>
+          {salidaFlota && (
+            <p className="text-xs text-muted">
+              {estado === "pagado"
+                ? "El cliente queda con paz y salvo. El contrato se cierra y el carro sale de la flota: no se vuelve a asignar."
+                : "El contrato se cierra, deja de correr la letra y el carro sale de la flota."}
+            </p>
+          )}
           {enTaller && (
             <>
             <label className="flex flex-col gap-1.5">

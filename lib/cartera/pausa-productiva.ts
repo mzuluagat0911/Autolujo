@@ -7,7 +7,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { esDomingo, hoyPanama, sumarDias } from "./fecha";
 import { correLetraNueva, cuotaDeFecha, type TerminosCuota } from "./cuota";
 
-export const ESTADOS_PAUSA = ["mantenimiento", "chapisteria", "colision"] as const;
+export const ESTADOS_PAUSA = ["mantenimiento", "chapisteria", "colision", "mecanica", "grua"] as const;
 export type EstadoPausa = (typeof ESTADOS_PAUSA)[number];
 
 const DETALLE_RETORNO = "retorno-productivo";
@@ -22,14 +22,29 @@ export type PausaAbierta = {
 };
 
 export function esEstadoPausa(estado: string | null | undefined): estado is EstadoPausa {
-  return estado === "mantenimiento" || estado === "chapisteria" || estado === "colision";
+  return (
+    estado === "mantenimiento" ||
+    estado === "chapisteria" ||
+    estado === "colision" ||
+    estado === "mecanica" ||
+    estado === "grua"
+  );
 }
 
 export function etiquetaPausa(estado: string | null | undefined): string {
   if (estado === "chapisteria") return "Chapistería";
   if (estado === "mantenimiento") return "Mantenimiento";
   if (estado === "colision") return "Colisión";
+  if (estado === "mecanica") return "Mecánica";
+  if (estado === "grua") return "Grúa";
   return "Taller";
+}
+
+/** El cliente ya no renta este carro. No vuelve a la lista para asignar. */
+export const ESTADOS_FUERA_DE_FLOTA = ["entregado", "pagado", "perdida_total", "terminacion"] as const;
+
+export function fueraDeFlota(estado: string | null | undefined): boolean {
+  return (ESTADOS_FUERA_DE_FLOTA as readonly string[]).includes(estado ?? "");
 }
 
 function detallePausa(estado: EstadoPausa, hasta: string | null): string {
@@ -346,6 +361,78 @@ function finDeLetrasQuitadas(desde: string, hasta: string | null, hoy: string): 
   return desde <= fin ? fin : null;
 }
 
+const SALIDA_FLOTA: Record<string, { titulo: string; detalle: string; msg: string }> = {
+  pagado: {
+    titulo: "Carro pagado",
+    detalle: "paz-y-salvo",
+    msg: "Carro pagado. El cliente queda con paz y salvo y el carro sale de la flota.",
+  },
+  perdida_total: {
+    titulo: "Pérdida total",
+    detalle: "salida:perdida_total",
+    msg: "Pérdida total. No corre letra nueva y el carro sale de la flota.",
+  },
+  terminacion: {
+    titulo: "Terminación de contrato",
+    detalle: "salida:terminacion",
+    msg: "Contrato terminado. No corre letra nueva y el carro sale de la flota.",
+  },
+};
+
+/** Cierra el contrato y deja el carro fuera de la flota. La deuda ya pagada no se toca. */
+async function cerrarSalidaFlota(
+  vehiculoId: string,
+  estado: "pagado" | "perdida_total" | "terminacion",
+): Promise<{ ok: boolean; msg: string }> {
+  const spec = SALIDA_FLOTA[estado];
+  const sb = createServerSupabase();
+  const hoy = hoyPanama();
+  const pausa = await pausaDeVehiculo(vehiculoId);
+  if (pausa) {
+    const fin = sumarDias(hoy, -1);
+    if (pausa.desde <= fin) await quitarLetrasDeLaPausa(vehiculoId, pausa.desde, fin);
+    await sb.from("vehiculo_eventos").insert({
+      vehiculo_id: vehiculoId,
+      fecha: hoy,
+      tipo: "otro",
+      titulo: "Retorno productivo",
+      detalle: DETALLE_RETORNO,
+      origen: "manual",
+    });
+  }
+  const guardado = await guardarEstadoVehiculo(vehiculoId, estado);
+  if (!guardado.ok) {
+    if (/enum|invalid|estado/i.test(guardado.msg)) {
+      return { ok: false, msg: "Falta agregar estos estados en la base. Corré la migración de estados del carro." };
+    }
+    return { ok: false, msg: guardado.msg };
+  }
+  const { error: contratoErr } = await sb
+    .from("contratos")
+    .update({ estado: "finalizado" })
+    .eq("vehiculo_id", vehiculoId)
+    .eq("estado", "activo");
+  if (contratoErr) return { ok: false, msg: contratoErr.message };
+  const { data: ya } = await sb
+    .from("vehiculo_eventos")
+    .select("id")
+    .eq("vehiculo_id", vehiculoId)
+    .eq("detalle", spec.detalle)
+    .limit(1);
+  if ((ya ?? []).length === 0) {
+    const { error } = await sb.from("vehiculo_eventos").insert({
+      vehiculo_id: vehiculoId,
+      fecha: hoy,
+      tipo: "otro",
+      titulo: spec.titulo,
+      detalle: spec.detalle,
+      origen: "manual",
+    });
+    if (error) return { ok: false, msg: error.message };
+  }
+  return { ok: true, msg: spec.msg };
+}
+
 async function anotarPausa(
   vehiculoId: string,
   estado: EstadoPausa,
@@ -354,7 +441,11 @@ async function anotarPausa(
 ): Promise<string | null> {
   const sb = createServerSupabase();
   const tipo =
-    estado === "mantenimiento" ? "mantenimiento" : estado === "chapisteria" ? "chapisteria" : "novedad";
+    estado === "mantenimiento" || estado === "mecanica"
+      ? "mantenimiento"
+      : estado === "chapisteria"
+        ? "chapisteria"
+        : "novedad";
   const { error } = await sb.from("vehiculo_eventos").insert({
     vehiculo_id: vehiculoId,
     fecha: desde,
@@ -381,6 +472,10 @@ export async function aplicarEstadoProductivo(input: {
   const estado = String(input.estado ?? "").trim();
   const hoy = hoyPanama();
   const sb = createServerSupabase();
+
+  if (estado === "pagado" || estado === "perdida_total" || estado === "terminacion") {
+    return cerrarSalidaFlota(input.vehiculoId, estado);
+  }
 
   if (estado === "entregado") {
     const { aplicarDevolucion } = await import("./devolucion");

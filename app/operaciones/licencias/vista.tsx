@@ -1,9 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FiltersBar, StatusChip, EmptyState } from "@/components/kit";
 import type { LicenciaItem, NivelSemaforo } from "@/lib/operaciones/alertas";
+import { actualizarVencimientoLicencia } from "./actions";
 
 function tono(n: NivelSemaforo): "crit" | "warn" | "good" {
   if (n === "vencido" || n === "rojo") return "crit";
@@ -19,6 +21,46 @@ function nivelDe(i: LicenciaItem) {
   if (i.nivel === "vencido" || i.nivel === "rojo") return "critico";
   if (i.nivel === "amarillo") return "pronto";
   return "ok";
+}
+
+function FechaLicencia({ clienteId, fecha }: { clienteId: string; fecha: string }) {
+  const router = useRouter();
+  const [valor, setValor] = useState(fecha.slice(0, 10));
+  const [aviso, setAviso] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const cambio = valor !== fecha.slice(0, 10);
+
+  function guardar() {
+    setAviso(null);
+    start(async () => {
+      const r = await actualizarVencimientoLicencia(clienteId, valor);
+      setAviso(r.ok ? "Guardada" : r.msg);
+      if (r.ok) router.refresh();
+    });
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <input
+        type="date"
+        value={valor}
+        onChange={(e) => {
+          setValor(e.target.value);
+          setAviso(null);
+        }}
+        className="rounded-lg bg-surface px-2 py-1.5 text-sm tabular-nums ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+      />
+      <button
+        type="button"
+        onClick={guardar}
+        disabled={pending || !cambio}
+        className="rounded-lg bg-ink px-2.5 py-1.5 text-xs font-medium text-paper disabled:opacity-40"
+      >
+        {pending ? "…" : "Guardar"}
+      </button>
+      {aviso && <span className="text-xs text-muted">{aviso}</span>}
+    </div>
+  );
 }
 
 export function LicenciasVista({ items }: { items: LicenciaItem[] }) {
@@ -97,7 +139,9 @@ export function LicenciasVista({ items }: { items: LicenciaItem[] }) {
                       <span className="text-muted">—</span>
                     )}
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-muted">{i.fecha}</td>
+                  <td className="px-4 py-3">
+                    <FechaLicencia clienteId={i.id} fecha={i.fecha} />
+                  </td>
                   <td className="px-4 py-3">
                     <StatusChip tone={tono(i.nivel)}>{etiqueta(i.dias)}</StatusChip>
                   </td>

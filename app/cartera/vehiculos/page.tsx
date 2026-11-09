@@ -72,10 +72,16 @@ type Empresa = { id: string; codigo: string; nombre: string };
 const ESTADOS = [
   { value: "activo", label: "Activo" },
   { value: "mantenimiento", label: "Mantenimiento" },
+  { value: "mecanica", label: "Mecánica" },
   { value: "chapisteria", label: "Chapistería" },
+  { value: "colision", label: "Colisión" },
+  { value: "grua", label: "Grúa" },
   { value: "por_entregar", label: "Por entregar" },
   { value: "improductivo", label: "Improductivo" },
   { value: "entregado", label: "Entregado" },
+  { value: "perdida_total", label: "Pérdida total" },
+  { value: "terminacion", label: "Terminación de contrato" },
+  { value: "pagado", label: "Carro pagado" },
 ];
 
 type UltimoVisto = {

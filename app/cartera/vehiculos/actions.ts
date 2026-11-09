@@ -8,7 +8,7 @@ import { normalizarTelefono } from "@/lib/cartera/telefono";
 import { chatPuedePasarA, decidirTelefono, panoramaTelefono, soltarTelefono } from "@/lib/cartera/cliente-telefono";
 import { crearArrendatarioEnCarro, generoDeAlta } from "@/lib/cartera/enlazar-alta";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
-import { aplicarEstadoProductivo } from "@/lib/cartera/pausa-productiva";
+import { aplicarEstadoProductivo, fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import { dejarUltimaLetra, detalleCasoArchivado } from "@/lib/cartera/archivo-caso";
 
@@ -520,13 +520,13 @@ export async function completarPlacasDesdeDiacor(): Promise<ResultadoMasivo> {
   try {
     const sb = createServerSupabase();
     const [{ data: veh }, posiciones] = await Promise.all([
-      sb.from("vehiculos").select("id, placa, gps_id").neq("estado", "entregado"),
+      sb.from("vehiculos").select("id, placa, gps_id, estado").neq("estado", "entregado"),
       posicionesGps(),
     ]);
     const porGps = new Map(posiciones.map((p) => [p.id_dispositivo, p]));
     let n = 0;
-    for (const v of (veh ?? []) as { id: string; placa: string | null; gps_id: string | null }[]) {
-      if (placaOk(v.placa) || !v.gps_id) continue;
+    for (const v of (veh ?? []) as { id: string; placa: string | null; gps_id: string | null; estado: string | null }[]) {
+      if (fueraDeFlota(v.estado) || placaOk(v.placa) || !v.gps_id) continue;
       const placa = placaOk(porGps.get(v.gps_id)?.placa ?? null);
       if (!placa) continue;
       const { error } = await sb.from("vehiculos").update({ placa }).eq("id", v.id);

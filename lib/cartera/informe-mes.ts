@@ -219,6 +219,16 @@ function etiquetaEstado(estado: string | null | undefined): string | null {
       return "MECANICA";
     case "colision":
       return "COLISION";
+    case "mecanica":
+      return "MECANICA";
+    case "grua":
+      return "GRUA";
+    case "perdida_total":
+      return "PERDIDA TOTAL";
+    case "terminacion":
+      return "TERMINACION";
+    case "pagado":
+      return "PAGADO";
     case "por_entregar":
       return "X ENTREGAR";
     case "improductivo":
@@ -232,6 +242,8 @@ const ETIQUETA_PAUSA: Record<string, string> = {
   chapisteria: "CHAPISTERIA",
   mantenimiento: "MECANICA",
   colision: "COLISION",
+  mecanica: "MECANICA",
+  grua: "GRUA",
 };
 
 function fechaTramo(v: string | undefined): v is string {

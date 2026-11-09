@@ -14,6 +14,7 @@ import { referenciasPersonales } from "@/lib/cartera/referencias-alta";
 import { numeroDeContrato } from "@/lib/cartera/contrato-numero";
 import { enviarBienvenidaCartera } from "@/lib/cartera/bienvenida-cartera";
 import { registrarEntrega } from "@/lib/cartera/sucursal";
+import { fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 import { CONCEPTO_DE_EXTENSION, descripcionExtension, motivoExtensionDe } from "@/lib/cartera/extension";
 import { CARGO_DE_CONCEPTO } from "@/lib/cartera/rubros-pago";
 import type { FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
@@ -769,7 +770,7 @@ export async function listarCarrosLibres(): Promise<CarroLibre[]> {
     ((activos ?? []) as { vehiculo_id: string }[]).map((c) => c.vehiculo_id),
   );
   return ((veh ?? []) as unknown as FilaCarro[])
-    .filter((v) => !ocupados.has(v.id))
+    .filter((v) => !ocupados.has(v.id) && !fueraDeFlota(v.estado))
     .map((v) => {
       const sigla = v.empresa?.codigo ? siglaEmpresa(v.empresa.codigo) : "";
       const base = sigla ? `${sigla} · ${v.numero}` : v.numero;

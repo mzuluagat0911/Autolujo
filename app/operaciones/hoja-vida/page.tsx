@@ -1,4 +1,5 @@
 import { PageHeader, PageShell } from "@/components/kit";
+import { fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { HojaVidaLista, type FilaHojaVida } from "./lista";
 
@@ -14,7 +15,8 @@ async function listarFlota(): Promise<{ filas: FilaHojaVida[]; error: string | n
       .order("numero");
     if (error) throw error;
 
-    const ids = (vehs ?? []).map((v) => v.id);
+    const flota = (vehs ?? []).filter((v) => !fueraDeFlota(v.estado));
+    const ids = flota.map((v) => v.id);
     const conteo = new Map<string, { n: number; ultimo: string | null }>();
 
     if (ids.length > 0) {
@@ -43,7 +45,7 @@ async function listarFlota(): Promise<{ filas: FilaHojaVida[]; error: string | n
       }
     }
 
-    const filas: FilaHojaVida[] = ((vehs ?? []) as unknown as {
+    const filas: FilaHojaVida[] = (flota as unknown as {
       id: string;
       numero: string;
       placa: string | null;

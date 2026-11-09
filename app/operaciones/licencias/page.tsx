@@ -13,7 +13,7 @@ export default async function LicenciasPage() {
       <PageHeader
         eyebrow="Operaciones"
         title="Licencias"
-        subtitle="Semáforo por vencimiento. Rojo = 0–30 días (o vencida) · Amarillo = 31–90 · Verde = 91+."
+        subtitle="Semáforo por vencimiento. Rojo = 0–30 días (o vencida) · Amarillo = 31–90 · Verde = 91+. La fecha se corrige en la fila."
         action={
           <div className="hidden text-right sm:block">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">

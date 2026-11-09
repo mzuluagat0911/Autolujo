@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { aplicarEstadoProductivo, pausaDeVehiculo, reponerLetras } from "@/lib/cartera/pausa-productiva";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import {
@@ -57,6 +58,13 @@ function revalidar(id?: string) {
   }
   revalidatePath("/operaciones/hoja-vida");
   revalidatePath("/cartera/vehiculos");
+}
+
+/** La columna Situación lee una caché. Un choque que cambia el cobro tiene que vaciarla. */
+async function refrescarSituacion() {
+  revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/cartera");
+  await invalidarLecturaEstados();
 }
 
 function texto(v: FormDataEntryValue | null): string {
@@ -167,7 +175,7 @@ export async function eliminarCaso(fd: FormData): Promise<Resultado> {
   }
 
   revalidar(id);
-  revalidatePath("/cartera/estados-cuenta");
+  await refrescarSituacion();
   return { ok: true, msg: "Choque eliminado." };
 }
 
@@ -336,7 +344,7 @@ export async function confirmarChoque(fd: FormData): Promise<Resultado> {
   await notaColisionReportada(fila.vehiculoId, fila.fecha);
   const pausa = await pausarSiQuedaEnTaller(fila.vehiculoId, fila.fecha, destino);
   revalidar(id);
-  revalidatePath("/cartera/estados-cuenta");
+  await refrescarSituacion();
   return {
     ok: true,
     msg: msgChoque(destino, pausa, false),
@@ -356,7 +364,7 @@ export async function carroVolvio(fd: FormData): Promise<Resultado> {
     fechaIngreso: null,
   });
   revalidar(id);
-  revalidatePath("/cartera/estados-cuenta");
+  await refrescarSituacion();
   return pausa.ok
     ? { ok: true, msg: "El carro volvió a trabajar. El cobro de la letra se reanuda." }
     : { ok: false, error: pausa.msg };
@@ -377,7 +385,7 @@ export async function carroQuedoEnTaller(fd: FormData): Promise<Resultado> {
     fechaIngreso: hoyPanama(),
   });
   revalidar(id);
-  revalidatePath("/cartera/estados-cuenta");
+  await refrescarSituacion();
   return pausa.ok
     ? { ok: true, msg: "El carro quedó en taller. Se pausó el cobro desde hoy." }
     : { ok: false, error: pausa.msg };

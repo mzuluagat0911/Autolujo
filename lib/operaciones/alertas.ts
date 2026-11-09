@@ -6,6 +6,7 @@ import { cache } from "react";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
+import { fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 
 export const KM_MANTENIMIENTO = 6000;
 export const KM_AVISO = 5000; // "pronto" antes de llegar a los 6.000
@@ -211,7 +212,7 @@ export async function kitTiempoKm(): Promise<{ disponible: boolean; items: KitTi
   const sb = createServerSupabase();
   const { data, error } = await sb
     .from("vehiculos")
-    .select("id, numero, km_actual, empresa:empresas(codigo)")
+    .select("id, numero, km_actual, estado, empresa:empresas(codigo)")
     .not("km_actual", "is", null)
     .neq("estado", "entregado");
   if (error) return { disponible: false, items: [] };
@@ -221,8 +222,10 @@ export async function kitTiempoKm(): Promise<{ disponible: boolean; items: KitTi
     id: string;
     numero: string;
     km_actual: number;
+    estado: string | null;
     empresa: { codigo: string } | null;
   }[])
+    .filter((v) => !fueraDeFlota(v.estado))
     .map((v) => {
       const ev = evaluarKitTiempo(Number(v.km_actual));
       const c = clientes.get(v.id);

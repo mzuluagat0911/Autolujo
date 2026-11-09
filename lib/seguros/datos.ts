@@ -1,5 +1,6 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
+import { fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 import { hoyPanama, sumarDias } from "@/lib/cartera/fecha";
 import {
   ORIGEN_SEGUROS,
@@ -316,6 +317,7 @@ export async function carrosParaCaso(): Promise<CarroParaCaso[]> {
     .neq("estado", "entregado")
     .order("numero");
   if (error) throw new Error(error.message);
+  const enFlota = (vehs ?? []).filter((v) => !fueraDeFlota((v as { estado?: string }).estado));
   const { data: contratos } = await sb
     .from("contratos")
     .select("id, vehiculo_id, cliente_id, cliente:clientes(nombre)")
@@ -330,7 +332,7 @@ export async function carrosParaCaso(): Promise<CarroParaCaso[]> {
     const cli = Array.isArray(c.cliente) ? c.cliente[0] : c.cliente;
     porCarro.set(c.vehiculo_id, { id: c.id, clienteId: c.cliente_id, nombre: cli?.nombre ?? "" });
   }
-  return ((vehs ?? []) as unknown as VehiculoMini[]).map((v) => {
+  return (enFlota as unknown as VehiculoMini[]).map((v) => {
     const sigla = siglaEmpresa(empresaDe(v.empresa));
     const contrato = porCarro.get(v.id);
     return {

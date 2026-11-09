@@ -7,6 +7,7 @@ import { armarFilas, sugerenciasVinculo } from "@/lib/gps/vincular";
 import { alertasGpsPendientes, cargarVehiculosGps, revisarGpsDelDia } from "@/lib/gps/revisar-dia";
 import { historialDelDia, serieDispositivo, type FilaHistorialGps, type PuntoSerie } from "@/lib/gps/historico";
 import { hoyPanama } from "@/lib/cartera/fecha";
+import { fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 
 export type TableroRastreo = {
   configurado: boolean;
@@ -127,10 +128,14 @@ export async function amarrarDesdeHistorico(): Promise<number> {
   const sb = createServerSupabase();
   const { data: sin } = await sb
     .from("vehiculos")
-    .select("id")
+    .select("id, estado")
     .is("gps_id", null)
     .neq("estado", "entregado");
-  const faltan = new Set(((sin ?? []) as { id: string }[]).map((v) => v.id));
+  const faltan = new Set(
+    ((sin ?? []) as { id: string; estado: string | null }[])
+      .filter((v) => !fueraDeFlota(v.estado))
+      .map((v) => v.id),
+  );
   if (faltan.size === 0) return 0;
 
   const usados = new Set<string>();
