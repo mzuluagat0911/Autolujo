@@ -24,7 +24,7 @@ export default async function PolizasPage() {
       <PageHeader
         eyebrow="Seguros"
         title="Pólizas"
-        subtitle="Cada carro renueva una vez al año. Si falta un mes para vencer, el aviso aparece en Choques."
+        subtitle="Cada carro renueva una vez al año. Desde 30 días antes de vencer, el aviso sale aquí y en Choques."
       />
       <ListaPolizas carros={carros} polizas={polizas} empresas={empresas} urls={urls} hoy={hoy} />
     </div>

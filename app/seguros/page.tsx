@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { PageHeader } from "@/components/kit";
 import { hoyPanama, sumarDias } from "@/lib/cartera/fecha";
-import { listarCasos, listarPolizas, polizasPorVencer } from "@/lib/seguros/datos";
+import { listarCasos, listarPolizas, polizasPorVencer, polizasVencidas } from "@/lib/seguros/datos";
 import { Tablero } from "./tablero";
 
 export const dynamic = "force-dynamic";
@@ -17,10 +17,12 @@ export default async function SegurosPage() {
   let error: string | null = null;
   let casos: Awaited<ReturnType<typeof listarCasos>> = [];
   let porVencer = 0;
+  let vencidas = 0;
   try {
     const [lista, polizas] = await Promise.all([listarCasos(), listarPolizas()]);
     casos = lista;
     porVencer = polizasPorVencer(polizas, hoy).length;
+    vencidas = polizasVencidas(polizas, hoy).length;
   } catch (e) {
     error = e instanceof Error ? e.message : "No se pudieron leer los casos.";
   }
@@ -48,6 +50,7 @@ export default async function SegurosPage() {
         <Tablero
           casos={casos}
           polizasPorVencer={porVencer}
+          polizasVencidas={vencidas}
           hoy={hoy}
           esteMes={esteMes}
           mesPasado={mesPasado}

@@ -592,5 +592,9 @@ export async function listarEmpresas(): Promise<{ id: string; codigo: string; no
 
 export function polizasPorVencer(polizas: Poliza[], hoy = hoyPanama()): Poliza[] {
   const limite = sumarDias(hoy, 30);
-  return polizas.filter((p) => p.vence && p.vence <= limite);
+  return polizas.filter((p) => p.vence && p.vence >= hoy && p.vence <= limite);
+}
+
+export function polizasVencidas(polizas: Poliza[], hoy = hoyPanama()): Poliza[] {
+  return polizas.filter((p) => p.vence && p.vence < hoy);
 }

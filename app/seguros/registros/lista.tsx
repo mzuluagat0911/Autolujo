@@ -45,7 +45,12 @@ export function ListaRegistros({ carros, urls }: { carros: CarroParaCaso[]; urls
                         <a href={url} target="_blank" rel="noreferrer" className="font-medium hover:underline">
                           Ver
                         </a>
-                        <a href={url} target="_blank" rel="noreferrer" className="font-medium hover:underline">
+                        <a
+                          href={`/seguros/registros/${c.id}/imprimir`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="font-medium hover:underline"
+                        >
                           Imprimir
                         </a>
                       </span>

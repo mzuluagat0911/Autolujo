@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { StatusChip, Toast } from "@/components/kit";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
-import { hoyPanama, sumarDias } from "@/lib/cartera/fecha";
+import { diasEntre, sumarDias } from "@/lib/cartera/fecha";
 import type { CarroParaCaso } from "@/lib/seguros/datos";
 import { ASEGURADORAS, fechaCorta, nombreAseguradora, type Poliza } from "@/lib/seguros/modelo";
 import { guardarPolizaAccion, subirDocEmpresa } from "../actions";
@@ -120,9 +120,11 @@ export function ListaPolizas({
       </form>
 
       {ordenadas.length === 0 ? (
-        <p className="text-sm text-muted">Todavía no hay pólizas cargadas. La alerta sale un mes antes de vencer.</p>
+        <p className="text-sm text-muted">Todavía no hay pólizas cargadas. La alerta sale 30 días antes de vencer.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
+        <>
+          <AlertasPoliza polizas={ordenadas} hoy={hoy} limite={limite} />
+          <div className="overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-line text-[11px] uppercase tracking-[0.12em] text-muted">
@@ -151,7 +153,9 @@ export function ListaPolizas({
                       {vencida ? (
                         <span className="ml-2"><StatusChip tone="crit">Vencida</StatusChip></span>
                       ) : cerca ? (
-                        <span className="ml-2"><StatusChip tone="warn">Este mes</StatusChip></span>
+                        <span className="ml-2">
+                          <StatusChip tone="warn">{textoFaltan(diasEntre(hoy, p.vence))}</StatusChip>
+                        </span>
                       ) : null}
                     </td>
                     <td className="px-4 py-3">
@@ -169,6 +173,7 @@ export function ListaPolizas({
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <section className="rounded-xl bg-surface p-5 ring-1 ring-line">
@@ -185,6 +190,54 @@ export function ListaPolizas({
         </div>
       </section>
       {aviso && <Toast message={aviso} tone="good" onDismiss={() => setAviso(null)} />}
+    </div>
+  );
+}
+
+function textoFaltan(dias: number): string {
+  if (dias <= 0) return "Vence hoy";
+  if (dias === 1) return "Falta 1 día";
+  return `Faltan ${dias} días`;
+}
+
+function AlertasPoliza({ polizas, hoy, limite }: { polizas: Poliza[]; hoy: string; limite: string }) {
+  const vencidas = polizas.filter((p) => p.vence && p.vence < hoy);
+  const cercanas = polizas.filter((p) => p.vence && p.vence >= hoy && p.vence <= limite);
+  if (vencidas.length === 0 && cercanas.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-3">
+      {cercanas.length > 0 && (
+        <section className="rounded-xl bg-ambar-wash px-4 py-3 ring-1 ring-ambar/30">
+          <h2 className="text-sm font-semibold">Vencen en los próximos 30 días</h2>
+          <ul className="mt-2 flex flex-col gap-1 text-sm">
+            {cercanas.map((p) => (
+              <li key={p.id}>
+                <span className="font-medium">{etiquetaCarroUi(p.empresa, p.numeroCarro)}</span>
+                <span className="text-muted">
+                  {" "}
+                  {p.placa} · {fechaCorta(p.vence)} · {textoFaltan(diasEntre(hoy, p.vence))}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {vencidas.length > 0 && (
+        <section className="rounded-xl bg-rojo-wash px-4 py-3 ring-1 ring-rojo/30">
+          <h2 className="text-sm font-semibold">Ya vencieron</h2>
+          <ul className="mt-2 flex flex-col gap-1 text-sm">
+            {vencidas.map((p) => (
+              <li key={p.id}>
+                <span className="font-medium">{etiquetaCarroUi(p.empresa, p.numeroCarro)}</span>
+                <span className="text-muted">
+                  {" "}
+                  {p.placa} · venció el {fechaCorta(p.vence)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

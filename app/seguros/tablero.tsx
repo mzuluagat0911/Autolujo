@@ -28,12 +28,14 @@ const PRIMARIO =
 export function Tablero({
   casos,
   polizasPorVencer,
+  polizasVencidas,
   hoy,
   esteMes,
   mesPasado,
 }: {
   casos: CasoFila[];
   polizasPorVencer: number;
+  polizasVencidas: number;
   hoy: string;
   esteMes: string;
   mesPasado: string;
@@ -167,7 +169,7 @@ export function Tablero({
       {polizasPorVencer > 0 && (
         <Link
           href="/seguros/polizas"
-          className="flex items-center justify-between gap-3 rounded-xl bg-surface px-4 py-3 ring-1 ring-line hover:ring-line-strong"
+          className="flex items-center justify-between gap-3 rounded-xl bg-ambar-wash px-4 py-3 ring-1 ring-ambar/30 hover:ring-ambar/50"
         >
           <span className="text-sm">
             <StatusChip tone="warn">Póliza</StatusChip>
@@ -175,6 +177,21 @@ export function Tablero({
               {polizasPorVencer === 1
                 ? "1 póliza vence en los próximos 30 días."
                 : `${polizasPorVencer} pólizas vencen en los próximos 30 días.`}
+            </span>
+          </span>
+          <span className="text-sm text-muted">Ver pólizas</span>
+        </Link>
+      )}
+
+      {polizasVencidas > 0 && (
+        <Link
+          href="/seguros/polizas"
+          className="flex items-center justify-between gap-3 rounded-xl bg-rojo-wash px-4 py-3 ring-1 ring-rojo/30 hover:ring-rojo/50"
+        >
+          <span className="text-sm">
+            <StatusChip tone="crit">Vencida</StatusChip>
+            <span className="ml-2">
+              {polizasVencidas === 1 ? "1 póliza ya está vencida." : `${polizasVencidas} pólizas ya están vencidas.`}
             </span>
           </span>
           <span className="text-sm text-muted">Ver pólizas</span>
