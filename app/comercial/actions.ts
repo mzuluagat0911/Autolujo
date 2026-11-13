@@ -19,6 +19,7 @@ import {
   contarFiltrosComercial,
   devolverChatComercial,
   hiloComercial,
+  hiloDesdeElInicio,
   listarChatsComercial,
   limpiarBorradorComercial,
   marcarChatComercialLeido,
@@ -95,6 +96,14 @@ export async function cargarHiloComercial(
   if (!id) return { chat: null, mensajes: [], hayMas: false };
   if (marcarLeido) await marcarChatComercialLeido(id);
   return hiloComercial(id, { antesDe, limite: 50 });
+}
+
+export async function cargarHiloDesdeElInicio(
+  id: string,
+): Promise<{ mensajes: MensajeComercial[]; hayMas: boolean }> {
+  if (!id) return { mensajes: [], hayMas: false };
+  const hilo = await hiloDesdeElInicio(id);
+  return { mensajes: hilo.mensajes, hayMas: hilo.hayMas };
 }
 
 export async function tomarChat(id: string): Promise<{ ok: boolean; error?: string }> {

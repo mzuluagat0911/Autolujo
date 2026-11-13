@@ -171,15 +171,15 @@ const RIO =
 const GRACIAS =
   "Cuando quiera me escribe y le dejo la visita. Que le vaya bien.";
 const MANANA_HORAS =
-  "Por la mañana le dejo las 8, las 9 o las 10. ¿Cuál le sirve?";
+  "Por la mañana la cita va cada 15 minutos, desde las 8:00. ¿Le sirve 8:00, 8:15 u 8:30?";
 const TARDE_HORAS =
-  "Por la tarde le dejo la 1, las 2 o las 3. ¿Cuál le sirve?";
+  "Por la tarde la cita va cada 15 minutos. ¿Le sirve la 1:00, la 1:15 o la 1:30?";
 const RECORD_ENTREVISTA =
   "Con el récord manchado igual lo esperamos en una entrevista: el equipo revisa el caso. ¿Le queda mejor Juan Díaz o La Chorrera?";
 const ENTREGA_NORMAL =
   "Si viene a la sede, el equipo le atiende y la entrega es normal ese mismo día. ¿Le queda mejor Juan Díaz o La Chorrera?";
 const ENTREGA_NORMAL_MANANA =
-  "Hoy abrimos de 8 a 12. Si viene a la sede, la entrega es normal. ¿Juan Díaz o La Chorrera, a las 8, las 9 o las 10?";
+  "Hoy abrimos de 8 a 12. Si viene a la sede, la entrega es normal. ¿Juan Díaz o La Chorrera? La cita va cada 15 minutos, desde las 8:00.";
 
 const FILAS_LETRA: { anio: number; letra: number; cuotas: number; anios: string }[] = [
   { anio: 2027, letra: 33, cuotas: 1275, anios: "unos 3 años y medio" },

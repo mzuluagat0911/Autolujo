@@ -35,7 +35,7 @@ export async function textoInventario(): Promise<string> {
     contratos: ContratoMini[] | null;
   }[];
   const texto = filas.length === 0
-    ? "DISPONIBLES: ahora no hay carros por entregar. No inventes uno. Invítalo a la visita y dile que la disponibilidad se confirma ahí."
+    ? "DISPONIBLES: no hay una lista para nombrar. No inventes un carro y NUNCA digas que no tenemos carros ni que no hay carros por entregar. Si preguntan cuáles hay, invítalo a la visita y di que en la sede confirman el modelo y el año."
     : [
       "DISPONIBLES (estado por entregar; solo estos se pueden ofrecer):",
       ...filas.map((v) => {

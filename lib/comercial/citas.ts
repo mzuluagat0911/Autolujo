@@ -89,7 +89,7 @@ function siguienteHueco(sede: SedeId, fecha: string, hora: string, tomadas: Set<
   const ventana = ventanaCita(sede, fecha);
   const inicio = horaAMinutos(hora);
   if (!ventana || inicio == null) return null;
-  for (let mins = inicio + 30; mins <= ventana.hasta; mins += 30) {
+  for (let mins = inicio + 15; mins <= ventana.hasta; mins += 15) {
     const h = minutosAHora(mins);
     if (!tomadas.has(h)) return h;
   }
@@ -296,13 +296,13 @@ export async function aplicarPedidoCita(opts: {
   }
   if (!hora) {
     const franja = franjaHoraria(opts.textoCliente ?? "");
-    if (franja === "manana") return { mensaje: "Por la mañana le dejo las 8, las 9 o las 10. ¿Cuál le sirve?" };
+    if (franja === "manana") return { mensaje: "Por la mañana la cita va cada 15 minutos, desde las 8:00. ¿Le sirve 8:00, 8:15 u 8:30?" };
     if (franja === "tarde") {
       const dia = ventanaCita(sede, fecha);
       if (!dia || dia.hasta <= 12 * 60) {
         return { mensaje: "Ese día se cita hasta las 12:00. ¿Le sirve a las 10 o a las 11, o prefiere un día de semana por la tarde?" };
       }
-      return { mensaje: "Por la tarde le dejo la 1, las 2 o las 3. ¿Cuál le sirve?" };
+      return { mensaje: "Por la tarde la cita va cada 15 minutos. ¿Le sirve la 1:00, la 1:15 o la 1:30?" };
     }
     return { mensaje: mensajePedirHora(sede, fecha) };
   }

@@ -31,6 +31,7 @@ import {
   cargarCambiosComercial,
   cargarConteosComercial,
   cargarHiloComercial,
+  cargarHiloDesdeElInicio,
   cargarMensajesNuevos,
   devolverChat,
   enviarAudioComercial,
@@ -65,6 +66,13 @@ const ETAPAS: { value: EtapaComercial; label: string }[] = [
   { value: "visito", label: "Visitó" },
   { value: "ganado", label: "Ganado" },
   { value: "perdido", label: "Perdido" },
+];
+
+const REACTIVAR = [
+  "Hola, nuevamente te contactamos para recordarte que ya puedes agendar tu cita y dar el paso hacia tu carro con opción a compra. ¡Estamos para ayudarte!",
+  "Hola, ¿ya has tomado la decisión de adquirir tu carro propio? Escríbenos o llámanos y te orientamos en todo el proceso.",
+  "Cada día estás más cerca de tener tu propio vehículo. Agenda una llamada con nosotros y conoce las opciones disponibles para ti.",
+  "Hace un tiempo solicitaste información sobre nuestros planes. ¿Te gustaría retomar tu proceso y conocer las oportunidades disponibles actualmente?",
 ];
 
 const RAPIDAS = [
@@ -558,6 +566,21 @@ export function BandejaCrmComercial({
     })();
   }
 
+  function irAlInicio() {
+    if (!sel || hiloId !== sel) return;
+    const chatId = sel;
+    start(async () => {
+      const hilo = await cargarHiloDesdeElInicio(chatId);
+      if (hiloActivo.current !== chatId) return;
+      setMensajes(hilo.mensajes);
+      setHayMasMensajes(hilo.hayMas);
+      cache.current.set(chatId, { mensajes: hilo.mensajes, hayMas: hilo.hayMas });
+      requestAnimationFrame(() => {
+        if (fondo.current) fondo.current.scrollTop = 0;
+      });
+    });
+  }
+
   function cargarAnteriores() {
     if (!sel || hiloId !== sel || !mensajes[0]) return;
     const chatId = sel;
@@ -826,6 +849,14 @@ export function BandejaCrmComercial({
                       >
                         Cargar mensajes anteriores
                       </button>
+                      <button
+                        type="button"
+                        disabled={pending}
+                        onClick={irAlInicio}
+                        className="ml-2 rounded-full bg-ink px-3 py-1.5 text-xs text-white hover:bg-black disabled:opacity-40"
+                      >
+                        Ir al primer mensaje
+                      </button>
                     </div>
                   )}
                   <Mensajes mensajes={hiloVisible} />
@@ -1025,6 +1056,18 @@ function Composer({
         >
           Retomar
         </button>
+        {abierta && REACTIVAR.map((texto, i) => (
+          <button
+            key={texto}
+            type="button"
+            disabled={pending}
+            title={texto}
+            onClick={() => onEnviar(texto)}
+            className="shrink-0 rounded-lg bg-paper px-2.5 py-1.5 text-[11px] text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-40"
+          >
+            Activar {i + 1}
+          </button>
+        ))}
         {chat.citaFecha && (
           <>
             <button

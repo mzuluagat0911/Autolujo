@@ -8,6 +8,7 @@ const OFICINA = {
   ciudad: "Ciudad de Panamá",
   direccion: "Juan Díaz, San Fernando, calle 131 este",
   telefono: "+507 6643-2422",
+  telefonoClaudia: "6922-9957",
 };
 
 const RAZON: Record<string, { nombre: string; correo: string | null }> = {

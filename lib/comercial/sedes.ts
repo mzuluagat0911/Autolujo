@@ -62,18 +62,18 @@ export function sedeDesdeTexto(texto: string): SedeId | null {
 /** Horas concretas según la ventana. Nunca "en punto o a la media". */
 export function mensajePedirHora(sede: SedeId | null, fecha?: string | null): string {
   const dia = fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : null;
-  if (!dia) return "Le dejo las 8, las 9 o las 10. ¿Cuál le sirve?";
+  if (!dia) return "La cita va cada 15 minutos, desde las 8:00. ¿Le sirve 8:00, 8:15 u 8:30?";
   const ventana = ventanaCita(sede ?? "juan_diaz", dia);
   if (!ventana) {
     if (sede === "chorrera" && ventanaCita("juan_diaz", dia)) {
-      return "Ese día La Chorrera no abre. En Juan Díaz le dejo las 8, las 9 o las 10. ¿Cuál le sirve?";
+      return "Ese día La Chorrera no abre. En Juan Díaz la cita va cada 15 minutos, desde las 8:00. ¿Le sirve 8:00, 8:15 u 8:30?";
     }
     return validarHorario(sede ?? "juan_diaz", dia, "09:00") ?? "¿Qué otro día le queda?";
   }
   if (ventana.hasta <= 12 * 60) {
-    return "Por la mañana le dejo las 8, las 9 o las 10. ¿Cuál le sirve?";
+    return "Por la mañana la cita va cada 15 minutos, desde las 8:00. ¿Le sirve 8:00, 8:15 u 8:30?";
   }
-  return "Le dejo las 8, las 9 o las 10 por la mañana, o la 1, las 2 o las 3 por la tarde. ¿Cuál le sirve?";
+  return "La cita va cada 15 minutos. Por la mañana desde las 8:00 y por la tarde desde la 1:00. ¿Cuál le sirve?";
 }
 
 function ventanaHabitual(sede: SedeId, fecha: string): { desde: number; hasta: number } | null {
@@ -130,11 +130,11 @@ export function validarHorario(sede: SedeId, fecha: string, hora: string): strin
     return `${nombre} no abre el domingo. En Juan Díaz el domingo es de 8:00 a.m. a 12:00 m.`;
   }
   const minutos = horaAMinutos(hora);
-  if (minutos == null) return "La hora tiene que ser en punto o y media, por ejemplo 9:00 o 9:30.";
+  if (minutos == null) return "La hora va cada 15 minutos, por ejemplo 9:00, 9:15 o 9:30.";
   if (minutos < ventana.desde || minutos > ventana.hasta) {
     return `En ${nombre} ese día se cita de ${minutosAHora(ventana.desde)} a ${minutosAHora(ventana.hasta)}.`;
   }
-  if (minutos % 30 !== 0) return "La cita queda en punto o a la media, por ejemplo 9:00 o 9:30.";
+  if (minutos % 15 !== 0) return "La cita queda cada 15 minutos, por ejemplo 9:00, 9:15 o 9:30.";
   return null;
 }
 
@@ -145,7 +145,7 @@ export function textoSedes(hoy = hoyPanama()): string {
     `  Dirección: ${SEDES[0].direccion}.`,
     "- La Chorrera: lunes a viernes 8:00 a.m. a 4:00 p.m. Sábado 8:00 a.m. a 12:00 m. El domingo no se agenda.",
     `  Dirección: ${SEDES[1].direccion}.`,
-    "La cita es cada 30 minutos. No ofrezcas una hora fuera de esa ventana. Si falta la hora, ofrece 8, 9 o 10 (y 1, 2 o 3 si ese día hay tarde). Prohibido preguntar «en punto o a la media».",
+    "La cita es cada 15 minutos (8:00, 8:15, 8:30…). Si una hora está tomada, ofrece la siguiente de 15 minutos, no saltes una hora. No ofrezcas una hora fuera de la ventana. Prohibido preguntar «en punto o a la media».",
     "Feriados nacionales (si el contexto no trae otra jornada): Juan Díaz 8:00 a.m. a 12:00 m. La Chorrera no se agenda. Si preguntan si abren, dilo primero.",
     "Si comercial abre ese día, también feriado, la visita y la entrega son normales: sí se puede llevar el carro el mismo día.",
     "Si preguntan cómo llegar, da la dirección. El sistema manda el video de esa sede.",

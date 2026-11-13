@@ -18,6 +18,7 @@ import { fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 import { CONCEPTO_DE_EXTENSION, descripcionExtension, motivoExtensionDe } from "@/lib/cartera/extension";
 import { CARGO_DE_CONCEPTO } from "@/lib/cartera/rubros-pago";
 import type { FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
+import { sesionEquipo } from "@/lib/equipo/sesion";
 
 const PANAPASS_ENTRADA = 20;
 const CUOTA_DOMINGO_DEFAULT = 30;
@@ -44,11 +45,16 @@ function volverClientes(msg: string): never {
 
 function fechaIso(v: FormDataEntryValue | null): string | null {
   const s = str(v);
-  if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
-  const [y, m, d] = s.split("-").map(Number);
+  if (!s) return null;
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+  const dmy = /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/.exec(s);
+  const y = iso ? Number(iso[1]) : dmy ? Number(dmy[3]) : NaN;
+  const m = iso ? Number(iso[2]) : dmy ? Number(dmy[2]) : NaN;
+  const d = iso ? Number(iso[3]) : dmy ? Number(dmy[1]) : NaN;
+  if (!y || !m || !d) return null;
   const dt = new Date(y, m - 1, d);
   if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
-  return s;
+  return `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
 }
 
 function unirNota(prev: unknown, linea: string): string {
@@ -122,15 +128,22 @@ async function guardarFichaVehiculo(
 
 function datosDeIdentidad(
   formData: FormData,
-): { fecha_nacimiento: string; numero_licencia: string; fecha_vencimiento_licencia: string } | { error: string } {
+): { fecha_nacimiento: string; numero_licencia: string; fecha_vencimiento_licencia: string; categoria_licencia: string } | { error: string } {
   const nacimiento = fechaIso(formData.get("fecha_nacimiento"));
-  if (!nacimiento) return { error: "La fecha de nacimiento es obligatoria." };
+  if (!nacimiento) return { error: "La fecha de nacimiento es obligatoria. Usá dd/mm/aaaa." };
   if (nacimiento > hoyPanama()) return { error: "La fecha de nacimiento no puede ser futura." };
   const numero = str(formData.get("numero_licencia"));
   if (!numero || numero.length < 4) return { error: "El número de licencia es obligatorio." };
   const vence = fechaIso(formData.get("fecha_vencimiento_licencia"));
-  if (!vence) return { error: "La fecha de vencimiento de la licencia es obligatoria." };
-  return { fecha_nacimiento: nacimiento, numero_licencia: numero, fecha_vencimiento_licencia: vence };
+  if (!vence) return { error: "El vencimiento de la licencia es obligatorio. Usá dd/mm/aaaa." };
+  const categoria = (str(formData.get("categoria_licencia")) ?? "").toUpperCase();
+  if (!/^[A-E]$/.test(categoria)) return { error: "Elegí la categoría de la licencia (A a E)." };
+  return {
+    fecha_nacimiento: nacimiento,
+    numero_licencia: numero,
+    fecha_vencimiento_licencia: vence,
+    categoria_licencia: categoria,
+  };
 }
 
 async function insertarCliente(
@@ -140,11 +153,15 @@ async function insertarCliente(
   let actual: Record<string, unknown> = { ...fila };
   if (!actual.referencias) delete actual.referencias;
   let ultimo = await sb.from("clientes").insert(actual).select("id").single();
-  for (let i = 0; i < 3 && ultimo.error; i++) {
+  for (let i = 0; i < 4 && ultimo.error; i++) {
     const msg = ultimo.error.message;
     if (/referencias/i.test(msg) && actual.referencias) {
       const { referencias, ...resto } = actual;
       actual = { ...resto, notas: unirNota(resto.notas, String(referencias)) };
+    } else if (/categoria_licencia/i.test(msg) && actual.categoria_licencia) {
+      const cat = String(actual.categoria_licencia);
+      const { categoria_licencia: _c, ...resto } = actual;
+      actual = { ...resto, notas: unirNota(resto.notas, `Categoría de licencia: ${cat}`) };
     } else if (/numero_licencia/i.test(msg) && actual.numero_licencia) {
       const nro = String(actual.numero_licencia);
       const { numero_licencia: _n, ...resto } = actual;
@@ -261,8 +278,15 @@ export async function createClienteConContrato(
   if (letra == null || letra <= 0) return { ok: false, error: "La letra diaria es obligatoria." };
 
   const numCuotas = num(formData.get("num_cuotas_total"));
+  const sesion = await sesionEquipo();
+  const nombreSesion = (sesion?.nombre ?? "").toLowerCase();
+  const puedeCobrar = !!sesion && (
+    sesion.modulos.includes("cartera")
+    || nombreSesion.includes("claudia")
+    || nombreSesion.includes("marcela")
+  );
   const abonoPactado = Math.max(num(formData.get("abono_inicial")) ?? 0, 0);
-  const abonoPagado = Math.max(num(formData.get("abono_pagado")) ?? 0, 0);
+  const abonoPagado = puedeCobrar ? Math.max(num(formData.get("abono_pagado")) ?? 0, 0) : 0;
   const abonoCuota = Math.max(num(formData.get("abono_cuota_diaria")) ?? 0, 0);
   const descuento = num(formData.get("descuento_puntual"));
   const cobraDomingo = formData.get("cobra_domingo") === "on";
@@ -280,16 +304,14 @@ export async function createClienteConContrato(
   const domingosCargo = cobraDomingo && cuotaDomingo > 0
     ? r2(diasDomingos * cuotaDomingo)
     : 0;
-  const panapassPagado = Math.min(
-    Math.max(num(formData.get("panapass_pagado")) ?? panapassCargo, 0),
-    panapassCargo,
-  );
-  const domingosPagado = Math.min(
-    Math.max(num(formData.get("domingos_pagado")) ?? 0, 0),
-    domingosCargo,
-  );
-  const prepagoLetras = Math.max(num(formData.get("prepago_letras")) ?? 0, 0);
-  const prepagoDomingos = Math.max(num(formData.get("prepago_domingos")) ?? 0, 0);
+  const panapassPagado = puedeCobrar
+    ? Math.min(Math.max(num(formData.get("panapass_pagado")) ?? panapassCargo, 0), panapassCargo)
+    : 0;
+  const domingosPagado = puedeCobrar
+    ? Math.min(Math.max(num(formData.get("domingos_pagado")) ?? 0, 0), domingosCargo)
+    : 0;
+  const prepagoLetras = puedeCobrar ? Math.max(num(formData.get("prepago_letras")) ?? 0, 0) : 0;
+  const prepagoDomingos = puedeCobrar ? Math.max(num(formData.get("prepago_domingos")) ?? 0, 0) : 0;
 
   if (abonoPagado - abonoPactado > 0.009) {
     return { ok: false, error: "El abono pagado no puede ser mayor al abono pactado." };
@@ -307,7 +329,7 @@ export async function createClienteConContrato(
     num(formData.get("extension_pactado")) ?? num(formData.get("extension_saldo")) ?? 0,
     0,
   );
-  const extensionPagado = Math.max(num(formData.get("extension_pagado")) ?? 0, 0);
+  const extensionPagado = puedeCobrar ? Math.max(num(formData.get("extension_pagado")) ?? 0, 0) : 0;
   const extensionCuota = Math.max(num(formData.get("extension_cuota")) ?? 0, 0);
   const extensionDomingo = Math.max(num(formData.get("extension_cuota_domingo")) ?? 0, 0);
   const frecuencias = new Set(["dia", "domingo", "semana", "quincena", "mes", "fecha"]);
@@ -330,7 +352,7 @@ export async function createClienteConContrato(
     return { ok: false, error: "Si queda extensión pendiente, indicá la cuota." };
   }
 
-  if (panapassPagado + 0.009 < panapassCargo) {
+  if (puedeCobrar && panapassPagado + 0.009 < panapassCargo) {
     return {
       ok: false,
       error: `El panapass (${panapassCargo}) debe pagarse completo para entregar el carro.`,
@@ -393,6 +415,7 @@ export async function createClienteConContrato(
     referencias: residencia.referencias,
     fecha_nacimiento: identidad.fecha_nacimiento,
     numero_licencia: identidad.numero_licencia,
+    categoria_licencia: identidad.categoria_licencia,
     fecha_vencimiento_licencia: identidad.fecha_vencimiento_licencia,
   };
   let clienteId: string;
@@ -789,4 +812,48 @@ export async function listarCarrosLibres(): Promise<CarroLibre[]> {
         color: tec?.color ?? null,
       };
     });
+}
+
+export async function actualizarDatosCliente(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const sesion = await sesionEquipo();
+  if (!sesion) return { ok: false, error: "La sesión venció." };
+  const puede = sesion.modulos.includes("comercial") || sesion.modulos.includes("cartera");
+  if (!puede) return { ok: false, error: "No tenés permiso para corregir la ficha." };
+  const id = String(formData.get("cliente_id") ?? "").trim();
+  if (!id) return { ok: false, error: "Falta el cliente." };
+  const nombre = String(formData.get("nombre") ?? "").trim();
+  if (!nombre) return { ok: false, error: "El nombre es obligatorio." };
+  const nacimiento = fechaIso(formData.get("fecha_nacimiento"));
+  const vence = fechaIso(formData.get("fecha_vencimiento_licencia"));
+  if (formData.get("fecha_nacimiento") && !nacimiento) {
+    return { ok: false, error: "La fecha de nacimiento va en dd/mm/aaaa." };
+  }
+  if (formData.get("fecha_vencimiento_licencia") && !vence) {
+    return { ok: false, error: "El vencimiento va en dd/mm/aaaa." };
+  }
+  const categoria = (str(formData.get("categoria_licencia")) ?? "").toUpperCase();
+  if (categoria && !/^[A-E]$/.test(categoria)) {
+    return { ok: false, error: "La categoría es A, B, C, D o E." };
+  }
+  const fila: Record<string, unknown> = {
+    nombre,
+    telefono: str(formData.get("telefono")),
+    whatsapp: str(formData.get("whatsapp")),
+    numero_licencia: str(formData.get("numero_licencia")),
+    categoria_licencia: categoria || null,
+    fecha_nacimiento: nacimiento,
+    fecha_vencimiento_licencia: vence,
+  };
+  const sb = createServerSupabase();
+  let pedido = await sb.from("clientes").update(fila).eq("id", id);
+  if (pedido.error && /categoria_licencia/i.test(pedido.error.message)) {
+    const { categoria_licencia: _cat, ...resto } = fila;
+    pedido = await sb.from("clientes").update(resto).eq("id", id);
+  }
+  if (pedido.error) return { ok: false, error: pedido.error.message };
+  revalidatePath("/comercial/clientes");
+  revalidatePath(`/cartera/clientes/${id}`);
+  return { ok: true };
 }

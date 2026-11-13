@@ -130,10 +130,12 @@ export function AltaContratoForm({
   carros,
   fechaHoy,
   action,
+  puedeCobrar = true,
 }: {
   carros: CarroLibre[];
   fechaHoy: string;
   action: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string; clienteId?: string }>;
+  puedeCobrar?: boolean;
 }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
@@ -257,13 +259,26 @@ export function AltaContratoForm({
         <Field label="Cédula" name="cedula" placeholder="8-888-8888" />
         <Field label="Teléfono" name="telefono" placeholder="6000-0000" />
         <Field label="WhatsApp" name="whatsapp" placeholder="+50760000000" />
-        <Field label="Fecha de nacimiento *" name="fecha_nacimiento" type="date" required />
+        <Field label="Fecha de nacimiento *" name="fecha_nacimiento" required placeholder="dd/mm/aaaa" />
         <Field label="Nº de licencia *" name="numero_licencia" required placeholder="8-888-8888" />
+        <Select
+          label="Categoría de licencia *"
+          name="categoria_licencia"
+          required
+          placeholder="Elegí…"
+          options={[
+            { value: "A", label: "A" },
+            { value: "B", label: "B" },
+            { value: "C", label: "C" },
+            { value: "D", label: "D" },
+            { value: "E", label: "E" },
+          ]}
+        />
         <Field
           label="Vencimiento de licencia *"
           name="fecha_vencimiento_licencia"
-          type="date"
           required
+          placeholder="dd/mm/aaaa"
         />
         <label className="flex items-center gap-2 text-sm text-muted sm:col-span-2 lg:col-span-3">
           <input type="checkbox" name="mayor_de_25" className="h-4 w-4" defaultChecked />
@@ -427,11 +442,12 @@ export function AltaContratoForm({
             value={abonoPactado}
             onChange={(e) => {
               setAbonoPactado(e.target.value);
-              if (!abonoPagado) setAbonoPagado(e.target.value);
+              if (puedeCobrar && !abonoPagado) setAbonoPagado(e.target.value);
             }}
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
           />
         </label>
+        {puedeCobrar && (
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
             Abono pagado hoy
@@ -447,6 +463,7 @@ export function AltaContratoForm({
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
           />
         </label>
+        )}
         {restante > 0.009 && (
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
@@ -503,11 +520,12 @@ export function AltaContratoForm({
             value={extPactado}
             onChange={(e) => {
               setExtPactado(e.target.value);
-              if (!extPagado) setExtPagado(e.target.value);
+              if (puedeCobrar && !extPagado) setExtPagado(e.target.value);
             }}
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
           />
         </label>
+        {puedeCobrar && (
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
             Pagado hoy
@@ -523,6 +541,7 @@ export function AltaContratoForm({
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
           />
         </label>
+        )}
         {extPay - extP > 0.009 && (
           <p className="text-sm text-rojo sm:col-span-2 lg:col-span-3">Lo pagado no puede pasar de lo pactado.</p>
         )}
@@ -647,6 +666,8 @@ export function AltaContratoForm({
         )}
       </section>
 
+      {puedeCobrar ? (
+      <>
       {/* Entrada + prepago */}
       <section className="grid grid-cols-1 gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2 lg:grid-cols-3">
         <h3 className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted sm:col-span-2 lg:col-span-3">
@@ -769,6 +790,12 @@ export function AltaContratoForm({
           </>
         )}
       </section>
+      </>
+      ) : (
+        <p className="rounded-xl bg-surface px-5 py-4 text-sm text-muted ring-1 ring-line">
+          El contrato queda creado. El pago de hoy lo registran Claudia o Marcela.
+        </p>
+      )}
 
       <div className="flex flex-wrap items-center gap-3">
         <button

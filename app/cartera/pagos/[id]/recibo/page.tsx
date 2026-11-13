@@ -34,12 +34,14 @@ export default async function ReciboPage({
       <ImprimirRecibo auto={imprimir === "1"} />
       <article className="recibo mx-auto w-[72mm] bg-white px-1 py-2 font-sans text-[11px] leading-snug text-black">
         <header className="border-b border-black pb-2 text-center">
-          <p className="text-sm font-bold tracking-wide">AutoLujo</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="AutoLujo" className="mx-auto h-10 w-auto" />
           <p className="text-[10px]">Cumple tu sueño</p>
         </header>
         <p className="mt-2">{DATOS_OFICINA.ciudad}</p>
         <p>{DATOS_OFICINA.direccion}</p>
         <p>{DATOS_OFICINA.telefono}</p>
+        <p>Claudia {DATOS_OFICINA.telefonoClaudia}</p>
         {recibo.correo && <p className="break-all">E-Mail: {recibo.correo}</p>}
 
         <p className="mt-2 font-bold">RECIBO N°: {recibo.numero}</p>
@@ -77,9 +79,8 @@ export default async function ReciboPage({
           </p>
         )}
 
-        <div className="mt-6 border-t border-black pt-1 text-center text-[10px]">
-          <p className="font-semibold uppercase">{recibo.atendio}</p>
-          <p>Firma y cédula · Usuario</p>
+        <div className="mt-8 text-center text-[10px]">
+          <p className="border-t border-black pt-1">Firma del cliente</p>
         </div>
         <p className="mt-3 text-center text-[10px] font-semibold">¡Gracias por mantener su cuenta al día!</p>
         <p className="text-center text-[10px]">Impreso: {fechaRecibo(new Date().toISOString())}</p>

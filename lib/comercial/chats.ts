@@ -361,6 +361,28 @@ export async function hiloComercial(
   };
 }
 
+/** Baja el hilo hasta el primer mensaje, de una vez. */
+export async function hiloDesdeElInicio(
+  id: string,
+): Promise<{ chat: ChatComercial | null; mensajes: MensajeComercial[]; hayMas: boolean }> {
+  const primero = await hiloComercial(id, { limite: 100 });
+  if (!primero.chat) return primero;
+  let mensajes = primero.mensajes;
+  let hayMas = primero.hayMas;
+  for (let i = 0; hayMas && i < 20; i++) {
+    const antes = mensajes[0]?.createdAt;
+    if (!antes) break;
+    const pagina = await hiloComercial(id, { antesDe: antes, limite: 100 });
+    if (!pagina.mensajes.length) break;
+    const vistos = new Set(mensajes.map((m) => m.id));
+    const viejos = pagina.mensajes.filter((m) => !vistos.has(m.id));
+    if (!viejos.length) break;
+    mensajes = [...viejos, ...mensajes];
+    hayMas = pagina.hayMas;
+  }
+  return { chat: primero.chat, mensajes, hayMas };
+}
+
 export async function mensajesNuevosComercial(
   conversacionId: string,
   desde: string,
