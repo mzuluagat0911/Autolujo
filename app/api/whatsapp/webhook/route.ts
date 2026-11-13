@@ -29,6 +29,7 @@ import {
   type Conversacion,
 } from "@/lib/cartera/pipeline";
 import { responderAgente } from "@/lib/ai/agente";
+import { exClienteSinContratoActivo, marcarChatExCliente } from "@/lib/cartera/ex-clientes-cobro";
 import { hablaDeChoque, reportarChoqueDesdeChat } from "@/lib/seguros/datos";
 import { responderComercial } from "@/lib/ai/agente-comercial";
 import { textoConArchivo } from "@/lib/comercial/archivo";
@@ -85,7 +86,8 @@ import {
 } from "@/lib/comercial/chats";
 import { idMensajeEnviado } from "@/lib/comercial/entrega";
 import { decisionPiloto } from "@/lib/comercial/piloto";
-import { revisarRespuesta } from "@/lib/ai/guard";
+import { revisarRespuesta, montosDelTexto } from "@/lib/ai/guard";
+import { responderExCliente } from "@/lib/ai/agente-excliente";
 import { respuestaSalidaEstricta } from "@/lib/cartera/salidas-interior";
 import { consultarPagoMencionado, corregirRespuestaPago } from "@/lib/cartera/consulta-pago";
 import { destinarCharla } from "@/lib/ai/filtro-charla";
@@ -1035,6 +1037,7 @@ async function responderConAgente(
   mensajeId?: string,
 ) {
   try {
+    const ex = await exClienteSinContratoActivo(from);
     const historial = await historialReciente(conv.id, 10);
     if (extraTurno) {
       const last = historial[historial.length - 1];
@@ -1055,6 +1058,26 @@ async function responderConAgente(
     if (dest.destinar === "silencio") return;
     if (dest.destinar === "canned") {
       await responder(conv.id, from, dest.mensaje);
+      return;
+    }
+
+    if (ex) {
+      await marcarChatExCliente(conv.id, ex.carro);
+      const mencionados = montosDelTexto(textoCliente);
+      const contextoEx = mencionados.length
+        ? `${ex.contexto}\nCifras que el cliente mencionó en este mensaje: ${mencionados.map((n) => `$${n}`).join(", ")}.`
+        : ex.contexto;
+      const brutaEx = await responderExCliente({ historial, contexto: contextoEx });
+      const revisadaEx = revisarRespuesta(brutaEx, contextoEx);
+      if (revisadaEx.intervino) {
+        console.warn(`[whatsapp/webhook] guard ex cliente (${revisadaEx.intervino}): ${revisadaEx.detalle}`);
+      }
+      const rEx = revisadaEx.respuesta;
+      if (rEx.pasar_a_humano) {
+        await marcarEscalada(conv.id, rEx.motivo ?? "Ex cliente: el equipo tiene que ver este mensaje.");
+      }
+      if (mensajeId && (await llegoEntranteDespues(conv.id, mensajeId))) return;
+      await responder(conv.id, from, rEx.mensaje);
       return;
     }
 

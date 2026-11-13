@@ -1,6 +1,10 @@
 import type { ConversacionLista } from "./types";
 import { siglaEmpresa } from "@/lib/cartera/empresa";
 
+export function esExCliente(c: { etiqueta?: string | null; motivo_escalada?: string | null }): boolean {
+  return /^ex cliente\b/i.test(c.etiqueta ?? "") || /\bex cliente\b/i.test(c.motivo_escalada ?? "");
+}
+
 export function tituloConv(c: Pick<ConversacionLista, "vehiculo" | "etiqueta">): string {
   if (c.vehiculo) {
     const emp = siglaEmpresa(c.vehiculo.empresa?.codigo);

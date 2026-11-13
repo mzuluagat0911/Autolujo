@@ -125,10 +125,11 @@ export async function obtenerConversacion(waNumero: string): Promise<Conversacio
     if (c.cliente_id && !c.contrato_id) {
       const r = await resolverContratoDeCliente(c.cliente_id);
       if (r.estado === "ok") {
+        const etiqueta = /^ex cliente\b/i.test(c.etiqueta ?? "") ? c.etiqueta : r.etiqueta;
         await sb.from("conversaciones")
-          .update({ contrato_id: r.contratoId, vehiculo_id: r.vehiculoId, etiqueta: r.etiqueta })
+          .update({ contrato_id: r.contratoId, vehiculo_id: r.vehiculoId, etiqueta })
           .eq("id", c.id);
-        return { ...c, contrato_id: r.contratoId, vehiculo_id: r.vehiculoId, etiqueta: r.etiqueta };
+        return { ...c, contrato_id: r.contratoId, vehiculo_id: r.vehiculoId, etiqueta };
       }
       if (r.estado === "varios") await marcarAmbiguo(c.id, motivoVariosContratos(r.cuantos));
     }

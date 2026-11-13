@@ -11,7 +11,7 @@ export const MODULOS = [
   {
     id: "cartera",
     label: "Cartera",
-    hint: "Cobro, estados de cuenta, chats de clientes, pagos, conciliación, carros, rastreo y tarifario. También los avisos de esos chats.",
+    hint: "Cobro, estados de cuenta, chats de clientes, pagos, conciliación, carros, rastreo, tarifario y ex clientes. También los avisos de esos chats.",
   },
   {
     id: "operaciones",

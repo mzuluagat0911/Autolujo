@@ -34,6 +34,7 @@ import {
   demoRespuestaAgente,
 } from "./demo-data";
 import {
+  esExCliente,
   formatSaldo,
   horaMensaje,
   placaConv,
@@ -521,6 +522,7 @@ export function InboxConversaciones({
     responder: deEmpresa.filter((c) => c.necesita_humano).length,
     humano: deEmpresa.filter((c) => c.modo === "humano").length,
     agente: deEmpresa.filter((c) => c.modo === "agente").length,
+    excliente: deEmpresa.filter((c) => esExCliente(c)).length,
   };
   const porEmpresa = {
     AL: convs.filter((c) => siglaDe(c) === "AL").length,
@@ -584,6 +586,7 @@ export function InboxConversaciones({
                     { id: "responder", label: "Responder", count: contadores.responder },
                     { id: "humano", label: "En humano", count: contadores.humano },
                     { id: "agente", label: "Agente", count: contadores.agente },
+                    { id: "excliente", label: "Ex clientes", count: contadores.excliente },
                   ],
                   active: filtro,
                   onChip: (id) => setFiltro(id as FiltroBandeja),
@@ -805,6 +808,7 @@ function filtrar(convs: ConversacionLista[], filtro: FiltroBandeja, empresa: Fil
     if (filtro === "responder" && !c.necesita_humano) return false;
     if (filtro === "humano" && c.modo !== "humano") return false;
     if (filtro === "agente" && c.modo !== "agente") return false;
+    if (filtro === "excliente" && !esExCliente(c)) return false;
     if (!needle) return true;
     const hay = [
       tituloConv(c),
@@ -886,6 +890,7 @@ function ConvRow({
           {c.necesita_humano && c.modo === "agente" && (
             <MiniChip tone="warn">Ayuda pedida</MiniChip>
           )}
+          {esExCliente(c) && <MiniChip tone="info">Ex cliente</MiniChip>}
           {c.necesita_humano && c.modo === "humano" && (
             <MiniChip tone="warn">Responder</MiniChip>
           )}
@@ -1027,6 +1032,7 @@ function ChatPanel({
               ←
             </button>
             <h2 className="truncate text-lg font-bold">{tituloConv(detalle)}</h2>
+            {esExCliente(detalle) && <MiniChip tone="info">Ex cliente</MiniChip>}
             {esHumano ? (
               <MiniChip tone="warn">Lo llevas tú</MiniChip>
             ) : (
@@ -1069,7 +1075,16 @@ function ChatPanel({
         </div>
       </div>
 
-      {detalle.necesita_humano && !esHumano && (
+      {esExCliente(detalle) && (
+        <div className="shrink-0 bg-azul-wash px-4 py-2.5 text-sm text-azul ring-1 ring-inset ring-azul/25 sm:px-5">
+          <b className="font-semibold">Ex cliente.</b> El agente le contesta con el saldo del Excel, no con la letra diaria.
+          {detalle.necesita_humano && !esHumano
+            ? ` Este caso pidió a una persona${detalle.motivo_escalada ? `: ${detalle.motivo_escalada}` : ""}. Tomá el chat.`
+            : ""}
+        </div>
+      )}
+
+      {detalle.necesita_humano && !esHumano && !esExCliente(detalle) && (
         <div className="shrink-0 bg-ambar-wash px-4 py-2.5 text-sm text-ambar ring-1 ring-inset ring-ambar/25 sm:px-5">
           <b className="font-semibold">El agente pidió ayuda</b>
           {detalle.motivo_escalada ? ` — ${detalle.motivo_escalada}` : "."}{" "}
@@ -1861,13 +1876,14 @@ function MiniChip({
   tone,
   children,
 }: {
-  tone: "good" | "warn" | "neutral";
+  tone: "good" | "warn" | "neutral" | "info";
   children: ReactNode;
 }) {
   const map = {
     good: "bg-verde-wash text-verde",
     warn: "bg-ambar-wash text-ambar",
     neutral: "bg-gris-wash text-gris",
+    info: "bg-azul-wash text-azul",
   };
   return (
     <span

@@ -36,7 +36,7 @@ export type ConversacionDetalle = ConversacionLista & {
   ventana_abierta: boolean;
 };
 
-export type FiltroBandeja = "todas" | "responder" | "humano" | "agente";
+export type FiltroBandeja = "todas" | "responder" | "humano" | "agente" | "excliente";
 export type FiltroEmpresa = "todas" | "AL" | "KW" | "GD";
 
 /** Marcas livianas para el refresco. Sin cliente ni carro. */

@@ -145,7 +145,7 @@ export function textoSedes(hoy = hoyPanama()): string {
     `  Dirección: ${SEDES[0].direccion}.`,
     "- La Chorrera: lunes a viernes 8:00 a.m. a 4:00 p.m. Sábado 8:00 a.m. a 12:00 m. El domingo no se agenda.",
     `  Dirección: ${SEDES[1].direccion}.`,
-    "La cita es cada 15 minutos (8:00, 8:15, 8:30…). Si una hora está tomada, ofrece la siguiente de 15 minutos, no saltes una hora. No ofrezcas una hora fuera de la ventana. Prohibido preguntar «en punto o a la media».",
+    "La cita es cada 15 minutos (8:00, 8:15, 8:30…). En la misma hora caben todas las citas que hagan falta: no digas que una hora está tomada. No ofrezcas una hora fuera de la ventana. Prohibido preguntar «en punto o a la media».",
     "Feriados nacionales (si el contexto no trae otra jornada): Juan Díaz 8:00 a.m. a 12:00 m. La Chorrera no se agenda. Si preguntan si abren, dilo primero.",
     "Si comercial abre ese día, también feriado, la visita y la entrega son normales: sí se puede llevar el carro el mismo día.",
     "Si preguntan cómo llegar, da la dirección. El sistema manda el video de esa sede.",

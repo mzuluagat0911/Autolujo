@@ -767,7 +767,7 @@ export async function guardarAsignacionesHistorial(opts: {
     fecha: fechaPago,
     asignaciones: lineasPago,
   });
-  await asegurarCargosAcuerdoDelPago({
+  const espejo = await asegurarCargosAcuerdoDelPago({
     contratoId,
     pagoId,
     fecha: fechaPago,
@@ -791,6 +791,9 @@ export async function guardarAsignacionesHistorial(opts: {
   revalidatePath("/cartera/pagos");
   revalidatePath("/cartera");
   await invalidarLecturaEstados(contratoId);
+  if (!espejo.ok) {
+    return { ok: false, msg: `El pago quedó reasignado, pero el cargo del acuerdo no se pudo crear: ${espejo.error}` };
+  }
   return { ok: true, msg: "Conceptos reasignados." };
 }
 

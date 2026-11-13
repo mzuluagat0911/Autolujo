@@ -33,6 +33,7 @@ import { enAlcanceCodigo, empresasAlcanceCodigos } from "./alcance";
 import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
 import { descuentoLetraDe, descuentosLetraDelDia } from "./descuento-letra";
 import { atribuirRecargos, lineasAsignadas, type CargoRecargo, type PagoParaRecargo } from "./recargo-cubierto";
+import { cuadrarEspejosAcuerdo } from "./espejo-acuerdo";
 
 async function cargosNoLetraPorContrato(
   ids: string[],
@@ -729,6 +730,8 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
   }
   if (!row) return null;
 
+  await cuadrarEspejosAcuerdo([contratoId]);
+
   const domingoCiclo = domingoDelCiclo(hoy);
   const [s, pago, multa, devengadoHasta, pend, acuerdosMap, arregloAplicado, cuotasMap, generos, multasTodas, domingoMap, pagadoDomingoMap, pagadoCicloMap, noLetraMap] =
     await Promise.all([
@@ -1264,6 +1267,8 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
   }
   const idsAlcance = filasContrato.map((c) => c.id);
   if (idsAlcance.length === 0) return [];
+
+  await cuadrarEspejosAcuerdo(idsAlcance);
 
   const letraDe = (id: string) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0;
   const clienteIds = filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean);

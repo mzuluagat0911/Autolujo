@@ -7,6 +7,7 @@ import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 import { CONCEPTOS_PAGO, conceptoCanonico } from "@/lib/cartera/rubros-pago";
 import { lineasAsignadas } from "@/lib/cartera/recargo-cubierto";
 import { esMarcaQc, historicoDeContrato, MARCA_QC, type FilaHistorico } from "@/lib/cartera/historico-cuenta";
+import { cuadrarEspejosAcuerdo } from "@/lib/cartera/espejo-acuerdo";
 
 export type CargoEditado = { id: string; monto: number };
 export type LineaEditada = { tipo: string; aplicado: number };
@@ -171,6 +172,10 @@ export async function guardarDiaHistorico(input: {
   });
   if (eq) return { ok: false, error: eq.message };
 
+  const espejo = await cuadrarEspejosAcuerdo([contratoId]);
   await invalidarLecturaEstados(contratoId);
+  if (espejo.error) {
+    return { ok: false, error: `El día se guardó, pero el cargo del acuerdo no quedó: ${espejo.error}` };
+  }
   return historicoDeContrato(contratoId);
 }

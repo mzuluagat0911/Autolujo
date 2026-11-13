@@ -36,6 +36,7 @@ const NAV: Group[] = [
       { label: "Carros", href: "/cartera/vehiculos", status: "active", modulo: "cartera" },
       { label: "Rastreo", href: "/cartera/rastreo", status: "active", modulo: "cartera" },
       { label: "Clientes", href: "/cartera/clientes", status: "active", modulo: "cartera" },
+      { label: "Ex clientes", href: "/cartera/ex-clientes", status: "active", modulo: "cartera" },
       { label: "Tarifario", href: "/cartera/tarifario", status: "active", modulo: "cartera" },
       { label: "Cobros de taller", href: "/cartera/cobros-taller", status: "active", modulo: "cartera" },
     ],

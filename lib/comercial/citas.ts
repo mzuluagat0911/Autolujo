@@ -5,7 +5,6 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { fechaConDia, hoyPanama, sumarDias } from "@/lib/cartera/fecha";
 import { avisoCitaPendiente } from "./avisos-cita";
 import {
-  horaAMinutos,
   mensajePedirHora,
   minutosAHora,
   sedeDesdeTexto,
@@ -19,12 +18,9 @@ import { idMensajeEnviado } from "./entrega";
 import { enviosAutomaticos, modoAgente, numeroEnPiloto } from "./piloto";
 import { nombreDeWhatsApp } from "./lead";
 import {
-  aceptaSiguienteHorario,
   clienteDiceQueNoLlega,
   franjaHoraria,
-  horaComercial,
   pedidoRepiteCita,
-  preguntaLaHora,
   telefonoVisible,
   textoEsConfirmacion,
 } from "./cita-pedido";
@@ -62,65 +58,6 @@ export type PedidoCita = {
 
 function tablaAusente(message: string): boolean {
   return /citas_comercial|schema cache|could not find the table/i.test(message);
-}
-
-async function horasTomadas(
-  sb: ReturnType<typeof createServerSupabase>,
-  sede: SedeId,
-  fecha: string,
-  excludeId: string | null,
-): Promise<Set<string>> {
-  const { data } = await sb
-    .from("citas_comercial")
-    .select("id, hora")
-    .eq("sede", sede)
-    .eq("fecha", fecha)
-    .eq("estado", "programada");
-  const tomadas = new Set<string>();
-  for (const row of (data ?? []) as { id?: string; hora?: string }[]) {
-    if (excludeId && row.id === excludeId) continue;
-    const h = String(row.hora ?? "").slice(0, 5);
-    if (h) tomadas.add(h);
-  }
-  return tomadas;
-}
-
-function siguienteHueco(sede: SedeId, fecha: string, hora: string, tomadas: Set<string>): string | null {
-  const ventana = ventanaCita(sede, fecha);
-  const inicio = horaAMinutos(hora);
-  if (!ventana || inicio == null) return null;
-  for (let mins = inicio + 15; mins <= ventana.hasta; mins += 15) {
-    const h = minutosAHora(mins);
-    if (!tomadas.has(h)) return h;
-  }
-  return null;
-}
-
-async function resolverHorarioLibre(
-  sb: ReturnType<typeof createServerSupabase>,
-  opts: { sede: SedeId; fecha: string; hora: string; excludeId: string | null; textoCliente: string },
-): Promise<{ hora: string | null; mensaje: string | null }> {
-  const tomadas = await horasTomadas(sb, opts.sede, opts.fecha, opts.excludeId);
-  if (!tomadas.has(opts.hora)) return { hora: opts.hora, mensaje: null };
-  const siguiente = siguienteHueco(opts.sede, opts.fecha, opts.hora, tomadas);
-  const sedeNombre = sedePorId(opts.sede)?.nombre ?? "la sede";
-  if (!siguiente) {
-    return {
-      hora: null,
-      mensaje: `Ese horario en ${sedeNombre} ya está lleno. ${mensajePedirHora(opts.sede, opts.fecha)}`,
-    };
-  }
-  if (aceptaSiguienteHorario(opts.textoCliente)) return { hora: siguiente, mensaje: null };
-  if (preguntaLaHora(opts.textoCliente)) {
-    return {
-      hora: null,
-      mensaje: `Quedaría a las ${horaComercial(siguiente)} en ${sedeNombre}. ¿Se la dejo?`,
-    };
-  }
-  return {
-    hora: null,
-    mensaje: `Las ${horaComercial(opts.hora)} en ${sedeNombre} ya están tomadas. Le puedo dejar las ${horaComercial(siguiente)}. ¿Se las dejo?`,
-  };
 }
 
 function fila(row: Record<string, unknown>): CitaComercial {
@@ -335,15 +272,7 @@ export async function aplicarPedidoCita(opts: {
   }
 
   const sb = createServerSupabase();
-  const hueco = await resolverHorarioLibre(sb, {
-    sede,
-    fecha,
-    hora,
-    excludeId: abierta?.id ?? null,
-    textoCliente: opts.textoCliente ?? "",
-  });
-  if (hueco.mensaje && !hueco.hora) return { mensaje: hueco.mensaje };
-  const horaFinal = hueco.hora ?? hora;
+  const horaFinal = hora;
   const ahora = new Date().toISOString();
   const campos = {
     nombre,
