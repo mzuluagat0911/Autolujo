@@ -169,8 +169,7 @@ async function extraer(
   const { object } = await generateObject({
     model: modelo,
     schema: ComprobanteSchema,
-    // Tope bajo: con poco crédito OpenRouter rechaza si pedimos de más.
-    maxOutputTokens: 300,
+    maxOutputTokens: 600,
     messages: [
       {
         role: "user",
@@ -239,9 +238,7 @@ async function extraerLista(
   const { object } = await generateObject({
     model: modelo,
     schema: ComprobantesSchema,
-    // Un comprobante bien leído cabe en ~250–300 tokens. Pedir más bloquea
-    // la cola cuando el saldo de OpenRouter está bajo.
-    maxOutputTokens: 300,
+    maxOutputTokens: 1000,
     messages: [
       {
         role: "user",
