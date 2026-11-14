@@ -341,7 +341,12 @@ export async function rechazarComprobantesRepetidos(): Promise<number> {
   for (let i = 0; i < vivos.length; i++) {
     const p = vivos[i];
     if (p.estado_conciliacion !== "pendiente" || p.origen !== "comprobante") continue;
-    const previo = vivos.slice(0, i).find((q) => esMismoComprobante(comoCruce(p), comoCruce(q)));
+    // Recuperados sin lectura (monto 0) no se comen entre sí ni a otros.
+    if ((p.notas ?? "").includes("RECUPERADO_SIN_LECTURA")) continue;
+    const previo = vivos.slice(0, i).find((q) => {
+      if ((q.notas ?? "").includes("RECUPERADO_SIN_LECTURA")) return false;
+      return esMismoComprobante(comoCruce(p), comoCruce(q));
+    });
     if (previo) rechazar.push({ id: p.id, notas: p.notas });
   }
   for (const p of rechazar) {

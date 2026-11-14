@@ -5,6 +5,7 @@ import {
   rechazarComprobantesRepetidos,
   restaurarComprobantesMalRechazados,
 } from "@/lib/cartera/comprobante-validacion";
+import { asegurarPagosDesdeFotosHoy } from "@/lib/cartera/recuperar-comprobantes-hoy";
 import { salidasDePagos } from "@/lib/cartera/salidas-aplicar";
 import { etiquetaCarroUi, siglaEmpresa } from "@/lib/cartera/empresa";
 import ListaComprobantes from "./lista";
@@ -40,8 +41,13 @@ async function firmarComprobantes(paths: string[]): Promise<Map<string, string>>
 async function getData() {
   try {
     const sb = createServerSupabase();
-    // Primero reponen los que la regla vieja sacó de la cola; después sí se
-    // vuelven a rechazar solo los repetidos de verdad.
+    // Fotos de hoy en el chat sin fila → pago pendiente (sin IA).
+    // Los mal rechazados como "repetido" vuelven; luego solo se cortan dups reales.
+    try {
+      await asegurarPagosDesdeFotosHoy();
+    } catch (e) {
+      console.error("[pagos] fotos hoy", e);
+    }
     await restaurarComprobantesMalRechazados();
     await rechazarComprobantesRepetidos();
     const [pagosRes, contratosRes] = await Promise.all([
