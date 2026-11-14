@@ -145,16 +145,22 @@ export async function recuperarComprobantesHuerfanos(limite = 10): Promise<{
   revisadas: number;
   creados: number;
   errores: number;
+  detalleErrores: string[];
 }> {
   const fotos = await listarFotosSinPago(limite);
   let creados = 0;
   let errores = 0;
+  const detalleErrores: string[] = [];
   for (const f of fotos) {
     try {
       creados += await reprocesarFotoSinPago(f.id);
-    } catch {
+    } catch (e) {
       errores++;
+      const msg = e instanceof Error ? e.message : String(e);
+      if (detalleErrores.length < 5) {
+        detalleErrores.push(`${f.id.slice(0, 8)}… ${msg.slice(0, 180)}`);
+      }
     }
   }
-  return { revisadas: fotos.length, creados, errores };
+  return { revisadas: fotos.length, creados, errores, detalleErrores };
 }
