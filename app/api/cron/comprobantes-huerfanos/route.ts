@@ -15,8 +15,8 @@ export async function GET(req: Request) {
   }
 
   try {
-    // Pocas por corrida: la visión tarda y necesitamos ver el error real si falla.
-    const res = await recuperarComprobantesHuerfanos(3);
+    // De a una: con poco crédito OpenRouter no aguanta ráfagas.
+    const res = await recuperarComprobantesHuerfanos(1);
     return Response.json({ ok: true, ...res });
   } catch (e) {
     console.error("[cron/comprobantes-huerfanos] falló:", e);
