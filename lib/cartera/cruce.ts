@@ -167,6 +167,11 @@ export function mismaReferencia(
  * El mismo comprobante enviado otra vez: monto, día, referencia, cuenta y carro.
  * La hora no cuenta: el lector la mueve. Si un lado trae referencia o cuenta y
  * el otro no, no es el mismo.
+ *
+ * Sin referencia hace falta ancla operativa COMPARTIDA (mismo contrato o mismo
+ * carro). Un solo lado con contrato/carro no alcanza: si no, dos pagos de
+ * clientes distintos del mismo día y monto se tomaban por el mismo y la cola
+ * de Comprobantes los rechazaba al abrirla (la foto seguía en el chat).
  */
 export function esMismoComprobante(
   a: {
@@ -199,13 +204,16 @@ export function esMismoComprobante(
   const cb = (b.cuentaDestino ?? "").replace(/\D/g, "");
   if ((ca ? "1" : "0") !== (cb ? "1" : "0")) return false;
   if (ca && cb && !mismaCuenta(a.cuentaDestino!, b.cuentaDestino!)) return false;
-  if (a.contratoId && b.contratoId && a.contratoId !== b.contratoId) return false;
+  const mismoContrato = Boolean(a.contratoId && b.contratoId && a.contratoId === b.contratoId);
+  if (a.contratoId && b.contratoId && !mismoContrato) return false;
   const na = a.numeroCarro ? canonCarro(a.numeroCarro) : "";
   const nb = b.numeroCarro ? canonCarro(b.numeroCarro) : "";
-  if (na && nb && na !== nb) return false;
-  // Sin referencia, sin carro y sin contrato no hay cómo saber que es el mismo.
-  if (!ra && !na && !nb && !a.contratoId && !b.contratoId) return false;
-  return true;
+  const mismoCarro = Boolean(na && nb && na === nb);
+  if (na && nb && !mismoCarro) return false;
+  // Misma referencia canónica ya calzó arriba: es el mismo voucher.
+  if (ra) return true;
+  // Sin referencia solo si comparten contrato o carro.
+  return mismoContrato || mismoCarro;
 }
 
 /** Saca la referencia del texto del extracto o del comentario bancario. */
