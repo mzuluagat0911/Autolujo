@@ -77,20 +77,41 @@ async function releerUno(pago: PagoRecuperado): Promise<{ ok: boolean; detalle: 
     .filter(Boolean)
     .join(" · ");
 
-  const { error } = await sb
+  const patchBase = {
+    monto: primero.monto ?? 0,
+    banco: primero.banco,
+    cuenta_destino: primero.cuenta_destino,
+    fecha: fechaPago,
+    pagado_at: pagadoAt,
+    numero_carro: primero.numero_carro ?? pago.numero_carro,
+  };
+  let { error } = await sb
     .from("pagos")
     .update({
-      monto: primero.monto ?? 0,
-      banco: primero.banco,
+      ...patchBase,
       referencia: primero.referencia,
-      cuenta_destino: primero.cuenta_destino,
-      fecha: fechaPago,
-      pagado_at: pagadoAt,
-      numero_carro: primero.numero_carro ?? pago.numero_carro,
       notas,
     })
     .eq("id", pago.id)
     .eq("estado_conciliacion", "pendiente");
+  // La referencia ya existe en otro pago: igual guardamos monto/datos sin el ref.
+  if (error?.code === "23505") {
+    const notasDup = [
+      notas,
+      primero.referencia ? `REF_DUPLICADA: ${primero.referencia} ya estaba en otro pago.` : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+    const retry = await sb
+      .from("pagos")
+      .update({ ...patchBase, referencia: null, notas: notasDup })
+      .eq("id", pago.id)
+      .eq("estado_conciliacion", "pendiente");
+    error = retry.error;
+    if (!error) {
+      /* ok con ref omitida */
+    }
+  }
   if (error) return { ok: false, detalle: error.message };
 
   // Si la foto traía varios comprobantes, nace un pago extra por cada uno.
