@@ -296,6 +296,33 @@ export async function validarComprobante(opts: {
 const NOTA_REPETIDO =
   "AVISO: comprobante repetido (mismos monto, día, referencia, cuenta y carro). Rechazado; no queda en comprobantes ni en revisión.";
 
+type PagoCruceFila = {
+  id: string;
+  created_at?: string;
+  monto: number;
+  fecha: string | null;
+  pagado_at: string | null;
+  referencia: string | null;
+  cuenta_destino: string | null;
+  contrato_id: string | null;
+  numero_carro: string | null;
+  estado_conciliacion: string;
+  origen: string | null;
+  notas: string | null;
+};
+
+function comoCruce(q: PagoCruceFila) {
+  return {
+    monto: Number(q.monto),
+    fecha: q.fecha,
+    pagadoAt: q.pagado_at,
+    referencia: q.referencia,
+    cuentaDestino: q.cuenta_destino,
+    numeroCarro: q.numero_carro,
+    contratoId: q.contrato_id,
+  };
+}
+
 /**
  * Un comprobante pendiente que repite todos los datos de uno anterior se rechaza.
  * El primero se queda. Así no vuelve a salir en la cola.
@@ -309,33 +336,12 @@ export async function rechazarComprobantesRepetidos(): Promise<number> {
     .order("created_at", { ascending: true })
     .limit(1000);
   if (error || !data) return 0;
-  const vivos = data as {
-    id: string;
-    monto: number;
-    fecha: string | null;
-    pagado_at: string | null;
-    referencia: string | null;
-    cuenta_destino: string | null;
-    contrato_id: string | null;
-    numero_carro: string | null;
-    estado_conciliacion: string;
-    origen: string | null;
-    notas: string | null;
-  }[];
+  const vivos = data as PagoCruceFila[];
   const rechazar: { id: string; notas: string | null }[] = [];
   for (let i = 0; i < vivos.length; i++) {
     const p = vivos[i];
     if (p.estado_conciliacion !== "pendiente" || p.origen !== "comprobante") continue;
-    const como = (q: (typeof vivos)[number]) => ({
-      monto: Number(q.monto),
-      fecha: q.fecha,
-      pagadoAt: q.pagado_at,
-      referencia: q.referencia,
-      cuentaDestino: q.cuenta_destino,
-      numeroCarro: q.numero_carro,
-      contratoId: q.contrato_id,
-    });
-    const previo = vivos.slice(0, i).find((q) => esMismoComprobante(como(p), como(q)));
+    const previo = vivos.slice(0, i).find((q) => esMismoComprobante(comoCruce(p), comoCruce(q)));
     if (previo) rechazar.push({ id: p.id, notas: p.notas });
   }
   for (const p of rechazar) {
@@ -343,6 +349,52 @@ export async function rechazarComprobantesRepetidos(): Promise<number> {
     await sb.from("pagos").update({ estado_conciliacion: "rechazado", notas }).eq("id", p.id);
   }
   return rechazar.length;
+}
+
+/**
+ * Devuelve a la cola los comprobantes que se rechazaron como "repetidos" con la
+ * regla vieja (mismo día/monto sin compartir contrato ni carro). La foto ya
+ * estaba en el chat; al abrir Comprobantes desaparecían.
+ */
+export async function restaurarComprobantesMalRechazados(): Promise<number> {
+  const sb = createServerSupabase();
+  const { data: marcados, error } = await sb
+    .from("pagos")
+    .select("id, created_at, monto, fecha, pagado_at, referencia, cuenta_destino, contrato_id, numero_carro, estado_conciliacion, origen, notas")
+    .eq("estado_conciliacion", "rechazado")
+    .eq("origen", "comprobante")
+    .ilike("notas", `%${NOTA_REPETIDO.slice(0, 40)}%`)
+    .order("created_at", { ascending: false })
+    .limit(400);
+  if (error || !marcados?.length) return 0;
+
+  const { data: vivosRaw } = await sb
+    .from("pagos")
+    .select("id, created_at, monto, fecha, pagado_at, referencia, cuenta_destino, contrato_id, numero_carro, estado_conciliacion, origen, notas")
+    .neq("estado_conciliacion", "rechazado")
+    .order("created_at", { ascending: true })
+    .limit(1000);
+  const vivos = (vivosRaw ?? []) as PagoCruceFila[];
+
+  let restaurados = 0;
+  for (const p of marcados as PagoCruceFila[]) {
+    const sigueRepetido = vivos.some((q) => esMismoComprobante(comoCruce(p), comoCruce(q)));
+    if (sigueRepetido) continue;
+    const notas = (p.notas ?? "")
+      .split(" · ")
+      .map((t) => t.trim())
+      .filter((t) => t && !t.includes("comprobante repetido"))
+      .join(" · ") || null;
+    const { error: updErr } = await sb
+      .from("pagos")
+      .update({ estado_conciliacion: "pendiente", notas })
+      .eq("id", p.id)
+      .eq("estado_conciliacion", "rechazado");
+    if (updErr) continue;
+    vivos.push({ ...p, estado_conciliacion: "pendiente", notas });
+    restaurados++;
+  }
+  return restaurados;
 }
 
 /** Resumen de las alertas para dejarlo en las notas del pago / la conversación. */

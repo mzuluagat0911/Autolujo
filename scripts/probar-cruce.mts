@@ -5,7 +5,7 @@ import { instantePanama } from "@/lib/cartera/fecha";
 import {
   canonCarro, extraerCarro, extraerCarroCeldas, extraerNombre, extraerReferencia, canonReferencia,
   numeroCarroOperativo,
-  montoExacto, fechaCubrePago,
+  montoExacto, fechaCubrePago, esMismoComprobante,
   esCrucePerfecto, decidirMovimiento, huellaMovimiento,
   type ContratoFlota, type PagoCandidato,
 } from "@/lib/cartera/cruce";
@@ -322,6 +322,61 @@ check(
     extracto,
   ).tipo,
   "sin_comprobante",
+);
+
+console.log("\n· Mismo comprobante (cola de Comprobantes)");
+const baseSinRef = {
+  monto: 30,
+  fecha: "2026-11-14",
+  referencia: null as string | null,
+  cuentaDestino: null as string | null,
+  numeroCarro: null as string | null,
+  contratoId: null as string | null,
+};
+check(
+  "mismo contrato sin referencia sí es reenvío",
+  esMismoComprobante(
+    { ...baseSinRef, contratoId: "c-144" },
+    { ...baseSinRef, contratoId: "c-144" },
+  ),
+  true,
+);
+check(
+  "mismo carro sin referencia sí es reenvío",
+  esMismoComprobante(
+    { ...baseSinRef, numeroCarro: "144" },
+    { ...baseSinRef, numeroCarro: "144" },
+  ),
+  true,
+);
+check(
+  "mismo día/monto con contratos distintos NO es el mismo",
+  esMismoComprobante(
+    { ...baseSinRef, contratoId: "c-144" },
+    { ...baseSinRef, contratoId: "c-20" },
+  ),
+  false,
+);
+check(
+  "un pago con contrato y otro sin contrato NO se comen entre sí",
+  esMismoComprobante(
+    { ...baseSinRef, contratoId: "c-144" },
+    { ...baseSinRef },
+  ),
+  false,
+);
+check(
+  "dos pagos sin ancla (sin ref, sin carro, sin contrato) no calzan",
+  esMismoComprobante(baseSinRef, baseSinRef),
+  false,
+);
+check(
+  "misma referencia canónica sí es el mismo aunque falte contrato",
+  esMismoComprobante(
+    { ...baseSinRef, referencia: "AB-12-3456" },
+    { ...baseSinRef, referencia: "AB123456" },
+  ),
+  true,
 );
 
 console.log(fallos === 0 ? `\n✅ Todo en verde.` : `\n❌ ${fallos} casos fallaron.`);

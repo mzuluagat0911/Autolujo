@@ -89,6 +89,10 @@
       "schedule": "0 23 * * *"
     },
     {
+      "path": "/api/cron/comprobantes-huerfanos",
+      "schedule": "7 * * * *"
+    },
+    {
       "path": "/api/cron/aviso-temblor",
       "schedule": "0 13 10 10 *"
     },

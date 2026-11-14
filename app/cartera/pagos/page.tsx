@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { PageHeader, PageShell } from "@/components/kit";
-import { rechazarComprobantesRepetidos } from "@/lib/cartera/comprobante-validacion";
+import {
+  rechazarComprobantesRepetidos,
+  restaurarComprobantesMalRechazados,
+} from "@/lib/cartera/comprobante-validacion";
 import { salidasDePagos } from "@/lib/cartera/salidas-aplicar";
 import { etiquetaCarroUi, siglaEmpresa } from "@/lib/cartera/empresa";
 import ListaComprobantes from "./lista";
@@ -18,9 +21,28 @@ function esPorRevisar(p: {
   return p.estado_conciliacion === "pendiente";
 }
 
+/** Storage acepta de a 100 paths; con más la firma falla y la cola se ve vacía de thumbs. */
+async function firmarComprobantes(paths: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (paths.length === 0) return out;
+  const sb = createServerSupabase();
+  const TAM = 100;
+  for (let i = 0; i < paths.length; i += TAM) {
+    const chunk = paths.slice(i, i + TAM);
+    const { data } = await sb.storage.from("comprobantes").createSignedUrls(chunk, 3600);
+    for (const f of data ?? []) {
+      if (f.path && f.signedUrl) out.set(f.path, f.signedUrl);
+    }
+  }
+  return out;
+}
+
 async function getData() {
   try {
     const sb = createServerSupabase();
+    // Primero reponen los que la regla vieja sacó de la cola; después sí se
+    // vuelven a rechazar solo los repetidos de verdad.
+    await restaurarComprobantesMalRechazados();
     await rechazarComprobantesRepetidos();
     const [pagosRes, contratosRes] = await Promise.all([
       sb
@@ -78,15 +100,10 @@ async function getData() {
 
     const raw = (rows ?? []) as unknown as Raw[];
     const porFirmar = [...new Set(raw.filter((p) => esPorRevisar(p) && p.comprobante_url).map((p) => p.comprobante_url as string))];
-    const [salidas, firmas] = await Promise.all([
+    const [salidas, urlPorPath] = await Promise.all([
       salidasDePagos(raw.map((p) => p.id)),
-      porFirmar.length > 0
-        ? sb.storage.from("comprobantes").createSignedUrls(porFirmar, 3600)
-        : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
+      firmarComprobantes(porFirmar),
     ]);
-    const urlPorPath = new Map(
-      (firmas.data ?? []).filter((f) => f.path && f.signedUrl).map((f) => [f.path as string, f.signedUrl]),
-    );
     const pendientes: PagoFila[] = [];
 
     for (const p of raw) {
