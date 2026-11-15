@@ -67,16 +67,40 @@ export async function listarFotosHoySinPago(limite = 200): Promise<FotoHoy[]> {
     }));
 }
 
-async function yaHayPagoPorPath(path: string): Promise<string | null> {
+/** Preferimos un vivo; si solo hay rechazado con esa foto, lo reabrimos. */
+async function asegurarPagoPorPath(path: string): Promise<string | null> {
   const sb = createServerSupabase();
-  const { data } = await sb
+  const { data: vivos } = await sb
     .from("pagos")
     .select("id, estado_conciliacion")
     .eq("comprobante_url", path)
     .neq("estado_conciliacion", "rechazado")
+    .order("created_at", { ascending: true })
+    .limit(1);
+  const vivo = (vivos as { id: string }[] | null)?.[0];
+  if (vivo) return vivo.id;
+
+  const { data: rech } = await sb
+    .from("pagos")
+    .select("id, notas")
+    .eq("comprobante_url", path)
+    .eq("estado_conciliacion", "rechazado")
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  return (data as { id: string } | null)?.id ?? null;
+  const row = rech as { id: string; notas: string | null } | null;
+  if (!row) return null;
+  const notas = (row.notas ?? "")
+    .split(" · ")
+    .map((t) => t.trim())
+    .filter((t) => t && !t.includes("comprobante repetido") && !t.includes("duplicado de recuperación"))
+    .join(" · ") || null;
+  await sb
+    .from("pagos")
+    .update({ estado_conciliacion: "pendiente", notas })
+    .eq("id", row.id)
+    .eq("estado_conciliacion", "rechazado");
+  return row.id;
 }
 
 /**
@@ -105,7 +129,7 @@ export async function crearPagoDesdeFotoSinLectura(mensajeId: string): Promise<{
   }
   if (row.pago_id) return { pagoId: row.pago_id, motivo: "ya_tenia_pago" };
 
-  const existente = await yaHayPagoPorPath(row.media_url);
+  const existente = await asegurarPagoPorPath(row.media_url);
   if (existente) {
     await cerrarLecturaImagen(mensajeId, existente);
     return { pagoId: existente, motivo: "path_ya_en_pagos" };
@@ -151,14 +175,17 @@ export async function crearPagoDesdeFotoSinLectura(mensajeId: string): Promise<{
   return { pagoId, motivo: "creado" };
 }
 
-/** Rechazados de hoy (o con nota de repetido) → pendiente de nuevo si aplica. */
+/**
+ * Rechazados de hoy → pendiente solo si no hay ya otro vivo con la misma foto.
+ * Si no, reabrir todos duplicaba la cola.
+ */
 export async function restaurarRechazadosDeHoy(): Promise<number> {
   const sb = createServerSupabase();
   const hoy = hoyPanama();
   const desde = inicioHoyPanamaIso(hoy);
   const { data, error } = await sb
     .from("pagos")
-    .select("id, notas, estado_conciliacion, origen, created_at, fecha")
+    .select("id, notas, estado_conciliacion, origen, created_at, fecha, comprobante_url")
     .eq("estado_conciliacion", "rechazado")
     .eq("origen", "comprobante")
     .or(`fecha.eq.${hoy},created_at.gte.${desde}`)
@@ -166,11 +193,27 @@ export async function restaurarRechazadosDeHoy(): Promise<number> {
   if (error || !data?.length) return 0;
 
   let n = 0;
-  for (const p of data as { id: string; notas: string | null }[]) {
+  for (const p of data as { id: string; notas: string | null; comprobante_url: string | null }[]) {
+    if (p.comprobante_url) {
+      const { data: vivo } = await sb
+        .from("pagos")
+        .select("id")
+        .eq("comprobante_url", p.comprobante_url)
+        .neq("estado_conciliacion", "rechazado")
+        .neq("id", p.id)
+        .limit(1)
+        .maybeSingle();
+      if (vivo) continue;
+    }
     const notas = (p.notas ?? "")
       .split(" · ")
       .map((t) => t.trim())
-      .filter((t) => t && !t.includes("comprobante repetido"))
+      .filter(
+        (t) =>
+          t &&
+          !t.includes("comprobante repetido") &&
+          !t.includes("duplicado de recuperación"),
+      )
       .join(" · ") || null;
     const { error: updErr } = await sb
       .from("pagos")
