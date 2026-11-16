@@ -283,8 +283,9 @@ export function resumenFrecuencia(a: {
     return desde ? `${base} desde ${desde}` : base;
   }
   if (freq === "domingo") {
+    const monto = q || qDom;
     const desde = a.fecha_especifica?.slice(0, 10);
-    return desde ? `$${q} los domingos desde ${desde}` : `$${q} los domingos`;
+    return desde ? `$${monto} los domingos desde ${desde}` : `$${monto} los domingos`;
   }
   if (freq === "semana") {
     const dia = DIAS_SEMANA.find((d) => d.value === diaSemanaDeAncla(a.fecha_especifica));

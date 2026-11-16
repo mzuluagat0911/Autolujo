@@ -17,7 +17,7 @@ import { registrarEntrega } from "@/lib/cartera/sucursal";
 import { fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 import { CONCEPTO_DE_EXTENSION, descripcionExtension, motivoExtensionDe } from "@/lib/cartera/extension";
 import { CARGO_DE_CONCEPTO } from "@/lib/cartera/rubros-pago";
-import type { FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
+import { anclaPorDefecto, resumenFrecuencia, type FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
 import { sesionEquipo } from "@/lib/equipo/sesion";
 
 const PANAPASS_ENTRADA = 20;
@@ -289,7 +289,15 @@ export async function createClienteConContrato(
   const abonoPactado = Math.max(num(formData.get("abono_inicial")) ?? 0, 0);
   const abonoPagado = puedeCobrar ? Math.max(num(formData.get("abono_pagado")) ?? 0, 0) : 0;
   const abonoCuota = Math.max(num(formData.get("abono_cuota_diaria")) ?? 0, 0);
-  const abonoSoloDomingo = String(formData.get("abono_frecuencia") ?? "dia").trim() === "domingo";
+  const frecuenciasAbono = new Set(["dia", "domingo", "semana", "quincena", "mes", "fecha"]);
+  const abonoFreqRaw = String(formData.get("abono_frecuencia") ?? "dia").trim();
+  const abonoFreq: FrecuenciaAcuerdo = frecuenciasAbono.has(abonoFreqRaw)
+    ? (abonoFreqRaw as FrecuenciaAcuerdo)
+    : "dia";
+  const abonoSoloDomingo = abonoFreq === "domingo";
+  const abonoEmpiezaRaw = str(formData.get("abono_empieza"));
+  const abonoEmpieza = abonoEmpiezaRaw
+    ?? (abonoFreq === "dia" || abonoFreq === "domingo" ? null : anclaPorDefecto(abonoFreq, str(formData.get("fecha_inicio")) ?? hoyPanama()));
   const descuento = num(formData.get("descuento_puntual"));
   const cobraDomingo = formData.get("cobra_domingo") === "on";
   const cuotaDomingo =
@@ -322,13 +330,11 @@ export async function createClienteConContrato(
     return { ok: false, error: "El abono pagado no puede ser mayor al abono pactado." };
   }
   const abonoRestante = r2(Math.max(abonoPactado - abonoPagado, 0));
-  if (abonoRestante > 0.009 && abonoCuota <= 0.009) {
-    return {
-      ok: false,
-      error: abonoSoloDomingo
-        ? "Si queda abono pendiente, indicá cuánto pagará cada domingo."
-        : "Si queda abono pendiente, indicá cuánto pagará diario (ej. $5).",
-    };
+  if (abonoRestante > 0.009 && abonoFreq !== "fecha" && abonoCuota <= 0.009) {
+    return { ok: false, error: "Si queda abono pendiente, indicá la cuota." };
+  }
+  if (abonoRestante > 0.009 && abonoFreq === "fecha" && !abonoEmpieza) {
+    return { ok: false, error: "Si el abono se cobra en una fecha, indicá cuál." };
   }
 
   const extensionMotivo = motivoExtensionDe(formData.get("extension_motivo"));
@@ -565,14 +571,15 @@ export async function createClienteConContrato(
       descripcion: "abono inicial",
       monto_total: abonoRestante,
       saldo: abonoRestante,
-      cuota_diaria: abonoSoloDomingo ? 0 : abonoCuota,
-      cuota_domingo: abonoSoloDomingo ? abonoCuota : 0,
-      frecuencia: abonoSoloDomingo ? "domingo" : "dia",
-      activo: true,
-    };
+        cuota_diaria: abonoSoloDomingo ? 0 : abonoCuota,
+        cuota_domingo: abonoSoloDomingo ? abonoCuota : 0,
+        frecuencia: abonoFreq,
+        fecha_especifica: abonoEmpieza,
+        activo: true,
+      };
     let acIns = await sb.from("acuerdos").insert(filaAbono).select("id").single();
-    if (acIns.error && /frecuencia/i.test(acIns.error.message)) {
-      const { frecuencia: _f, ...sinFreq } = filaAbono;
+    if (acIns.error && /frecuencia|fecha_especifica/i.test(acIns.error.message)) {
+      const { frecuencia: _f, fecha_especifica: _fe, ...sinFreq } = filaAbono;
       acIns = await sb.from("acuerdos").insert(sinFreq).select("id").single();
     }
     if (acIns.error) console.error("[abono inicial]", acIns.error.message);
@@ -645,9 +652,12 @@ export async function createClienteConContrato(
       `Alta de contrato — ${metodo}.`,
       desgloseTxt ? `Desglose: ${desgloseTxt}.` : null,
       abonoRestante > 0.009
-        ? abonoSoloDomingo
-          ? `Abono restante $${abonoRestante} a $${abonoCuota} cada domingo. El paquete de domingos entra cuando ese abono quede en cero.`
-          : `Abono restante $${abonoRestante} a $${abonoCuota}/día.`
+        ? `Abono restante $${abonoRestante}: ${resumenFrecuencia({
+            frecuencia: abonoFreq,
+            fecha_especifica: abonoEmpieza,
+            cuota_diaria: abonoCuota,
+            cuota_domingo: abonoSoloDomingo ? abonoCuota : 0,
+          })}.${abonoSoloDomingo ? " El paquete de domingos entra cuando ese abono quede en cero." : ""}`
         : null,
       extensionRestante > 0.009
         ? `Extensión restante $${extensionRestante} a $${extensionCuota}.`

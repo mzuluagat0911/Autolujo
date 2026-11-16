@@ -148,7 +148,8 @@ export function AltaContratoForm({
   const [abonoPactado, setAbonoPactado] = useState("");
   const [abonoPagado, setAbonoPagado] = useState("");
   const [abonoCuota, setAbonoCuota] = useState("5");
-  const [abonoFrecuencia, setAbonoFrecuencia] = useState<"dia" | "domingo">("dia");
+  const [abonoFrecuencia, setAbonoFrecuencia] = useState<FrecuenciaAcuerdo>("dia");
+  const [abonoEmpieza, setAbonoEmpieza] = useState("");
   const [panapassPagado, setPanapassPagado] = useState(String(PANAPASS));
   const [domingosPagado, setDomingosPagado] = useState(String(DIAS_DOMINGO * CUOTA_DOMINGO));
   const [prepagoLetras, setPrepagoLetras] = useState("0");
@@ -474,41 +475,48 @@ export function AltaContratoForm({
         )}
         {restante > 0.009 && (
           <>
-            <input type="hidden" name="abono_frecuencia" value={abonoFrecuencia} />
-            <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-3">
-              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                Cómo paga el restante
-              </span>
-              <div className="flex flex-wrap gap-2">
-                {([
-                  ["dia", "Cada día"],
-                  ["domingo", "Solo domingos"],
-                ] as const).map(([valor, texto]) => (
-                  <button
-                    key={valor}
-                    type="button"
-                    onClick={() => setAbonoFrecuencia(valor)}
-                    className={
-                      abonoFrecuencia === valor
-                        ? "rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white"
-                        : "rounded-lg bg-surface px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
-                    }
-                  >
-                    {texto}
-                  </button>
-                ))}
-              </div>
-            </div>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                {abonoSoloDomingo ? "Cuota de cada domingo *" : "Cuota diaria del restante *"}
+                Cada
+              </span>
+              <select
+                name="abono_frecuencia"
+                value={abonoFrecuencia}
+                onChange={(e) => {
+                  const frecuencia = e.target.value as FrecuenciaAcuerdo;
+                  setAbonoFrecuencia(frecuencia);
+                  if (frecuencia === "semana") setAbonoEmpieza(anclaPorDefecto("semana", fechaHoy) ?? fechaHoy);
+                  else if (frecuencia !== "dia" && frecuencia !== "domingo" && !abonoEmpieza) setAbonoEmpieza(fechaHoy);
+                }}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              >
+                {FRECUENCIAS_ACUERDO.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                {abonoFrecuencia === "domingo"
+                  ? "Cuota domingo *"
+                  : abonoFrecuencia === "semana"
+                    ? "Cuota / semana *"
+                    : abonoFrecuencia === "quincena"
+                      ? "Cuota / quincena *"
+                      : abonoFrecuencia === "mes"
+                        ? "Cuota / mes *"
+                        : abonoFrecuencia === "fecha"
+                          ? "Monto (fecha)"
+                          : "Cuota / día *"}
               </span>
               <input
                 name="abono_cuota_diaria"
                 type="number"
                 step="0.01"
-                min="0.01"
-                required
+                min={abonoFrecuencia === "fecha" ? "0" : "0.01"}
+                required={abonoFrecuencia !== "fecha"}
                 value={abonoCuota}
                 onChange={(e) => setAbonoCuota(e.target.value)}
                 className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
@@ -516,9 +524,56 @@ export function AltaContratoForm({
               <span className="text-xs text-muted">
                 {abonoSoloDomingo
                   ? `Resta ${money(restante)} → ${money(Number(abonoCuota) || 0)} cada domingo, después de la letra atrasada. El paquete de domingos queda quieto hasta liquidar este abono.`
-                  : `Resta ${money(restante)} → ${money(Number(abonoCuota) || 0)} cada día (lun–sáb), después de la letra.`}
+                  : `Resta ${money(restante)} → se cobra ${money(Number(abonoCuota) || 0)} en esa frecuencia, después de la letra.`}
               </span>
             </label>
+            {(abonoFrecuencia === "dia" || abonoFrecuencia === "domingo") && (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Empieza
+                </span>
+                <input
+                  name="abono_empieza"
+                  type="date"
+                  value={abonoEmpieza}
+                  onChange={(e) => setAbonoEmpieza(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+            )}
+            {abonoFrecuencia === "semana" && (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  Día de la semana
+                </span>
+                <select
+                  value={diaSemanaDeAncla(abonoEmpieza)}
+                  onChange={(e) => setAbonoEmpieza(fechaConDiaSemana(fechaHoy, Number(e.target.value)))}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                >
+                  {DIAS_SEMANA.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+                <input type="hidden" name="abono_empieza" value={abonoEmpieza} />
+              </label>
+            )}
+            {(abonoFrecuencia === "quincena" || abonoFrecuencia === "mes" || abonoFrecuencia === "fecha") && (
+              <label className="flex flex-col gap-1.5">
+                <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                  {abonoFrecuencia === "fecha" ? "Fecha de cobro" : "Fecha ancla"}
+                </span>
+                <input
+                  name="abono_empieza"
+                  type="date"
+                  value={abonoEmpieza}
+                  onChange={(e) => setAbonoEmpieza(e.target.value)}
+                  className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+              </label>
+            )}
           </>
         )}
         {restante <= 0.009 && abonoP > 0 && (
