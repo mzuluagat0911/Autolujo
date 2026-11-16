@@ -25,7 +25,8 @@ type TabId = "resumen" | "ajustar" | "pagos";
 function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
   if (esAdelantado(e)) return "azul";
-  if (esAlDiaHoy(e)) return "good";
+  if ((e.totalCobrarHoy ?? 0) <= 0.009) return "good";
+  if (esAlDiaHoy(e)) return "warn";
   return "crit";
 }
 
@@ -164,7 +165,6 @@ export function DetalleEstadoModal({
   const carro = etiquetaCarroUi(vivo.empresa, vivo.vehiculoNumero);
   const progreso = pctCuotas(vivo);
   const adelantado = esAdelantado(vivo);
-  const alDia = esAlDiaHoy(vivo);
   const lineasHoy = vivo.lineas.filter(
     (l) => !(l.concepto.includes("no pagar") && (vivo.recargosAcumulados ?? 0) <= 0.009),
   );
@@ -307,7 +307,7 @@ export function DetalleEstadoModal({
             <div className="space-y-5 px-5 py-5">
               <div className="rounded-xl bg-surface-2 px-4 py-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-                  {adelantado || alDia || totalHoyVisible <= 0.009
+                  {adelantado || totalHoyVisible <= 0.009
                     ? "Situación"
                     : vivo.pendiente
                       ? "Monto en validación"
@@ -321,10 +321,10 @@ export function DetalleEstadoModal({
                 ) : (
                   <p
                     className={`mt-1 text-3xl font-bold tracking-tight tabular-nums ${
-                      alDia || totalHoyVisible <= 0.009 ? "text-verde" : "text-rojo"
+                      totalHoyVisible <= 0.009 ? "text-verde" : "text-rojo"
                     }`}
                   >
-                    {alDia ? (
+                    {totalHoyVisible <= 0.009 ? (
                       "Al día"
                     ) : (
                       <Money amount={totalHoyVisible} className="text-3xl font-bold" />
@@ -336,7 +336,7 @@ export function DetalleEstadoModal({
                     Cubierto hasta {fechaCorta(vivo.cubiertoHasta)}
                   </p>
                 )}
-                {!adelantado && !alDia && textoDesglose && (
+                {!adelantado && totalHoyVisible > 0.009 && textoDesglose && (
                   <p className="mt-2 text-sm leading-snug text-muted">{textoDesglose}</p>
                 )}
                 {lineasCobroVisibles.some((l) => l.aviso && /domingo/i.test(l.etiqueta)) && (
@@ -428,12 +428,12 @@ export function DetalleEstadoModal({
                     );
                   })
                 )}
-                {!alDia && !adelantado && (
-                  <Fila label="Total" tone={totalHoyVisible > 0.009 ? "crit" : "muted"}>
+                {!adelantado && totalHoyVisible > 0.009 && (
+                  <Fila label="Total" tone="crit">
                     <span className="text-base font-semibold">{money(totalHoyVisible)}</span>
                   </Fila>
                 )}
-                {!adelantado && !alDia && vivo.recargoSiTarda > 0.009 && (
+                {!adelantado && totalHoyVisible > 0.009 && vivo.recargoSiTarda > 0.009 && (
                   <Fila label="Si no completa antes de las 7 p.m." tone="warn">
                     +{money(vivo.recargoSiTarda)} → {money(vivo.totalHoyTarde)}
                   </Fila>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { PageHeader, Kpi, Money, StatusChip } from "@/components/kit";
 import { estadosCuentaPanel } from "@/lib/cartera/estado-cuenta-cache";
-import { previewEstadoCuenta, estaAlDia, enrichExtracto } from "@/lib/cartera/envios";
+import { previewEstadoCuenta, enrichExtracto } from "@/lib/cartera/envios";
 import { deudasCerradas, type DeudaCerrada } from "@/lib/cartera/deudas-cerradas";
 import { etiquetaAlcance, leerAlcance } from "@/lib/cartera/alcance";
 import { PruebaEnvio } from "./prueba";
@@ -117,7 +117,7 @@ async function EstadosCuerpo() {
 async function PreviewMensaje({ estado }: { estado: EstadoCuentaFila }) {
   const ctx = await enrichExtracto(estado);
   const preview = previewEstadoCuenta(estado, ctx);
-  const previewLabel = `Vista previa del mensaje (carro ${estado.vehiculoNumero}${estaAlDia(estado) ? " · al día" : " · con atraso"})`;
+  const previewLabel = `Vista previa del mensaje (carro ${estado.vehiculoNumero}${estado.totalCobrarHoy <= 0.009 ? " · al día" : ""})`;
   return (
     <div className="mt-8">
       <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">

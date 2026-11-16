@@ -32,7 +32,8 @@ type OrdenCol =
 function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
   if (esAdelantado(e)) return "azul";
-  if (esAlDiaHoy(e)) return "good";
+  if ((e.totalCobrarHoy ?? 0) <= 0.009) return "good";
+  if (esAlDiaHoy(e)) return "warn";
   return "crit";
 }
 
@@ -434,14 +435,8 @@ export function EstadosTabla({
                           ? ` · cubierto hasta ${fechaCorta(e.cubiertoHasta)}`
                           : ""}
                       </p>
-                    ) : e.totalCobrarHoy <= 0.009 || esAlDiaHoy(e) ? (
-                      e.acuerdoHoy > 0.009 && e.totalCobrarHoy > 0.009 ? (
-                        <p className="mt-1 text-[11px] text-rojo tabular-nums">
-                          Acuerdo pendiente {money(e.acuerdoHoy)}
-                        </p>
-                      ) : (
-                        <p className="mt-1 text-[11px] text-muted">Nada que cobrar hoy</p>
-                      )
+                    ) : e.totalCobrarHoy <= 0.009 ? (
+                      <p className="mt-1 text-[11px] text-muted">Nada que cobrar hoy</p>
                     ) : (
                       <p className="mt-1 text-[11px] font-medium tabular-nums text-rojo">
                         A pagar hoy {money(e.totalCobrarHoy)}

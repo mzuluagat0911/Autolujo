@@ -23,6 +23,7 @@ import { darAvalSalida, etiquetarPagoSalida, idsVehiculoYCliente } from "@/lib/c
 import { esRubroConcepto, etiquetaRubro, CARGO_DE_CONCEPTO } from "@/lib/cartera/rubros-pago";
 import { pagoEsperaConceptoExcedente } from "@/lib/cartera/cobro-hoy";
 import { envioPausadoContrato } from "@/lib/cartera/envio-pausa";
+import { horaEsLaMismaCaptura } from "@/lib/cartera/comprobante-validacion";
 
 function destDesdeForm(formData: FormData, monto: number): DestinoInterior | null {
   const destinoId = String(formData.get("destino_interior") ?? "").trim();
@@ -98,6 +99,44 @@ export async function resolverPago(formData: FormData): Promise<void> {
         }
       }
       notaAsignacion = `Equipo asignó el excedente a ${etiquetaRubro(rubroExcedente)}.`;
+    }
+  }
+
+  if (nuevoEstado === "conciliado") {
+    const { data: este } = await sb
+      .from("pagos")
+      .select("contrato_id, fecha, monto, pagado_at")
+      .eq("id", pagoId)
+      .maybeSingle();
+    const rowEste = este as {
+      contrato_id: string | null;
+      fecha: string;
+      monto: number;
+      pagado_at: string | null;
+    } | null;
+    const cid = contratoId || rowEste?.contrato_id;
+    if (cid && rowEste?.fecha) {
+      const { data: otros } = await sb
+        .from("pagos")
+        .select("id, pagado_at, monto")
+        .eq("contrato_id", cid)
+        .eq("fecha", rowEste.fecha)
+        .in("estado_conciliacion", ["conciliado", "manual"])
+        .neq("id", pagoId)
+        .limit(20);
+      const horaEsta = rowEste.pagado_at ? horaPanama(new Date(rowEste.pagado_at)) : null;
+      const choca = ((otros ?? []) as { pagado_at: string | null; monto: number }[]).some((o) => {
+        const horaOtra = o.pagado_at ? horaPanama(new Date(o.pagado_at)) : null;
+        return (
+          Math.abs(Number(o.monto) - Number(rowEste.monto)) < 0.02 &&
+          horaEsLaMismaCaptura(horaEsta, horaOtra, false)
+        );
+      });
+      if (choca) {
+        volverConAviso(
+          "Ya hay un pago de ese mismo monto a esa hora. Si fue otra transferencia, corrige la hora del comprobante para que no coincida y vuelve a conciliar.",
+        );
+      }
     }
   }
 

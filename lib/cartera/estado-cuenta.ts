@@ -386,7 +386,6 @@ export function textoSituacionCuotas(e: {
   }
   const cobrar = e.totalCobrarHoy != null ? Number(e.totalCobrarHoy) : Number(e.totalHoy);
   if (cobrar <= 0.009) return "Al día";
-  if (esAlDiaHoy(e)) return "Al día";
   const atrasadas = cuotasAtraso(e);
   if (atrasadas <= 0) return "Le toca la de hoy";
   if (atrasadas === 1) return "Debe 1 cuota";
