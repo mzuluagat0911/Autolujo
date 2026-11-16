@@ -24,6 +24,7 @@ export type ConfigReglas = {
 // Una obligación pendiente del día (lo que el cliente debe cubrir).
 export type TipoObligacion =
   | "acuerdo"
+  | "abono_inicial"
   | "saldo_anterior"
   | "recargo"
   | "cuenta_diaria"

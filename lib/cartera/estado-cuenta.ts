@@ -20,10 +20,11 @@ import {
   contratosQueCubrieronElDia,
   aplicadoArregloHoyContrato,
   aplicadoArregloHoyPorContrato,
+  aplicadoAbonoInicialHoy,
   atrasoAcuerdoPorContrato,
 } from "./pagos-dia";
 import { ultimoDiaDevengado } from "./devengo";
-import { programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
+import { planAbonoInicial, programadoAcuerdoDe, cuotaAcuerdoHoy, type AcuerdoActivo } from "./acuerdo";
 import { ajustarCobroDevolucion, devolucionDeVehiculo, devolucionVigente, devolucionesAbiertas } from "./devolucion";
 import { ajustarCobroInactivo, inactivacionDeVehiculo, inactivacionVigente, inactivacionesAbiertas } from "./inactivo";
 import { ajustarCobroPausa, etiquetaPausa, pausaDeVehiculo, pausaVigente, pausasAbiertas } from "./pausa-productiva";
@@ -34,6 +35,13 @@ import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
 import { descuentoLetraDe, descuentosLetraDelDia } from "./descuento-letra";
 import { atribuirRecargos, lineasAsignadas, type CargoRecargo, type PagoParaRecargo } from "./recargo-cubierto";
 import { cuadrarEspejosAcuerdo } from "./espejo-acuerdo";
+
+function faltaDelAbono(lista: AcuerdoActivo[], hoy: string, pagado: number): number {
+  const plan = planAbonoInicial(lista);
+  if (!plan) return 0;
+  const cuota = cuotaAcuerdoHoy(plan, hoy);
+  return Math.max(Math.round((cuota - pagado) * 100) / 100, 0);
+}
 
 async function cargosNoLetraPorContrato(
   ids: string[],
@@ -830,6 +838,11 @@ export async function estadoCuentaContrato(contratoId: string): Promise<EstadoCu
       },
   );
   const cifras = cumple.cifras;
+  cifras.abonoInicialHoy = faltaDelAbono(
+    listaAcuerdo,
+    hoy,
+    (await aplicadoAbonoInicialHoy(hoy)).get(contratoId) ?? 0,
+  );
   const pagosRecargo = await filasPorPagina<{
     id: string;
     fecha: string | null;
@@ -1330,6 +1343,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
   ]);
 
   const atrasoMap = await atrasoAcuerdoPorContrato(hoy, acuerdosMap);
+  const abonoPagadoHoy = await aplicadoAbonoInicialHoy(hoy);
   const descuentosHoy = await descuentosLetraDelDia(hoy);
 
   const saldoMap = new Map<string, number>();
@@ -1402,6 +1416,7 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
       },
     );
     const cifras = cumple.cifras;
+    cifras.abonoInicialHoy = faltaDelAbono(acuerdosMap.get(c.id) ?? [], hoy, abonoPagadoHoy.get(c.id) ?? 0);
     const recargosAcumulados =
       (recargosMap.get(c.id) ?? 0) +
       (cifras.recargo > 0.009 && !multaHoy.has(c.id) ? cifras.recargo : 0);

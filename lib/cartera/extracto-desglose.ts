@@ -14,7 +14,7 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { money, type EstadoCuenta } from "./estado-cuenta";
-import { domingoPausadoPorPlanes } from "./acuerdo";
+import { domingoPausadoPorPlanes, esAbonoInicial } from "./acuerdo";
 import { esDomingo, fechaLarga, hoyPanama } from "./fecha";
 import { conceptoSinMarca, leerPlanCargo, rebanadaDelDia } from "./recargo-montos";
 import { tajadaDomingoQueFalta } from "./cifras";
@@ -218,6 +218,8 @@ export function armarExtractoDiario(
   if (domingoComoBase || tajadaEntreSemana) {
     lineasBase.push({ etiqueta: "domingo", monto: tajada });
   }
+  const abonoHoy = Math.max(Number(e.abonoInicialHoy) || 0, 0);
+  if (abonoHoy > 0.009) lineasBase.push({ etiqueta: "abono inicial", monto: abonoHoy });
 
   // El abono de hoy ya está neto en el saldo / totalHoy: no se re-suma como
   // “abono” (eso duplicaba y, con acuerdo, hacía creer que la letra bajaba).
@@ -479,23 +481,37 @@ async function partirAcuerdosPorContrato(
   }
   for (const [id, lista] of porId) {
     const vivos = lista.filter((a) => a.saldo > 0.009);
-    const primero = vivos[0];
+    const acuerdos = vivos.filter((a) => !esAbonoInicial({ descripcion: a.descripcion }));
+    const abonos = vivos.filter((a) => esAbonoInicial({ descripcion: a.descripcion }));
+    const primero = acuerdos[0];
     out.set(id, {
       saldo: primero?.saldo ?? 0,
-      espera: vivos.slice(1).map((a) => ({
+      espera: acuerdos.slice(1).map((a) => ({
         etiqueta: (a.descripcion ?? "acuerdo en espera").trim() || "acuerdo en espera",
         saldo: a.saldo,
       })),
-      planes: vivos.map((a, i) => ({
-        etiqueta: (a.descripcion ?? "Acuerdo de pago").trim() || "Acuerdo de pago",
-        saldo: a.saldo,
-        montoTotal: a.montoTotal,
-        cuotaDiaria: a.cuotaDiaria,
-        cuotaDomingo: a.cuotaDomingo,
-        frecuencia: a.frecuencia,
-        fecha: a.fecha,
-        cobra: i === 0,
-      })),
+      planes: [
+        ...acuerdos.map((a, i) => ({
+          etiqueta: (a.descripcion ?? "Acuerdo de pago").trim() || "Acuerdo de pago",
+          saldo: a.saldo,
+          montoTotal: a.montoTotal,
+          cuotaDiaria: a.cuotaDiaria,
+          cuotaDomingo: a.cuotaDomingo,
+          frecuencia: a.frecuencia,
+          fecha: a.fecha,
+          cobra: i === 0,
+        })),
+        ...abonos.map((a) => ({
+          etiqueta: "abono inicial",
+          saldo: a.saldo,
+          montoTotal: a.montoTotal,
+          cuotaDiaria: a.cuotaDiaria,
+          cuotaDomingo: a.cuotaDomingo,
+          frecuencia: a.frecuencia,
+          fecha: a.fecha,
+          cobra: false,
+        })),
+      ],
     });
   }
   return out;

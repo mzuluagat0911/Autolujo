@@ -22,6 +22,8 @@ export type Cifras = {
   pagadoHoy: number;
   /** Parte del arreglo de hoy que aún NO está cubierta por abonos. */
   faltaAcuerdo: number;
+  /** Cuota del abono inicial que entra hoy, después de la letra. No es acuerdo de pago. */
+  abonoInicialHoy?: number;
   /** Lo que venía de antes (cuotas incompletas + recargos viejos), sin la cuota de hoy. */
   pendienteAnterior: number;
   /**

@@ -44,6 +44,7 @@ export function esCargoBase(etiqueta: string): boolean {
     t === "por no pagar" ||
     /cierre(\s+de)?\s+semana/.test(t) ||
     t === "abono" ||
+    t === "abono inicial" ||
     t.startsWith("abono (") ||
     t.includes("abono adelantado")
   );
@@ -56,7 +57,7 @@ export function esEtiquetaDomingo(etiqueta: string): boolean {
 
 export function categoriaDeEtiqueta(etiqueta: string): CategoriaExtra {
   const t = etiqueta.toLowerCase();
-  if (t.startsWith("acuerdo") || t.includes("abono inicial")) return "acuerdo";
+  if (t.startsWith("acuerdo")) return "acuerdo";
   if (t.includes("manten")) return "mantenimiento";
   if (esEtiquetaDomingo(t)) return "domingo";
   return "otro";

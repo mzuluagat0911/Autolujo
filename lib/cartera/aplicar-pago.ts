@@ -8,7 +8,8 @@
 // 4) Recargo Cierre semana ($10), si está cargado. No es atraso ni letra.
 // 5) Letras atrasadas.
 // 6) Letra del día.
-// 7) Si sobra: días siguientes, cada uno acuerdo y luego letra.
+// 7) Abono inicial financiado. No es acuerdo de pago: va después de la letra.
+// 8) Si sobra: días siguientes, cada uno acuerdo y luego letra, y al final el abono.
 //    El próximo domingo no se llena, salvo que el pago traiga ese rubro.
 //    Sábado: el sobrante no se adelanta solo.
 //
@@ -29,7 +30,7 @@ import { cuotaDeFecha, letraDiariaEnDomingo, penalidadDe, type TerminosCuota } f
 import { descuentoLetraDe } from "./descuento-letra";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { cargosExtraPorContrato, partirCargosNoLetra } from "./extracto-desglose";
-import { acuerdoCobraDomingo, cuotaAcuerdoHoy, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
+import { acuerdoCobraDomingo, cuotaAcuerdoHoy, esAbonoInicial, planAbonoInicial, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
 import { devolucionDeVehiculo, devolucionVigente } from "./devolucion";
 import { inactivacionDeVehiculo, inactivacionVigente } from "./inactivo";
 import { pausaDeVehiculo, pausaVigente } from "./pausa-productiva";
@@ -58,6 +59,7 @@ export const PRIORIDAD: Record<TipoObligacion, number> = {
   cierre_semana: 15,
   saldo_anterior: 20,
   cuenta_diaria: 30,
+  abono_inicial: 35,
   domingo: 6,
   mantenimiento: 41,
   panapass: 42,
@@ -70,6 +72,7 @@ export const PRIORIDAD: Record<TipoObligacion, number> = {
 const ETIQUETA: Record<TipoObligacion, string> = {
   salida_interior: "salida al interior",
   acuerdo: "arreglo",
+  abono_inicial: "abono inicial",
   saldo_anterior: "saldo anterior",
   recargo: "recargo",
   cuenta_diaria: "cuota de hoy",
@@ -93,15 +96,17 @@ function diaSiguiente(iso: string, n: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-/** Sobrante: días siguientes, cada uno acuerdo y luego letra, hasta que se acabe. */
+/** Sobrante: días siguientes. En cada día, el acuerdo de pago, luego la letra, luego el abono inicial. */
 function adelantarDias(opts: {
   sobrante: number;
   acuerdos: AcuerdoActivo[];
+  abono?: AcuerdoActivo | null;
   letra: number;
   desde: string;
 }): { asignaciones: AsignacionPago[]; sobrante: number; aplicado: number } {
   let queda = r2(opts.sobrante);
   const saldos = new Map(opts.acuerdos.map((a) => [a.id, Math.max(Number(a.saldo) || 0, 0)]));
+  if (opts.abono) saldos.set(opts.abono.id, Math.max(Number(opts.abono.saldo) || 0, 0));
   const asignaciones: AsignacionPago[] = [];
   let aplicado = 0;
   for (let i = 1; i <= 14 && queda > 0.009; i++) {
@@ -128,6 +133,21 @@ function adelantarDias(opts: {
       asignaciones.push({ tipo: "cuenta_diaria", aplicado: toma, etiqueta: `letra ${fecha}` });
       queda = r2(queda - toma);
       aplicado = r2(aplicado + toma);
+    }
+    if (opts.abono && queda > 0.009) {
+      const cupo = Math.min(cuotaAcuerdoHoy(opts.abono, fecha), saldos.get(opts.abono.id) ?? 0, queda);
+      if (cupo > 0.009) {
+        const toma = r2(cupo);
+        asignaciones.push({
+          tipo: "abono_inicial",
+          aplicado: toma,
+          ref: opts.abono.id,
+          etiqueta: "abono inicial",
+        });
+        saldos.set(opts.abono.id, r2((saldos.get(opts.abono.id) ?? 0) - toma));
+        queda = r2(queda - toma);
+        aplicado = r2(aplicado + toma);
+      }
     }
   }
   return { asignaciones, sobrante: queda, aplicado };
@@ -245,6 +265,7 @@ function yaAplicado(ya: AsignacionPago[], tipo: TipoObligacion, ref?: string): n
 export function obligacionesRestantes(
   base: {
     acuerdos: { id: string; monto: number; etiqueta?: string }[];
+    abono?: { id: string; monto: number } | null;
     pendienteAnterior: number;
     recargoHoy: number;
     cierreHoy?: number;
@@ -263,6 +284,18 @@ export function obligacionesRestantes(
         monto,
         ref: a.id,
         etiqueta: a.etiqueta ?? ETIQUETA.acuerdo,
+      });
+    }
+  }
+  if (base.abono && base.abono.monto > 0.009) {
+    const monto = r2(Math.max(base.abono.monto - yaAplicado(ya, "abono_inicial", base.abono.id), 0));
+    if (monto > 0.009) {
+      out.push({
+        tipo: "abono_inicial",
+        prioridad: PRIORIDAD.abono_inicial,
+        monto,
+        ref: base.abono.id,
+        etiqueta: ETIQUETA.abono_inicial,
       });
     }
   }
@@ -964,7 +997,10 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     atrasoAcuerdo = mapaAtraso.get(contratoId) ?? 0;
   }
   // Solo el plan de adelante. Recogida y los que siguen esperan a que ese saldo llegue a cero.
-  const planCobro = enPausa ? null : planQueCobra(acuerdos);
+  const acuerdosDePago = acuerdos.filter((a) => !esAbonoInicial(a));
+  const abonoPlan = enPausa ? null : planAbonoInicial(acuerdos);
+  const abonoHoy = abonoPlan ? cuotaAcuerdoHoy(abonoPlan, fecha) : 0;
+  const planCobro = enPausa ? null : planQueCobra(acuerdosDePago);
   const acuerdoHoy = planCobro ? programadoAcuerdoDe(acuerdos, fecha, atrasoAcuerdo) : 0;
   let preferencia: string | null = null;
   {
@@ -983,7 +1019,10 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     pagoId,
     Number(terminos.cuota_domingo) || 0,
   );
-  const pausaDomingo = Boolean(planCobro && acuerdoCobraDomingo(planCobro, fecha));
+  const pausaDomingo = Boolean(
+    (planCobro && acuerdoCobraDomingo(planCobro, fecha)) ||
+    (abonoPlan && acuerdoCobraDomingo(abonoPlan, fecha)),
+  );
   const domingoHoy = pausaDomingo || letraDom ? 0 : domingoAbierto.tajada;
   // Multa de “no pago” = solo letra; el acuerdo no entra a la meta puntual.
   const meta = cuotaHoy;
@@ -1042,6 +1081,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   const obligaciones = obligacionesRestantes(
     {
       acuerdos: acuerdosBase,
+      abono: abonoPlan && abonoHoy > 0.009 ? { id: abonoPlan.id, monto: abonoHoy } : null,
       pendienteAnterior: letraSinCierre.pendienteAnterior,
       recargoHoy: letraSinRecargo.recargoHoy,
       cierreHoy: letraSinCierre.cierreHoy,
@@ -1086,7 +1126,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     const parte = partirSobranteDomingo({
       sobrante: resultado.sobrante,
       ya: resultado.asignaciones,
-      acuerdos,
+      acuerdos: acuerdosDePago,
       letra: letraDiaria,
       desde: fecha,
       bucketNeto: domingoAbierto.bucketNeto,
@@ -1114,17 +1154,17 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       totalAplicado: r2(resultado.totalAplicado + toma),
     };
   } else if (resultado.sobrante > 0.009 && pago.rubro === "acuerdo") {
-    const plan = acuerdos.find((a) => Number(a.saldo) > 0.009);
+    const plan = acuerdosDePago.find((a) => Number(a.saldo) > 0.009);
     if (plan) {
       const ya = yaAplicado(resultado.asignaciones, "acuerdo", plan.id);
       const cupo = r2(Math.max(Number(plan.saldo) - ya, 0));
       const toma = r2(Math.min(resultado.sobrante, cupo));
       const resto = r2(resultado.sobrante - toma);
-      const restantes = acuerdos.map((a) =>
+      const restantes = acuerdosDePago.map((a) =>
         a.id === plan.id ? { ...a, saldo: r2(Number(a.saldo) - ya - toma) } : a,
       );
       const cola = resto > 0.009 && !enPausa
-        ? adelantarDias({ sobrante: resto, acuerdos: restantes, letra: letraDiaria, desde: fecha })
+        ? adelantarDias({ sobrante: resto, acuerdos: restantes, abono: abonoPlan, letra: letraDiaria, desde: fecha })
         : { asignaciones: [] as AsignacionPago[], sobrante: enPausa ? resto : 0, aplicado: 0 };
       resultado = {
         asignaciones: [
@@ -1152,7 +1192,8 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   } else if (resultado.sobrante > 0.009 && !enPausa) {
     const adelanto = adelantarDias({
       sobrante: resultado.sobrante,
-      acuerdos,
+      acuerdos: acuerdosDePago,
+      abono: abonoPlan,
       letra: letraDiaria,
       desde: fecha,
     });
@@ -1188,7 +1229,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
 
   const abonoPorPlan = new Map<string, number>();
   for (const a of resultado.asignaciones) {
-    if (a.tipo !== "acuerdo" || !a.ref) continue;
+    if ((a.tipo !== "acuerdo" && a.tipo !== "abono_inicial") || !a.ref) continue;
     abonoPorPlan.set(a.ref, r2((abonoPorPlan.get(a.ref) ?? 0) + a.aplicado));
   }
   for (const [ref, aplicado] of abonoPorPlan) {

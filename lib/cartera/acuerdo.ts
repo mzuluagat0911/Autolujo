@@ -133,10 +133,22 @@ export function cuotaAcuerdoHoy(a: AcuerdoActivo, fecha: string): number {
   return Math.min(Math.max(q, 0), saldo);
 }
 
+/** El abono financiado al firmar. No es un acuerdo de pago. */
+export function esAbonoInicial(a: { descripcion?: string | null }): boolean {
+  return /abono\s*inicial/i.test(a.descripcion ?? "");
+}
+
+export function planAbonoInicial(acuerdos: AcuerdoActivo[]): AcuerdoActivo | null {
+  return acuerdos.find((a) => esAbonoInicial(a) && Math.max(Number(a.saldo) || 0, 0) > 0.009) ?? null;
+}
+
 /** El plan que se cobra: el primero que aún tiene saldo.
+ *  El abono inicial no entra: se cobra después de la letra, en su propia caja.
  *  El que sigue espera hasta que ese quede en cero. */
 export function planQueCobra(acuerdos: AcuerdoActivo[]): AcuerdoActivo | null {
-  return acuerdos.find((a) => Math.max(Number(a.saldo) || 0, 0) > 0.009) ?? null;
+  return (
+    acuerdos.find((a) => !esAbonoInicial(a) && Math.max(Number(a.saldo) || 0, 0) > 0.009) ?? null
+  );
 }
 
 /**
@@ -186,17 +198,19 @@ export function domingoPausadoPorPlanes(
   fecha: string,
 ): boolean {
   if (!planes?.length || !esDomingo(fecha)) return false;
-  const plan = planes.find((p) => p.cobra) ?? planes.find((p) => p.saldo > 0.009);
-  if (!plan) return false;
-  return acuerdoCobraDomingo(
-    {
-      saldo: plan.saldo,
-      cuota_diaria: plan.cuotaDiaria,
-      cuota_domingo: plan.cuotaDomingo,
-      frecuencia: plan.frecuencia,
-      fecha_especifica: plan.fecha,
-    },
-    fecha,
+  return planes.some(
+    (plan) =>
+      plan.saldo > 0.009 &&
+      acuerdoCobraDomingo(
+        {
+          saldo: plan.saldo,
+          cuota_diaria: plan.cuotaDiaria,
+          cuota_domingo: plan.cuotaDomingo,
+          frecuencia: plan.frecuencia,
+          fecha_especifica: plan.fecha,
+        },
+        fecha,
+      ),
   );
 }
 

@@ -626,3 +626,33 @@ export async function pagoHoyContrato(
     pagadoPuntualCuota,
   };
 }
+
+/** Lo ya asignado hoy al abono inicial, para no volver a pedirlo. */
+export async function aplicadoAbonoInicialHoy(fecha: string): Promise<Map<string, number>> {
+  const sb = createServerSupabase();
+  const { desde, hasta } = rangoDiaPanama(fecha);
+  const out = new Map<string, number>();
+  const { data, error } = await sb
+    .from("pagos")
+    .select("contrato_id, asignaciones")
+    .in("estado_conciliacion", ["conciliado", "manual"])
+    .gte("pagado_at", desde.toISOString())
+    .lt("pagado_at", hasta.toISOString());
+  if (error || !data) return out;
+  for (const p of data as { contrato_id: string | null; asignaciones: unknown }[]) {
+    if (!p.contrato_id || !p.asignaciones || typeof p.asignaciones !== "object") continue;
+    const o = p.asignaciones as { asignaciones?: { tipo?: string; aplicado?: number; etiqueta?: string }[] };
+    const lineas = Array.isArray(o.asignaciones) ? o.asignaciones : [];
+    let suma = out.get(p.contrato_id) ?? 0;
+    for (const a of lineas) {
+      const tipo = a.tipo ?? "";
+      const es =
+        tipo === "abono_inicial" ||
+        (tipo === "acuerdo" && /abono\s*inicial/i.test(a.etiqueta ?? ""));
+      if (!es) continue;
+      suma += Number(a.aplicado) || 0;
+    }
+    if (suma > 0.009) out.set(p.contrato_id, Math.round(suma * 100) / 100);
+  }
+  return out;
+}

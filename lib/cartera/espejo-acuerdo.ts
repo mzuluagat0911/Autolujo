@@ -1,6 +1,6 @@
-// El acuerdo vive fuera de la letra. El pago baja el saldo entero, así que
-// cada peso asignado a un acuerdo necesita un cargo `tipo=acuerdo` del mismo
-// monto. Si ese cargo falta, la letra se come el arreglo.
+// El abono inicial vive fuera de la letra. El pago baja el saldo entero, así que
+// cada peso asignado al abono necesita un cargo del mismo monto. Si ese cargo
+// falta, la letra queda con saldo a favor. Un acuerdo de pago no lleva este cargo.
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { fechaContable } from "./fecha";
@@ -14,12 +14,12 @@ function r2(n: number): number {
   return Math.round(Number(n) * 100) / 100;
 }
 
-function lineasAcuerdo(raw: unknown): AsignacionPago[] {
+function lineasAbono(raw: unknown): AsignacionPago[] {
   if (!raw || typeof raw !== "object") return [];
   const o = raw as { asignaciones?: unknown };
   const arr = Array.isArray(o.asignaciones) ? o.asignaciones : Array.isArray(raw) ? raw : [];
   return (arr as AsignacionPago[]).filter(
-    (a) => a?.tipo === "acuerdo" && (Number(a.aplicado) || 0) > 0.009,
+    (a) => a?.tipo === "abono_inicial" && (Number(a.aplicado) || 0) > 0.009,
   );
 }
 
@@ -60,7 +60,8 @@ async function insertarCargoAcuerdo(fila: {
   return error.message;
 }
 
-/** Deja el cargo espejo igual a lo asignado al acuerdo en este pago. */
+/** Deja el cargo espejo igual a lo asignado al abono inicial en este pago.
+ *  Un acuerdo de pago no lleva este cargo: ese pago sí baja la letra. */
 export async function asegurarCargosAcuerdoDelPago(opts: {
   contratoId: string;
   pagoId: string;
@@ -69,12 +70,9 @@ export async function asegurarCargosAcuerdoDelPago(opts: {
 }): Promise<ResultadoEspejo> {
   const sb = createServerSupabase();
   const lineas = opts.asignaciones.filter(
-    (a) => a.tipo === "acuerdo" && (Number(a.aplicado) || 0) > 0.009,
+    (a) => a.tipo === "abono_inicial" && (Number(a.aplicado) || 0) > 0.009,
   );
-  if (lineas.length === 0) {
-    await borrarCargosAcuerdoDelPago(opts.pagoId);
-    return { ok: true, insertados: 0 };
-  }
+  if (lineas.length === 0) return { ok: true, insertados: 0 };
 
   const { data: ya, error: errYa } = await sb
     .from("cargos")
@@ -99,7 +97,7 @@ export async function asegurarCargosAcuerdoDelPago(opts: {
     const error = await insertarCargoAcuerdo({
       contrato_id: opts.contratoId,
       fecha: opts.fecha,
-      concepto: a.etiqueta?.trim() || "Abono a arreglo",
+      concepto: "Abono inicial",
       monto: r2(Number(a.aplicado) || 0),
       pago_id: opts.pagoId,
       acuerdo_id: a.ref ?? null,
@@ -171,7 +169,7 @@ export async function cuadrarEspejosAcuerdo(
     }
   }
 
-  const candidatos = pagos.filter((p) => lineasAcuerdo(p.asignaciones).length > 0);
+  const candidatos = pagos.filter((p) => lineasAbono(p.asignaciones).length > 0);
   if (candidatos.length === 0) return { insertados: 0, error: null };
 
   const espejo = new Map<string, number>();
@@ -200,7 +198,7 @@ export async function cuadrarEspejosAcuerdo(
   let insertados = 0;
   let error: string | null = null;
   for (const p of candidatos) {
-    const lineas = lineasAcuerdo(p.asignaciones);
+    const lineas = lineasAbono(p.asignaciones);
     const suma = r2(lineas.reduce((s, a) => s + (Number(a.aplicado) || 0), 0));
     const ya = espejo.get(p.id) ?? 0;
     if (Math.abs(suma - ya) < 0.05) continue;
