@@ -398,7 +398,47 @@ export async function rechazarComprobantesRepetidos(): Promise<number> {
     const notas = [p.notas, NOTA_REPETIDO].filter(Boolean).join(" · ");
     await sb.from("pagos").update({ estado_conciliacion: "rechazado", notas }).eq("id", p.id);
   }
-  return rechazar.length;
+  return rechazar.length + (await rechazarRecuperadosConLectura());
+}
+
+const NOTA_RECUPERADO_SOBRA =
+  "AVISO: esta foto ya tiene su comprobante leído. La fila de $0 de recuperación sobra; queda rechazada.";
+
+/** Fila de $0 de recuperación cuya foto ya tiene otro comprobante vivo. */
+async function rechazarRecuperadosConLectura(): Promise<number> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("pagos")
+    .select("id, comprobante_url, notas")
+    .eq("estado_conciliacion", "pendiente")
+    .eq("origen", "comprobante")
+    .eq("monto", 0)
+    .ilike("notas", "%RECUPERADO_SIN_LECTURA%")
+    .not("comprobante_url", "is", null)
+    .limit(300);
+  const filas = (data ?? []) as { id: string; comprobante_url: string; notas: string | null }[];
+  if (filas.length === 0) return 0;
+  const { data: otros } = await sb
+    .from("pagos")
+    .select("id, comprobante_url, monto, notas")
+    .in("comprobante_url", [...new Set(filas.map((f) => f.comprobante_url))])
+    .neq("estado_conciliacion", "rechazado");
+  const vivos = ((otros ?? []) as { id: string; comprobante_url: string; monto: number; notas: string | null }[])
+    .filter((o) => !(Number(o.monto) === 0 && (o.notas ?? "").includes("RECUPERADO_SIN_LECTURA")));
+  let n = 0;
+  for (const f of filas) {
+    const tieneOtro = vivos.some((o) => o.comprobante_url === f.comprobante_url && o.id !== f.id);
+    if (!tieneOtro) continue;
+    const notas = [f.notas, NOTA_RECUPERADO_SOBRA].filter(Boolean).join(" · ");
+    const { error } = await sb
+      .from("pagos")
+      .update({ estado_conciliacion: "rechazado", notas })
+      .eq("id", f.id)
+      .eq("estado_conciliacion", "pendiente")
+      .eq("monto", 0);
+    if (!error) n++;
+  }
+  return n;
 }
 
 /**

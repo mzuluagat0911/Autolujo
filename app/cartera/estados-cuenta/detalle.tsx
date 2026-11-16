@@ -22,7 +22,7 @@ import { HistoricoCompleto } from "./historico-completo";
 
 type TabId = "resumen" | "ajustar" | "pagos";
 
-function tonoSituacion(e: EstadoCuenta): "good" | "warn" | "crit" | "azul" {
+function tonoSituacion(e: EstadoCuenta & { totalCobrarHoy?: number }): "good" | "warn" | "crit" | "azul" {
   if (e.pendiente) return "azul";
   if (esAdelantado(e)) return "azul";
   if ((e.totalCobrarHoy ?? 0) <= 0.009) return "good";

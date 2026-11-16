@@ -5,6 +5,7 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import {
   cerrarLecturaImagen,
+  estadoLecturaImagen,
   LECTURA_LISTA,
   type Conversacion,
 } from "@/lib/cartera/pipeline";
@@ -22,6 +23,22 @@ type FotoHoy = {
   enviado_por: string | null;
   created_at: string;
 };
+
+/** Lo que tarda el webhook en leer una foto, con reintentos de Meta incluidos. */
+const ESPERA_LECTOR_MS = 10 * 60 * 1000;
+
+/**
+ * Solo se recupera una foto que el lector ya soltó. Si Claudia la está
+ * leyendo (o acaba de llegar), crear la fila de $0 deja dos comprobantes
+ * con la misma foto.
+ */
+function fotoAbandonada(
+  r: { enviado_por: string | null; created_at: string },
+  ahora: number,
+): boolean {
+  if (ahora - new Date(r.created_at).getTime() < ESPERA_LECTOR_MS) return false;
+  return estadoLecturaImagen({ pagoId: null, enviadoPor: r.enviado_por }, ahora) !== "ocupada";
+}
 
 function inicioHoyPanamaIso(hoy: string): string {
   // Panamá UTC−5: el día local empieza a las 05:00Z.
@@ -50,6 +67,7 @@ export async function listarFotosHoySinPago(limite = 200): Promise<FotoHoy[]> {
     .order("created_at", { ascending: true })
     .limit(limite);
   if (error || !data) return [];
+  const ahora = Date.now();
   return (data as {
     id: string;
     media_url: string | null;
@@ -57,7 +75,7 @@ export async function listarFotosHoySinPago(limite = 200): Promise<FotoHoy[]> {
     conversacion_id: string;
     created_at: string;
   }[])
-    .filter((r) => !!r.media_url)
+    .filter((r) => !!r.media_url && fotoAbandonada(r, ahora))
     .map((r) => ({
       id: r.id,
       media_url: r.media_url as string,
@@ -114,7 +132,7 @@ export async function crearPagoDesdeFotoSinLectura(mensajeId: string): Promise<{
   const sb = createServerSupabase();
   const { data } = await sb
     .from("mensajes")
-    .select("id, media_url, pago_id, conversacion_id, tipo")
+    .select("id, media_url, pago_id, conversacion_id, tipo, enviado_por, created_at")
     .eq("id", mensajeId)
     .maybeSingle();
   const row = data as {
@@ -123,11 +141,14 @@ export async function crearPagoDesdeFotoSinLectura(mensajeId: string): Promise<{
     pago_id: string | null;
     conversacion_id: string;
     tipo: string;
+    enviado_por: string | null;
+    created_at: string;
   } | null;
   if (!row || row.tipo !== "image" || !row.media_url) {
     return { pagoId: null, motivo: "mensaje_invalido" };
   }
   if (row.pago_id) return { pagoId: row.pago_id, motivo: "ya_tenia_pago" };
+  if (!fotoAbandonada(row, Date.now())) return { pagoId: null, motivo: "lector_en_curso" };
 
   const existente = await asegurarPagoPorPath(row.media_url);
   if (existente) {
@@ -240,7 +261,7 @@ export async function asegurarPagosDesdeFotosHoy(limite = 250): Promise<{
   for (const f of fotos) {
     const res = await crearPagoDesdeFotoSinLectura(f.id);
     if (res.motivo === "creado") pagosCreados++;
-    else if (res.motivo === "ya_tenia_pago" || res.motivo === "path_ya_en_pagos") yaTenian++;
+    else if (res.motivo === "ya_tenia_pago" || res.motivo === "path_ya_en_pagos" || res.motivo === "lector_en_curso") yaTenian++;
     else fallidos.push({ id: f.id, motivo: res.motivo });
   }
 

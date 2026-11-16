@@ -1509,25 +1509,43 @@ export async function procesarPagoComprobante(opts: {
     sugerenciaCarro ??
     (etiquetaChat || null);
 
-  const { data: pago, error } = await sb
+  const filaPago = {
+    contrato_id: resolucion.contratoId,
+    cliente_id: clientePago,
+    fecha: fechaPago,
+    pagado_at: pagadoAt,
+    monto: comprobante.monto ?? 0,
+    banco: comprobante.banco,
+    referencia: comprobante.referencia,
+    cuenta_destino: comprobante.cuenta_destino,
+    comprobante_url: path,
+    numero_carro: numeroCarroPago,
+    origen: "comprobante",
+    estado_conciliacion: estadoConciliacion,
+    notas,
+  };
+  // La misma foto ya tiene una fila de $0 sin leer (recuperación): se completa
+  // esa. Si no, quedan dos comprobantes de la misma imagen.
+  const { data: recuperada } = await sb
     .from("pagos")
-    .insert({
-      contrato_id: resolucion.contratoId,
-      cliente_id: clientePago,
-      fecha: fechaPago,
-      pagado_at: pagadoAt,
-      monto: comprobante.monto ?? 0,
-      banco: comprobante.banco,
-      referencia: comprobante.referencia,
-      cuenta_destino: comprobante.cuenta_destino,
-      comprobante_url: path,
-      numero_carro: numeroCarroPago,
-      origen: "comprobante",
-      estado_conciliacion: estadoConciliacion,
-      notas,
-    })
     .select("id")
-    .single();
+    .eq("comprobante_url", path)
+    .eq("estado_conciliacion", "pendiente")
+    .eq("monto", 0)
+    .ilike("notas", "%RECUPERADO_SIN_LECTURA%")
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const idRecuperada = (recuperada as { id: string } | null)?.id ?? null;
+  const { data: pago, error } = idRecuperada
+    ? await sb
+        .from("pagos")
+        .update(filaPago)
+        .eq("id", idRecuperada)
+        .eq("estado_conciliacion", "pendiente")
+        .select("id")
+        .single()
+    : await sb.from("pagos").insert(filaPago).select("id").single();
 
   if (error) {
     // El índice único de referencia (migración 0010) atrapó una carrera:
