@@ -148,6 +148,7 @@ export function AltaContratoForm({
   const [abonoPactado, setAbonoPactado] = useState("");
   const [abonoPagado, setAbonoPagado] = useState("");
   const [abonoCuota, setAbonoCuota] = useState("5");
+  const [abonoFrecuencia, setAbonoFrecuencia] = useState<"dia" | "domingo">("dia");
   const [panapassPagado, setPanapassPagado] = useState(String(PANAPASS));
   const [domingosPagado, setDomingosPagado] = useState(String(DIAS_DOMINGO * CUOTA_DOMINGO));
   const [prepagoLetras, setPrepagoLetras] = useState("0");
@@ -194,13 +195,18 @@ export function AltaContratoForm({
   const abonoP = Math.max(Number(String(abonoPactado).replace(",", ".")) || 0, 0);
   const abonoPay = Math.max(Number(String(abonoPagado).replace(",", ".")) || 0, 0);
   const restante = Math.max(Math.round((abonoP - abonoPay) * 100) / 100, 0);
+  const abonoSoloDomingo = restante > 0.009 && abonoFrecuencia === "domingo";
   const extP = Math.max(Number(String(extPactado).replace(",", ".")) || 0, 0);
   const extPay = Math.max(Number(String(extPagado).replace(",", ".")) || 0, 0);
   const extRestante = Math.max(Math.round((extP - extPay) * 100) / 100, 0);
   const panPay = Math.max(Number(String(panapassPagado).replace(",", ".")) || 0, 0);
-  const domPay = Math.max(Number(String(domingosPagado).replace(",", ".")) || 0, 0);
+  const domPay = abonoSoloDomingo
+    ? 0
+    : Math.max(Number(String(domingosPagado).replace(",", ".")) || 0, 0);
   const preL = Math.max(Number(String(prepagoLetras).replace(",", ".")) || 0, 0);
-  const preD = Math.max(Number(String(prepagoDomingos).replace(",", ".")) || 0, 0);
+  const preD = abonoSoloDomingo
+    ? 0
+    : Math.max(Number(String(prepagoDomingos).replace(",", ".")) || 0, 0);
   const letraN = Math.max(Number(String(letra).replace(",", ".")) || 0, 0);
   const diasN = Math.max(Math.round(Number(diasDomingos) || 0), 0);
   const cuotaN = Math.max(Number(String(cuotaDomingo).replace(",", ".")) || 0, 0);
@@ -417,7 +423,9 @@ export function AltaContratoForm({
                 className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
               />
               <span className="text-xs text-muted">
-                Desde esa fecha el paquete entra al saldo. El domingo siguiente cobra una tajada.
+                {abonoSoloDomingo
+                  ? "Con el abono solo domingos, este paquete no entra ahora. Entra el domingo después de cubrir el abono."
+                  : "Desde esa fecha el paquete entra al saldo. El domingo siguiente cobra una tajada."}
               </span>
             </label>
           </>
@@ -465,25 +473,53 @@ export function AltaContratoForm({
         </label>
         )}
         {restante > 0.009 && (
-          <label className="flex flex-col gap-1.5">
-            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-              Cuota diaria del restante *
-            </span>
-            <input
-              name="abono_cuota_diaria"
-              type="number"
-              step="0.01"
-              min="0.01"
-              required
-              value={abonoCuota}
-              onChange={(e) => setAbonoCuota(e.target.value)}
-              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
-            />
-            <span className="text-xs text-muted">
-              Resta {money(restante)} → se cobra {money(Number(abonoCuota) || 0)}/día hasta liquidar
-              (ítem extra, prioridad acuerdos).
-            </span>
-          </label>
+          <>
+            <input type="hidden" name="abono_frecuencia" value={abonoFrecuencia} />
+            <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-3">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                Cómo paga el restante
+              </span>
+              <div className="flex flex-wrap gap-2">
+                {([
+                  ["dia", "Cada día"],
+                  ["domingo", "Solo domingos"],
+                ] as const).map(([valor, texto]) => (
+                  <button
+                    key={valor}
+                    type="button"
+                    onClick={() => setAbonoFrecuencia(valor)}
+                    className={
+                      abonoFrecuencia === valor
+                        ? "rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white"
+                        : "rounded-lg bg-surface px-3 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+                    }
+                  >
+                    {texto}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+                {abonoSoloDomingo ? "Cuota de cada domingo *" : "Cuota diaria del restante *"}
+              </span>
+              <input
+                name="abono_cuota_diaria"
+                type="number"
+                step="0.01"
+                min="0.01"
+                required
+                value={abonoCuota}
+                onChange={(e) => setAbonoCuota(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              />
+              <span className="text-xs text-muted">
+                {abonoSoloDomingo
+                  ? `Resta ${money(restante)} → ${money(Number(abonoCuota) || 0)} cada domingo, después de la letra atrasada. El paquete de domingos queda quieto hasta liquidar este abono.`
+                  : `Resta ${money(restante)} → ${money(Number(abonoCuota) || 0)} cada día (lun–sáb), después de la letra.`}
+              </span>
+            </label>
+          </>
         )}
         {restante <= 0.009 && abonoP > 0 && (
           <p className="text-sm text-verde sm:col-span-2">Abono cubierto completo hoy.</p>
@@ -675,12 +711,15 @@ export function AltaContratoForm({
         </h3>
         <p className="text-sm text-muted sm:col-span-2 lg:col-span-3">
           De entrada debe <strong className="text-ink">Panapass {money(PANAPASS)}</strong>
-          {cobraDomingo && (
+          {cobraDomingo && !abonoSoloDomingo && (
             <>
               {" "}+ <strong className="text-ink">Domingos {money(totalDom)}</strong> ({diasN} × {money(cuotaN)})
             </>
           )}
           . Indicá cuánto paga hoy de cada rubro; puede adelantar letras o domingos.
+          {abonoSoloDomingo && cobraDomingo && (
+            <> El paquete de {diasN} × {money(cuotaN)} queda quieto hasta cubrir el abono.</>
+          )}
         </p>
 
         <label className="flex flex-col gap-1.5">
@@ -699,6 +738,7 @@ export function AltaContratoForm({
           />
           <span className="text-xs text-muted">Obligatorio para entregar el carro ({money(PANAPASS)})</span>
         </label>
+        {!abonoSoloDomingo && (
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
             Domingos pagados hoy
@@ -714,6 +754,7 @@ export function AltaContratoForm({
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
           />
         </label>
+        )}
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
             Prepago letras (USD)
@@ -731,6 +772,7 @@ export function AltaContratoForm({
             <span className="text-xs text-muted">≈ {(preL / letraN).toFixed(1)} letras a {money(letraN)}</span>
           )}
         </label>
+        {!abonoSoloDomingo && (
         <label className="flex flex-col gap-1.5">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
             Prepago domingos extra (USD)
@@ -745,6 +787,7 @@ export function AltaContratoForm({
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
           />
         </label>
+        )}
       </section>
 
       {/* Pago único */}

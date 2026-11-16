@@ -13,10 +13,12 @@
 //    El próximo domingo no se llena, salvo que el pago traiga ese rubro.
 //    Sábado: el sobrante no se adelanta solo.
 //
-// Domingo, si el plan de adelante todavía cobra ese día:
+// Domingo, si un acuerdo de pago todavía cobra ese día:
 // 1) Ese acuerdo, antes que la letra atrasada. La tajada del contrato queda en $0.
 // 2) Letra atrasada. No se abre letra nueva.
 // 3) El excedente baja el saldo del plan y luego la letra siguiente. No llena el balde.
+// Domingo, si el abono inicial es solo domingos: no hay tajada (el paquete entra
+// el domingo después de cubrir el abono). Primero la letra atrasada, después el abono.
 // Domingo, si ese plan ya no cobra el domingo:
 // 1) La tajada del día, antes que la letra atrasada y que otro concepto.
 // 2) Recargo, cuota de acuerdo que toque hoy, letra atrasada.
@@ -31,6 +33,7 @@ import { descuentoLetraDe } from "./descuento-letra";
 import { calcularCifras, cubrioCuotaDelDia } from "./cifras";
 import { cargosExtraPorContrato, partirCargosNoLetra } from "./extracto-desglose";
 import { acuerdoCobraDomingo, cuotaAcuerdoHoy, esAbonoInicial, planAbonoInicial, planQueCobra, programadoAcuerdoDe, type AcuerdoActivo } from "./acuerdo";
+import { soltarPaqueteDomingos } from "./domingos-aplazados";
 import { devolucionDeVehiculo, devolucionVigente } from "./devolucion";
 import { inactivacionDeVehiculo, inactivacionVigente } from "./inactivo";
 import { pausaDeVehiculo, pausaVigente } from "./pausa-productiva";
@@ -1237,6 +1240,9 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     if (!actual) continue;
     const nuevo = r2(Math.max(Number(actual.saldo) - aplicado, 0));
     await sb.from("acuerdos").update({ saldo: nuevo, activo: nuevo > 0.009 }).eq("id", ref);
+    if (nuevo <= 0.009) {
+      await soltarPaqueteDomingos({ contratoId, desde: fecha, acuerdo: actual });
+    }
   }
 
   const espejo = await asegurarCargosAcuerdoDelPago({

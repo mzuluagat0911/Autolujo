@@ -260,7 +260,8 @@ type ParteDesglose = {
  *
  * Entrada fija: panapass $20 + domingos $90 (3×$30).
  * Letra diaria arranca en `fecha_inicio_letra` (puede ser distinta a fecha_inicio).
- * Abono incompleto → acuerdo de financiamiento con cuota diaria.
+ * Abono incompleto → plan de abono inicial (cada día, o solo domingos).
+ * Solo domingos: el paquete de domingos no se carga hasta cubrir ese abono.
  * Efectivo/tarjeta → confirmado (`manual`). Transferencia → `pendiente`.
  */
 export async function createClienteConContrato(
@@ -288,6 +289,7 @@ export async function createClienteConContrato(
   const abonoPactado = Math.max(num(formData.get("abono_inicial")) ?? 0, 0);
   const abonoPagado = puedeCobrar ? Math.max(num(formData.get("abono_pagado")) ?? 0, 0) : 0;
   const abonoCuota = Math.max(num(formData.get("abono_cuota_diaria")) ?? 0, 0);
+  const abonoSoloDomingo = String(formData.get("abono_frecuencia") ?? "dia").trim() === "domingo";
   const descuento = num(formData.get("descuento_puntual"));
   const cobraDomingo = formData.get("cobra_domingo") === "on";
   const cuotaDomingo =
@@ -301,7 +303,8 @@ export async function createClienteConContrato(
   const diasDomingos = cobraDomingo
     ? Math.max(Math.round(diasForm ?? 3), 0)
     : 0;
-  const domingosCargo = cobraDomingo && cuotaDomingo > 0
+  const aplazarDomingos = abonoSoloDomingo && abonoPactado - abonoPagado > 0.009;
+  const domingosCargo = cobraDomingo && cuotaDomingo > 0 && !aplazarDomingos
     ? r2(diasDomingos * cuotaDomingo)
     : 0;
   const panapassPagado = puedeCobrar
@@ -311,7 +314,9 @@ export async function createClienteConContrato(
     ? Math.min(Math.max(num(formData.get("domingos_pagado")) ?? 0, 0), domingosCargo)
     : 0;
   const prepagoLetras = puedeCobrar ? Math.max(num(formData.get("prepago_letras")) ?? 0, 0) : 0;
-  const prepagoDomingos = puedeCobrar ? Math.max(num(formData.get("prepago_domingos")) ?? 0, 0) : 0;
+  const prepagoDomingos = puedeCobrar && !aplazarDomingos
+    ? Math.max(num(formData.get("prepago_domingos")) ?? 0, 0)
+    : 0;
 
   if (abonoPagado - abonoPactado > 0.009) {
     return { ok: false, error: "El abono pagado no puede ser mayor al abono pactado." };
@@ -320,7 +325,9 @@ export async function createClienteConContrato(
   if (abonoRestante > 0.009 && abonoCuota <= 0.009) {
     return {
       ok: false,
-      error: "Si queda abono pendiente, indicá cuánto pagará diario (ej. $5).",
+      error: abonoSoloDomingo
+        ? "Si queda abono pendiente, indicá cuánto pagará cada domingo."
+        : "Si queda abono pendiente, indicá cuánto pagará diario (ej. $5).",
     };
   }
 
@@ -549,24 +556,27 @@ export async function createClienteConContrato(
     }
   }
 
-  // Abono restante → acuerdo (cola de ítems extra, cuota diaria).
+  // Abono restante. No es acuerdo de pago. Solo domingos: cuota de domingo y el paquete espera.
   let acuerdoId: string | null = null;
   if (abonoRestante > 0.009) {
-    const { data: ac } = await sb
-      .from("acuerdos")
-      .insert({
-        contrato_id: contratoId,
-        tipo: "financiamiento",
-        descripcion: "abono inicial",
-        monto_total: abonoRestante,
-        saldo: abonoRestante,
-        cuota_diaria: abonoCuota,
-        cuota_domingo: abonoCuota,
-        activo: true,
-      })
-      .select("id")
-      .single();
-    acuerdoId = (ac as { id: string } | null)?.id ?? null;
+    const filaAbono = {
+      contrato_id: contratoId,
+      tipo: "financiamiento" as const,
+      descripcion: "abono inicial",
+      monto_total: abonoRestante,
+      saldo: abonoRestante,
+      cuota_diaria: abonoSoloDomingo ? 0 : abonoCuota,
+      cuota_domingo: abonoSoloDomingo ? abonoCuota : 0,
+      frecuencia: abonoSoloDomingo ? "domingo" : "dia",
+      activo: true,
+    };
+    let acIns = await sb.from("acuerdos").insert(filaAbono).select("id").single();
+    if (acIns.error && /frecuencia/i.test(acIns.error.message)) {
+      const { frecuencia: _f, ...sinFreq } = filaAbono;
+      acIns = await sb.from("acuerdos").insert(sinFreq).select("id").single();
+    }
+    if (acIns.error) console.error("[abono inicial]", acIns.error.message);
+    acuerdoId = (acIns.data as { id: string } | null)?.id ?? null;
   }
 
   if (extensionMotivo && extensionRestante > 0.009) {
@@ -635,7 +645,9 @@ export async function createClienteConContrato(
       `Alta de contrato — ${metodo}.`,
       desgloseTxt ? `Desglose: ${desgloseTxt}.` : null,
       abonoRestante > 0.009
-        ? `Abono restante $${abonoRestante} a $${abonoCuota}/día.`
+        ? abonoSoloDomingo
+          ? `Abono restante $${abonoRestante} a $${abonoCuota} cada domingo. El paquete de domingos entra cuando ese abono quede en cero.`
+          : `Abono restante $${abonoRestante} a $${abonoCuota}/día.`
         : null,
       extensionRestante > 0.009
         ? `Extensión restante $${extensionRestante} a $${extensionCuota}.`

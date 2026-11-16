@@ -142,6 +142,18 @@ export function planAbonoInicial(acuerdos: AcuerdoActivo[]): AcuerdoActivo | nul
   return acuerdos.find((a) => esAbonoInicial(a) && Math.max(Number(a.saldo) || 0, 0) > 0.009) ?? null;
 }
 
+/** El restante del abono se cobra solo el domingo. El paquete de domingos espera. */
+export function esAbonoSoloDomingo(a: {
+  descripcion?: string | null;
+  frecuencia?: string | null;
+  cuota_diaria?: number | null;
+  cuota_domingo?: number | null;
+}): boolean {
+  if (!esAbonoInicial(a)) return false;
+  if ((a.frecuencia ?? "dia") === "domingo") return true;
+  return (Number(a.cuota_diaria) || 0) <= 0.009 && (Number(a.cuota_domingo) || 0) > 0.009;
+}
+
 /** El plan que se cobra: el primero que aún tiene saldo.
  *  El abono inicial no entra: se cobra después de la letra, en su propia caja.
  *  El que sigue espera hasta que ese quede en cero. */
@@ -198,7 +210,23 @@ export function domingoPausadoPorPlanes(
   fecha: string,
 ): boolean {
   if (!planes?.length || !esDomingo(fecha)) return false;
-  return planes.some(
+  return motivoDomingoPausado(planes, fecha) != null;
+}
+
+/** Quién deja la tajada en cero: el abono de solo domingos, o un acuerdo de pago. */
+export function motivoDomingoPausado(
+  planes: {
+    saldo: number;
+    etiqueta?: string;
+    cuotaDiaria?: number;
+    cuotaDomingo?: number;
+    frecuencia?: string;
+    fecha?: string | null;
+  }[] | undefined,
+  fecha: string,
+): "abono" | "acuerdo" | null {
+  if (!planes?.length || !esDomingo(fecha)) return null;
+  const pausan = planes.filter(
     (plan) =>
       plan.saldo > 0.009 &&
       acuerdoCobraDomingo(
@@ -212,6 +240,9 @@ export function domingoPausadoPorPlanes(
         fecha,
       ),
   );
+  if (pausan.length === 0) return null;
+  const soloAbono = pausan.every((plan) => esAbonoInicial({ descripcion: plan.etiqueta ?? "" }));
+  return soloAbono ? "abono" : "acuerdo";
 }
 
 export function acuerdoHoyDe(acuerdos: AcuerdoActivo[], fecha: string): number {

@@ -63,7 +63,7 @@
 //
 // TOTAL A PAGAR HOY = letra/recargo/cierre + el un ítem extra elegido.
 
-import { domingoPausadoPorPlanes } from "./acuerdo";
+import { domingoPausadoPorPlanes, motivoDomingoPausado } from "./acuerdo";
 import type { EstadoCuenta } from "./estado-cuenta";
 import {
   armarExtractoDiario,
@@ -104,6 +104,8 @@ export type CobroHoy = ExtractoArmado & {
   faltaAcuerdo: number;
   /** El plan de adelante todavía cobra el domingo: la tajada del contrato está en $0. */
   domingoPausado: boolean;
+  /** abono = el paquete espera a cubrir el abono de solo domingos. acuerdo = un acuerdo de pago. */
+  domingoPausa: "abono" | "acuerdo" | null;
 };
 
 /** Carga saldo de acuerdos + cargos extra del contrato. */
@@ -124,7 +126,8 @@ export async function ctxCobroHoy(contratoId: string): Promise<CobroHoyCtx> {
 
 /** Cálculo canónico de cobro del día a partir del estado de cuenta. */
 export function cobroHoyDe(e: EstadoCuenta, ctx: CobroHoyCtx): CobroHoy {
-  const domingoPausado = domingoPausadoPorPlanes(ctx.planes, e.hoyIso);
+  const domingoPausa = motivoDomingoPausado(ctx.planes, e.hoyIso);
+  const domingoPausado = domingoPausa != null || domingoPausadoPorPlanes(ctx.planes, e.hoyIso);
   const armado = armarExtractoDiario(e, {
     acuerdoSaldo: ctx.acuerdoSaldo,
     extras: ctx.extras,
@@ -140,6 +143,7 @@ export function cobroHoyDe(e: EstadoCuenta, ctx: CobroHoyCtx): CobroHoy {
     acuerdoHoy: Math.max(Number(e.acuerdoHoy) || 0, 0),
     faltaAcuerdo: Math.max(Number(e.faltaAcuerdo) || 0, 0),
     domingoPausado,
+    domingoPausa,
   };
 }
 

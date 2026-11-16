@@ -15,6 +15,7 @@ import {
   aplicarPagoEnObligaciones,
   revertirPagoEnObligaciones,
 } from "@/lib/cartera/aplicar-pago";
+import { soltarPaqueteDomingos } from "@/lib/cartera/domingos-aplazados";
 import { sincronizarSalidaReasignada } from "@/lib/cartera/salidas-aplicar";
 import { recalcularRecargo } from "@/lib/cartera/devengo";
 import type { EstadoCuentaFila } from "./types";
@@ -441,6 +442,18 @@ export async function guardarLedgerEditable(
         }
       } else if (error) {
         return { ok: false, error: `Actualizar acuerdo: ${error.message}` };
+      }
+      if (Number(body.saldo) <= 0.009) {
+        await soltarPaqueteDomingos({
+          contratoId,
+          desde: hoyPanama(),
+          acuerdo: {
+            descripcion: body.descripcion as string | null,
+            frecuencia,
+            cuota_diaria: Number(body.cuota_diaria),
+            cuota_domingo: Number(body.cuota_domingo),
+          },
+        });
       }
     } else {
       if (Number(body.saldo) <= 0.009 && Number(body.cuota_diaria) <= 0.009) continue;

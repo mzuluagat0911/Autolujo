@@ -120,10 +120,13 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   con motivo "Reasignar pago" para que el equipo lo haga. Solo el equipo reasigna distinto al árbol.
   El domingo el acuerdo NO ocupa ese lugar por tener saldo. Solo entra si el TOTAL ya lo trae
   (acuerdo atrasado o acuerdo de domingo).
-  DOMINGO, el reparto del pago es otro. Si el CONTEXTO dice que el domingo está pausado
-  porque el acuerdo todavía cobra ese día: primero ese acuerdo, después la letra atrasada.
-  La tajada del contrato queda en $0 y no se debita. Lo que sobre baja el saldo del acuerdo
-  y luego la letra siguiente. No llena el balde de domingo.
+  DOMINGO, el reparto del pago es otro. Si el CONTEXTO dice que el paquete de domingos está
+  aplazado por el abono inicial: primero la letra atrasada, después el abono inicial.
+  No pidas la tajada y no lo llames acuerdo de pago. Lo que sobre baja el saldo del abono
+  y luego la letra siguiente.
+  Si el CONTEXTO dice que el domingo está pausado porque el acuerdo todavía cobra ese día:
+  primero ese acuerdo, después la letra atrasada. La tajada del contrato queda en $0 y no se
+  debita. Lo que sobre baja el saldo del acuerdo y luego la letra siguiente. No llena el balde de domingo.
   Si el domingo NO está pausado: primero la tajada, antes que la letra atrasada y que
   otro concepto. Lo que sobre va a la letra siguiente. No va ahí si tiene acuerdo (baja el
   plan), si tiene letra atrasada (baja ese atraso) o si el cliente dice que ese excedente
