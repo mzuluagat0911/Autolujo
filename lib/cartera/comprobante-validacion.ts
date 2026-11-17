@@ -79,6 +79,10 @@ export async function validarComprobante(opts: {
   contratoId?: string | null;
   /** Ya le pedimos en este chat la captura con el número de confirmación. */
   yaPidieronReferencia?: boolean;
+  /** Archivo de la foto. Una foto da cada comprobante una sola vez. */
+  comprobantePath?: string | null;
+  /** Fila que se está completando (relectura): no cuenta como la otra. */
+  excluirPagoId?: string | null;
 }): Promise<Veredicto> {
   const sb = createServerSupabase();
   const { comprobante: c, empresaId, contratoId } = opts;
@@ -86,10 +90,40 @@ export async function validarComprobante(opts: {
   let crearPago = true;
   let pagoDuplicadoId: string | null = null;
 
+  // --- 0. ¿Esta misma foto ya dio este comprobante? --------------------------
+  // Una foto con dos transferencias da dos pagos solo si los números son
+  // distintos, o si los montos son distintos.
+  if (opts.comprobantePath) {
+    const { data: deLaFoto } = await sb
+      .from("pagos")
+      .select("id, fecha, monto, referencia, notas")
+      .eq("comprobante_url", opts.comprobantePath)
+      .neq("estado_conciliacion", "rechazado")
+      .limit(20);
+    const refFoto = canonReferencia((c.referencia ?? "").trim());
+    const montoFoto = c.monto != null && c.monto > 0 ? Number(c.monto) : null;
+    const previo = ((deLaFoto ?? []) as { id: string; fecha: string; monto: number; referencia: string | null; notas: string | null }[])
+      .filter((p) => p.id !== opts.excluirPagoId)
+      .filter((p) => !(Number(p.monto) === 0 && (p.notas ?? "").includes("RECUPERADO_SIN_LECTURA")))
+      .find((p) => {
+        const refPrevio = canonReferencia(p.referencia);
+        if (refFoto && refPrevio) return refFoto === refPrevio;
+        return montoFoto != null && Math.abs(Number(p.monto) - montoFoto) < 0.02;
+      });
+    if (previo) {
+      crearPago = false;
+      pagoDuplicadoId = previo.id;
+      alertas.push({
+        codigo: "duplicado",
+        detalle: `Esta foto ya está registrada (pago del ${previo.fecha} por $${previo.monto}).`,
+      });
+    }
+  }
+
   // --- 1. ¿Ya registramos esta referencia? -----------------------------------
   const ref = (c.referencia ?? "").trim();
   const refCanon = canonReferencia(ref);
-  if (ref) {
+  if (crearPago && ref) {
     const { data: previos } = await sb
       .from("pagos")
       .select("id, fecha, monto, referencia")

@@ -5,7 +5,11 @@ import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, pagadoAtDesdeForm } from "@/lib/cartera/fecha";
 import { bajarArchivoComprobante } from "@/lib/cartera/pipeline";
 import { MARCA_RECUPERADO_SIN_LECTURA } from "@/lib/cartera/recuperar-comprobantes-hoy";
-import { resumirAlertas, validarComprobante } from "@/lib/cartera/comprobante-validacion";
+import {
+  MARCA_REVISION_DOS_PAGOS,
+  resumirAlertas,
+  validarComprobante,
+} from "@/lib/cartera/comprobante-validacion";
 
 type PagoRecuperado = {
   id: string;
@@ -30,6 +34,23 @@ export async function listarPagosSinLectura(limite = 20): Promise<PagoRecuperado
   return (data as PagoRecuperado[]).filter((p) => !!p.comprobante_url);
 }
 
+/** La fila de $0 repite un comprobante que ya está: se rechaza, el primero se queda. */
+async function rechazarRepetido(pago: PagoRecuperado, motivo: string): Promise<void> {
+  const sb = createServerSupabase();
+  const notas = [
+    ...(pago.notas ?? "")
+      .split(" · ")
+      .map((t) => t.trim())
+      .filter((t) => t && !t.includes("RECUPERADO_SIN_LECTURA")),
+    `AVISO: comprobante repetido. ${motivo} Rechazado; el primero se queda.`,
+  ].join(" · ");
+  await sb
+    .from("pagos")
+    .update({ estado_conciliacion: "rechazado", notas })
+    .eq("id", pago.id)
+    .eq("estado_conciliacion", "pendiente");
+}
+
 async function releerUno(pago: PagoRecuperado): Promise<{ ok: boolean; detalle: string }> {
   const sb = createServerSupabase();
   const path = pago.comprobante_url;
@@ -51,10 +72,19 @@ async function releerUno(pago: PagoRecuperado): Promise<{ ok: boolean; detalle: 
   }
 
   const primero = lista[0]!;
+  // Ya no se le puede pedir la captura al cliente: sin número, la misma hora
+  // o sin hora es el mismo comprobante.
   const veredicto = await validarComprobante({
     comprobante: primero,
     contratoId: pago.contrato_id,
+    yaPidieronReferencia: true,
+    comprobantePath: path,
+    excluirPagoId: pago.id,
   });
+  if (!veredicto.crearPago) {
+    await rechazarRepetido(pago, resumirAlertas(veredicto.alertas));
+    return { ok: true, detalle: "repetido_rechazado" };
+  }
 
   const fechaLeida =
     primero.fecha && /^\d{4}-\d{2}-\d{2}$/.test(primero.fecha) ? primero.fecha : null;
@@ -73,6 +103,7 @@ async function releerUno(pago: PagoRecuperado): Promise<{ ok: boolean; detalle: 
     ...notasBase,
     `Lectura IA (confianza: ${primero.confianza}).`,
     veredicto.alertas.length ? `ALERTAS: ${resumirAlertas(veredicto.alertas)}` : null,
+    veredicto.alertas.some((a) => a.codigo === "hora_distinta") ? MARCA_REVISION_DOS_PAGOS : null,
   ]
     .filter(Boolean)
     .join(" · ");
@@ -85,7 +116,7 @@ async function releerUno(pago: PagoRecuperado): Promise<{ ok: boolean; detalle: 
     pagado_at: pagadoAt,
     numero_carro: primero.numero_carro ?? pago.numero_carro,
   };
-  let { error } = await sb
+  const { error } = await sb
     .from("pagos")
     .update({
       ...patchBase,
@@ -94,23 +125,10 @@ async function releerUno(pago: PagoRecuperado): Promise<{ ok: boolean; detalle: 
     })
     .eq("id", pago.id)
     .eq("estado_conciliacion", "pendiente");
-  // La referencia ya existe en otro pago: igual guardamos monto/datos sin el ref.
+  // El índice único de referencia: otro pago ya tiene ese número.
   if (error?.code === "23505") {
-    const notasDup = [
-      notas,
-      primero.referencia ? `REF_DUPLICADA: ${primero.referencia} ya estaba en otro pago.` : null,
-    ]
-      .filter(Boolean)
-      .join(" · ");
-    const retry = await sb
-      .from("pagos")
-      .update({ ...patchBase, referencia: null, notas: notasDup })
-      .eq("id", pago.id)
-      .eq("estado_conciliacion", "pendiente");
-    error = retry.error;
-    if (!error) {
-      /* ok con ref omitida */
-    }
+    await rechazarRepetido(pago, `La referencia ${primero.referencia ?? ""} ya está registrada.`);
+    return { ok: true, detalle: "repetido_rechazado" };
   }
   if (error) return { ok: false, detalle: error.message };
 
@@ -119,6 +137,8 @@ async function releerUno(pago: PagoRecuperado): Promise<{ ok: boolean; detalle: 
     const v2 = await validarComprobante({
       comprobante: extra,
       contratoId: pago.contrato_id,
+      yaPidieronReferencia: true,
+      comprobantePath: path,
     });
     if (!v2.crearPago) continue;
     const f2 =

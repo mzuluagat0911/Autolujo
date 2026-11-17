@@ -1383,6 +1383,7 @@ export async function procesarPagoComprobante(opts: {
     empresaId,
     contratoId: resolucion.contratoId ?? conversacion.contrato_id,
     yaPidieronReferencia: !!pedidoRef,
+    comprobantePath: path,
   });
 
   // Solo se RELLENA lo que falte, y SOLO si el chat ya estaba vinculado.
