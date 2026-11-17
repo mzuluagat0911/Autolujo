@@ -256,10 +256,19 @@ export function partirCierreDeLaLetra(opts: {
   return { pendienteAnterior: r2(pendiente - cierreHoy), cierreHoy };
 }
 
+function esAbonoAsignado(a: { tipo?: string; etiqueta?: string | null }): boolean {
+  const tipo = a.tipo ?? "";
+  if (tipo === "abono_inicial" || tipo === "abono" || tipo === "afiliacion") return true;
+  return tipo === "acuerdo" && /abono\s*inicial/i.test(a.etiqueta ?? "");
+}
+
 function yaAplicado(ya: AsignacionPago[], tipo: TipoObligacion, ref?: string): number {
   return r2(
     ya
-      .filter((a) => a.tipo === tipo && (ref ? a.ref === ref : true))
+      .filter((a) => {
+        if (tipo === "abono_inicial") return esAbonoAsignado(a) && (ref ? !a.ref || a.ref === ref : true);
+        return a.tipo === tipo && (ref ? a.ref === ref : true);
+      })
       .reduce((s, a) => s + a.aplicado, 0),
   );
 }
@@ -626,6 +635,9 @@ export async function asegurarCargosConceptoDelPago(opts: {
   const pedidos = new Map<string, number>();
   for (const a of opts.asignaciones) {
     const cubeta = cubetaDeConcepto(a.tipo, a.etiqueta);
+    // El abono inicial lo cubre el cargo espejo (tipo acuerdo). Un cargo de
+    // afiliación además le baja otra vez la letra y no toca el saldo del plan.
+    if (cubeta === "abono inicial") continue;
     if (!cubeta || cubeta === "por no pagar" || !CARGO_DE_CONCEPTO[a.tipo]) continue;
     pedidos.set(cubeta, r2((pedidos.get(cubeta) ?? 0) + (Number(a.aplicado) || 0)));
   }
@@ -1209,6 +1221,60 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     }
   }
 
+  // La cuota del abono de hoy se asigna sola, después de la letra de hoy.
+  // No se adelanta como otra letra ni se queda en el saldo anterior.
+  if (abonoPlan && abonoHoy > 0.009) {
+    const yaAbono = yaAplicado(resultado.asignaciones, "abono_inicial", abonoPlan.id);
+    let faltaAbono = r2(Math.min(abonoHoy, Number(abonoPlan.saldo) || 0) - yaAbono);
+    const letraHoyCubre = resultado.asignaciones.some(
+      (a) =>
+        a.tipo === "cuenta_diaria" &&
+        !/^letra \d{4}-\d{2}-\d{2}$/.test(a.etiqueta ?? "") &&
+        a.aplicado + 0.02 >= cuotaHoy,
+    );
+    if (faltaAbono > 0.009) {
+      const nuevas: AsignacionPago[] = [];
+      let tomado = 0;
+      if (resultado.sobrante > 0.009) {
+        const toma = r2(Math.min(resultado.sobrante, faltaAbono));
+        faltaAbono = r2(faltaAbono - toma);
+        tomado = toma;
+        resultado = { ...resultado, sobrante: r2(resultado.sobrante - toma) };
+      }
+      for (const a of resultado.asignaciones) {
+        const letraFutura =
+          a.tipo === "cuenta_diaria" && /^letra \d{4}-\d{2}-\d{2}$/.test(a.etiqueta ?? "");
+        // $5 en "saldo anterior" con la letra de hoy ya cubierta: es la cuota del abono.
+        const saldoDelAbono =
+          a.tipo === "saldo_anterior" &&
+          letraHoyCubre &&
+          a.aplicado <= abonoHoy + 0.02;
+        if ((!letraFutura && !saldoDelAbono) || faltaAbono <= 0.009) {
+          nuevas.push(a);
+          continue;
+        }
+        const toma = r2(Math.min(a.aplicado, faltaAbono));
+        faltaAbono = r2(faltaAbono - toma);
+        tomado = r2(tomado + toma);
+        const queda = r2(a.aplicado - toma);
+        if (queda > 0.009) nuevas.push({ ...a, aplicado: queda });
+      }
+      if (tomado > 0.009) {
+        nuevas.push({
+          tipo: "abono_inicial",
+          aplicado: tomado,
+          ref: abonoPlan.id,
+          etiqueta: ETIQUETA.abono_inicial,
+        });
+        resultado = {
+          asignaciones: nuevas,
+          sobrante: resultado.sobrante,
+          totalAplicado: r2(nuevas.reduce((s, a) => s + a.aplicado, 0)),
+        };
+      }
+    }
+  }
+
   const payload = {
     asignaciones: resultado.asignaciones,
     sobrante: resultado.sobrante,
@@ -1231,9 +1297,18 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   }
 
   const abonoPorPlan = new Map<string, number>();
+  let abonoSinRef = 0;
   for (const a of resultado.asignaciones) {
-    if ((a.tipo !== "acuerdo" && a.tipo !== "abono_inicial") || !a.ref) continue;
+    if (esAbonoAsignado(a)) {
+      if (a.ref) abonoPorPlan.set(a.ref, r2((abonoPorPlan.get(a.ref) ?? 0) + a.aplicado));
+      else abonoSinRef = r2(abonoSinRef + a.aplicado);
+      continue;
+    }
+    if (a.tipo !== "acuerdo" || !a.ref) continue;
     abonoPorPlan.set(a.ref, r2((abonoPorPlan.get(a.ref) ?? 0) + a.aplicado));
+  }
+  if (abonoSinRef > 0.009 && abonoPlan) {
+    abonoPorPlan.set(abonoPlan.id, r2((abonoPorPlan.get(abonoPlan.id) ?? 0) + abonoSinRef));
   }
   for (const [ref, aplicado] of abonoPorPlan) {
     const actual = acuerdos.find((x) => x.id === ref);
@@ -1299,17 +1374,45 @@ export async function revertirPagoEnObligaciones(pagoId: string): Promise<void> 
   const sb = createServerSupabase();
   const { data } = await sb
     .from("pagos")
-    .select("asignaciones")
+    .select("asignaciones, contrato_id")
     .eq("id", pagoId)
     .maybeSingle();
-  const parsed = parseAsignaciones((data as { asignaciones: unknown } | null)?.asignaciones);
+  const row = data as { asignaciones: unknown; contrato_id: string | null } | null;
+  const parsed = parseAsignaciones(row?.asignaciones);
   if (!parsed) return;
+  const contratoId = row?.contrato_id ?? null;
 
   for (const a of parsed.asignaciones) {
-    if (a.tipo !== "acuerdo" || !a.ref) continue;
-    const { data: ac } = await sb.from("acuerdos").select("saldo").eq("id", a.ref).maybeSingle();
-    const saldo = Number((ac as { saldo: number } | null)?.saldo ?? 0);
-    await sb.from("acuerdos").update({ saldo: r2(saldo + a.aplicado), activo: true }).eq("id", a.ref);
+    if (a.tipo === "acuerdo" && !esAbonoAsignado(a)) {
+      if (!a.ref) continue;
+      const { data: ac } = await sb.from("acuerdos").select("saldo").eq("id", a.ref).maybeSingle();
+      const saldo = Number((ac as { saldo: number } | null)?.saldo ?? 0);
+      await sb.from("acuerdos").update({ saldo: r2(saldo + a.aplicado), activo: true }).eq("id", a.ref);
+      continue;
+    }
+    if (!esAbonoAsignado(a)) continue;
+    const aplicado = Number(a.aplicado) || 0;
+    if (aplicado <= 0.009) continue;
+    if (a.ref) {
+      const { data: ac } = await sb.from("acuerdos").select("saldo").eq("id", a.ref).maybeSingle();
+      const saldo = Number((ac as { saldo: number } | null)?.saldo ?? 0);
+      await sb.from("acuerdos").update({ saldo: r2(saldo + aplicado), activo: true }).eq("id", a.ref);
+      continue;
+    }
+    if (!contratoId) continue;
+    const { data: planes } = await sb
+      .from("acuerdos")
+      .select("id, saldo, descripcion")
+      .eq("contrato_id", contratoId)
+      .ilike("descripcion", "%abono inicial%")
+      .order("created_at", { ascending: true })
+      .limit(1);
+    const plan = ((planes ?? []) as { id: string; saldo: number }[])[0];
+    if (!plan) continue;
+    await sb
+      .from("acuerdos")
+      .update({ saldo: r2(Number(plan.saldo) + aplicado), activo: true })
+      .eq("id", plan.id);
   }
 
   await Promise.all([

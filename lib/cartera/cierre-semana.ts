@@ -3,10 +3,13 @@
 // Entra si:
 //   - la letra diaria de ayer o de días pasados sigue sin pagar (la de hoy no), o
 //   - la cuota del acuerdo que ya tocaba (ayer, o el domingo que ya pasó) sigue
+//     sin pagar, o
+//   - la cuota del abono inicial que ya tocaba ($5 diarios, por ejemplo) sigue
 //     sin pagar.
 //
-// No entra por el saldo que el acuerdo todavía tiene, ni por mantenimiento,
-// kilometraje o domingo, si esa cuota va al día.
+// No entra por el saldo que el acuerdo o el abono todavía tienen, ni por
+// mantenimiento, kilometraje o domingo, si esa cuota va al día. Quien viene
+// pagando el abono como se comprometió no paga el $10 aunque le quede saldo.
 //
 // Corre el martes a las 7:45. El mensaje sale a las 9.
 // Un pago de hoy antes de las 9 cubre el hueco. Si a las 9 el comprobante
@@ -46,7 +49,7 @@ export function letraAtrasadaParaCierre(e: CierreSemanaInput): number {
   return Math.max(0, Math.round((anterior - toma) * 100) / 100);
 }
 
-/** $10 solo por letra atrasada o por cuota de acuerdo ya vencida. */
+/** $10 por letra atrasada, cuota de acuerdo vencida, o cuota del abono que no pagó. */
 export function debeCobrarCierreSemana(e: CierreSemanaInput): boolean {
   if (letraAtrasadaParaCierre(e) > 0.009) return true;
   return Math.max(Number(e.atrasoAcuerdo) || 0, 0) > 0.009;

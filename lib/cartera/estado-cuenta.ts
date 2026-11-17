@@ -1143,7 +1143,9 @@ async function filasPorPagina<T>(
 function esCargoDomingo(g: { concepto_codigo: string | null; concepto: string | null }): boolean {
   const codigo = (g.concepto_codigo ?? "").toUpperCase();
   const texto = (g.concepto ?? "").toLowerCase();
-  return codigo === "DOMINGOS" || /\bdomingo\b/.test(texto);
+  // "Domingos (3 × $30)" no trae la palabra sola: \bdomingo\b no calza y el
+  // balde se quedaba dentro de la letra. El martes eso disparaba el cierre.
+  return codigo === "DOMINGOS" || /domingos?/.test(texto);
 }
 
 /**

@@ -218,8 +218,19 @@ export function armarExtractoDiario(
   if (domingoComoBase || tajadaEntreSemana) {
     lineasBase.push({ etiqueta: "domingo", monto: tajada });
   }
+  const planAbono = (opts?.planes ?? []).find(
+    (p) => esAbonoInicial({ descripcion: p.etiqueta }) && p.saldo > 0.009,
+  );
+  const saldoAbono = planAbono?.saldo ?? 0;
   const abonoHoy = Math.max(Number(e.abonoInicialHoy) || 0, 0);
-  if (abonoHoy > 0.009) lineasBase.push({ etiqueta: "abono inicial", monto: abonoHoy });
+  if (abonoHoy > 0.009) {
+    // Igual que el acuerdo: lo de hoy en el monto, el total que falta entre paréntesis.
+    const etiqueta =
+      saldoAbono > abonoHoy + 0.009
+        ? `abono inicial (saldo ${money(saldoAbono)})`
+        : "abono inicial";
+    lineasBase.push({ etiqueta, monto: abonoHoy });
+  }
 
   // El abono de hoy ya está neto en el saldo / totalHoy: no se re-suma como
   // “abono” (eso duplicaba y, con acuerdo, hacía creer que la letra bajaba).
@@ -271,6 +282,14 @@ export function armarExtractoDiario(
         saldoAcuerdo > 0.009
           ? `acuerdos (saldo ${money(saldoAcuerdo)})`
           : "acuerdos",
+      monto: 0,
+      aviso: true,
+    });
+  }
+
+  if (abonoHoy <= 0.009 && saldoAbono > 0.009) {
+    out.push({
+      etiqueta: `abono inicial (saldo ${money(saldoAbono)})`,
       monto: 0,
       aviso: true,
     });

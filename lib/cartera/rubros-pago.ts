@@ -72,6 +72,7 @@ const ALIAS_CONCEPTO: Record<string, ConceptoPago> = {
   prepago_letra: "cuenta_diaria",
   prepago_domingo: "domingo",
   afiliacion: "abono",
+  abono_inicial: "abono",
   cuenta: "cuenta_diaria",
 };
 

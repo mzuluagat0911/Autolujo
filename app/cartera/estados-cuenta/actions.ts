@@ -720,6 +720,7 @@ export async function guardarAsignacionesHistorial(opts: {
     tipo: l.tipo,
     aplicado: l.aplicado,
     etiqueta: l.etiqueta || ETIQUETA_ASIG[l.tipo] || l.tipo,
+    ref: undefined as string | undefined,
   }));
   const payload = {
     asignaciones,
@@ -739,19 +740,45 @@ export async function guardarAsignacionesHistorial(opts: {
     .eq("id", pagoId);
   if (errUp) return { ok: false, msg: errUp.message };
 
-  // Baja saldos de acuerdos activos (reparte el monto “acuerdo” entre ellos).
+  const { data: planes } = await sb
+    .from("acuerdos")
+    .select("id, saldo, descripcion")
+    .eq("contrato_id", contratoId)
+    .eq("activo", true)
+    .order("created_at", { ascending: true });
+  const vivos = (planes ?? []) as { id: string; saldo: number; descripcion: string | null }[];
+  const esAbono = (tipo: string) =>
+    tipo === "abono" || tipo === "abono_inicial" || tipo === "afiliacion";
+
+  // El abono inicial baja SU plan. No se reparte entre los acuerdos de pago.
+  let restoAbono = r2(
+    asignaciones.filter((a) => esAbono(a.tipo)).reduce((s, a) => s + a.aplicado, 0),
+  );
+  const planAbono = vivos.find((a) => /abono\s*inicial/i.test(a.descripcion ?? ""));
+  if (planAbono && asignaciones.some((a) => esAbono(a.tipo))) {
+    for (const a of asignaciones) {
+      if (!esAbono(a.tipo)) continue;
+      a.tipo = "abono_inicial";
+      a.ref = planAbono.id;
+    }
+    await sb.from("pagos").update({ asignaciones: payload }).eq("id", pagoId);
+  }
+  if (restoAbono > 0.009 && planAbono) {
+    const saldo = Math.max(Number(planAbono.saldo) || 0, 0);
+    const take = r2(Math.min(saldo, restoAbono));
+    const nuevo = r2(saldo - take);
+    await sb.from("acuerdos").update({ saldo: nuevo, activo: nuevo > 0.009 }).eq("id", planAbono.id);
+  }
+
+  // Baja saldos de acuerdos de pago (el abono inicial no entra).
   let restoAcuerdo = r2(
     asignaciones.filter((a) => a.tipo === "acuerdo").reduce((s, a) => s + a.aplicado, 0),
   );
   if (restoAcuerdo > 0.009) {
-    const { data: acuerdos } = await sb
-      .from("acuerdos")
-      .select("id, saldo")
-      .eq("contrato_id", contratoId)
-      .eq("activo", true)
-      .order("created_at", { ascending: true });
-    for (const a of (acuerdos ?? []) as { id: string; saldo: number }[]) {
+    for (const a of vivos) {
       if (restoAcuerdo <= 0.009) break;
+      if (/abono\s*inicial/i.test(a.descripcion ?? "")) continue;
+      if (planAbono && a.id === planAbono.id) continue;
       const saldo = Math.max(Number(a.saldo) || 0, 0);
       if (saldo <= 0.009) continue;
       const take = r2(Math.min(saldo, restoAcuerdo));
@@ -766,6 +793,7 @@ export async function guardarAsignacionesHistorial(opts: {
     tipo: a.tipo as TipoObligacion,
     aplicado: a.aplicado,
     etiqueta: a.etiqueta,
+    ref: a.ref,
   }));
   const fechaPago = fechaContable((p as { pagado_at: string }).pagado_at);
   await asegurarCargoRecargoDelPago({

@@ -10,6 +10,12 @@ export type ResultadoEspejo =
   | { ok: true; insertados: number }
   | { ok: false; error: string; insertados: number };
 
+function esLineaAbono(a: { tipo?: string; etiqueta?: string | null }): boolean {
+  const tipo = a.tipo ?? "";
+  if (tipo === "abono_inicial" || tipo === "abono" || tipo === "afiliacion") return true;
+  return tipo === "acuerdo" && /abono\s*inicial/i.test(a.etiqueta ?? "");
+}
+
 function r2(n: number): number {
   return Math.round(Number(n) * 100) / 100;
 }
@@ -19,7 +25,7 @@ function lineasAbono(raw: unknown): AsignacionPago[] {
   const o = raw as { asignaciones?: unknown };
   const arr = Array.isArray(o.asignaciones) ? o.asignaciones : Array.isArray(raw) ? raw : [];
   return (arr as AsignacionPago[]).filter(
-    (a) => a?.tipo === "abono_inicial" && (Number(a.aplicado) || 0) > 0.009,
+    (a) => esLineaAbono(a) && (Number(a.aplicado) || 0) > 0.009,
   );
 }
 
@@ -70,7 +76,7 @@ export async function asegurarCargosAcuerdoDelPago(opts: {
 }): Promise<ResultadoEspejo> {
   const sb = createServerSupabase();
   const lineas = opts.asignaciones.filter(
-    (a) => a.tipo === "abono_inicial" && (Number(a.aplicado) || 0) > 0.009,
+    (a) => esLineaAbono(a) && (Number(a.aplicado) || 0) > 0.009,
   );
   if (lineas.length === 0) return { ok: true, insertados: 0 };
 
