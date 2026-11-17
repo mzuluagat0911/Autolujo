@@ -1336,7 +1336,7 @@ function armarRespuestaComprobante(c: Comprobante, res: ResPago): { respuesta: s
       respuesta: pedir
         ? `Ese monto ya me aparece hoy y en esta captura no se ve el número de confirmación. ${FRASE_PEDIR_CONFIRMACION}`
         : reenvio
-          ? "Esa captura es la del pago que ya tengo. La hora es la misma, así que no registro un segundo pago. Si fue otra transferencia, mándeme la captura donde se vea otra hora."
+          ? "Esa captura es la del pago que ya tengo. No se ve otra hora ni otro número de confirmación, así que no registro un segundo pago."
           : "Ese comprobante ya me aparece. Si fue otro pago, mándeme esa captura.",
       escalarMotivo: null,
     };

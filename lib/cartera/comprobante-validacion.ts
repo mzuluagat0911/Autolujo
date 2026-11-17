@@ -2,15 +2,14 @@
 //
 // Hasta ahora la única barrera era que la imagen "pareciera" un comprobante
 // (`es_comprobante`). Eso deja pasar los tres fraudes clásicos:
-//   1. reenviar la misma captura varias veces (aunque el lector copie
-//      otro código de la misma pantalla, o la hora se mueva un minuto),
+//   1. reenviar la misma captura varias veces,
 //   2. mandar un comprobante viejo como si fuera de hoy,
 //   3. mandar una transferencia hecha a un tercero.
 // Aquí se revisa lo que el código SÍ puede verificar contra la base.
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import type { Comprobante } from "@/lib/ai/comprobante";
-import { hoyPanama, horaPanama, sumarDias } from "./fecha";
+import { hoyPanama, sumarDias } from "./fecha";
 import { cuentaAUnDigito, digitos, mismaCuenta } from "./cuenta";
 import { canonReferencia, esMismoComprobante } from "./cruce";
 
@@ -68,35 +67,6 @@ function normalizarHora(hora: string | null | undefined): string | null {
   return `${m[1]!.padStart(2, "0")}:${m[2]}`;
 }
 
-function minutosDelDia(hora: string | null): number | null {
-  if (!hora) return null;
-  const [h, m] = hora.split(":");
-  const hh = Number(h);
-  const mm = Number(m);
-  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
-  return hh * 60 + mm;
-}
-
-/**
- * La misma captura releída. El reloj del papel se mueve un minuto y el modelo
- * a veces copia el otro código de la misma pantalla. Sin hora tampoco se
- * puede afirmar que sea otra transferencia.
- */
-export function horaEsLaMismaCaptura(a: string | null, b: string | null, siFalta = true): boolean {
-  const ma = minutosDelDia(a);
-  const mb = minutosDelDia(b);
-  if (ma == null || mb == null) return siFalta;
-  const d = Math.abs(ma - mb);
-  return d <= 2;
-}
-
-function horaDelPago(pagadoAt: string | null): string | null {
-  if (!pagadoAt) return null;
-  const d = new Date(pagadoAt);
-  if (Number.isNaN(d.getTime())) return null;
-  return horaPanama(d);
-}
-
 export async function validarComprobante(opts: {
   comprobante: Comprobante;
   /** Empresa del carro al que se va a aplicar, si ya se resolvió. */
@@ -142,9 +112,9 @@ export async function validarComprobante(opts: {
   }
 
   // --- 1b. Mismo día y mismo monto ------------------------------------------
-  // Dos pagos solo si el número es distinto Y la hora del papel también.
-  // Misma hora, un minuto de diferencia o sin hora: es la misma captura,
-  // aunque el lector haya copiado otro código.
+  // Si el número de confirmación es distinto, son dos pagos: no se pide nada.
+  // La hora guardada de un pago conciliado es la de la conciliación, no la del
+  // papel: no sirve para decir que dos números distintos son la misma captura.
   // Si no se ve el número y ya hay un pago igual, primero se pide la captura.
   // Si ya se pidió y no llega el número: hora distinta → el equipo lo revisa
   // antes de aplicarlo; sin hora o la misma hora → es el mismo comprobante.
@@ -180,19 +150,6 @@ export async function validarComprobante(opts: {
           codigo: "duplicado",
           detalle: `La referencia ${ref} ya está en un pago de hoy por $${montoComp.toFixed(2)}.`,
         });
-      } else if (refCanon) {
-        // Número distinto no alcanza: si la hora es la misma, falta, o se
-        // movió un minuto, es la misma captura con otro código leído.
-        const horaNueva = normalizarHora(c.hora);
-        const repetida = mismos.some((p) => horaEsLaMismaCaptura(horaNueva, horaDelPago(p.pagado_at)));
-        if (repetida) {
-          crearPago = false;
-          pagoDuplicadoId = mismos[0]!.id;
-          alertas.push({
-            codigo: "reenvio_dia",
-            detalle: `Ya hay un pago del ${fechaComp} por $${montoComp.toFixed(2)}${horaNueva ? ` a las ${horaNueva}` : ""}. Misma hora: no es otra transferencia.`,
-          });
-        }
       } else if (!refCanon) {
         const primero = mismos[0]!;
         if (!opts.yaPidieronReferencia) {

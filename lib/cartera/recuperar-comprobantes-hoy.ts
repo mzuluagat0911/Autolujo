@@ -7,6 +7,8 @@ import {
   cerrarLecturaImagen,
   estadoLecturaImagen,
   LECTURA_LISTA,
+  soltarLecturaImagen,
+  tomarLecturaImagen,
   type Conversacion,
 } from "@/lib/cartera/pipeline";
 import { restaurarComprobantesMalRechazados } from "@/lib/cartera/comprobante-validacion";
@@ -28,16 +30,17 @@ type FotoHoy = {
 const ESPERA_LECTOR_MS = 10 * 60 * 1000;
 
 /**
- * Solo se recupera una foto que el lector ya soltó. Si Claudia la está
- * leyendo (o acaba de llegar), crear la fila de $0 deja dos comprobantes
- * con la misma foto.
+ * Solo se recupera una foto que nadie terminó de leer. Si Claudia la está
+ * leyendo (o acaba de llegar), crear la fila de $0 deja dos comprobantes con
+ * la misma foto. Si ya la cerró sin pago (repetida o no era comprobante), esa
+ * fue su decisión: recuperarla vuelve a meter el duplicado en la cola.
  */
 function fotoAbandonada(
   r: { enviado_por: string | null; created_at: string },
   ahora: number,
 ): boolean {
   if (ahora - new Date(r.created_at).getTime() < ESPERA_LECTOR_MS) return false;
-  return estadoLecturaImagen({ pagoId: null, enviadoPor: r.enviado_por }, ahora) !== "ocupada";
+  return estadoLecturaImagen({ pagoId: null, enviadoPor: r.enviado_por }, ahora) === "tomar";
 }
 
 function inicioHoyPanamaIso(hoy: string): string {
@@ -51,7 +54,7 @@ async function conversacionDe(id: string): Promise<Conversacion | null> {
   return (data as Conversacion | null) ?? null;
 }
 
-/** Fotos entrantes de hoy con archivo y sin pago (incluye las selladas sin fila). */
+/** Fotos entrantes de hoy con archivo, sin pago y que nadie terminó de leer. */
 export async function listarFotosHoySinPago(limite = 200): Promise<FotoHoy[]> {
   const sb = createServerSupabase();
   const hoy = hoyPanama();
@@ -85,40 +88,21 @@ export async function listarFotosHoySinPago(limite = 200): Promise<FotoHoy[]> {
     }));
 }
 
-/** Preferimos un vivo; si solo hay rechazado con esa foto, lo reabrimos. */
+/**
+ * Pago que ya tiene esta foto, vivo o rechazado. Un rechazado no se reabre:
+ * lo decidió el equipo, y reabrirlo devolvía el duplicado a la cola.
+ */
 async function asegurarPagoPorPath(path: string): Promise<string | null> {
   const sb = createServerSupabase();
-  const { data: vivos } = await sb
+  const { data } = await sb
     .from("pagos")
     .select("id, estado_conciliacion")
     .eq("comprobante_url", path)
-    .neq("estado_conciliacion", "rechazado")
     .order("created_at", { ascending: true })
-    .limit(1);
-  const vivo = (vivos as { id: string }[] | null)?.[0];
-  if (vivo) return vivo.id;
-
-  const { data: rech } = await sb
-    .from("pagos")
-    .select("id, notas")
-    .eq("comprobante_url", path)
-    .eq("estado_conciliacion", "rechazado")
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  const row = rech as { id: string; notas: string | null } | null;
-  if (!row) return null;
-  const notas = (row.notas ?? "")
-    .split(" · ")
-    .map((t) => t.trim())
-    .filter((t) => t && !t.includes("comprobante repetido") && !t.includes("duplicado de recuperación"))
-    .join(" · ") || null;
-  await sb
-    .from("pagos")
-    .update({ estado_conciliacion: "pendiente", notas })
-    .eq("id", row.id)
-    .eq("estado_conciliacion", "rechazado");
-  return row.id;
+    .limit(10);
+  const filas = (data ?? []) as { id: string; estado_conciliacion: string }[];
+  const vivo = filas.find((p) => p.estado_conciliacion !== "rechazado");
+  return (vivo ?? filas[0])?.id ?? null;
 }
 
 /**
@@ -159,6 +143,17 @@ export async function crearPagoDesdeFotoSinLectura(mensajeId: string): Promise<{
   const conv = await conversacionDe(row.conversacion_id);
   if (!conv) return { pagoId: null, motivo: "sin_conversacion" };
 
+  // Pagos abierto en dos pantallas y el cron corren a la vez: solo el que
+  // toma la foto crea la fila.
+  if ((await tomarLecturaImagen(mensajeId)) !== "tomar") {
+    return { pagoId: null, motivo: "lector_en_curso" };
+  }
+  const yaHay = await asegurarPagoPorPath(row.media_url);
+  if (yaHay) {
+    await cerrarLecturaImagen(mensajeId, yaHay);
+    return { pagoId: yaHay, motivo: "path_ya_en_pagos" };
+  }
+
   const carro =
     (conv.etiqueta ?? "").replace(/^carro\s+/i, "").trim() || null;
   const hoy = hoyPanama();
@@ -182,6 +177,7 @@ export async function crearPagoDesdeFotoSinLectura(mensajeId: string): Promise<{
     .select("id")
     .single();
   if (error || !pago) {
+    await soltarLecturaImagen(mensajeId);
     return { pagoId: null, motivo: error?.message ?? "insert_fallo" };
   }
   const pagoId = pago.id as string;
@@ -284,7 +280,8 @@ export async function recuperarComprobantesDeHoy(): Promise<{
 }> {
   const hoy = hoyPanama();
   const restauradosMalRechazo = await restaurarComprobantesMalRechazados();
-  const restauradosHoy = await restaurarRechazadosDeHoy();
+  // Un rechazo del equipo no se deshace solo: reabrirlo devolvía duplicados a la cola.
+  const restauradosHoy = 0;
   const desdeFotos = await asegurarPagosDesdeFotosHoy(250);
 
   return {
