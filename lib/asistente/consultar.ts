@@ -39,7 +39,7 @@ function tablaPedida(nombre: string, modulos: readonly ModuloId[]): string | { e
   if (!/^[a-z_][a-z0-9_]*$/.test(n)) return { error: "Esa tabla no existe." };
   if (!puedeTabla(modulos, n)) {
     const lista = tablasDe(modulos).map((t) => t.nombre).join(", ");
-    return { error: `Esa tabla no está en tus módulos. Puedes leer: ${lista || "ninguna"}.` };
+    return { error: `Esa tabla no está en la lista. Puedes leer: ${lista || "ninguna"}.` };
   }
   return n;
 }
@@ -96,7 +96,10 @@ function limpiar(value: unknown, clave = ""): unknown {
     }
     return out;
   }
-  if (typeof value === "string" && clave !== "id" && !clave.endsWith("_id")) return taparTexto(value);
+  if (typeof value === "string" && clave !== "id" && !clave.endsWith("_id")) {
+    if (clave === "panapass" || clave === "placa" || clave === "fecha_nacimiento") return value;
+    return taparTexto(value);
+  }
   return value;
 }
 
@@ -115,7 +118,7 @@ export async function consultarTabla(modulos: readonly ModuloId[], pedido: Pedid
   const select = columnasOk((pedido.columnas ?? "*").trim() || "*");
   if (typeof select !== "string") return select;
   const ajena = tablasEmbebidas(select, modulos);
-  if (ajena) return { error: `No puedes leer la tabla ${ajena}.` };
+  if (ajena) return { error: `La tabla ${ajena} no está en la lista.` };
   const filtros = filtrosOk(pedido.filtros);
   if (!Array.isArray(filtros)) return filtros;
   if (pedido.orden && (!COL.test(pedido.orden.columna) || SENSIBLE.test(pedido.orden.columna))) {

@@ -11,6 +11,7 @@ import { textoCatalogo } from "./catalogo";
 import { columnasDe, consultarTabla, resumirTabla, type Filtro } from "./consultar";
 import { alertasOperaciones } from "./operaciones";
 import { cobroDeCarro, saldoCartera } from "./cobro";
+import { cumpleanosDe, panapassDe } from "./ficha";
 import { manualDe } from "./manual";
 import { cifrasSinFuente } from "./verificar";
 
@@ -37,28 +38,37 @@ function filtrosDe(lista: z.infer<typeof FiltroZ>[] | undefined): Filtro[] | und
 }
 
 function herramientas(modulos: readonly ModuloId[]) {
-  const puedeCobrar = modulos.includes("cartera") || modulos.includes("resumen");
-  const puedeOperar = modulos.includes("operaciones");
   return {
     columnas: tool({
-      description: "Columnas reales de una tabla permitida. Úsala antes de filtrar si no estás seguro del nombre.",
+      description: "Columnas reales de una tabla de la lista. Úsala antes de filtrar si no estás seguro del nombre.",
       inputSchema: z.object({ tabla: z.string() }),
       execute: async (input) => columnasDe(modulos, input.tabla),
     }),
-    ...(puedeOperar
-      ? {
-          alertas_operaciones: tool({
-            description:
-              "Lo que muestra Operaciones: mantenimiento (6.000 km), kit (kit de tiempos), licencias o revisado. Por defecto solo lo pendiente. Para un carro puntual (km desde su último mantenimiento, cuánto le falta para el kit), pasa carro (ej. 92, KW130, G07).",
-            inputSchema: z.object({
-              tipo: z.enum(["mantenimiento", "kit", "licencias", "revisado"]),
-              todos: z.boolean().optional(),
-              carro: z.string().optional(),
-            }),
-            execute: async (input) => alertasOperaciones(input.tipo, !input.todos, input.carro),
-          }),
-        }
-      : {}),
+    alertas_operaciones: tool({
+      description:
+        "Lo que muestra Operaciones: mantenimiento (6.000 km), kit (kit de tiempos), licencias o revisado. Por defecto solo lo pendiente. Para un carro puntual (km desde su último mantenimiento, cuánto le falta para el kit), pasa carro (ej. 92, KW130, G07).",
+      inputSchema: z.object({
+        tipo: z.enum(["mantenimiento", "kit", "licencias", "revisado"]),
+        todos: z.boolean().optional(),
+        carro: z.string().optional(),
+      }),
+      execute: async (input) => alertasOperaciones(input.tipo, !input.todos, input.carro),
+    }),
+    panapass: tool({
+      description:
+        "Número de Panapass (el tag) de un carro. Acepta 92, AL10, KW130 o G07. Ese número sí se responde.",
+      inputSchema: z.object({ carro: z.string() }),
+      execute: async (input) => panapassDe(input.carro),
+    }),
+    cumpleanos: tool({
+      description:
+        "Cumpleaños. Sin carro: quién cumple en esa fecha (hoy si no pasas fecha). Con carro: la fecha de nacimiento de ese cliente y si hoy le toca el día libre.",
+      inputSchema: z.object({
+        fecha: z.string().optional(),
+        carro: z.string().optional(),
+      }),
+      execute: async (input) => cumpleanosDe(input),
+    }),
     consultar: tool({
       description:
         "Lee filas de una tabla permitida. Filtros: eq, neq, gt, gte, lt, lte, ilike, in (valores separados por coma), is (null). Máximo 40 filas. Para un total o un conteo usa resumir.",
@@ -93,27 +103,23 @@ function herramientas(modulos: readonly ModuloId[]) {
           filtros: filtrosDe(input.filtros),
         }),
     }),
-    ...(puedeCobrar
-      ? {
-          cobro_hoy: tool({
-            description:
-              "Total a pagar hoy de un carro, con el desglose del mensaje. Acepta 92, AL10, KW130 o G07. Es la única cifra de cobro que puedes decir.",
-            inputSchema: z.object({
-              carro: z.string(),
-            }),
-            execute: async (input) => cobroDeCarro(input.carro),
-          }),
-          saldo_cartera: tool({
-            description:
-              "Saldo de libro sumado de la cartera. estado: activo (por defecto), suspendido, finalizado, traspasado, devuelto o todos. empresa opcional: AUTOLUJO, KOWUA o GOLD.",
-            inputSchema: z.object({
-              estado: z.string().optional(),
-              empresa: z.string().optional(),
-            }),
-            execute: async (input) => saldoCartera(input),
-          }),
-        }
-      : {}),
+    cobro_hoy: tool({
+      description:
+        "Total a pagar hoy de un carro, con el desglose del mensaje. Acepta 92, AL10, KW130 o G07. Es la única cifra de cobro que puedes decir.",
+      inputSchema: z.object({
+        carro: z.string(),
+      }),
+      execute: async (input) => cobroDeCarro(input.carro),
+    }),
+    saldo_cartera: tool({
+      description:
+        "Saldo de libro sumado de la cartera. estado: activo (por defecto), suspendido, finalizado, traspasado, devuelto o todos. empresa opcional: AUTOLUJO, KOWUA o GOLD.",
+      inputSchema: z.object({
+        estado: z.string().optional(),
+        empresa: z.string().optional(),
+      }),
+      execute: async (input) => saldoCartera(input),
+    }),
   };
 }
 

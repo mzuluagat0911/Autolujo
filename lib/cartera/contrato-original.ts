@@ -607,6 +607,11 @@ function htmlDeParrafo(p: string, imagenes: Map<string, string>): string {
   return corte ? `<hr class="corte">${bloque}` : bloque;
 }
 
+/** Carta (8,5 × 11) → legal (8,5 × 14). 12240 × 20160 twips. El código 5 es el papel Legal de Word. */
+function paginaLegal(xml: string): string {
+  return xml.replace(/<w:pgSz\b[^>]*\/>/g, '<w:pgSz w:w="12240" w:h="20160" w:code="5"/>');
+}
+
 /** El mismo Word, en HTML, para verlo dentro de la plataforma. */
 export function htmlDeDocxContrato(docx: Buffer): string {
   const piezas = unzipSync(new Uint8Array(docx));
@@ -628,7 +633,7 @@ export async function armarDocxDesdeOriginal(d: DatosContratoDoc): Promise<Buffe
   const crudo = new Uint8Array(readFileSync(ruta));
   const piezas = unzipSync(crudo);
   const armado = pegarFirmas(rellenar(strFromU8(piezas["word/document.xml"]), d, cual));
-  piezas["word/document.xml"] = strToU8(armado.xml);
+  piezas["word/document.xml"] = strToU8(paginaLegal(armado.xml));
   for (const medio of armado.medios) piezas[medio.archivo] = medio.data as Uint8Array<ArrayBuffer>;
   if (armado.medios.length) {
     const tipos = strFromU8(piezas["[Content_Types].xml"]);
