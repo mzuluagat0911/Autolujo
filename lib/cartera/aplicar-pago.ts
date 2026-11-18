@@ -41,7 +41,7 @@ import { diaSemana, fechaContable, hoyPanama, pasoCorte, esPagoPuntual, esDoming
 import { tajadaDomingoQueFalta } from "./cifras";
 import { atrasoAcuerdoPorContrato, pagoHoyContrato } from "./pagos-dia";
 import type { AsignacionPago, Obligacion, ResultadoPago, TipoObligacion } from "./types";
-import { asegurarCargosAcuerdoDelPago, borrarCargosAcuerdoDelPago } from "./espejo-acuerdo";
+import { asegurarCargosAcuerdoDelPago, abonoDeAltaYaCargado, borrarCargosAcuerdoDelPago } from "./espejo-acuerdo";
 
 export { asegurarCargosAcuerdoDelPago, borrarCargosAcuerdoDelPago };
 import {
@@ -409,6 +409,16 @@ export async function asegurarCargoAbonoDelPago(opts: {
       .reduce((s, a) => s + Number(a.aplicado), 0),
   );
   if (monto <= 0.009) return;
+  if (
+    await abonoDeAltaYaCargado({
+      contratoId: opts.contratoId,
+      pagoId: opts.pagoId,
+      fecha: opts.fecha,
+      monto,
+    })
+  ) {
+    return;
+  }
   const sb = createServerSupabase();
   const ya = await sb.from("cargos").select("id").eq("pago_id", opts.pagoId).eq("tipo", "afiliacion").limit(1);
   if (ya.error && !/pago_id/i.test(ya.error.message)) return;

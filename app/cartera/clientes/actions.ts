@@ -708,6 +708,15 @@ export async function createClienteConContrato(
         error: `Contrato creado, pero falló el pago: ${pagoIns.error.message}`,
       };
     }
+    const pagoId = (pagoIns.data as { id: string } | null)?.id;
+    if (pagoId && abonoPagado > 0.009) {
+      await sb
+        .from("cargos")
+        .update({ pago_id: pagoId })
+        .eq("contrato_id", contratoId)
+        .eq("tipo", "afiliacion")
+        .is("pago_id", null);
+    }
   }
 
   void acuerdoId; // creado; el extracto lo toma de acuerdos activos

@@ -678,7 +678,7 @@ export async function guardarAsignacionesHistorial(opts: {
   const sb = createServerSupabase();
   const { data: p, error } = await sb
     .from("pagos")
-    .select("id, contrato_id, monto, estado_conciliacion, pagado_at, notas")
+    .select("id, contrato_id, monto, estado_conciliacion, pagado_at, notas, asignaciones")
     .eq("id", pagoId)
     .maybeSingle();
   if (error) return { ok: false, msg: error.message };
@@ -722,10 +722,16 @@ export async function guardarAsignacionesHistorial(opts: {
     etiqueta: l.etiqueta || ETIQUETA_ASIG[l.tipo] || l.tipo,
     ref: undefined as string | undefined,
   }));
+  const prev = (p as { asignaciones?: unknown }).asignaciones;
+  const origen =
+    prev && typeof prev === "object" && !Array.isArray(prev)
+      ? (prev as { origen?: string }).origen
+      : undefined;
   const payload = {
     asignaciones,
     sobrante,
     totalAplicado: suma,
+    ...(origen ? { origen } : {}),
   };
 
   const notasPrev = String((p as { notas: string | null }).notas ?? "").trim();

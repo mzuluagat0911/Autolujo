@@ -91,23 +91,48 @@ function esCargoAbono(c: { concepto: string | null }): boolean {
   return /abono\s*inicial/i.test(c.concepto ?? "");
 }
 
-/** El alta carga la afiliación sin pago_id. Si ese cargo ya cubre el abono,
- *  el espejo lo vuelve a meter en la letra y el extracto lo cobra como cuenta. */
-async function afiliacionSueltaCubre(contratoId: string, fecha: string, monto: number): Promise<boolean> {
-  if (monto <= 0.009) return false;
+function esMarcaDeAlta(asignaciones: unknown, notas?: string | null): boolean {
+  if (asignaciones && typeof asignaciones === "object" && !Array.isArray(asignaciones)) {
+    if ((asignaciones as { origen?: string }).origen === "alta_contrato") return true;
+  }
+  return /alta de contrato/i.test(notas ?? "");
+}
+
+/**
+ * El alta ya cargó la afiliación por lo pagado. Un espejo encima vuelve a
+ * meter ese abono en la letra. También cuenta si el pago sigue marcado como
+ * alta, aunque alguien le haya cambiado la fecha o reasignado los conceptos.
+ */
+export async function abonoDeAltaYaCargado(opts: {
+  contratoId: string;
+  pagoId: string;
+  fecha: string;
+  monto: number;
+}): Promise<boolean> {
+  if (opts.monto <= 0.009) return false;
   const sb = createServerSupabase();
-  const { data } = await sb
-    .from("cargos")
-    .select("monto, concepto, fecha")
-    .eq("contrato_id", contratoId)
-    .eq("tipo", "afiliacion")
-    .is("pago_id", null);
-  return ((data ?? []) as { monto: number; concepto: string | null; fecha: string | null }[]).some(
-    (c) =>
-      /abono\s*inicial/i.test(c.concepto ?? "") &&
-      String(c.fecha ?? "").slice(0, 10) === fecha.slice(0, 10) &&
-      Math.abs((Number(c.monto) || 0) - monto) < 0.05,
-  );
+  const [{ data: cargos }, { data: pago }] = await Promise.all([
+    sb
+      .from("cargos")
+      .select("monto, concepto, fecha, pago_id")
+      .eq("contrato_id", opts.contratoId)
+      .eq("tipo", "afiliacion"),
+    sb.from("pagos").select("asignaciones, notas").eq("id", opts.pagoId).maybeSingle(),
+  ]);
+  const fila = pago as { asignaciones?: unknown; notas?: string | null } | null;
+  if (esMarcaDeAlta(fila?.asignaciones, fila?.notas)) return true;
+  const dia = opts.fecha.slice(0, 10);
+  return ((cargos ?? []) as {
+    monto: number;
+    concepto: string | null;
+    fecha: string | null;
+    pago_id: string | null;
+  }[]).some((c) => {
+    if (!/abono\s*inicial/i.test(c.concepto ?? "")) return false;
+    if (Math.abs((Number(c.monto) || 0) - opts.monto) >= 0.05) return false;
+    if (c.pago_id && c.pago_id === opts.pagoId) return true;
+    return !c.pago_id && String(c.fecha ?? "").slice(0, 10) === dia;
+  });
 }
 
 async function cargosEspejoDelPago(
@@ -145,7 +170,12 @@ export async function asegurarCargosAcuerdoDelPago(opts: {
   if (abono.length > 0) {
     const delAbono = vivos.filter(esCargoAbono);
     const sumaNueva = r2(abono.reduce((s, a) => s + (Number(a.aplicado) || 0), 0));
-    const alta = await afiliacionSueltaCubre(opts.contratoId, opts.fecha, sumaNueva);
+    const alta = await abonoDeAltaYaCargado({
+      contratoId: opts.contratoId,
+      pagoId: opts.pagoId,
+      fecha: opts.fecha,
+      monto: sumaNueva,
+    });
     if (alta) {
       if (delAbono.length > 0) {
         const sb = createServerSupabase();
@@ -236,6 +266,7 @@ export async function cuadrarEspejosAcuerdo(
     pagado_at: string | null;
     fecha: string | null;
     asignaciones: unknown;
+    notas: string | null;
   };
   const pagos: Pago[] = [];
   for (let i = 0; i < conAcuerdo.length; i += 40) {
@@ -243,7 +274,7 @@ export async function cuadrarEspejosAcuerdo(
     for (let desde = 0; ; desde += 1000) {
       const { data, error } = await sb
         .from("pagos")
-        .select("id, contrato_id, pagado_at, fecha, asignaciones")
+        .select("id, contrato_id, pagado_at, fecha, asignaciones, notas")
         .in("contrato_id", lote)
         .in("estado_conciliacion", ["conciliado", "manual"])
         .not("asignaciones", "is", null)
@@ -324,10 +355,11 @@ export async function cuadrarEspejosAcuerdo(
     const fecha = p.pagado_at ? fechaContable(p.pagado_at) : (p.fecha ?? "");
     const espejoAbono = abonoYa.get(p.id) ?? 0;
     const cubierto =
-      fecha !== "" &&
-      (sueltas.get(p.contrato_id) ?? []).some(
-        (s) => s.fecha === fecha.slice(0, 10) && Math.abs(s.monto - abono) < 0.05,
-      );
+      esMarcaDeAlta(p.asignaciones, p.notas) ||
+      (fecha !== "" &&
+        (sueltas.get(p.contrato_id) ?? []).some(
+          (s) => s.fecha === fecha.slice(0, 10) && Math.abs(s.monto - abono) < 0.05,
+        ));
     const faltaAbono =
       abono > 0.009 && (cubierto ? espejoAbono > 0.009 : Math.abs(abono - espejoAbono) >= 0.05);
     const faltaAcuerdo = acuerdo - (acuerdoYa.get(p.id) ?? 0) > 0.05;
