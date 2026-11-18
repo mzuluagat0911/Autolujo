@@ -43,7 +43,7 @@ export function esPagoSalidaInterior(p: {
   return asigs.some((a) => a.tipo === "salida_interior");
 }
 
-/** Cuánto del pago baja la letra (no panapass, abono, domingo, salida, …). */
+/** Cuánto del pago baja la letra (no panapass, abono, acuerdo, domingo, salida, …). */
 export function montoQueCubreCuota(p: {
   monto: number;
   rubro?: string | null;
@@ -56,6 +56,7 @@ export function montoQueCubreCuota(p: {
     const fueraLetra = asigs
       .filter((a) => {
         if (a.tipo === "salida_interior") return true;
+        if (a.tipo === "acuerdo" && !/abono\s*inicial/i.test(a.etiqueta ?? "")) return true;
         return Boolean(cubetaDeConcepto(a.tipo, a.etiqueta));
       })
       .reduce((s, a) => s + Number(a.aplicado || 0), 0);
@@ -66,7 +67,8 @@ export function montoQueCubreCuota(p: {
     if (dest) return partirMontoInterior(total, dest.monto).resto;
     return 0;
   }
-  // Rubro entero a un concepto (panapass, domingo, etc.): no es letra.
+  // Rubro entero a un concepto (panapass, domingo, acuerdo, etc.): no es letra.
+  if (p.rubro === "acuerdo") return 0;
   if (p.rubro && cubetaDeConcepto(p.rubro, p.rubro)) return 0;
   return total;
 }
