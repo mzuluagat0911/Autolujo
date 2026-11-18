@@ -725,6 +725,8 @@ export async function createClienteConContrato(
         empresaCodigo: emp,
         waNorm: tels.waNorm,
       });
+      const { marcarGanadoSiVinoPorChat } = await import("@/lib/comercial/cierre-contrato");
+      await marcarGanadoSiVinoPorChat(tels.waNorm);
     } catch {
       avisoChat = "El chat no se pudo enlazar; el contrato sí quedó.";
     }
@@ -742,6 +744,7 @@ export async function createClienteConContrato(
     revalidatePath("/cartera/conversaciones");
     revalidatePath("/cartera/pagos");
     revalidatePath("/cartera");
+    revalidatePath("/comercial/resultados");
     await invalidarLecturaEstados();
   } catch {
     // El contrato ya quedó. La ficha se abre igual.

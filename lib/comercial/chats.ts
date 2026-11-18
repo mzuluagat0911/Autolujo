@@ -887,6 +887,8 @@ export async function actualizarFichaComercial(opts: {
   if (guardado.error) return { ok: false, error: guardado.error.message };
   if (opts.etapa === "ganado" || opts.etapa === "perdido") {
     await cancelarSeguimientosComercial(opts.conversacionId, `Lead cerrado como ${opts.etapa}.`);
+  } else if ("seguimientoAt" in opts) {
+    await aplicarFechaDeSeguimiento(opts.conversacionId, opts.seguimientoAt ?? null);
   }
   const detalle: Record<string, unknown> = {};
   for (const [clave, valor] of Object.entries(patch)) {
@@ -1062,6 +1064,64 @@ async function tieneCitaAbierta(
     .limit(1);
   if (error) return false;
   return Boolean(data?.length);
+}
+
+/**
+ * La fecha de la ficha. Con Lucía, el próximo mensaje sale a esa hora.
+ * Con una persona, se apaga el envío automático y la fecha queda de recordatorio.
+ * Vacía no toca la cadencia.
+ */
+export async function aplicarFechaDeSeguimiento(
+  conversacionId: string,
+  cuando: string | null,
+): Promise<void> {
+  if (!cuando) return;
+  const fecha = new Date(cuando);
+  if (Number.isNaN(fecha.getTime())) return;
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("conversaciones_comercial")
+    .select("modo_atencion, etapa, cerrado_at, intentos_seguimiento")
+    .eq("id", conversacionId)
+    .maybeSingle();
+  if (!data || data.cerrado_at) return;
+  const ahora = new Date().toISOString();
+  const apagarEnvio =
+    data.modo_atencion !== "lucia" || ETAPA_SIN_SEGUIMIENTO.has(String(data.etapa ?? ""));
+  await sb
+    .from("seguimientos_comercial")
+    .update({
+      estado: "cancelado",
+      motivo_cancelado: apagarEnvio
+        ? "El seguimiento lo retoma el equipo."
+        : "La fecha la puso el equipo.",
+      updated_at: ahora,
+    })
+    .eq("conversacion_id", conversacionId)
+    .eq("estado", "pendiente");
+  if (apagarEnvio || fecha.getTime() < Date.now() - 60_000) return;
+  const intento = Math.min(7, Math.max(1, Number(data.intentos_seguimiento ?? 0) + 1));
+  const { data: ya } = await sb
+    .from("seguimientos_comercial")
+    .select("estado")
+    .eq("conversacion_id", conversacionId)
+    .eq("intento", intento)
+    .maybeSingle();
+  if (ya?.estado === "enviado" || ya?.estado === "enviando") return;
+  await sb.from("seguimientos_comercial").upsert(
+    {
+      conversacion_id: conversacionId,
+      programado_at: fecha.toISOString(),
+      estado: "pendiente",
+      intento,
+      texto: null,
+      enviado_at: null,
+      motivo_cancelado: null,
+      error: null,
+      updated_at: ahora,
+    },
+    { onConflict: "conversacion_id,intento" },
+  );
 }
 
 export async function programarSiguienteSeguimiento(

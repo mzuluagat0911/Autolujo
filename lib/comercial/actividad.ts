@@ -1,27 +1,30 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { listarAsesoresComerciales } from "./chats";
 
-export type EnCurso = {
-  id: string;
-  nombre: string;
-  etapa: string;
-  nota: string;
-  cuando: string | null;
-};
+export type GrupoActividad = "mensaje" | "ficha" | "cita" | "asignacion" | "otro";
 
-export type Hecho = {
+export type Movimiento = {
   id: string;
   cuando: string;
-  texto: string;
-  chatId: string;
+  asesorId: string;
+  asesor: string;
   lead: string;
+  chatId: string;
+  grupo: GrupoActividad;
+  texto: string;
 };
 
-export type ActividadAsesor = {
+export type Abierto = {
+  id: string;
+  asesorId: string;
+  nombre: string;
+  etapa: string;
+};
+
+export type PersonaActividad = {
   id: string;
   nombre: string;
-  enCurso: EnCurso[];
-  hechos: Hecho[];
+  abiertos: number;
 };
 
 const ETAPA: Record<string, string> = {
@@ -37,12 +40,21 @@ export function etiquetaEtapa(etapa: string): string {
   return ETAPA[etapa] ?? etapa;
 }
 
+export function grupoDe(tipo: string): GrupoActividad {
+  if (tipo === "mensaje") return "mensaje";
+  if (tipo === "ficha_actualizada") return "ficha";
+  if (tipo.startsWith("cita_")) return "cita";
+  if (tipo === "chat_tomado" || tipo === "chat_devuelto") return "asignacion";
+  return "otro";
+}
+
 function textoDe(tipo: string, detalle: Record<string, unknown>): string {
   const nota = typeof detalle.observaciones === "string" ? detalle.observaciones.trim() : "";
   const escrito = typeof detalle.texto === "string" ? detalle.texto.trim() : "";
   const cuando = [detalle.fecha, detalle.hora].filter(Boolean).join(" ");
-  if (tipo === "mensaje") return escrito ? `Escribió: ${escrito}` : "Escribió en el chat";
-  if (tipo === "ficha_actualizada") return nota ? `Anotó: ${nota}` : "Actualizó la ficha";
+  const corto = (s: string) => (s.length > 72 ? `${s.slice(0, 72)}…` : s);
+  if (tipo === "mensaje") return escrito ? `Escribió: ${corto(escrito)}` : "Escribió en el chat";
+  if (tipo === "ficha_actualizada") return nota ? `Anotó: ${corto(nota)}` : "Actualizó la ficha";
   if (tipo === "chat_tomado") return "Tomó el chat";
   if (tipo === "chat_devuelto") return "Devolvió el chat a Lucía";
   if (tipo === "cita_agendada") return cuando ? `Agendó la cita del ${cuando}` : "Agendó una cita";
@@ -51,17 +63,23 @@ function textoDe(tipo: string, detalle: Record<string, unknown>): string {
   if (tipo === "cita_asistio") return "Marcó que el cliente asistió";
   if (tipo === "cita_no_asistio") return "Marcó que no asistió";
   if (tipo === "cita_cancelada") return "Canceló la cita";
+  if (tipo === "contrato") return "El contrato cerró el chat";
   return tipo.replaceAll("_", " ");
 }
 
-export async function actividadComercial(): Promise<{ asesores: ActividadAsesor[]; error: string | null }> {
+export async function actividadComercial(): Promise<{
+  personas: PersonaActividad[];
+  abiertos: Abierto[];
+  movimientos: Movimiento[];
+  error: string | null;
+}> {
   const sb = createServerSupabase();
-  const desde = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const [asesores, abiertos, eventos] = await Promise.all([
+  const desde = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const [asesores, chats, eventos] = await Promise.all([
     listarAsesoresComerciales(),
     sb
       .from("conversaciones_comercial")
-      .select("id, nombre, wa_numero, etapa, observaciones, proxima_accion, ultimo_mensaje_at, asesor_id")
+      .select("id, nombre, wa_numero, etapa, asesor_id")
       .not("asesor_id", "is", null)
       .is("cerrado_at", null)
       .order("ultimo_mensaje_at", { ascending: false })
@@ -72,64 +90,59 @@ export async function actividadComercial(): Promise<{ asesores: ActividadAsesor[
       .gte("created_at", desde)
       .not("actor_id", "is", null)
       .order("created_at", { ascending: false })
-      .limit(400),
+      .limit(800),
   ]);
 
-  let filasAbiertas = abiertos.data as Record<string, unknown>[] | null;
-  let errorAbiertos = abiertos.error?.message ?? null;
-  if (abiertos.error && /observaciones/i.test(abiertos.error.message)) {
-    const retry = await sb
-      .from("conversaciones_comercial")
-      .select("id, nombre, wa_numero, etapa, proxima_accion, ultimo_mensaje_at, asesor_id")
-      .not("asesor_id", "is", null)
-      .is("cerrado_at", null)
-      .order("ultimo_mensaje_at", { ascending: false })
-      .limit(400);
-    filasAbiertas = (retry.data ?? []) as Record<string, unknown>[];
-    errorAbiertos = retry.error?.message ?? null;
-  }
-
-  const porAsesor = new Map<string, ActividadAsesor>();
-  for (const a of asesores) {
-    porAsesor.set(a.id, { id: a.id, nombre: a.nombre, enCurso: [], hechos: [] });
-  }
-
-  for (const row of filasAbiertas ?? []) {
+  const nombres = new Map(asesores.map((a) => [a.id, a.nombre]));
+  const abiertosPorPersona = new Map<string, number>();
+  const abiertos: Abierto[] = [];
+  for (const row of (chats.data ?? []) as Record<string, unknown>[]) {
     const asesorId = String(row.asesor_id ?? "");
-    const ficha = porAsesor.get(asesorId);
-    if (!ficha || ficha.enCurso.length >= 12) continue;
-    const nota = String(row.observaciones ?? row.proxima_accion ?? "").trim();
-    ficha.enCurso.push({
+    if (!nombres.has(asesorId)) continue;
+    abiertosPorPersona.set(asesorId, (abiertosPorPersona.get(asesorId) ?? 0) + 1);
+    if (abiertos.filter((a) => a.asesorId === asesorId).length >= 8) continue;
+    abiertos.push({
       id: String(row.id),
-      nombre: String(row.nombre ?? "").trim() || String(row.wa_numero ?? "Lead"),
+      asesorId,
+      nombre: String(row.nombre ?? "").trim() || "Lead",
       etapa: etiquetaEtapa(String(row.etapa ?? "")),
-      nota: nota.slice(0, 140),
-      cuando: (row.ultimo_mensaje_at as string | null) ?? null,
     });
   }
 
+  const movimientos: Movimiento[] = [];
   for (const row of (eventos.data ?? []) as Record<string, unknown>[]) {
     const asesorId = String(row.actor_id ?? "");
-    const ficha = porAsesor.get(asesorId);
-    if (!ficha || ficha.hechos.length >= 25) continue;
+    const asesor = nombres.get(asesorId);
+    if (!asesor) continue;
     const chatRaw = row.chat;
     const chat = Array.isArray(chatRaw) ? chatRaw[0] : chatRaw;
     const lead =
       chat && typeof chat === "object"
-        ? String((chat as { nombre?: string | null }).nombre ?? "").trim() ||
-          String((chat as { wa_numero?: string | null }).wa_numero ?? "Lead")
+        ? String((chat as { nombre?: string | null }).nombre ?? "").trim() || "Lead"
         : "Lead";
     const detalle =
       row.detalle && typeof row.detalle === "object" ? (row.detalle as Record<string, unknown>) : {};
-    ficha.hechos.push({
+    const tipo = String(row.tipo ?? "");
+    movimientos.push({
       id: String(row.id),
       cuando: String(row.created_at ?? ""),
-      texto: textoDe(String(row.tipo ?? ""), detalle),
-      chatId: String(row.conversacion_id ?? ""),
+      asesorId,
+      asesor,
       lead,
+      chatId: String(row.conversacion_id ?? ""),
+      grupo: grupoDe(tipo),
+      texto: textoDe(tipo, detalle),
     });
   }
 
-  const lista = [...porAsesor.values()].sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
-  return { asesores: lista, error: errorAbiertos ?? eventos.error?.message ?? null };
+  const personas = asesores
+    .map((a) => ({ id: a.id, nombre: a.nombre, abiertos: abiertosPorPersona.get(a.id) ?? 0 }))
+    .sort((a, b) => a.nombre.localeCompare(b.nombre, "es"));
+
+  return {
+    personas,
+    abiertos,
+    movimientos,
+    error: chats.error?.message ?? eventos.error?.message ?? null,
+  };
 }

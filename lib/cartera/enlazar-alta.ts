@@ -172,6 +172,12 @@ export async function crearArrendatarioEnCarro(opts: {
     waNorm: tels.waNorm,
     quedaraActivo,
   });
+  try {
+    const { marcarGanadoSiVinoPorChat } = await import("@/lib/comercial/cierre-contrato");
+    await marcarGanadoSiVinoPorChat(tels.waNorm);
+  } catch {
+    // El contrato ya quedó. El resultado comercial se cuadra al abrir la pantalla.
+  }
   let avisoBienvenida: string | null = null;
   if (!decision.reutilizarId) {
     const bienvenida = await enviarBienvenidaCartera(tels.waNorm);

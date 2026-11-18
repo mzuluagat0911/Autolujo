@@ -1380,12 +1380,18 @@ function FichaLead({
             className="mt-1.5 w-full resize-y rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
           />
         </label>
-        <Campo
-          label="Seguimiento"
-          name="seguimiento_at"
-          type="datetime-local"
-          defaultValue={datetimeLocal(chat.seguimientoAt)}
-        />
+        <label className="block">
+          <span className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted">Volver a escribirle</span>
+          <input
+            type="datetime-local"
+            name="seguimiento_at"
+            defaultValue={datetimeLocal(chat.seguimientoAt)}
+            className="mt-1.5 h-9 w-full rounded-lg bg-paper px-3 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+          />
+          <span className="mt-1.5 block text-[11px] leading-relaxed text-muted">
+            Si Lucía lleva el chat, le escribe a esta hora. Si lo lleva una persona, el chat entra a Seguimiento para retomarlo y Lucía no escribe. Vacío, Lucía sigue sola: 3 h si está caliente, 4 h tibio, 8 h frío, y después más espaciado hasta archivar.
+          </span>
+        </label>
         {(cierra || chat.resultado || chat.motivoPerdida) && (
           <div className="space-y-3 rounded-xl bg-surface-2 p-3.5">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Cierre</p>

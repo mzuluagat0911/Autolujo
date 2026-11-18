@@ -11,7 +11,7 @@ export default async function ResultadosComercialPage() {
       <PageHeader
         eyebrow="Comercial"
         title="Resultados"
-        subtitle="Del primer mensaje a la cita, la visita y el contrato. La primera respuesta es la mediana, en minutos."
+        subtitle="Del primer mensaje al contrato. Un contrato cuenta aquí cuando el WhatsApp del alta es el mismo del chat."
         action={
           <Link
             href="/comercial"

@@ -65,6 +65,8 @@ export async function resumenComercial(): Promise<ResumenComercial> {
   };
   try {
     const sb = createServerSupabase();
+    const { cuadrarGanadosConContratos } = await import("./cierre-contrato");
+    await cuadrarGanadosConContratos();
     const ahoraIso = new Date().toISOString();
     const contarLeads = async (aplicar: (q: any) => any): Promise<number | null> => {
       const { count, error } = await aplicar(
