@@ -456,9 +456,10 @@ const AIRE_CONTACTO = '<w:spacing w:before="280" w:after="200" w:line="276" w:li
 
 function ponerAlineacion(xml: string, val: "left" | "center"): string {
   const jc = `<w:jc w:val="${val}"/>`;
-  if (/<w:jc\b/.test(xml)) return xml.replace(/<w:jc\b[^>]*\/>/, jc);
-  if (/<w:pPr\b/.test(xml)) return xml.replace(/<w:pPr\b([^>]*)>/, `<w:pPr$1>${jc}`);
-  return xml.replace(/<w:p\b([^>]*)>/, `<w:p$1><w:pPr>${jc}</w:pPr>`);
+  const sinSangria = xml.replace(/<w:ind\b[^>]*\/>/g, "").replace(/<w:ind\b[^>]*>[\s\S]*?<\/w:ind>/g, "");
+  if (/<w:jc\b/.test(sinSangria)) return sinSangria.replace(/<w:jc\b[^>]*\/>/, jc);
+  if (/<w:pPr\b/.test(sinSangria)) return sinSangria.replace(/<w:pPr\b([^>]*)>/, `<w:pPr$1>${jc}`);
+  return sinSangria.replace(/<w:p\b([^>]*)>/, `<w:p$1><w:pPr>${jc}</w:pPr>`);
 }
 
 function prefijarTexto(xml: string, prefijo: string): string {
@@ -544,7 +545,7 @@ function acomodarForma(xml: string): string {
           continue;
         }
         nMulta += 1;
-        p.xml = ponerAlineacion(ponerSpacing(prefijarTexto(base, `${nMulta}. `), SIN_AIRE), "left");
+        p.xml = ponerAlineacion(prefijarTexto(base, `${nMulta}. `), "left");
         continue;
       }
       if (zona === "causas" && !esClausula(t)) {
@@ -600,7 +601,7 @@ function pngDeFirma(nombre: string, pulgadas: number): PngFirma | null {
 }
 
 const FORMA_FIRMA_CLIENTE =
-  '<w:spacing w:before="2400" w:after="40" w:line="276" w:lineRule="auto"/>';
+  '<w:spacing w:before="1200" w:after="40" w:line="276" w:lineRule="auto"/>';
 const FORMA_IMAGEN = '<w:jc w:val="left"/><w:spacing w:before="120" w:after="40" w:line="2800" w:lineRule="atLeast"/>';
 
 function formaDeImagen(cy: number): string {
@@ -651,14 +652,29 @@ function pegarFirmas(xml: string): { xml: string; medios: MediosContrato[] } {
   const out = editarParrafos(xml, (lista) => {
     lista.forEach((p, i) => {
       if (/^NO TIENE( YAPPY)?$/i.test(textoDe(p.xml).trim())) {
+        let puesto = false;
+        const frase = ponerAlineacion(
+          ponerSpacing(
+            mapTextos(p.xml, (t) => {
+              if (!t.trim()) return t;
+              if (puesto) return "";
+              puesto = true;
+              return "NO TENEMOS";
+            }),
+            '<w:spacing w:before="200" w:after="40" w:line="276" w:lineRule="auto"/>',
+          ),
+          "center",
+        );
         if (yappy) {
           const linea = Math.round((yappy.cy / 914400) * 1440) + 40;
-          const forma = `<w:jc w:val="center"/><w:spacing w:before="280" w:after="420" w:line="${linea}" w:lineRule="atLeast"/>`;
-          p.xml = parrafoConImagen("rIdLogoYappy", "Yappy", docId, yappy.cx, yappy.cy, forma);
+          const forma = `<w:jc w:val="center"/><w:spacing w:before="40" w:after="420" w:line="${linea}" w:lineRule="atLeast"/>`;
+          p.xml = frase;
+          p.insertAfter = [parrafoConImagen("rIdLogoYappy", "Yappy", docId, yappy.cx, yappy.cy, forma)];
           docId += 1;
         } else {
-          const forma = '<w:jc w:val="center"/><w:spacing w:before="280" w:after="420"/>';
-          p.xml = `<w:p><w:pPr>${forma}</w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Yappy</w:t></w:r></w:p>`;
+          const forma = '<w:jc w:val="center"/><w:spacing w:before="40" w:after="420"/>';
+          p.xml = frase;
+          p.insertAfter = [`<w:p><w:pPr>${forma}</w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Yappy</w:t></w:r></w:p>`];
         }
         return;
       }
