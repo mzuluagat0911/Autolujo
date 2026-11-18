@@ -393,7 +393,7 @@ function rellenar(xml: string, d: DatosContratoDoc, cual: PlantillaContrato): st
     out = reemplazarToken(out, "varón", "mujer");
     out = reemplazarToken(out, "panameño", "panameña");
   }
-  return compactarHuecos(resaltarPasos(out));
+  return acomodarForma(compactarHuecos(resaltarPasos(out)));
 }
 
 function vacio(xml: string): boolean {
@@ -450,6 +450,122 @@ function ponerSpacing(xml: string, spacing: string): string {
   return xml.replace(/<w:p\b([^>]*)>/, `<w:p$1><w:pPr>${spacing}</w:pPr>`);
 }
 
+const SIN_AIRE = '<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>';
+const AIRE_CARTA = '<w:spacing w:before="160" w:after="240" w:line="312" w:lineRule="auto"/>';
+const AIRE_CONTACTO = '<w:spacing w:before="280" w:after="200" w:line="276" w:lineRule="auto"/>';
+
+function ponerAlineacion(xml: string, val: "left" | "center"): string {
+  const jc = `<w:jc w:val="${val}"/>`;
+  if (/<w:jc\b/.test(xml)) return xml.replace(/<w:jc\b[^>]*\/>/, jc);
+  if (/<w:pPr\b/.test(xml)) return xml.replace(/<w:pPr\b([^>]*)>/, `<w:pPr$1>${jc}`);
+  return xml.replace(/<w:p\b([^>]*)>/, `<w:p$1><w:pPr>${jc}</w:pPr>`);
+}
+
+function prefijarTexto(xml: string, prefijo: string): string {
+  let puesto = false;
+  return mapTextos(xml, (t) => {
+    if (puesto || !t.trim()) return t;
+    puesto = true;
+    return `${prefijo}${t.replace(/^\s+/, "")}`;
+  });
+}
+
+function quitarHyperlink(xml: string): string {
+  return mapTextos(xml, (t) =>
+    t.replace(/HYPERLINK\s+"[^"]*"\s*\\h\s*/gi, "").replace(/[ \t]{2,}/g, " "),
+  );
+}
+
+function esFichaCarro(t: string): boolean {
+  return /^(Placa\b|Certificado de Operaci[oó]n\s*:|Marca\s*:|No\.?\s*Chasis\s*:|No\.?\s*Motor\s*:|Tipo\s*:|Modelo\s*:|A[nñ]o\s*:|Color\s*:)/i.test(t);
+}
+
+function esClausula(t: string): boolean {
+  return /^(NOTA\b|PAR[AÁ]GRAFO\b|PRIMERA\b|SEGUNDA\b|TERCERA\b|CUARTA\b|QUINTA\b|SEXTA\b|S[EÉ]PTIMA\b|OCTAVA\b|NOVENA\b|D[EÉ]CIMA\b|DECIMA\b|VIG[EÉ]SIMA\b|TRIG[EÉ]SIMA\b|CUATRIG[EÉ]SIMA\b|CUATROG[EÉ]SIMA\b|QUICUAG[EÉ]SIMA\b)/i.test(t);
+}
+
+/** Viñetas, números, aire de las cartas y la ficha del carro pegada a la izquierda. */
+function acomodarForma(xml: string): string {
+  return editarParrafos(xml, (lista) => {
+    let zona: "" | "decima-espera" | "decima" | "causas-intro" | "causas" | "cartas" | "contacto" = "";
+    let nMulta = 0;
+    let vioFirma = false;
+    for (const p of lista) {
+      if (p.deleted) continue;
+      let t = textoDe(p.xml).replace(/\s+/g, " ").trim();
+      if (!t) continue;
+      if (/HYPERLINK/i.test(t)) {
+        p.xml = quitarHyperlink(p.xml);
+        t = textoDe(p.xml).replace(/\s+/g, " ").trim();
+      }
+      if (/^ARRENDATARIO$/i.test(t)) vioFirma = true;
+      if (vioFirma && /^Panam[aá],/i.test(t)) zona = "cartas";
+      if (/^(CONTACTO OFICINA|CUENTAS BANCARIAS PARA PAGOS)\b/i.test(t)) zona = "contacto";
+
+      if (/^D[EÉ]CIMA PRIMERA\b/i.test(t)) {
+        zona = "decima-espera";
+        nMulta = 0;
+        continue;
+      }
+      if (zona === "decima-espera") {
+        if (/siguientes multas/i.test(t)) zona = "decima";
+        continue;
+      }
+      if (zona === "decima" && (/^NOTA\b/i.test(t) || /^D[EÉ]CIMA SEGUNDA\b/i.test(t))) zona = "";
+      if (/^CUATRIG[EÉ]SIMA QUINTA\b/i.test(t)) {
+        zona = "causas-intro";
+        continue;
+      }
+      if (zona === "causas-intro" && /^Las partes acuerdan/i.test(t)) {
+        zona = "causas";
+        continue;
+      }
+      if (zona === "causas" && /^CUATRIG[EÉ]SIMA SEXTA\b/i.test(t)) zona = "";
+
+      if (esFichaCarro(t)) {
+        p.xml = ponerAlineacion(ponerSpacing(p.xml, SIN_AIRE), "left");
+        continue;
+      }
+      if (/^(NORTE|SUR|ESTE|OESTE)\s*:/i.test(t)) {
+        p.xml = ponerAlineacion(ponerSpacing(prefijarTexto(p.xml, "• "), SIN_AIRE), "left");
+        continue;
+      }
+      if (
+        /^Acepta el arrendatario que está totalmente prohibido bloquear/i.test(t) ||
+        /^En caso de que la compañía incurra en gastos de desplazamiento/i.test(t)
+      ) {
+        p.xml = ponerAlineacion(ponerSpacing(prefijarTexto(p.xml, "• "), SIN_AIRE), "left");
+        continue;
+      }
+      if (zona === "decima" && !esClausula(t)) {
+        const base = mapTextos(p.xml, (x) => x.replace(/^:\s*/, ""));
+        if (nMulta >= 14) {
+          p.xml = base;
+          continue;
+        }
+        nMulta += 1;
+        p.xml = ponerAlineacion(ponerSpacing(prefijarTexto(base, `${nMulta}. `), SIN_AIRE), "left");
+        continue;
+      }
+      if (zona === "causas" && !esClausula(t)) {
+        p.xml = ponerAlineacion(ponerSpacing(prefijarTexto(p.xml, "• "), SIN_AIRE), "left");
+        continue;
+      }
+      if (/^(Paz y salvo|No tener|No ser parte)\b/i.test(t)) {
+        p.xml = ponerAlineacion(ponerSpacing(prefijarTexto(p.xml, "• "), SIN_AIRE), "left");
+        continue;
+      }
+      if (zona === "cartas") {
+        p.xml = ponerSpacing(p.xml, AIRE_CARTA);
+        continue;
+      }
+      if (zona === "contacto" && !/^NO TIENE/i.test(t)) {
+        p.xml = ponerSpacing(p.xml, AIRE_CONTACTO);
+      }
+    }
+  });
+}
+
 type RolFirma = "cliente" | "luis" | "carolina";
 
 function rolDeRaya(lista: Parrafo[], i: number): RolFirma | null {
@@ -470,7 +586,7 @@ function rolDeRaya(lista: Parrafo[], i: number): RolFirma | null {
 type PngFirma = { data: Uint8Array; cx: number; cy: number };
 
 /** Misma altura que en el contrato de referencia. El ancho no se aplasta. */
-function pngDeFirma(nombre: string): PngFirma | null {
+function pngDeFirma(nombre: string, pulgadas: number): PngFirma | null {
   const ruta = join(process.cwd(), "lib/cartera/contratos/firmas", nombre);
   if (!existsSync(ruta)) return null;
   const crudo = readFileSync(ruta);
@@ -479,12 +595,18 @@ function pngDeFirma(nombre: string): PngFirma | null {
   if (!w || !h) return null;
   const data = new Uint8Array(crudo.byteLength);
   data.set(crudo);
-  const alto = 0.9 * 914400;
+  const alto = pulgadas * 914400;
   return { data, cx: Math.round(alto * (w / h)), cy: Math.round(alto) };
 }
 
-const FORMA_FIRMA =
-  '<w:keepNext/><w:spacing w:before="220" w:after="40" w:line="276" w:lineRule="auto"/>';
+const FORMA_FIRMA_CLIENTE =
+  '<w:spacing w:before="2400" w:after="40" w:line="276" w:lineRule="auto"/>';
+const FORMA_IMAGEN = '<w:jc w:val="left"/><w:spacing w:before="120" w:after="40" w:line="2800" w:lineRule="atLeast"/>';
+
+function formaDeImagen(cy: number): string {
+  const linea = Math.round((cy / 914400) * 1440) + 80;
+  return `<w:jc w:val="left"/><w:spacing w:before="120" w:after="40" w:line="${linea}" w:lineRule="atLeast"/>`;
+}
 const FORMA_NOMBRE =
   '<w:keepNext/><w:spacing w:after="40" w:line="276" w:lineRule="auto"/>';
 const FORMA_ROL =
@@ -496,29 +618,50 @@ function conForma(xml: string, forma: string): string {
   return xml.replace(/<w:p\b([^>]*)>/, `<w:p$1>${pPr}`);
 }
 
-function formarBloque(xml: string, cual: "firma" | "nombre" | "rol"): string {
-  const forma = cual === "firma" ? FORMA_FIRMA : cual === "rol" ? FORMA_ROL : FORMA_NOMBRE;
+function formarBloque(xml: string, cual: "cliente" | "nombre" | "rol"): string {
+  const forma = cual === "cliente" ? FORMA_FIRMA_CLIENTE : cual === "rol" ? FORMA_ROL : FORMA_NOMBRE;
   const formado = conForma(xml, forma);
   return mapTextos(formado, (t) => t.replace(/^\s+/, ""));
 }
 
-function parrafoConImagen(rId: string, nombre: string, docId: number, cx: number, cy: number): string {
+function parrafoConImagen(
+  rId: string,
+  nombre: string,
+  docId: number,
+  cx: number,
+  cy: number,
+  forma = FORMA_IMAGEN,
+): string {
   const a = "http://schemas.openxmlformats.org/drawingml/2006/main";
   const pic = "http://schemas.openxmlformats.org/drawingml/2006/picture";
-  return `<w:p><w:pPr>${FORMA_FIRMA}</w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${docId}" name="${esc(nombre)}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="${a}" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="${a}"><a:graphicData uri="${pic}"><pic:pic xmlns:pic="${pic}"><pic:nvPicPr><pic:cNvPr id="${docId}" name="${esc(nombre)}"/><pic:cNvPicPr><a:picLocks noChangeAspect="1"/></pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+  return `<w:p><w:pPr>${forma}</w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${docId}" name="${esc(nombre)}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks xmlns:a="${a}" noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic xmlns:a="${a}"><a:graphicData uri="${pic}"><pic:pic xmlns:pic="${pic}"><pic:nvPicPr><pic:cNvPr id="${docId}" name="${esc(nombre)}"/><pic:cNvPicPr><a:picLocks noChangeAspect="1"/></pic:cNvPicPr></pic:nvPicPr><pic:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="${rId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
 }
 
 type MediosContrato = { id: string; archivo: string; data: Uint8Array };
 
 function pegarFirmas(xml: string): { xml: string; medios: MediosContrato[] } {
-  const luis = pngDeFirma("firma-luis.png");
-  const carolina = pngDeFirma("firma-carolina.png");
+  const luis = pngDeFirma("firma-luis.png", 1.85);
+  const carolina = pngDeFirma("firma-carolina.png", 0.85);
+  const yappy = pngDeFirma("logo-yappy.png", 0.48);
   const medios: MediosContrato[] = [];
   if (luis) medios.push({ id: "rIdFirmaLuis", archivo: "word/media/firma-luis.png", data: luis.data });
   if (carolina) medios.push({ id: "rIdFirmaCarolina", archivo: "word/media/firma-carolina.png", data: carolina.data });
+  if (yappy) medios.push({ id: "rIdLogoYappy", archivo: "word/media/logo-yappy.png", data: yappy.data });
   let docId = 1;
   const out = editarParrafos(xml, (lista) => {
     lista.forEach((p, i) => {
+      if (/^NO TIENE( YAPPY)?$/i.test(textoDe(p.xml).trim())) {
+        if (yappy) {
+          const linea = Math.round((yappy.cy / 914400) * 1440) + 40;
+          const forma = `<w:jc w:val="center"/><w:spacing w:before="280" w:after="420" w:line="${linea}" w:lineRule="atLeast"/>`;
+          p.xml = parrafoConImagen("rIdLogoYappy", "Yappy", docId, yappy.cx, yappy.cy, forma);
+          docId += 1;
+        } else {
+          const forma = '<w:jc w:val="center"/><w:spacing w:before="280" w:after="420"/>';
+          p.xml = `<w:p><w:pPr>${forma}</w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>Yappy</w:t></w:r></w:p>`;
+        }
+        return;
+      }
       const rol = rolDeRaya(lista, i);
       if (!rol) return;
       for (let k = i - 1; k >= 0 && vacio(lista[k].xml); k--) lista[k].deleted = true;
@@ -536,17 +679,17 @@ function pegarFirmas(xml: string): { xml: string; medios: MediosContrato[] } {
         if (esRol) break;
       }
       if (rol === "cliente") {
-        p.xml = formarBloque(p.xml, "firma");
+        p.xml = formarBloque(p.xml, "cliente");
         return;
       }
       const firma = rol === "luis" ? luis : carolina;
       const id = rol === "luis" ? "rIdFirmaLuis" : "rIdFirmaCarolina";
       const nombre = rol === "luis" ? "Firma de Luis Hernando Cogua" : "Firma de Diana Carolina Castañeda";
       if (!firma) {
-        p.xml = formarBloque(p.xml, "firma");
+        p.xml = formarBloque(p.xml, "cliente");
         return;
       }
-      p.xml = parrafoConImagen(id, nombre, docId, firma.cx, firma.cy);
+      p.xml = parrafoConImagen(id, nombre, docId, firma.cx, firma.cy, formaDeImagen(firma.cy));
       docId += 1;
     });
   });
@@ -568,9 +711,10 @@ function htmlDeParrafo(p: string, imagenes: Map<string, string>): string {
   const runs = [...p.matchAll(/<w:r\b[^>]*\/>|<w:r\b[^>]*>[\s\S]*?<\/w:r>/g)];
   let inner = "";
   let corte = false;
+  const altoImg = Math.round(Number(p.match(/\bcy="(\d+)"/)?.[1] ?? 0) / 914400 * 96) || 74;
   for (const embed of p.matchAll(/r:embed="([^"]+)"/g)) {
     const src = imagenes.get(embed[1]);
-    if (src) inner += `<img src="${src}" alt="Firma" style="height:74px;width:auto;display:block"/>`;
+    if (src) inner += `<img src="${src}" alt="" style="height:${altoImg}px;width:auto;display:block"/>`;
   }
   for (const run of runs) {
     const xml = run[0];
