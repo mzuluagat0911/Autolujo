@@ -91,17 +91,10 @@ function esCargoAbono(c: { concepto: string | null }): boolean {
   return /abono\s*inicial/i.test(c.concepto ?? "");
 }
 
-function esMarcaDeAlta(asignaciones: unknown, notas?: string | null): boolean {
-  if (asignaciones && typeof asignaciones === "object" && !Array.isArray(asignaciones)) {
-    if ((asignaciones as { origen?: string }).origen === "alta_contrato") return true;
-  }
-  return /alta de contrato/i.test(notas ?? "");
-}
-
 /**
- * El alta ya cargó la afiliación por lo pagado. Un espejo encima vuelve a
- * meter ese abono en la letra. También cuenta si el pago sigue marcado como
- * alta, aunque alguien le haya cambiado la fecha o reasignado los conceptos.
+ * El alta ya dejó una afiliación por el mismo monto. Solo en ese caso el
+ * espejo está de más y mete el abono en la letra. Si no hay esa afiliación,
+ * el espejo es el que evita que el abono se coma la cuenta.
  */
 export async function abonoDeAltaYaCargado(opts: {
   contratoId: string;
@@ -111,18 +104,13 @@ export async function abonoDeAltaYaCargado(opts: {
 }): Promise<boolean> {
   if (opts.monto <= 0.009) return false;
   const sb = createServerSupabase();
-  const [{ data: cargos }, { data: pago }] = await Promise.all([
-    sb
-      .from("cargos")
-      .select("monto, concepto, fecha, pago_id")
-      .eq("contrato_id", opts.contratoId)
-      .eq("tipo", "afiliacion"),
-    sb.from("pagos").select("asignaciones, notas").eq("id", opts.pagoId).maybeSingle(),
-  ]);
-  const fila = pago as { asignaciones?: unknown; notas?: string | null } | null;
-  if (esMarcaDeAlta(fila?.asignaciones, fila?.notas)) return true;
+  const { data } = await sb
+    .from("cargos")
+    .select("monto, concepto, fecha, pago_id")
+    .eq("contrato_id", opts.contratoId)
+    .eq("tipo", "afiliacion");
   const dia = opts.fecha.slice(0, 10);
-  return ((cargos ?? []) as {
+  return ((data ?? []) as {
     monto: number;
     concepto: string | null;
     fecha: string | null;
@@ -266,7 +254,6 @@ export async function cuadrarEspejosAcuerdo(
     pagado_at: string | null;
     fecha: string | null;
     asignaciones: unknown;
-    notas: string | null;
   };
   const pagos: Pago[] = [];
   for (let i = 0; i < conAcuerdo.length; i += 40) {
@@ -274,7 +261,7 @@ export async function cuadrarEspejosAcuerdo(
     for (let desde = 0; ; desde += 1000) {
       const { data, error } = await sb
         .from("pagos")
-        .select("id, contrato_id, pagado_at, fecha, asignaciones, notas")
+        .select("id, contrato_id, pagado_at, fecha, asignaciones")
         .in("contrato_id", lote)
         .in("estado_conciliacion", ["conciliado", "manual"])
         .not("asignaciones", "is", null)
@@ -322,16 +309,15 @@ export async function cuadrarEspejosAcuerdo(
 
   let insertados = 0;
   let error: string | null = null;
-  const sueltas = new Map<string, { fecha: string; monto: number }[]>();
+  const sueltas = new Map<string, { fecha: string; monto: number; pagoId: string | null }[]>();
   const idsCandidatos = [...new Set(candidatos.map((p) => p.contrato_id))];
   for (let i = 0; i < idsCandidatos.length; i += 80) {
     const lote = idsCandidatos.slice(i, i + 80);
     const { data, error: errSuelta } = await sb
       .from("cargos")
-      .select("contrato_id, monto, concepto, fecha")
+      .select("contrato_id, monto, concepto, fecha, pago_id")
       .in("contrato_id", lote)
-      .eq("tipo", "afiliacion")
-      .is("pago_id", null);
+      .eq("tipo", "afiliacion");
     if (errSuelta) {
       console.error("[espejo-acuerdo]", errSuelta.message);
       return { insertados: 0, error: errSuelta.message };
@@ -341,10 +327,15 @@ export async function cuadrarEspejosAcuerdo(
       monto: number;
       concepto: string | null;
       fecha: string | null;
+      pago_id: string | null;
     }[]) {
       if (!/abono\s*inicial/i.test(c.concepto ?? "")) continue;
       const lista = sueltas.get(c.contrato_id) ?? [];
-      lista.push({ fecha: String(c.fecha ?? "").slice(0, 10), monto: Number(c.monto) || 0 });
+      lista.push({
+        fecha: String(c.fecha ?? "").slice(0, 10),
+        monto: Number(c.monto) || 0,
+        pagoId: c.pago_id,
+      });
       sueltas.set(c.contrato_id, lista);
     }
   }
@@ -354,12 +345,12 @@ export async function cuadrarEspejosAcuerdo(
     const acuerdo = r2(lineasAcuerdoPago(p.asignaciones).reduce((s, a) => s + (Number(a.aplicado) || 0), 0));
     const fecha = p.pagado_at ? fechaContable(p.pagado_at) : (p.fecha ?? "");
     const espejoAbono = abonoYa.get(p.id) ?? 0;
-    const cubierto =
-      esMarcaDeAlta(p.asignaciones, p.notas) ||
-      (fecha !== "" &&
-        (sueltas.get(p.contrato_id) ?? []).some(
-          (s) => s.fecha === fecha.slice(0, 10) && Math.abs(s.monto - abono) < 0.05,
-        ));
+    const dia = fecha.slice(0, 10);
+    const cubierto = (sueltas.get(p.contrato_id) ?? []).some(
+      (s) =>
+        Math.abs(s.monto - abono) < 0.05 &&
+        (s.pagoId === p.id || (!s.pagoId && dia !== "" && s.fecha === dia)),
+    );
     const faltaAbono =
       abono > 0.009 && (cubierto ? espejoAbono > 0.009 : Math.abs(abono - espejoAbono) >= 0.05);
     const faltaAcuerdo = acuerdo - (acuerdoYa.get(p.id) ?? 0) > 0.05;
