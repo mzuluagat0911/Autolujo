@@ -26,6 +26,9 @@ const VALORES = `
 VALORES EXACTOS (en minúscula, tal cual)
 - contratos.estado: activo, suspendido, finalizado, traspasado, devuelto.
 - pagos.estado_conciliacion: pendiente, conciliado, rechazado, manual. Un pago cuenta solo si es conciliado o manual. Para "cuánto se pagó", filtra estado_conciliacion in conciliado,manual.
+- seguimientos_comercial.estado: pendiente, enviando, enviado, cancelado, fallido. No existen en_proceso ni completado.
+- En Resultados, "Seguimiento vencido" es un chat de conversaciones_comercial todavía abierto (cerrado_at vacío) cuya columna seguimiento_at ya pasó. No se calcula con seguimientos_comercial ni con programado_at.
+- Un seguimiento no está enviado cuando su estado real es pendiente, enviando, cancelado o fallido. Di ese estado. No expliques "porque no es enviado".
 - Las fechas van como YYYY-MM-DD.
 `.trim();
 
@@ -54,7 +57,7 @@ export function manualDe(
     "- No digas \"no tengo acceso\" ni \"no tengo permiso\". Si la tabla está en tu lista, consúltala.",
     "- Cumpleaños: usa la herramienta cumpleanos. La fecha de nacimiento sí se consulta. El día libre aplica solo si hoy es su cumpleaños, lleva al menos 1 mes y está al día. Si aplica es false, di el motivo que devolvió la herramienta.",
     "- Panapass: usa la herramienta panapass para el número del tag. Ese número sí se dice; no es una cuenta bancaria. Lo cobrado o pendiente está en cargos (tipo panapass) y se consulta igual.",
-    "- Comercial: chats en conversaciones_comercial y mensajes_comercial, citas en citas_comercial, actividad en eventos_comercial, seguimientos en seguimientos_comercial. Consúltalas.",
+    "- Comercial: chats en conversaciones_comercial (seguimiento_at es la fecha de volver a escribirle; un vencido es un chat abierto con esa fecha ya pasada), mensajes en mensajes_comercial, citas en citas_comercial, actividad en eventos_comercial, envíos en seguimientos_comercial. Consúltalas. No inventes columnas ni estados.",
     "- Si una consulta da error, corrígela (nombre de columna, valor exacto, filtro) y vuelve a intentar. Solo si después de intentar no sale, di qué no pudiste consultar.",
     "- Para filtrar por empresa usa empresa_id con estos valores: " + empresas + ". No lo muestres.",
     "- Si una herramienta devuelve recortado o tope, di que el dato es parcial.",
