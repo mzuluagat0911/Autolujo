@@ -452,6 +452,7 @@ function ponerSpacing(xml: string, spacing: string): string {
 
 const SIN_AIRE = '<w:spacing w:before="0" w:after="0" w:line="240" w:lineRule="auto"/>';
 const AIRE_CARTA = '<w:spacing w:before="160" w:after="240" w:line="312" w:lineRule="auto"/>';
+const AIRE_PODER = '<w:spacing w:before="200" w:after="280" w:line="312" w:lineRule="auto"/>';
 const AIRE_CONTACTO = '<w:spacing w:before="280" w:after="200" w:line="276" w:lineRule="auto"/>';
 
 function ponerAlineacion(xml: string, val: "left" | "center"): string {
@@ -477,6 +478,24 @@ function quitarHyperlink(xml: string): string {
   );
 }
 
+/** El trámite que venía pegado al anterior sale en su propio párrafo. */
+function partirPoder(xml: string): [string, string] | null {
+  const marcas = ["Reclamar documentación", "Realizar todos los trámites"];
+  const runs = [...xml.matchAll(/<w:r\b[^>]*\/>|<w:r\b[^>]*>[\s\S]*?<\/w:r>/g)];
+  const corte = runs.find((r) => {
+    const t = [...r[0].matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) => dec(m[1])).join("").trim();
+    return marcas.some((marca) => t.startsWith(marca));
+  });
+  if (!corte || corte.index == null || corte.index < 1) return null;
+  const abierto = xml.match(/^<w:p\b[^>]*>/)?.[0] ?? "<w:p>";
+  const pPr = xml.match(/<w:pPr[\s\S]*?<\/w:pPr>/)?.[0] ?? "";
+  const fin = xml.lastIndexOf("</w:p>");
+  return [
+    `${xml.slice(0, corte.index)}</w:p>`,
+    `${abierto}${pPr}${xml.slice(corte.index, fin)}</w:p>`,
+  ];
+}
+
 function esFichaCarro(t: string): boolean {
   return /^(Placa\b|Certificado de Operaci[oó]n\s*:|Marca\s*:|No\.?\s*Chasis\s*:|No\.?\s*Motor\s*:|Tipo\s*:|Modelo\s*:|A[nñ]o\s*:|Color\s*:)/i.test(t);
 }
@@ -491,6 +510,7 @@ function acomodarForma(xml: string): string {
     let zona: "" | "decima-espera" | "decima" | "causas-intro" | "causas" | "cartas" | "contacto" = "";
     let nMulta = 0;
     let vioFirma = false;
+    let enPoder = false;
     for (const p of lista) {
       if (p.deleted) continue;
       let t = textoDe(p.xml).replace(/\s+/g, " ").trim();
@@ -522,6 +542,21 @@ function acomodarForma(xml: string): string {
         continue;
       }
       if (zona === "causas" && /^CUATRIG[EÉ]SIMA SEXTA\b/i.test(t)) zona = "";
+
+      const eraPoder = enPoder;
+      if (/siguientes trámites\s*:?\s*$/i.test(t) || /no se limita a\s*:?\s*$/i.test(t)) enPoder = true;
+      if (/^El poder\b/i.test(t) || /^Autorizo expresamente/i.test(t)) enPoder = false;
+      if (eraPoder && enPoder) {
+        const partes = partirPoder(p.xml);
+        const aire = (xml: string) => ponerAlineacion(ponerSpacing(xml, AIRE_PODER), "left");
+        if (partes) {
+          p.xml = aire(partes[0]);
+          p.insertAfter = [aire(partes[1])];
+        } else {
+          p.xml = aire(p.xml);
+        }
+        continue;
+      }
 
       if (esFichaCarro(t)) {
         p.xml = ponerAlineacion(ponerSpacing(p.xml, SIN_AIRE), "left");
