@@ -188,7 +188,9 @@ export function armarExtractoDiario(
   const extrasEmbebidos = partes.filter((p) => p.etiqueta !== "cuotas atrasadas");
   const embebidosSum = extrasEmbebidos.reduce((s, x) => s + x.monto, 0);
 
-  const extrasBase = extrasEmbebidos.filter((x) => esCargoBase(x.etiqueta)); // ej. cierre
+  const extrasBase = extrasEmbebidos.filter(
+    (x) => esCargoBase(x.etiqueta) && !/abono/i.test(x.etiqueta),
+  );
   const extrasCompetidores = extrasEmbebidos.filter((x) => !esCargoBase(x.etiqueta));
   const planPorEtiqueta = new Map<string, LineaExtracto>();
   for (const x of extrasParaSaldo) {
@@ -704,7 +706,7 @@ export async function cargosExtraPorContrato(
       .from("cargos")
       .select("contrato_id, tipo, concepto, concepto_codigo, monto, pago_id, fecha")
       .in("contrato_id", lote)
-      .not("tipo", "in", "(renta,cuenta_diaria,acuerdo)")
+      .not("tipo", "in", "(renta,cuenta_diaria)")
       .order("id", { ascending: true })
       .range(desde, desde + 999),
   );
@@ -713,6 +715,7 @@ export async function cargosExtraPorContrato(
   for (const f of data) {
     const codigo = (f.concepto_codigo ?? "").toUpperCase();
     if ((f.concepto ?? "").includes("[[qc]]")) continue;
+    if (f.tipo === "acuerdo" && !/abono\s*inicial/i.test(f.concepto ?? "")) continue;
     const monto = Number(f.monto) || 0;
     if (monto <= 0.009) continue;
     const crudo = etiquetaCargo(f.concepto, f.concepto_codigo, f.tipo);

@@ -107,7 +107,7 @@ export const CARGO_DE_CONCEPTO: Record<
 export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string | null {
   const t = (tipo ?? "").toLowerCase();
   // Alta de contrato: mismos baldes que el extracto.
-  if (t === "abono" || t === "afiliacion") return "abono inicial";
+  if (t === "abono" || t === "abono_inicial" || t === "afiliacion") return "abono inicial";
   if (t === "prepago_domingo") return "domingo";
   if (t === "prepago_letra") return null; // es letra, no un extra
   if (t === "salida_interior") return CUBETA_SALIDA;
