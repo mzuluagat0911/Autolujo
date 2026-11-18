@@ -11,3 +11,4 @@ Cuando pregunten cuánto se cobra, cómo queda un mensaje, un domingo, un extrac
 2. El único "a pagar hoy" es el TOTAL del extracto (`cobroHoy`). No lo partas en cuota chica + atraso, y no le sumes otra cuota.
 3. Domingo: tajada del domingo, letra atrasada, acuerdo atrasado (cuota del día anterior sin pagar) o acuerdo de domingo. La cuota diaria del acuerdo no se cobra. Al día = $0. No se abre cuota de domingo nueva ni se cobra el balde entero.
 4. Si el código dice otra cosa que estas reglas, dilo antes de dar el número. No entregues una proyección que las contradiga.
+5. El abono asignado en un pago tiene un solo cargo. Si ya existe la afiliación de ese monto, esa vale y el espejo sobra. Si no existe, el espejo es el que separa el abono de la letra y no se borra. La marca de alta no decide. Sin ese cargo el pago se resta de la letra. Con los dos, el abono pagado aparece como deuda de letra.

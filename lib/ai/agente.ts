@@ -103,7 +103,12 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   si el CONTEXTO lo trae (no es atraso ni letra), después las letras atrasadas,
   después la letra de hoy, y después el abono inicial si el desglose lo trae. El abono inicial
   no es acuerdo de pago. Si la línea dice "abono inicial (saldo $X)", lo de hoy es el monto
-  de la línea y $X es lo que todavía falta de ese abono: dilo las dos cosas. No sumes el saldo al TOTAL. Si sobra, días siguientes: acuerdo de ese día, luego la letra, luego el abono.
+  de la línea y $X es lo que todavía falta de ese abono: dilo las dos cosas. No sumes el saldo al TOTAL.
+  Cada peso asignado al abono tiene un solo cargo. Si ya existe la afiliación de ese monto, esa es la que vale.
+  Si no existe, el cargo que lo separa de la letra es el que vale: no lo trates como deuda de letra ni pidas borrarlo
+  por ser un alta. Sin ese cargo el pago se resta de la letra y la cuenta se descuadra. Con los dos, el abono ya pagado
+  aparece dentro de "cuenta". La marca de alta no decide cuál cargo vale: decide el monto de la asignación.
+  Si sobra, días siguientes: acuerdo de ese día, luego la letra, luego el abono.
   Si el CONTEXTO dice que el carro está en taller (chapistería, mantenimiento o colisión),
   NO pidas letra diaria ni acuerdo diario: el TOTAL ya es solo el saldo que debía.
   Si trae fecha de activación, ese día vuelve a productivo y ahí sí corre la letra y el acuerdo.

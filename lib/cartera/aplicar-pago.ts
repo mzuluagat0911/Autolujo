@@ -420,6 +420,15 @@ export async function asegurarCargoAbonoDelPago(opts: {
     return;
   }
   const sb = createServerSupabase();
+  const espejo = await sb
+    .from("cargos")
+    .select("id, concepto")
+    .eq("pago_id", opts.pagoId)
+    .eq("tipo", "acuerdo");
+  const yaEspejo = ((espejo.data ?? []) as { concepto: string | null }[]).some((c) =>
+    /abono\s*inicial/i.test(c.concepto ?? ""),
+  );
+  if (yaEspejo) return;
   const ya = await sb.from("cargos").select("id").eq("pago_id", opts.pagoId).eq("tipo", "afiliacion").limit(1);
   if (ya.error && !/pago_id/i.test(ya.error.message)) return;
   if ((ya.data ?? []).length > 0) return;

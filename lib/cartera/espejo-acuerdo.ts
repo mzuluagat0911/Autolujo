@@ -91,11 +91,43 @@ function esCargoAbono(c: { concepto: string | null }): boolean {
   return /abono\s*inicial/i.test(c.concepto ?? "");
 }
 
+/** La afiliación suelta queda de este pago. Otro pago del mismo monto ya no la usa. */
+async function reclamarAfiliacionSuelta(contratoId: string, pagoId: string, monto: number): Promise<void> {
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("cargos")
+    .select("id, monto, concepto")
+    .eq("contrato_id", contratoId)
+    .eq("tipo", "afiliacion")
+    .is("pago_id", null);
+  const fila = ((data ?? []) as { id: string; monto: number; concepto: string | null }[]).find(
+    (c) => /abono\s*inicial/i.test(c.concepto ?? "") && Math.abs((Number(c.monto) || 0) - monto) < 0.05,
+  );
+  if (!fila) return;
+  await sb.from("cargos").update({ pago_id: pagoId }).eq("id", fila.id).is("pago_id", null);
+}
+
 /**
- * El alta ya dejó una afiliación por el mismo monto. Solo en ese caso el
- * espejo está de más y mete el abono en la letra. Si no hay esa afiliación,
- * el espejo es el que evita que el abono se coma la cuenta.
+ * Un abono asignado en el pago tiene un solo cargo.
+ * Afiliación si ya hay una del mismo monto: la de este pago, o una suelta.
+ * Si no hay, el espejo es el cargo. La marca de alta no decide.
+ * Sin cargo, el pago se resta de la letra. Con los dos, el abono pagado
+ * queda como deuda de letra.
  */
+export function decidirCargoDelAbono(
+  monto: number,
+  afiliaciones: { monto: number; pagoId: string | null }[],
+  pagoId: string,
+): "afiliacion" | "espejo" {
+  if (monto <= 0.009) return "espejo";
+  const cubre = afiliaciones.some((c) => {
+    if (Math.abs((Number(c.monto) || 0) - monto) >= 0.05) return false;
+    if (!c.pagoId) return true;
+    return c.pagoId === pagoId;
+  });
+  return cubre ? "afiliacion" : "espejo";
+}
+
 export async function abonoDeAltaYaCargado(opts: {
   contratoId: string;
   pagoId: string;
@@ -103,24 +135,21 @@ export async function abonoDeAltaYaCargado(opts: {
   monto: number;
 }): Promise<boolean> {
   if (opts.monto <= 0.009) return false;
+  void opts.fecha;
   const sb = createServerSupabase();
   const { data } = await sb
     .from("cargos")
-    .select("monto, concepto, fecha, pago_id")
+    .select("monto, pago_id, concepto")
     .eq("contrato_id", opts.contratoId)
     .eq("tipo", "afiliacion");
-  const dia = opts.fecha.slice(0, 10);
-  return ((data ?? []) as {
+  const afiliaciones = ((data ?? []) as {
     monto: number;
-    concepto: string | null;
-    fecha: string | null;
     pago_id: string | null;
-  }[]).some((c) => {
-    if (!/abono\s*inicial/i.test(c.concepto ?? "")) return false;
-    if (Math.abs((Number(c.monto) || 0) - opts.monto) >= 0.05) return false;
-    if (c.pago_id && c.pago_id === opts.pagoId) return true;
-    return !c.pago_id && String(c.fecha ?? "").slice(0, 10) === dia;
-  });
+    concepto: string | null;
+  }[])
+    .filter((c) => /abono\s*inicial/i.test(c.concepto ?? ""))
+    .map((c) => ({ monto: Number(c.monto) || 0, pagoId: c.pago_id }));
+  return decidirCargoDelAbono(opts.monto, afiliaciones, opts.pagoId) === "afiliacion";
 }
 
 async function cargosEspejoDelPago(
@@ -169,6 +198,7 @@ export async function asegurarCargosAcuerdoDelPago(opts: {
         const sb = createServerSupabase();
         await sb.from("cargos").delete().in("id", delAbono.map((c) => c.id));
       }
+      await reclamarAfiliacionSuelta(opts.contratoId, opts.pagoId, sumaNueva);
     } else {
       const sumaYa = r2(delAbono.reduce((s, c) => s + (Number(c.monto) || 0), 0));
       const cuadra = delAbono.length > 0 && Math.abs(sumaYa - sumaNueva) < 0.05;
@@ -345,12 +375,12 @@ export async function cuadrarEspejosAcuerdo(
     const acuerdo = r2(lineasAcuerdoPago(p.asignaciones).reduce((s, a) => s + (Number(a.aplicado) || 0), 0));
     const fecha = p.pagado_at ? fechaContable(p.pagado_at) : (p.fecha ?? "");
     const espejoAbono = abonoYa.get(p.id) ?? 0;
-    const dia = fecha.slice(0, 10);
-    const cubierto = (sueltas.get(p.contrato_id) ?? []).some(
-      (s) =>
-        Math.abs(s.monto - abono) < 0.05 &&
-        (s.pagoId === p.id || (!s.pagoId && dia !== "" && s.fecha === dia)),
+    const lista = sueltas.get(p.contrato_id) ?? [];
+    const idx = lista.findIndex(
+      (s) => Math.abs(s.monto - abono) < 0.05 && (!s.pagoId || s.pagoId === p.id),
     );
+    if (idx >= 0 && !lista[idx].pagoId) lista[idx].pagoId = p.id;
+    const cubierto = idx >= 0;
     const faltaAbono =
       abono > 0.009 && (cubierto ? espejoAbono > 0.009 : Math.abs(abono - espejoAbono) >= 0.05);
     const faltaAcuerdo = acuerdo - (acuerdoYa.get(p.id) ?? 0) > 0.05;
