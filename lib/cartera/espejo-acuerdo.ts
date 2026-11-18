@@ -91,6 +91,25 @@ function esCargoAbono(c: { concepto: string | null }): boolean {
   return /abono\s*inicial/i.test(c.concepto ?? "");
 }
 
+/** El alta carga la afiliación sin pago_id. Si ese cargo ya cubre el abono,
+ *  el espejo lo vuelve a meter en la letra y el extracto lo cobra como cuenta. */
+async function afiliacionSueltaCubre(contratoId: string, fecha: string, monto: number): Promise<boolean> {
+  if (monto <= 0.009) return false;
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("cargos")
+    .select("monto, concepto, fecha")
+    .eq("contrato_id", contratoId)
+    .eq("tipo", "afiliacion")
+    .is("pago_id", null);
+  return ((data ?? []) as { monto: number; concepto: string | null; fecha: string | null }[]).some(
+    (c) =>
+      /abono\s*inicial/i.test(c.concepto ?? "") &&
+      String(c.fecha ?? "").slice(0, 10) === fecha.slice(0, 10) &&
+      Math.abs((Number(c.monto) || 0) - monto) < 0.05,
+  );
+}
+
 async function cargosEspejoDelPago(
   pagoId: string,
 ): Promise<{ ok: true; filas: CargoEspejo[] } | { ok: false; error: string }> {
@@ -125,25 +144,33 @@ export async function asegurarCargosAcuerdoDelPago(opts: {
   let insertados = 0;
   if (abono.length > 0) {
     const delAbono = vivos.filter(esCargoAbono);
-    const sumaYa = r2(delAbono.reduce((s, c) => s + (Number(c.monto) || 0), 0));
     const sumaNueva = r2(abono.reduce((s, a) => s + (Number(a.aplicado) || 0), 0));
-    const cuadra = delAbono.length > 0 && Math.abs(sumaYa - sumaNueva) < 0.05;
-    if (!cuadra) {
+    const alta = await afiliacionSueltaCubre(opts.contratoId, opts.fecha, sumaNueva);
+    if (alta) {
       if (delAbono.length > 0) {
         const sb = createServerSupabase();
         await sb.from("cargos").delete().in("id", delAbono.map((c) => c.id));
       }
-      for (const a of abono) {
-        const error = await insertarCargoAcuerdo({
-          contrato_id: opts.contratoId,
-          fecha: opts.fecha,
-          concepto: "Abono inicial",
-          monto: r2(Number(a.aplicado) || 0),
-          pago_id: opts.pagoId,
-          acuerdo_id: a.ref ?? null,
-        });
-        if (error) return { ok: false, error, insertados };
-        insertados += 1;
+    } else {
+      const sumaYa = r2(delAbono.reduce((s, c) => s + (Number(c.monto) || 0), 0));
+      const cuadra = delAbono.length > 0 && Math.abs(sumaYa - sumaNueva) < 0.05;
+      if (!cuadra) {
+        if (delAbono.length > 0) {
+          const sb = createServerSupabase();
+          await sb.from("cargos").delete().in("id", delAbono.map((c) => c.id));
+        }
+        for (const a of abono) {
+          const error = await insertarCargoAcuerdo({
+            contrato_id: opts.contratoId,
+            fecha: opts.fecha,
+            concepto: "Abono inicial",
+            monto: r2(Number(a.aplicado) || 0),
+            pago_id: opts.pagoId,
+            acuerdo_id: a.ref ?? null,
+          });
+          if (error) return { ok: false, error, insertados };
+          insertados += 1;
+        }
       }
     }
   }
@@ -264,13 +291,47 @@ export async function cuadrarEspejosAcuerdo(
 
   let insertados = 0;
   let error: string | null = null;
+  const sueltas = new Map<string, { fecha: string; monto: number }[]>();
+  const idsCandidatos = [...new Set(candidatos.map((p) => p.contrato_id))];
+  for (let i = 0; i < idsCandidatos.length; i += 80) {
+    const lote = idsCandidatos.slice(i, i + 80);
+    const { data, error: errSuelta } = await sb
+      .from("cargos")
+      .select("contrato_id, monto, concepto, fecha")
+      .in("contrato_id", lote)
+      .eq("tipo", "afiliacion")
+      .is("pago_id", null);
+    if (errSuelta) {
+      console.error("[espejo-acuerdo]", errSuelta.message);
+      return { insertados: 0, error: errSuelta.message };
+    }
+    for (const c of (data ?? []) as {
+      contrato_id: string;
+      monto: number;
+      concepto: string | null;
+      fecha: string | null;
+    }[]) {
+      if (!/abono\s*inicial/i.test(c.concepto ?? "")) continue;
+      const lista = sueltas.get(c.contrato_id) ?? [];
+      lista.push({ fecha: String(c.fecha ?? "").slice(0, 10), monto: Number(c.monto) || 0 });
+      sueltas.set(c.contrato_id, lista);
+    }
+  }
+
   for (const p of candidatos) {
     const abono = r2(lineasAbono(p.asignaciones).reduce((s, a) => s + (Number(a.aplicado) || 0), 0));
     const acuerdo = r2(lineasAcuerdoPago(p.asignaciones).reduce((s, a) => s + (Number(a.aplicado) || 0), 0));
-    const faltaAbono = abono > 0.009 && Math.abs(abono - (abonoYa.get(p.id) ?? 0)) >= 0.05;
+    const fecha = p.pagado_at ? fechaContable(p.pagado_at) : (p.fecha ?? "");
+    const espejoAbono = abonoYa.get(p.id) ?? 0;
+    const cubierto =
+      fecha !== "" &&
+      (sueltas.get(p.contrato_id) ?? []).some(
+        (s) => s.fecha === fecha.slice(0, 10) && Math.abs(s.monto - abono) < 0.05,
+      );
+    const faltaAbono =
+      abono > 0.009 && (cubierto ? espejoAbono > 0.009 : Math.abs(abono - espejoAbono) >= 0.05);
     const faltaAcuerdo = acuerdo - (acuerdoYa.get(p.id) ?? 0) > 0.05;
     if (!faltaAbono && !faltaAcuerdo) continue;
-    const fecha = p.pagado_at ? fechaContable(p.pagado_at) : (p.fecha ?? "");
     if (!fecha) {
       error = error ?? "Un pago de acuerdo no tiene fecha.";
       continue;
