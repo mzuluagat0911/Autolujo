@@ -149,13 +149,23 @@ export async function mantenimientoKm(): Promise<{ disponible: boolean; items: M
   const ids = vehs.map((v) => v.id);
   const anchor = new Map(vehs.map((v) => [v.id, v.fecha_ultimo_mantenimiento]));
   const minAnchor = vehs.reduce((m, v) => (v.fecha_ultimo_mantenimiento < m ? v.fecha_ultimo_mantenimiento : m), vehs[0].fecha_ultimo_mantenimiento);
-  const { data: dias } = await sb
-    .from("gps_dias")
-    .select("vehiculo_id, fecha, km")
-    .in("vehiculo_id", ids)
-    .gte("fecha", minAnchor);
+  // PostgREST corta en 1.000 filas: hay que paginar o los km salen recortados.
+  const dias: { vehiculo_id: string | null; fecha: string; km: number | null }[] = [];
+  for (let desde = 0; ; desde += 1000) {
+    const { data: pagina, error: errDias } = await sb
+      .from("gps_dias")
+      .select("vehiculo_id, fecha, km")
+      .in("vehiculo_id", ids)
+      .gte("fecha", minAnchor)
+      .order("fecha")
+      .order("id_dispositivo")
+      .range(desde, desde + 999);
+    if (errDias) return { disponible: false, items: [] };
+    dias.push(...((pagina ?? []) as typeof dias));
+    if ((pagina ?? []).length < 1000) break;
+  }
   const kmMap = new Map<string, number>();
-  for (const d of (dias ?? []) as { vehiculo_id: string | null; fecha: string; km: number | null }[]) {
+  for (const d of dias) {
     if (!d.vehiculo_id || d.km == null) continue;
     const a = anchor.get(d.vehiculo_id);
     if (a && d.fecha >= a) kmMap.set(d.vehiculo_id, (kmMap.get(d.vehiculo_id) ?? 0) + Number(d.km));

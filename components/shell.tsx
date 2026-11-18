@@ -6,6 +6,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { salir } from "@/app/ingreso/actions";
 import { escuchaAvisos, type ModuloId } from "@/lib/equipo/modulos";
 import type { SesionEquipo } from "@/lib/equipo/tipos";
+import { Asistente } from "./asistente";
 import { Brand } from "./brand";
 import {
   AlertasAsesorProvider,
@@ -310,6 +311,7 @@ export function Shell({
         </div>
         <main className="min-w-0 flex-1 px-5 sm:px-8 lg:px-12">{children}</main>
       </div>
+      {equipo && <Asistente modulos={equipo.modulos} />}
     </div>
     </AlertasAsesorProvider>
   );

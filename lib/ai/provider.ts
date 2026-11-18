@@ -17,6 +17,9 @@ export const MODELO_TEXTO = process.env.AI_MODEL_TEXTO ?? "google/gemini-2.5-fla
 // modelo distinto al de cobranza sin tocar a Claudia. Si no se setea, usa el
 // mismo que TEXTO.
 export const MODELO_COMERCIAL = process.env.AI_MODEL_COMERCIAL ?? MODELO_TEXTO;
+// ASISTENTE = el del equipo, dentro de la plataforma. Perilla aparte
+// (AI_MODEL_ASISTENTE) para subirle el modelo sin tocar cobranza ni ventas.
+export const MODELO_ASISTENTE = process.env.AI_MODEL_ASISTENTE ?? MODELO_TEXTO;
 
 /** Modelo para leer comprobantes (visión) — barato por defecto. */
 export function modeloVision() {
@@ -36,4 +39,9 @@ export function modeloTexto() {
 /** Modelo del agente comercial (Lucía). Perilla aparte vía AI_MODEL_COMERCIAL. */
 export function modeloComercial() {
   return openrouter(MODELO_COMERCIAL);
+}
+
+/** Modelo del asistente interno del equipo. Perilla aparte vía AI_MODEL_ASISTENTE. */
+export function modeloAsistente() {
+  return openrouter(MODELO_ASISTENTE);
 }
