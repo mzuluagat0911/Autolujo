@@ -988,7 +988,10 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       .eq("tipo", "renta").limit(1),
     asignacionesDeHoy(contratoId, fecha, pagoId),
     pagoHoyContrato(contratoId, fecha),
-    cargosExtraPorContrato([contratoId], fecha).then((m) => partirCargosNoLetra(m.get(contratoId) ?? [])),
+    cargosExtraPorContrato([contratoId], fecha).then((m) => {
+      const lineas = m.get(contratoId) ?? [];
+      return { ...partirCargosNoLetra(lineas), lineas };
+    }),
   ]);
 
   const contratoRow = contratoRes.data as (TerminosCuota & {
@@ -1112,11 +1115,26 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       }]
     : [];
 
+  // El cargo del abono vive en el saldo, pero no es letra atrasada.
+  // La caja de la letra solo se queda con lo que no cabe en esa línea.
+  const abonoDentroDelAtraso = r2(
+    extrasNoLetra.lineas
+      .filter((x) => /abono/i.test(x.etiqueta))
+      .reduce((s, x) => s + x.monto, 0),
+  );
+  const atrasoLetra = r2(
+    Math.max(
+      letraSinCierre.pendienteAnterior -
+        Math.min(abonoDentroDelAtraso, letraSinCierre.pendienteAnterior),
+      0,
+    ),
+  );
+
   const obligaciones = obligacionesRestantes(
     {
       acuerdos: acuerdosBase,
       abono: abonoPlan && abonoHoy > 0.009 ? { id: abonoPlan.id, monto: abonoHoy } : null,
-      pendienteAnterior: letraSinCierre.pendienteAnterior,
+      pendienteAnterior: atrasoLetra,
       recargoHoy: letraSinRecargo.recargoHoy,
       cierreHoy: letraSinCierre.cierreHoy,
       cuotaHoy: letraSinRecargo.cuotaHoy,
@@ -1237,60 +1255,6 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
         sobrante: adelanto.sobrante,
         totalAplicado: r2(resultado.totalAplicado + adelanto.aplicado),
       };
-    }
-  }
-
-  // La cuota del abono de hoy se asigna sola, después de la letra de hoy.
-  // No se adelanta como otra letra ni se queda en el saldo anterior.
-  if (abonoPlan && abonoHoy > 0.009) {
-    const yaAbono = yaAplicado(resultado.asignaciones, "abono_inicial", abonoPlan.id);
-    let faltaAbono = r2(Math.min(abonoHoy, Number(abonoPlan.saldo) || 0) - yaAbono);
-    const letraHoyCubre = resultado.asignaciones.some(
-      (a) =>
-        a.tipo === "cuenta_diaria" &&
-        !/^letra \d{4}-\d{2}-\d{2}$/.test(a.etiqueta ?? "") &&
-        a.aplicado + 0.02 >= cuotaHoy,
-    );
-    if (faltaAbono > 0.009) {
-      const nuevas: AsignacionPago[] = [];
-      let tomado = 0;
-      if (resultado.sobrante > 0.009) {
-        const toma = r2(Math.min(resultado.sobrante, faltaAbono));
-        faltaAbono = r2(faltaAbono - toma);
-        tomado = toma;
-        resultado = { ...resultado, sobrante: r2(resultado.sobrante - toma) };
-      }
-      for (const a of resultado.asignaciones) {
-        const letraFutura =
-          a.tipo === "cuenta_diaria" && /^letra \d{4}-\d{2}-\d{2}$/.test(a.etiqueta ?? "");
-        // $5 en "saldo anterior" con la letra de hoy ya cubierta: es la cuota del abono.
-        const saldoDelAbono =
-          a.tipo === "saldo_anterior" &&
-          letraHoyCubre &&
-          a.aplicado <= abonoHoy + 0.02;
-        if ((!letraFutura && !saldoDelAbono) || faltaAbono <= 0.009) {
-          nuevas.push(a);
-          continue;
-        }
-        const toma = r2(Math.min(a.aplicado, faltaAbono));
-        faltaAbono = r2(faltaAbono - toma);
-        tomado = r2(tomado + toma);
-        const queda = r2(a.aplicado - toma);
-        if (queda > 0.009) nuevas.push({ ...a, aplicado: queda });
-      }
-      if (tomado > 0.009) {
-        nuevas.push({
-          tipo: "abono_inicial",
-          aplicado: tomado,
-          ref: abonoPlan.id,
-          etiqueta: ETIQUETA.abono_inicial,
-        });
-        resultado = {
-          asignaciones: nuevas,
-          sobrante: resultado.sobrante,
-          totalAplicado: r2(nuevas.reduce((s, a) => s + a.aplicado, 0)),
-        };
-      }
     }
   }
 

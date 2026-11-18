@@ -51,8 +51,9 @@ function normalizar(s: string | null | undefined): string {
 }
 
 /**
- * Distribuye un pago entre las obligaciones del día, en orden de prioridad.
- * Regla Auto Lujo: PRIMERO se cubre la cuota del/los acuerdo(s), LUEGO la cuenta diaria.
+ * Distribuye un pago entre las obligaciones del día, de menor prioridad a mayor.
+ * El orden lo trae cada obligación: domingo, recargo, acuerdo, cierre,
+ * letra atrasada, letra de hoy, abono inicial.
  *
  * Ejemplo real: cuota diaria $30 + acuerdo $5 (debería pagar $35), pero envía $20
  *   → $5 al acuerdo, $15 a la cuenta. Queda saldo pendiente en la cuenta.

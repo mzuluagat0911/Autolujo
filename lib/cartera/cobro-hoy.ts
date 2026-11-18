@@ -39,7 +39,9 @@
 //
 // Árbol lun–sáb: tajada del domingo pasado si sigue abierta → recargo →
 // acuerdo del día → Recargo Cierre semana → letras atrasadas → letra de hoy
-// → días siguientes (acuerdo de ese día, luego la letra).
+// → abono inicial del día (la cuota, no el saldo) → días siguientes
+// (acuerdo de ese día, luego la letra, luego el abono).
+// El cargo del abono no es letra atrasada: no se asigna como cuenta.
 // Domingo sin acuerdo de domingo: primero la tajada. Después recargo, acuerdo
 // del día y letra atrasada. El excedente va a la letra siguiente, salvo que
 // quede saldo de acuerdo (baja el plan) o el pago traiga rubro domingo

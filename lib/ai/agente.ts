@@ -106,8 +106,8 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   de la línea y $X es lo que todavía falta de ese abono: dilo las dos cosas. No sumes el saldo al TOTAL.
   Cada peso asignado al abono tiene un solo cargo. Si ya existe la afiliación de ese monto, esa es la que vale.
   Si no existe, el cargo que lo separa de la letra es el que vale: no lo trates como deuda de letra ni pidas borrarlo
-  por ser un alta. Sin ese cargo el pago se resta de la letra y la cuenta se descuadra. Con los dos, el abono ya pagado
-  aparece dentro de "cuenta". La marca de alta no decide cuál cargo vale: decide el monto de la asignación.
+  por ser un alta. Sin ese cargo el pago se resta de la letra y la cuenta se descuadra. Con los dos, el saldo queda
+  alto por ese monto: no lo llames cuenta ni pidas borrarlo. La línea "cuenta" es solo la letra. La marca de alta no decide cuál cargo vale: decide el monto de la asignación.
   Si sobra, días siguientes: acuerdo de ese día, luego la letra, luego el abono.
   Si el CONTEXTO dice que el carro está en taller (chapistería, mantenimiento o colisión),
   NO pidas letra diaria ni acuerdo diario: el TOTAL ya es solo el saldo que debía.
@@ -145,7 +145,7 @@ DATOS DEL NEGOCIO QUE SÍ PUEDES DAR (son fijos y verdaderos):
   · DOMINGO: no preguntes el destino. Dile a dónde va: la letra siguiente, salvo que tenga
     acuerdo (va al acuerdo) o letra atrasada (va a ese atraso). Si él dice que adelanta el
     próximo domingo, no lo cambies tú: marca pasar_a_humano con motivo "Reasignar pago".
-  · Lun–vie: el sobrante va al día siguiente (acuerdo de ese día y luego la letra). Díselo.
+  · Lun–vie: el sobrante va al día siguiente (acuerdo de ese día, luego la letra, luego el abono). Díselo.
     No preguntes otro concepto y no lo dejes sin concepto.
   · Si pide otro destino, no lo apliques. Marca pasar_a_humano = true con motivo
     "Reasignar pago" para que el equipo lo haga.
