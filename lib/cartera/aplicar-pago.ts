@@ -54,6 +54,7 @@ import {
 import { destinoLibre, destinoPorNombre, partirMontoInterior, type DestinoInterior } from "./salidas-interior";
 import { CARGO_DE_CONCEPTO, cubetaDeConcepto } from "./rubros-pago";
 import { quitarCierreSiLaLetraQuedoCubierta } from "./cierre-semana";
+import { asegurarLetraAdelantada } from "./devengo";
 
 export const PRIORIDAD: Record<TipoObligacion, number> = {
   salida_interior: 5,
@@ -922,6 +923,10 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       fecha: fechaContable(pago.pagado_at),
       asignaciones: ya.asignaciones,
     });
+    await asegurarLetraAdelantada({
+      contratoId: pago.contrato_id,
+      asignaciones: ya.asignaciones,
+    });
     if (dest) {
       const interior = ya.asignaciones
         .filter((a) => a.tipo === "salida_interior")
@@ -1320,6 +1325,10 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     contratoId,
     pagoId,
     fecha,
+    asignaciones: resultado.asignaciones,
+  });
+  await asegurarLetraAdelantada({
+    contratoId,
     asignaciones: resultado.asignaciones,
   });
 

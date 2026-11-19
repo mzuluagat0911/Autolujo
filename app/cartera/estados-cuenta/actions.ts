@@ -820,6 +820,8 @@ export async function guardarAsignacionesHistorial(opts: {
     fecha: fechaPago,
     asignaciones: lineasPago,
   });
+  const { asegurarLetraAdelantada } = await import("@/lib/cartera/devengo");
+  await asegurarLetraAdelantada({ contratoId, asignaciones: lineasPago });
   await sincronizarSalidaReasignada({
     pagoId,
     contratoId,

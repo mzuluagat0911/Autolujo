@@ -21,8 +21,8 @@
 
 import { createServerSupabase } from "@/lib/supabase/server";
 import { hoyPanama, sumarDias, pasoCorte, diasEntre, esDomingo } from "./fecha";
-import { cuotaDeFecha, letraDiariaEnDomingo, omiteDomingoYaCerrado, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
-import { descuentosLetraDelDia } from "./descuento-letra";
+import { cuotaDeFecha, correLetraNueva, letraDiariaEnDomingo, omiteDomingoYaCerrado, penalidadDe, esCumpleanos, tienePermanencia, type TerminosCuota } from "./cuota";
+import { descuentosLetraDelDia, descuentoLetraDe } from "./descuento-letra";
 import { devolucionesAbiertas, devolucionVigente } from "./devolucion";
 import { inactivacionesAbiertas, inactivacionVigente } from "./inactivo";
 import { filasUltimaLetra } from "./archivo-caso";
@@ -138,10 +138,15 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
   if (error) throw error;
 
   const { data: existentes } = await sb
-    .from("cargos").select("contrato_id").eq("fecha", fecha).eq("tipo", "renta");
-  const yaTiene = new Set(
-    ((existentes ?? []) as { contrato_id: string }[]).map((r) => r.contrato_id),
-  );
+    .from("cargos").select("id, contrato_id, monto").eq("fecha", fecha).eq("tipo", "renta");
+  const yaTiene = new Set<string>();
+  const rentaPrevia = new Map<string, { id: string; monto: number }>();
+  for (const r of (existentes ?? []) as { id: string; contrato_id: string; monto: number }[]) {
+    yaTiene.add(r.contrato_id);
+    const monto = Number(r.monto) || 0;
+    const previa = rentaPrevia.get(r.contrato_id);
+    if (!previa || monto > previa.monto) rentaPrevia.set(r.contrato_id, { id: r.id, monto });
+  }
 
   // Saldo + cumpleaños por contrato (el beneficio aplica solo si está al día).
   const idsActivos = ((contratos ?? []) as { id: string }[]).map((c) => c.id);
@@ -183,7 +188,6 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
 
   for (const c of ((contratos ?? []) as unknown as ContratoDevengo[])) {
     if (inicioLetraDe(c) > fecha) continue;
-    if (yaTiene.has(c.id)) { res.yaEstaban++; continue; }
     if (carroSinCliente(c.vehiculo?.empresa?.codigo, c.vehiculo?.numero, c.created_at)) {
       res.sinCuota++;
       continue;
@@ -226,6 +230,15 @@ export async function devengarDia(fecha: string): Promise<ResultadoDevengo> {
       (saldoMap.get(c.id) ?? 0) <= 0.009
     ) {
       res.sinCuota++;
+      continue;
+    }
+    const previa = rentaPrevia.get(c.id);
+    if (previa) {
+      if (previa.monto + 0.009 < monto) {
+        const { error: errTope } = await sb.from("cargos").update({ monto }).eq("id", previa.id);
+        if (errTope) res.yaEstaban++;
+        else res.creados++;
+      } else res.yaEstaban++;
       continue;
     }
     filas.push({
@@ -343,4 +356,100 @@ export async function ultimoDiaDevengado(contratoId: string): Promise<string | n
     .limit(1)
     .maybeSingle();
   return (data as { fecha: string } | null)?.fecha ?? null;
+}
+
+/**
+ * Una letra pagada por adelantado nace con su cargo el mismo día.
+ * Si el cargo no existe, ese pago queda suelto en el saldo y paga
+ * el mantenimiento, el recargo o el cierre. El cargo no pasa de la
+ * cuota del día ni de lo que el pago ya cubrió.
+ */
+export async function asegurarLetraAdelantada(opts: {
+  contratoId: string;
+  asignaciones: { tipo?: string; etiqueta?: string | null; aplicado?: number }[];
+}): Promise<number> {
+  const hoy = hoyPanama();
+  const porDia = new Map<string, number>();
+  for (const a of opts.asignaciones) {
+    const tipo = (a.tipo ?? "").toLowerCase();
+    if (tipo !== "cuenta_diaria" && tipo !== "cuenta") continue;
+    const marca = /^letra (\d{4}-\d{2}-\d{2})$/i.exec(a.etiqueta ?? "");
+    if (!marca || marca[1] < hoy) continue;
+    const aplicado = Math.max(Number(a.aplicado) || 0, 0);
+    if (aplicado <= 0.009) continue;
+    porDia.set(marca[1], Math.round(((porDia.get(marca[1]) ?? 0) + aplicado) * 100) / 100);
+  }
+  if (porDia.size === 0) return 0;
+
+  const sb = createServerSupabase();
+  const { data: contrato } = await sb
+    .from("contratos")
+    .select("id, vehiculo_id, fecha_inicio, fecha_inicio_letra, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+    .eq("id", opts.contratoId)
+    .maybeSingle();
+  const c = contrato as (TerminosCuota & {
+    vehiculo_id: string | null;
+    fecha_inicio: string;
+    fecha_inicio_letra: string | null;
+  }) | null;
+  if (!c?.fecha_inicio) return 0;
+  if (inicioLetraDe(c) > hoy && [...porDia.keys()].every((f) => f < inicioLetraDe(c))) return 0;
+
+  const vehiculoId = c.vehiculo_id ?? "";
+  const [pausas, devoluciones, inactivaciones, ventanas] = await Promise.all([
+    pausasAbiertas(),
+    devolucionesAbiertas(),
+    inactivacionesAbiertas(),
+    ventanasSinLetraPorVehiculo(),
+  ]);
+  const fechas = [...porDia.keys()];
+  const { data: rentas } = await sb
+    .from("cargos")
+    .select("id, fecha, monto")
+    .eq("contrato_id", opts.contratoId)
+    .eq("tipo", "renta")
+    .in("fecha", fechas);
+  const rentaPorFecha = new Map<string, { id: string; monto: number }>();
+  for (const r of (rentas ?? []) as { id: string; fecha: string; monto: number }[]) {
+    const fecha = String(r.fecha).slice(0, 10);
+    const monto = Number(r.monto) || 0;
+    const previa = rentaPorFecha.get(fecha);
+    if (!previa || monto > previa.monto) rentaPorFecha.set(fecha, { id: r.id, monto });
+  }
+
+  const inicio = inicioLetraDe(c);
+  let tocados = 0;
+  for (const [fecha, asignado] of porDia) {
+    if (fecha < inicio) continue;
+    if (!correLetraNueva(c, fecha)) continue;
+    if (
+      fechaCaeEnSinLetra(ventanas.get(vehiculoId) ?? [], fecha) ||
+      pausaVigente(pausas.get(vehiculoId), fecha) ||
+      devolucionVigente(devoluciones.get(vehiculoId), fecha) ||
+      inactivacionVigente(inactivaciones.get(vehiculoId), fecha)
+    ) {
+      continue;
+    }
+    const descuento = vehiculoId ? await descuentoLetraDe(vehiculoId, fecha) : 0;
+    const cuota = Math.max(Math.round((cuotaDeFecha(c, fecha) - descuento) * 100) / 100, 0);
+    if (cuota <= 0.009) continue;
+    const objetivo = Math.min(asignado, cuota);
+    const previa = rentaPorFecha.get(fecha);
+    if (!previa) {
+      const { error } = await sb.from("cargos").insert({
+        contrato_id: opts.contratoId,
+        fecha,
+        tipo: "renta",
+        concepto: "Cuota diaria",
+        monto: objetivo,
+      });
+      if (!error) tocados++;
+      continue;
+    }
+    if (previa.monto + 0.009 < objetivo) {
+      const { error } = await sb.from("cargos").update({ monto: objetivo }).eq("id", previa.id);
+      if (!error) tocados++;
+    }
+  }
+  return tocados;
 }
