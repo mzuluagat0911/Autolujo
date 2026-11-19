@@ -72,6 +72,7 @@ import {
   cargosExtraAgrupados,
   preferenciaAbonoContrato,
   detalleAcuerdosContrato,
+  creditoLetraAdelantadaPorContrato,
   textoDesgloseExtracto,
   type ExtractoArmado,
   type LineaExtracto,
@@ -90,6 +91,8 @@ export type CobroHoyCtx = {
   extras: LineaExtracto[];
   /** null = menor valor. */
   preferencia?: string | null;
+  /** Letras pagadas de un día que todavía no tiene cargo. No pagan otro concepto. */
+  creditoLetra?: number;
   /** Planes que esperan detrás del que se cobra. No suman al total. */
   enEspera?: { etiqueta: string; saldo: number }[];
   /** Todos los planes con saldo, el que se cobra primero. Solo para el resumen. */
@@ -112,15 +115,17 @@ export type CobroHoy = ExtractoArmado & {
 
 /** Carga saldo de acuerdos + cargos extra del contrato. */
 export async function ctxCobroHoy(contratoId: string): Promise<CobroHoyCtx> {
-  const [acuerdos, extras, preferencia] = await Promise.all([
+  const [acuerdos, extras, preferencia, credito] = await Promise.all([
     detalleAcuerdosContrato(contratoId),
     cargosExtraAgrupados(contratoId),
     preferenciaAbonoContrato(contratoId),
+    creditoLetraAdelantadaPorContrato([contratoId]),
   ]);
   return {
     acuerdoSaldo: acuerdos.saldo,
     extras,
     preferencia,
+    creditoLetra: credito.get(contratoId) ?? 0,
     enEspera: acuerdos.espera,
     planes: acuerdos.planes,
   };
@@ -137,6 +142,7 @@ export function cobroHoyDe(e: EstadoCuenta, ctx: CobroHoyCtx): CobroHoy {
     enEspera: ctx.enEspera,
     planes: ctx.planes,
     hoy: e.hoyIso,
+    creditoLetra: ctx.creditoLetra,
   });
   return {
     ...armado,

@@ -14,7 +14,7 @@ import {
   gravedadSituacion,
   type EstadoCuenta,
 } from "./estado-cuenta";
-import { cargosExtraPorContrato, vistaAcuerdosPorContrato } from "./extracto-desglose";
+import { cargosExtraPorContrato, creditoLetraAdelantadaPorContrato, vistaAcuerdosPorContrato } from "./extracto-desglose";
 import { hoyPanama } from "./fecha";
 
 const TAG_DIA = "extracto-dia";
@@ -22,9 +22,10 @@ const HORAS = 60 * 60 * 18;
 
 async function enriquecer(base: EstadoCuenta[]): Promise<EstadoCuentaFila[]> {
   const ids = base.map((e) => e.contratoId);
-  const [vistaMap, extrasMap] = await Promise.all([
+  const [vistaMap, extrasMap, creditoMap] = await Promise.all([
     vistaAcuerdosPorContrato(ids),
     cargosExtraPorContrato(ids),
+    creditoLetraAdelantadaPorContrato(ids),
   ]);
   return base.map((e) => {
     const vista = vistaMap.get(e.contratoId);
@@ -34,6 +35,7 @@ async function enriquecer(base: EstadoCuenta[]): Promise<EstadoCuentaFila[]> {
       extras,
       enEspera: vista?.espera ?? [],
       planes: vista?.planes ?? [],
+      creditoLetra: creditoMap.get(e.contratoId) ?? 0,
     });
     return {
       ...e,

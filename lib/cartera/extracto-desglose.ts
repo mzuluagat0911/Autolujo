@@ -131,6 +131,11 @@ export function armarExtractoDiario(
     planes?: PlanAcuerdoVista[];
     /** ISO YYYY-MM-DD del día del extracto (para saber si es domingo). */
     hoy?: string;
+    /**
+     * Letras ya pagadas de un día que todavía no tiene cargo.
+     * Ese saldo a favor no paga mantenimiento, recargo ni cierre.
+     */
+    creditoLetra?: number;
   },
 ): ExtractoArmado {
   const extrasAll = (opts?.extras ?? []).filter((x) => x.monto > 0.009);
@@ -187,6 +192,19 @@ export function armarExtractoDiario(
   const partes = partesSaldoAnterior({ pendienteAnterior: pa, extras: extrasParaSaldo });
   const extrasEmbebidos = partes.filter((p) => p.etiqueta !== "cuotas atrasadas");
   const embebidosSum = extrasEmbebidos.reduce((s, x) => s + x.monto, 0);
+  // El adelanto de letra ya bajó el saldo. Se devuelve al cargo que se comió
+  // (mantenimiento, recargo, cierre). La letra a favor no se cobra hoy.
+  const rescatado = montoRescatadoPorAdelantoLetra({
+    extras: extrasParaSaldo,
+    embebidos: extrasEmbebidos,
+    creditoLetra: opts?.creditoLetra ?? 0,
+    saldoVista: Number(e.saldoVista) || 0,
+  });
+  for (const [etiqueta, mas] of rescatado) {
+    const hit = extrasEmbebidos.find((x) => x.etiqueta === etiqueta);
+    if (hit) hit.monto = Math.round((hit.monto + mas) * 100) / 100;
+    else extrasEmbebidos.push({ etiqueta, monto: mas });
+  }
 
   const extrasBase = extrasEmbebidos.filter(
     (x) => esCargoBase(x.etiqueta) && !/abono/i.test(x.etiqueta),
@@ -864,13 +882,111 @@ async function abonosExtraPorContrato(ids: string[]): Promise<Map<string, Map<st
 }
 
 /**
- * Parte el “saldo anterior” en cuotas atrasadas + cargos vivos del ledger
- * (mantenimiento, panapass, cierre, etc.).
- * La suma de las partes ≈ pendienteAnterior (tope por lo que cabe en el saldo).
- *
- * Orden de asignación (= prioridad de cobro): cargos base (cierre) primero,
- * luego mantenimiento, luego el resto de menor a mayor. Así un “otros” viejo
- * no se come el pool antes que el mantenimiento.
+ * Lo que un adelanto de letra le quitó a otro concepto.
+ * El saldo a favor que todavía sobra (saldo negativo) no se vuelve a cobrar.
+ */
+export function montoRescatadoPorAdelantoLetra(opts: {
+  extras: { etiqueta: string; monto: number }[];
+  embebidos: { etiqueta: string; monto: number }[];
+  creditoLetra: number;
+  saldoVista: number;
+}): Map<string, number> {
+  const out = new Map<string, number>();
+  const aFavorQueSobra = Math.max(-(Number(opts.saldoVista) || 0), 0);
+  let bolsa = Math.max((Number(opts.creditoLetra) || 0) - aFavorQueSobra, 0);
+  if (bolsa <= 0.009) return out;
+
+  const mostrado = new Map<string, number>();
+  for (const x of opts.embebidos) {
+    mostrado.set(x.etiqueta, (mostrado.get(x.etiqueta) ?? 0) + x.monto);
+  }
+  const orden = [...opts.extras]
+    .filter((x) => x.monto > 0.009 && !/abono/i.test(x.etiqueta) && !esEtiquetaDomingo(x.etiqueta))
+    .sort((a, b) => {
+      const rank = (et: string) => {
+        if (esCargoBase(et)) return 0;
+        if (/manten/i.test(et)) return 1;
+        return 2;
+      };
+      const ra = rank(a.etiqueta);
+      const rb = rank(b.etiqueta);
+      if (ra !== rb) return ra - rb;
+      return a.monto - b.monto;
+    });
+  for (const x of orden) {
+    if (bolsa <= 0.009) break;
+    const gap = Math.max(x.monto - (mostrado.get(x.etiqueta) ?? 0), 0);
+    if (gap <= 0.009) continue;
+    const toma = Math.min(gap, bolsa);
+    out.set(x.etiqueta, Math.round(((out.get(x.etiqueta) ?? 0) + toma) * 100) / 100);
+    bolsa = Math.round((bolsa - toma) * 100) / 100;
+  }
+  return out;
+}
+
+/** Letras pagadas de un día futuro que todavía no tiene su cargo. */
+export async function creditoLetraAdelantadaPorContrato(
+  contratoIds: string[],
+  hoy = hoyPanama(),
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  const ids = contratoIds.filter(Boolean);
+  if (ids.length === 0) return out;
+  const sb = createServerSupabase();
+  const [pagos, rentas] = await Promise.all([
+    leerPorPaginas<{ contrato_id: string | null; asignaciones: unknown }>(ids, (lote, desde) =>
+      sb
+        .from("pagos")
+        .select("contrato_id, asignaciones")
+        .in("contrato_id", lote)
+        .in("estado_conciliacion", ["conciliado", "manual"])
+        .order("id", { ascending: true })
+        .range(desde, desde + 999),
+    ),
+    leerPorPaginas<{ contrato_id: string; fecha: string | null; monto: number }>(ids, (lote, desde) =>
+      sb
+        .from("cargos")
+        .select("contrato_id, fecha, monto")
+        .in("contrato_id", lote)
+        .eq("tipo", "renta")
+        .gt("fecha", hoy)
+        .order("id", { ascending: true })
+        .range(desde, desde + 999),
+    ),
+  ]);
+  const rentaPorDia = new Map<string, number>();
+  for (const c of rentas) {
+    const fecha = String(c.fecha ?? "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(fecha)) continue;
+    const clave = `${c.contrato_id}|${fecha}`;
+    rentaPorDia.set(clave, Math.round(((rentaPorDia.get(clave) ?? 0) + (Number(c.monto) || 0)) * 100) / 100);
+  }
+  const asignado = new Map<string, number>();
+  for (const p of pagos) {
+    if (!p.contrato_id) continue;
+    for (const a of lineasDeAsignaciones(p.asignaciones)) {
+      const tipo = (a.tipo ?? "").toLowerCase();
+      if (tipo !== "cuenta_diaria" && tipo !== "cuenta") continue;
+      const m = /^letra (\d{4}-\d{2}-\d{2})$/i.exec(a.etiqueta ?? "");
+      if (!m || m[1] <= hoy) continue;
+      const clave = `${p.contrato_id}|${m[1]}`;
+      asignado.set(clave, Math.round(((asignado.get(clave) ?? 0) + (Number(a.aplicado) || 0)) * 100) / 100);
+    }
+  }
+  for (const [clave, monto] of asignado) {
+    const cubierto = rentaPorDia.get(clave) ?? 0;
+    const credito = Math.round((monto - cubierto) * 100) / 100;
+    if (credito <= 0.009) continue;
+    const contratoId = clave.slice(0, clave.lastIndexOf("|"));
+    out.set(contratoId, Math.round(((out.get(contratoId) ?? 0) + credito) * 100) / 100);
+  }
+  return out;
+}
+
+/**
+ * Parte el saldo anterior en cuotas atrasadas y cargos vivos del ledger
+ * (mantenimiento, panapass, cierre). La suma de las partes cabe en pendienteAnterior.
+ * Primero el cierre, luego el mantenimiento, luego el resto de menor a mayor.
  */
 export function partesSaldoAnterior(opts: {
   pendienteAnterior: number;

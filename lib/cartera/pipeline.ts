@@ -420,16 +420,23 @@ export async function resumenContrato(contratoId: string): Promise<string | null
     );
   }
 
-  // Pagos adelantados: si tiene días pagados por adelantado, HOY no debe pagar.
+  // La letra adelantada no apaga un mantenimiento, un recargo ni un cierre.
   if (est.diasAdelantados > 0 && est.estadoContrato === "activo") {
-    lineas.push(
-      ``,
-      `✅ CLIENTE ADELANTADO: tiene ${est.diasAdelantados} día(s) de cuota PAGADOS POR ADELANTADO` +
-        (est.cubiertoHasta ? ` (cubierto hasta el ${fechaConDia(est.cubiertoHasta)})` : "") + `.`,
-      `HOY NO tiene que pagar; su cuota de hoy ya está cubierta. Si pregunta cuánto debe o si paga`,
-      `hoy, felicítalo y dile que ya está al día y tiene cubiertos los próximos ${est.diasAdelantados} día(s)` +
-        (est.cubiertoHasta ? ` (hasta el ${fechaConDia(est.cubiertoHasta)})` : "") + `. No le cobres de más.`,
-    );
+    const hasta = est.cubiertoHasta ? ` (cubierto hasta el ${fechaConDia(est.cubiertoHasta)})` : "";
+    if (cobro.totalCobrarHoy <= 0.009) {
+      lineas.push(
+        ``,
+        `✅ CLIENTE ADELANTADO: tiene ${est.diasAdelantados} día(s) de cuota PAGADOS POR ADELANTADO${hasta}.`,
+        `HOY NO tiene que pagar; su cuota de hoy ya está cubierta. Si pregunta cuánto debe o si paga`,
+        `hoy, felicítalo y dile que ya está al día y tiene cubiertos los próximos ${est.diasAdelantados} día(s)${hasta}. No le cobres de más.`,
+      );
+    } else {
+      lineas.push(
+        ``,
+        `LETRA ADELANTADA: tiene ${est.diasAdelantados} día(s) de letra pagados por adelantado${hasta}.`,
+        `Ese adelanto es de la letra. No paga el TOTAL A PAGAR HOY (${m(cobro.totalCobrarHoy)}). Ese total se cobra entero, en su concepto.`,
+      );
+    }
   }
 
   // Cumpleaños libre (cláusula del contrato). El motor ya lo aplicó en las cifras;
@@ -519,6 +526,7 @@ export async function resumenContrato(contratoId: string): Promise<string | null
         ? `- Puedes listar lo demás si preguntan. El TOTAL del domingo no se rearma.`
         : `- Puedes LISTAR todo lo que debe (para claridad), pero el TOTAL solo incluye letra/recargo/cierre, el abono inicial del día si el desglose lo trae, y ese un ítem.`,
       `- NO sumes mantenimiento + acuerdos + domingo el mismo día en el total de hoy.`,
+      `- Un saldo a favor de letra adelantada no paga el mantenimiento, el recargo ni el cierre. Esos cargos se cobran enteros, en su concepto. El adelanto sigue siendo letra.`,
       `- NUNCA inventes una línea “abono” con lo pagado hoy: eso ya está descontado.`,
       esDomingo(hoyPanama())
         ? cobro.domingoPausado

@@ -15,6 +15,8 @@ export type ExtractoCtx = {
   preferencia?: string | null;
   enEspera?: { etiqueta: string; saldo: number }[];
   planes?: PlanAcuerdoVista[];
+  /** Letras pagadas de un día que todavía no tiene cargo. */
+  creditoLetra?: number;
 };
 
 /** Sin saldo de días anteriores: solo le toca la cuota de hoy. */
@@ -36,6 +38,7 @@ export function varsExtractoDetalle(e: EstadoCuenta, ctx?: ExtractoCtx): string[
     enEspera: ctx?.enEspera,
     planes: ctx?.planes,
     hoy: e.hoyIso,
+    creditoLetra: ctx?.creditoLetra,
   });
   return [
     nombre,
@@ -79,5 +82,6 @@ export function totalCobrarHoyExtracto(e: EstadoCuenta, ctx?: ExtractoCtx): numb
     enEspera: ctx?.enEspera,
     planes: ctx?.planes,
     hoy: e.hoyIso,
+    creditoLetra: ctx?.creditoLetra,
   }).totalCobrarHoy;
 }
