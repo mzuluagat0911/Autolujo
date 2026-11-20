@@ -12,7 +12,7 @@ import { leerPanelOperativo } from "@/lib/cartera/panel-operativo";
 import { PanelOperativoVista } from "./panel-operativo";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type Datos = {
   ok: boolean;
