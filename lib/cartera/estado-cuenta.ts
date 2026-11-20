@@ -35,7 +35,8 @@ import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
 import { descuentoLetraDe, descuentosLetraDelDia } from "./descuento-letra";
 import { atribuirRecargos, lineasAsignadas, type CargoRecargo, type PagoParaRecargo } from "./recargo-cubierto";
 import { cuadrarEspejosAcuerdo } from "./espejo-acuerdo";
-import { conLectura, pagosDeLaLectura, prepararPagos } from "./pagos-flota";
+import { leerPagosDirecto } from "./pagos-leer";
+import { pagosCompartidos, prepararCompartido } from "./pagos-puente";
 
 function faltaDelAbono(lista: AcuerdoActivo[], hoy: string, pagado: number): number {
   const plan = planAbonoInicial(lista);
@@ -1023,7 +1024,7 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
         .in("contrato_id", ids)
         .range(desde, desde + 999),
     ),
-    pagosDeLaLectura(ids),
+    pagosCompartidos(ids, leerPagosDirecto),
   ]);
   const cargosPor = new Map<string, CargoRecargo[]>();
   for (const g of data) {
@@ -1164,7 +1165,7 @@ async function domingoPorContrato(
         )
       ).rows
     : filtrados.rows;
-  const pagos = await pagosDeLaLectura(ids);
+  const pagos = await pagosCompartidos(ids, leerPagosDirecto);
   for (const g of cargos) {
     if (!esCargoDomingo(g)) continue;
     const monto = Number(g.monto) || 0;
@@ -1243,10 +1244,6 @@ async function adelantoFuturoPorContrato(
 
 /** Arma estados de todos los contratos activos del alcance. */
 export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
-  return conLectura(() => armarEstadosAlcanceAhora());
-}
-
-async function armarEstadosAlcanceAhora(): Promise<EstadoCuenta[]> {
   const sb = createServerSupabase();
   const hoy = hoyPanama();
   const corte = pasoCorte();
@@ -1264,7 +1261,7 @@ async function armarEstadosAlcanceAhora(): Promise<EstadoCuenta[]> {
   const idsAlcance = filasContrato.map((c) => c.id);
   if (idsAlcance.length === 0) return [];
 
-  const pagosListos = prepararPagos(idsAlcance);
+  const pagosListos = prepararCompartido(idsAlcance, leerPagosDirecto);
   await Promise.all([cuadrarEspejosAcuerdo(idsAlcance), pagosListos]);
 
   const letraDe = (id: string) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0;

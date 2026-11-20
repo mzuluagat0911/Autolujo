@@ -28,7 +28,8 @@ import {
 } from "./prioridad-extras";
 import { atribuirRecargos, lineasAsignadas } from "./recargo-cubierto";
 import { cubetaDeConcepto } from "./rubros-pago";
-import { pagosDeLaLectura } from "./pagos-flota";
+import { pagosCompartidos } from "./pagos-puente";
+import { leerPagosDirecto } from "./pagos-leer";
 
 export type LineaExtracto = {
   etiqueta: string;
@@ -656,7 +657,7 @@ async function recargoAbiertoPorContrato(ids: string[]): Promise<Map<string, num
       cargos.filter((c) => !c.pago_id).map((c) => c.contrato_id).filter(Boolean),
     ),
   ];
-  const pagos = await pagosDeLaLectura(conRecargoAbierto);
+  const pagos = await pagosCompartidos(conRecargoAbierto, leerPagosDirecto);
   const cargosPor = new Map<string, Parameters<typeof atribuirRecargos>[0]>();
   for (const c of cargos) {
     const lista = cargosPor.get(c.contrato_id) ?? [];
@@ -842,7 +843,7 @@ function lineasDeAsignaciones(
 async function abonosExtraPorContrato(ids: string[]): Promise<Map<string, Map<string, number>>> {
   const out = new Map<string, Map<string, number>>();
   if (ids.length === 0) return out;
-  const data = await pagosDeLaLectura(ids);
+  const data = await pagosCompartidos(ids, leerPagosDirecto);
   for (const p of data) {
     if (!p.contrato_id) continue;
     const cubetas = out.get(p.contrato_id) ?? new Map<string, number>();
@@ -911,7 +912,7 @@ export async function creditoLetraAdelantadaPorContrato(
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
   const [pagos, rentas] = await Promise.all([
-    pagosDeLaLectura(ids),
+    pagosCompartidos(ids, leerPagosDirecto),
     leerPorPaginas<{ contrato_id: string; fecha: string | null; monto: number }>(ids, (lote, desde) =>
       sb
         .from("cargos")
