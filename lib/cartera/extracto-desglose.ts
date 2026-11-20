@@ -28,6 +28,7 @@ import {
 } from "./prioridad-extras";
 import { atribuirRecargos, lineasAsignadas } from "./recargo-cubierto";
 import { cubetaDeConcepto } from "./rubros-pago";
+import { pagosDeLaLectura } from "./pagos-flota";
 
 export type LineaExtracto = {
   etiqueta: string;
@@ -655,22 +656,7 @@ async function recargoAbiertoPorContrato(ids: string[]): Promise<Map<string, num
       cargos.filter((c) => !c.pago_id).map((c) => c.contrato_id).filter(Boolean),
     ),
   ];
-  const pagos = await leerPorPaginas<{
-    id: string;
-    contrato_id: string | null;
-    fecha: string | null;
-    monto: number;
-    rubro: string | null;
-    asignaciones: unknown;
-  }>(conRecargoAbierto, (lote, desde) =>
-    sb
-      .from("pagos")
-      .select("id, contrato_id, fecha, monto, rubro, asignaciones")
-      .in("contrato_id", lote)
-      .in("estado_conciliacion", ["conciliado", "manual"])
-      .order("id", { ascending: true })
-      .range(desde, desde + 999),
-  );
+  const pagos = await pagosDeLaLectura(conRecargoAbierto);
   const cargosPor = new Map<string, Parameters<typeof atribuirRecargos>[0]>();
   for (const c of cargos) {
     const lista = cargosPor.get(c.contrato_id) ?? [];
@@ -856,16 +842,7 @@ function lineasDeAsignaciones(
 async function abonosExtraPorContrato(ids: string[]): Promise<Map<string, Map<string, number>>> {
   const out = new Map<string, Map<string, number>>();
   if (ids.length === 0) return out;
-  const sb = createServerSupabase();
-  const data = await leerPorPaginas<{ contrato_id: string | null; asignaciones: unknown }>(ids, (lote, desde) =>
-    sb
-      .from("pagos")
-      .select("contrato_id, asignaciones")
-      .in("contrato_id", lote)
-      .in("estado_conciliacion", ["conciliado", "manual"])
-      .order("id", { ascending: true })
-      .range(desde, desde + 999),
-  );
+  const data = await pagosDeLaLectura(ids);
   for (const p of data) {
     if (!p.contrato_id) continue;
     const cubetas = out.get(p.contrato_id) ?? new Map<string, number>();
@@ -934,15 +911,7 @@ export async function creditoLetraAdelantadaPorContrato(
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
   const [pagos, rentas] = await Promise.all([
-    leerPorPaginas<{ contrato_id: string | null; asignaciones: unknown }>(ids, (lote, desde) =>
-      sb
-        .from("pagos")
-        .select("contrato_id, asignaciones")
-        .in("contrato_id", lote)
-        .in("estado_conciliacion", ["conciliado", "manual"])
-        .order("id", { ascending: true })
-        .range(desde, desde + 999),
-    ),
+    pagosDeLaLectura(ids),
     leerPorPaginas<{ contrato_id: string; fecha: string | null; monto: number }>(ids, (lote, desde) =>
       sb
         .from("cargos")

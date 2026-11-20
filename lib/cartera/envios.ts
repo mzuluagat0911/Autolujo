@@ -32,6 +32,7 @@ import {
 } from "./extracto-preview";
 import { obtenerConversacion, registrarMensaje } from "./pipeline";
 import { envioPausado, envioPausadoContrato } from "./envio-pausa";
+import { conLectura } from "./pagos-flota";
 
 export { estaAlDia, previewEstadoCuenta, varsExtractoDetalle };
 export type { ExtractoCtx };
@@ -294,6 +295,7 @@ export async function enviarEstadosCuentaHoy(): Promise<{
   fallidos: number;
   sinNumero: number;
 }> {
+  return conLectura(async () => {
   const estados = (await estadosCuentaHoy()).filter((e) => !envioPausado(e.empresa));
   const ids = estados.map((e) => e.contratoId);
   const [saldos, extras, espera, creditos] = await Promise.all([
@@ -329,4 +331,5 @@ export async function enviarEstadosCuentaHoy(): Promise<{
   }
 
   return { total: estados.length, enviados, fallidos, sinNumero };
+  });
 }

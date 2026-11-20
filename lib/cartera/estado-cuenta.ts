@@ -35,6 +35,7 @@ import { GOLD_CUOTAS_PLAN } from "./data/gold-cuotas-plan";
 import { descuentoLetraDe, descuentosLetraDelDia } from "./descuento-letra";
 import { atribuirRecargos, lineasAsignadas, type CargoRecargo, type PagoParaRecargo } from "./recargo-cubierto";
 import { cuadrarEspejosAcuerdo } from "./espejo-acuerdo";
+import { conLectura, pagosDeLaLectura, prepararPagos } from "./pagos-flota";
 
 function faltaDelAbono(lista: AcuerdoActivo[], hoy: string, pagado: number): number {
   const plan = planAbonoInicial(lista);
@@ -1013,7 +1014,7 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
   const out = new Map<string, number>();
   if (ids.length === 0) return out;
   const sb = createServerSupabase();
-  const [{ rows: data }, { rows: pagos }] = await Promise.all([
+  const [{ rows: data }, pagos] = await Promise.all([
     filasPorPagina<{ contrato_id: string }>((desde) =>
       sb
         .from("cargos")
@@ -1022,15 +1023,7 @@ async function recargosPorContrato(ids: string[]): Promise<Map<string, number>> 
         .in("contrato_id", ids)
         .range(desde, desde + 999),
     ),
-    filasPorPagina<{ contrato_id: string | null }>((desde) =>
-      sb
-        .from("pagos")
-        .select("id, contrato_id, fecha, monto, rubro, asignaciones")
-        .in("contrato_id", ids)
-        .in("estado_conciliacion", ["conciliado", "manual"])
-        .order("id", { ascending: true })
-        .range(desde, desde + 999),
-    ),
+    pagosDeLaLectura(ids),
   ]);
   const cargosPor = new Map<string, CargoRecargo[]>();
   for (const g of data) {
@@ -1118,13 +1111,6 @@ type CargoDomingo = {
   concepto: string | null;
 };
 
-type PagoDomingo = {
-  contrato_id: string | null;
-  monto: number;
-  rubro?: string | null;
-  asignaciones?: unknown;
-};
-
 /** La API corta en 1000 filas. Se sigue pidiendo mientras la página venga llena. */
 async function filasPorPagina<T>(
   pedir: (desde: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
@@ -1178,15 +1164,7 @@ async function domingoPorContrato(
         )
       ).rows
     : filtrados.rows;
-  const pagos = await filasPorPagina<PagoDomingo>((desde) =>
-    sb
-      .from("pagos")
-      .select("contrato_id, monto, rubro, asignaciones")
-      .in("contrato_id", ids)
-      .in("estado_conciliacion", ["conciliado", "manual"])
-      .order("id", { ascending: true })
-      .range(desde, desde + 999),
-  );
+  const pagos = await pagosDeLaLectura(ids);
   for (const g of cargos) {
     if (!esCargoDomingo(g)) continue;
     const monto = Number(g.monto) || 0;
@@ -1202,8 +1180,8 @@ async function domingoPorContrato(
       alCorte: Math.round(cur.alCorte * 100) / 100,
     });
   }
-  if (!pagos.error) {
-    for (const p of pagos.rows) {
+  if (pagos.length > 0) {
+    for (const p of pagos) {
       if (!p.contrato_id || !out.has(p.contrato_id)) continue;
       const abono = abonoDomingoDePago(p);
       if (abono <= 0.009) continue;
@@ -1265,6 +1243,10 @@ async function adelantoFuturoPorContrato(
 
 /** Arma estados de todos los contratos activos del alcance. */
 export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
+  return conLectura(() => armarEstadosAlcanceAhora());
+}
+
+async function armarEstadosAlcanceAhora(): Promise<EstadoCuenta[]> {
   const sb = createServerSupabase();
   const hoy = hoyPanama();
   const corte = pasoCorte();
@@ -1282,7 +1264,8 @@ export async function armarEstadosAlcance(): Promise<EstadoCuenta[]> {
   const idsAlcance = filasContrato.map((c) => c.id);
   if (idsAlcance.length === 0) return [];
 
-  await cuadrarEspejosAcuerdo(idsAlcance);
+  const pagosListos = prepararPagos(idsAlcance);
+  await Promise.all([cuadrarEspejosAcuerdo(idsAlcance), pagosListos]);
 
   const letraDe = (id: string) => Number(filasContrato.find((c) => c.id === id)?.letra_diaria) || 0;
   const clienteIds = filasContrato.map((c) => c.cliente_id ?? "").filter(Boolean);

@@ -16,6 +16,7 @@ import {
 } from "./estado-cuenta";
 import { cargosExtraPorContrato, creditoLetraAdelantadaPorContrato, vistaAcuerdosPorContrato } from "./extracto-desglose";
 import { hoyPanama } from "./fecha";
+import { conLectura } from "./pagos-flota";
 
 const TAG_DIA = "extracto-dia";
 const HORAS = 60 * 60 * 18;
@@ -54,7 +55,7 @@ function ordenar(filas: EstadoCuentaFila[]): EstadoCuentaFila[] {
 }
 
 const flotaDelDia = unstable_cache(
-  async (hoy: string) => ordenar(await enriquecer(await armarEstadosAlcance())),
+  async (hoy: string) => conLectura(async () => ordenar(await enriquecer(await armarEstadosAlcance()))),
   ["extracto-flota-v13"],
   { revalidate: HORAS, tags: [TAG_DIA] },
 );
