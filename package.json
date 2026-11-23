@@ -23,7 +23,8 @@
     "probar:aplicar": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-aplicar.mts",
     "probar:lectura": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-lectura.mts",
     "probar:nota": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-nota-voz.mts",
-    "probar:comercial": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-comercial.mts"
+    "probar:comercial": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-comercial.mts",
+    "probar:asistente": "node --experimental-strip-types --import ./scripts/resolver.mjs scripts/probar-asistente.mts"
   },
   "dependencies": {
     "@openrouter/ai-sdk-provider": "^3.0.0",
