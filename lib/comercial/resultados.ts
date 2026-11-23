@@ -14,8 +14,7 @@ export type ResumenComercial = {
   tibios: number;
   frios: number;
   cadencia: { uno: number; dos: number; tres: number };
-  avisosFallidos: number;
-  entregas: { enviados: number; entregados: number; leidos: number; fallidos: number };
+  entregas: { enviados: number; entregados: number; leidos: number };
   primeraRespuestaMin: number | null;
   porCampana: FilaResultado[];
   porAsesor: FilaResultado[];
@@ -55,8 +54,7 @@ export async function resumenComercial(): Promise<ResumenComercial> {
     tibios: 0,
     frios: 0,
     cadencia: { uno: 0, dos: 0, tres: 0 },
-    avisosFallidos: 0,
-    entregas: { enviados: 0, entregados: 0, leidos: 0, fallidos: 0 },
+    entregas: { enviados: 0, entregados: 0, leidos: 0 },
     primeraRespuestaMin: null,
     porCampana: [],
     porAsesor: [],
@@ -185,11 +183,6 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       contar("enviado"),
       contar("pendiente"),
     ]);
-    const avisos = await sb
-      .from("citas_comercial")
-      .select("id", { count: "exact", head: true })
-      .not("aviso_error", "is", null);
-    const avisosFallidos = avisos.error ? 0 : (avisos.count ?? 0);
     const contarEntrega = async (entrega: string) => {
       const { count, error } = await sb
         .from("mensajes_comercial")
@@ -199,11 +192,10 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       if (error) return 0;
       return count ?? 0;
     };
-    const [soloEnviados, entregados, leidos, entregaFallidos] = await Promise.all([
+    const [soloEnviados, entregados, leidos] = await Promise.all([
       contarEntrega("enviado"),
       contarEntrega("entregado"),
       contarEntrega("leido"),
-      contarEntrega("fallido"),
     ]);
 
     return {
@@ -217,12 +209,10 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       tibios: tibiosN ?? 0,
       frios: friosN ?? 0,
       cadencia: { uno: cad1 ?? 0, dos: cad2 ?? 0, tres: cad3 ?? 0 },
-      avisosFallidos,
       entregas: {
         enviados: soloEnviados + entregados + leidos,
         entregados,
         leidos,
-        fallidos: entregaFallidos,
       },
       primeraRespuestaMin: medianaMinutos(minutos),
       porCampana: [...campanas.values()].sort((a, b) => b.leads - a.leads).slice(0, 8),
@@ -245,8 +235,7 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       tibios: 0,
       frios: 0,
       cadencia: { uno: 0, dos: 0, tres: 0 },
-      avisosFallidos: 0,
-      entregas: { enviados: 0, entregados: 0, leidos: 0, fallidos: 0 },
+      entregas: { enviados: 0, entregados: 0, leidos: 0 },
       primeraRespuestaMin: null,
       porCampana: [],
       porAsesor: [],
