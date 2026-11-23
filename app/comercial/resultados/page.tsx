@@ -48,7 +48,6 @@ export default async function ResultadosComercialPage() {
       <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Kpi label="Seguimientos enviados" value={r.seguimientos.enviados} />
         <Kpi label="Pendientes" value={r.seguimientos.pendientes} />
-        <Kpi label="Seguimientos fallidos" value={r.seguimientos.fallidos} tone={r.seguimientos.fallidos > 0 ? "crit" : "default"} />
         <Kpi label="Avisos de cita fallidos" value={r.avisosFallidos} tone={r.avisosFallidos > 0 ? "crit" : "default"} />
         <Kpi label="Entregados" value={r.entregas.entregados} />
         <Kpi label="Leídos" value={r.entregas.leidos} tone="good" />

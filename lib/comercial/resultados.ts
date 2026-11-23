@@ -19,7 +19,7 @@ export type ResumenComercial = {
   primeraRespuestaMin: number | null;
   porCampana: FilaResultado[];
   porAsesor: FilaResultado[];
-  seguimientos: { enviados: number; fallidos: number; pendientes: number };
+  seguimientos: { enviados: number; pendientes: number };
   error: string | null;
 };
 
@@ -60,7 +60,7 @@ export async function resumenComercial(): Promise<ResumenComercial> {
     primeraRespuestaMin: null,
     porCampana: [],
     porAsesor: [],
-    seguimientos: { enviados: 0, fallidos: 0, pendientes: 0 },
+    seguimientos: { enviados: 0, pendientes: 0 },
     error: null,
   };
   try {
@@ -181,9 +181,8 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       if (error) return null;
       return count ?? 0;
     };
-    const [enviados, fallidos, pendientes] = await Promise.all([
+    const [enviados, pendientes] = await Promise.all([
       contar("enviado"),
-      contar("fallido"),
       contar("pendiente"),
     ]);
     const avisos = await sb
@@ -230,7 +229,6 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       porAsesor: [...asesores.values()].sort((a, b) => b.leads - a.leads),
       seguimientos: {
         enviados: enviados ?? 0,
-        fallidos: fallidos ?? 0,
         pendientes: pendientes ?? 0,
       },
       error: null,
@@ -252,7 +250,7 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       primeraRespuestaMin: null,
       porCampana: [],
       porAsesor: [],
-      seguimientos: { enviados: 0, fallidos: 0, pendientes: 0 },
+      seguimientos: { enviados: 0, pendientes: 0 },
       error: e instanceof Error ? e.message : "No pude armar los resultados.",
     };
   }
