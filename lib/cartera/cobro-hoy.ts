@@ -11,7 +11,7 @@
 //
 // 2) ACUERDO (aparte de la letra, un solo plan):
 //    Entra al cobro de hoy solo si es el concepto elegido y aún falta la cuota.
-//    Un pago antes de las 9:00 a.m., si ayer no se cubrió esa cuota diaria,
+//    Un pago antes de las 10:00 a.m., si ayer no se cubrió esa cuota diaria,
 //    abona el día atrasado: la de hoy se sigue cobrando. Si la de hoy ya se
 //    pagó, se avisa y no se suma.
 //

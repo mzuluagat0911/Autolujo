@@ -134,7 +134,7 @@ export function PreviewMensajeModal({
           <p className="mt-3 text-xs text-muted">
             Total del extracto:{" "}
             <span className="font-medium tabular-nums text-ink">{money(total)}</span>
-            . Misma lógica del cron de las 9 a.m.
+            . Misma lógica del cron de las 10 a.m.
           </p>
         </div>
 
