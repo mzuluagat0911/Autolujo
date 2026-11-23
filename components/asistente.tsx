@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { preguntarAsistente } from "@/app/asistente/actions";
 import { trozosDeMensaje } from "@/lib/asistente/enlaces";
@@ -15,6 +16,7 @@ const EJEMPLOS = [
 ];
 
 export function Asistente({ modulos }: { modulos: readonly ModuloId[] }) {
+  const pathname = usePathname();
   const [abierto, setAbierto] = useState(false);
   const [texto, setTexto] = useState("");
   const [mensajes, setMensajes] = useState<Burbuja[]>([]);
@@ -29,7 +31,7 @@ export function Asistente({ modulos }: { modulos: readonly ModuloId[] }) {
     setMensajes(siguiente);
     setTexto("");
     setEnviando(true);
-    const res = await preguntarAsistente(siguiente);
+    const res = await preguntarAsistente(siguiente, pathname);
     setMensajes((prev) => [
       ...prev,
       {

@@ -5,6 +5,7 @@ import { responderAsistente, type TurnoAsistente } from "@/lib/asistente/respond
 
 export async function preguntarAsistente(
   historial: TurnoAsistente[],
+  ruta?: string | null,
 ): Promise<{ ok: true; texto: string } | { ok: false; error: string }> {
   const sesion = await sesionEquipo();
   if (!sesion) return { ok: false, error: "La sesión venció." };
@@ -17,7 +18,11 @@ export async function preguntarAsistente(
   if (!ultimo || ultimo.rol !== "user") return { ok: false, error: "Escribe una pregunta." };
 
   try {
-    const { texto } = await responderAsistente({ modulos: sesion.modulos, historial: limpio });
+    const { texto } = await responderAsistente({
+      modulos: sesion.modulos,
+      historial: limpio,
+      ruta,
+    });
     return { ok: true, texto };
   } catch (e) {
     console.error("[asistente]", e instanceof Error ? e.message : "falló");

@@ -14,6 +14,7 @@ import { alertasOperaciones } from "./operaciones";
 import { cobroDeCarro, saldoCartera } from "./cobro";
 import { cumpleanosDe, panapassDe } from "./ficha";
 import { manualDe } from "./manual";
+import { fichasPara, rutaAsistenteOk } from "./router";
 import { pagosChoque, resumenSeguros } from "./seguros";
 import { cifrasSinFuente } from "./verificar";
 
@@ -155,10 +156,20 @@ async function empresas(): Promise<{ codigo: string; id: string }[]> {
 export async function responderAsistente(opts: {
   modulos: readonly ModuloId[];
   historial: TurnoAsistente[];
+  ruta?: string | null;
 }): Promise<RespuestaAsistente> {
   const modulos = opts.modulos;
   const tools = herramientas(modulos);
-  const system = `${manualDe(modulos, { hoy: hoyPanama(), empresas: await empresas() })}\n${textoCatalogo(modulos)}`;
+  const pregunta = [...opts.historial].reverse().find((m) => m.rol === "user")?.texto ?? "";
+  const ruta = rutaAsistenteOk(opts.ruta);
+  const { fichas, pantalla } = fichasPara(pregunta, ruta);
+  const system = `${manualDe(modulos, {
+    hoy: hoyPanama(),
+    empresas: await empresas(),
+    fichas,
+    pantalla,
+    ruta,
+  })}\n${textoCatalogo(modulos)}`;
   const messages: ModelMessage[] = opts.historial.slice(-12).map((m) => ({
     role: m.rol,
     content: m.texto.slice(0, 4000),

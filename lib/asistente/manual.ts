@@ -5,6 +5,7 @@ import type { ModuloId } from "@/lib/equipo/modulos";
 import { MODULOS } from "@/lib/equipo/modulos";
 import { diaSemana, fechaLarga } from "@/lib/cartera/fecha";
 import { listaPantallas, mapaCompleto } from "./enlaces";
+import type { FichaId } from "./router";
 
 const FICHA_COBRO = `
 COBRO
@@ -51,7 +52,27 @@ SEGUROS (choques y pólizas)
 - No inventes montos de finiquito: salen de pagos_choque o resumen_seguros.
 `.trim();
 
-const REGLAS = [FICHA_COBRO, FICHA_OPERACIONES, FICHA_COMERCIAL, FICHA_SEGUROS].join("\n\n");
+const FICHAS: Record<FichaId, string> = {
+  cobro: FICHA_COBRO,
+  operaciones: FICHA_OPERACIONES,
+  comercial: FICHA_COMERCIAL,
+  seguros: FICHA_SEGUROS,
+};
+
+const INDICE: Record<FichaId, string> = {
+  cobro: "Cobro (letra, domingo, extracto, saldo)",
+  operaciones: "Operaciones (mantenimiento, kit, licencias, placas)",
+  comercial: "Comercial (Lucía, leads, vencidos, resultados)",
+  seguros: "Seguros (choques, finiquito, pólizas, registros)",
+};
+
+function reglasDe(fichas: readonly FichaId[]): string {
+  const activas = fichas.length > 0 ? fichas : (Object.keys(FICHAS) as FichaId[]);
+  const cuerpo = activas.map((id) => FICHAS[id]).join("\n\n");
+  const otras = (Object.keys(FICHAS) as FichaId[]).filter((id) => !activas.includes(id));
+  if (otras.length === 0) return cuerpo;
+  return `${cuerpo}\n\nOTRAS FICHAS (detalle corto; si la pregunta cae aquí, responde con herramientas y el mapa)\n${otras.map((id) => `- ${INDICE[id]}`).join("\n")}`;
+}
 
 const VALORES = `
 VALORES EXACTOS (en minúscula, tal cual)
@@ -81,7 +102,13 @@ CÓMO HABLAS (tono de oficina, no de chatbot)
 
 export function manualDe(
   modulos: readonly ModuloId[],
-  opts: { hoy: string; empresas: { codigo: string; id: string }[] },
+  opts: {
+    hoy: string;
+    empresas: { codigo: string; id: string }[];
+    fichas?: readonly FichaId[];
+    pantalla?: string | null;
+    ruta?: string | null;
+  },
 ): string {
   const nombres = MODULOS.filter((m) => modulos.includes(m.id))
     .map((m) => m.label)
@@ -90,10 +117,18 @@ export function manualDe(
     .map((m) => m.label)
     .join(", ");
   const empresas = opts.empresas.map((e) => `${e.codigo} = ${e.id}`).join(" · ");
+  const fichas = opts.fichas ?? (Object.keys(FICHAS) as FichaId[]);
+  const contextoPantalla =
+    opts.pantalla && opts.ruta
+      ? `Está en la pantalla "${opts.pantalla}" (${opts.ruta}). Si pregunta "aquí", "esta pantalla" o "esto", asume esa vista.`
+      : opts.pantalla
+        ? `Está en la pantalla "${opts.pantalla}". Si pregunta "aquí" o "esto", asume esa vista.`
+        : null;
   return [
     "Eres el asistente de la plataforma AutoLujo, para el equipo. No hablas con clientes y no envías WhatsApp.",
     `Hoy es ${DIAS[diaSemana(opts.hoy)]} ${fechaLarga(opts.hoy)} de ${opts.hoy.slice(0, 4)} (${opts.hoy}), hora de Panamá.`,
     `Sus pantallas son: ${nombres || "ninguna"}. Otras pantallas del mapa: ${otros || "ninguna"}. Lees los datos de todos los módulos, también los de una pantalla que esta persona no abre. No digas que no tienes permiso.`,
+    contextoPantalla,
     "El número de carro sí se dice. No digas cédula, teléfono, dirección, cuenta bancaria ni ids internos. Si los piden, di que esos datos no se muestran desde el asistente.",
     "",
     ESTILO,
@@ -133,7 +168,8 @@ export function manualDe(
     "",
     VALORES,
     "",
-    REGLAS,
+    "FICHAS DE ESTA PREGUNTA",
+    reglasDe(fichas),
     "",
     "MAPA (dónde vive cada pantalla)",
     mapaCompleto(),
@@ -142,5 +178,7 @@ export function manualDe(
     listaPantallas(modulos),
     "",
     "TABLAS QUE PUEDES LEER",
-  ].join("\n");
+  ]
+    .filter((linea): linea is string => linea != null)
+    .join("\n");
 }
