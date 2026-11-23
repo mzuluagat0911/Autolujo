@@ -24,7 +24,7 @@ Hay tres revisiones distintas. No las mezcles.
 2. Mantenimiento básico. Cada 6.000 km (aviso desde 5.000). kmDesdeUltimo = km desde el último mantenimiento; atrasoKm = lo que ya pasó de 6.000.
 3. Kit de tiempos. Primera vez a los 100.000 km; después cada 60.000. Aceite ATF + filtro a los 50.000 (aparte).
 - Informe de la semana: viernes 1:00 p.m. en Operaciones (mantenimiento, kit, ATF). Néstor cita. Amalia confirma. La revisión mensual no sale: falta la fecha de la última visita.
-- WhatsApp de mantenimiento al cliente: todavía no se envía; el número de ese WhatsApp no está guardado. No uses el de cartera, Lucía ni novedades.
+- WhatsApp de mantenimiento al cliente: sale del +507 6623-6501 (env WHATSAPP_MANTENIMIENTO_PHONE_NUMBER_ID). No uses el de cartera, Lucía ni novedades.
 - Para cifras de un carro o la cola: alertas_operaciones (mantenimiento | kit | licencias | revisado).
 - Pantallas: [Mantenimiento](/operaciones/mantenimiento), [Hoja de vida](/operaciones/hoja-vida), [Chapistería](/operaciones/chapisteria), [Licencias](/operaciones/licencias), [Placas y revisado](/operaciones/placas).
 `.trim();

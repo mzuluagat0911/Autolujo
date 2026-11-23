@@ -125,6 +125,8 @@ class ComprobanteEnProceso extends Error {
 // phone_number_id se atienden con ventas, no con cobranza (Claudia).
 // Si no está seteado (ej. local sin la env), todo va a cartera como siempre.
 const PHONE_ID_COMERCIAL = process.env.WHATSAPP_COMERCIAL_PHONE_NUMBER_ID;
+// Número de mantenimiento (revisiones / kit). No abre chat de cobro ni de Lucía.
+const PHONE_ID_MANTENIMIENTO = process.env.WHATSAPP_MANTENIMIENTO_PHONE_NUMBER_ID;
 
 // ---------------------------------------------------------------------------
 // GET — verificación del webhook (handshake de Meta).
@@ -200,11 +202,24 @@ async function procesar(payload: WebhookPayload) {
   const value = payload?.entry?.[0]?.changes?.[0]?.value;
   const phoneIdEntrante = value?.metadata?.phone_number_id;
   const esComercial = !!PHONE_ID_COMERCIAL && phoneIdEntrante === PHONE_ID_COMERCIAL;
+  const esMantenimiento =
+    !!PHONE_ID_MANTENIMIENTO && phoneIdEntrante === PHONE_ID_MANTENIMIENTO;
   if (esComercial && Array.isArray(value?.statuses)) {
     await registrarEntregasComercial(value.statuses);
   }
   const messages = value?.messages;
   if (!Array.isArray(messages)) return;
+
+  // Avisos de mantenimiento: no pasan a Claudia ni a Lucía. El envío al cliente
+  // lo arma Operaciones; aquí solo se reconoce el número para no mezclar cobro.
+  if (esMantenimiento) {
+    console.info(
+      "[whatsapp/webhook] mensaje al número de mantenimiento (sin agente):",
+      messages.length,
+    );
+    return;
+  }
+
   const perfiles = new Map(
     (value?.contacts ?? []).map((c) => [String(c.wa_id ?? ""), c.profile?.name ?? ""]),
   );

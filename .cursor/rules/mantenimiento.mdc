@@ -1,0 +1,18 @@
+---
+description: Reglas de las tres revisiones de taller y el aviso del sábado
+alwaysApply: true
+---
+
+# Mantenimiento
+
+Cuando hablen de revisión, mantenimiento, kit de tiempos o el aviso del sábado, estas reglas mandan. Si el código dice otra cosa, dilo antes de citar un carro o armar el cron.
+
+Hay tres revisiones distintas. Salen del reporte de kilometraje. No las mezcles.
+
+1. Revisión mensual. Una vez al mes. Es revisión, no el mantenimiento de los 6.000 km.
+2. Mantenimiento básico. Cada 6.000 km.
+3. Kit de tiempos. La primera vez a los 100.000 km. Después, cada 60.000 km.
+
+El sábado, sobre la 1:00 p.m., se avisa desde el número de WhatsApp de mantenimiento (+507 6623-6501) a los carros que están próximos a alguna de esas tres. Ese envío va en Vercel (cron). El phone id está en `WHATSAPP_MANTENIMIENTO_PHONE_NUMBER_ID`. No uses el de cartera, el de Lucía ni el de novedades.
+
+El informe de la semana lo arma el sistema el viernes a la 1:00 p.m. y queda en Operaciones: mantenimiento desde 5.000 km, kit con la primera marca a los 100.000 y luego cada 60.000, y el aceite ATF a los 50.000. Néstor cita. Amalia confirma. La revisión mensual no sale: falta la fecha de la última visita. El aviso WhatsApp al cliente del sábado solo sale si está la env de mantenimiento.
