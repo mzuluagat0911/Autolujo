@@ -8,9 +8,18 @@ import {
   type ResumenCobranza,
 } from "@/lib/cartera/resumen-cobranza";
 import { resumenComercial, type ResumenComercial } from "@/lib/comercial/resultados";
-import { PageHeader, Band, Kpi, Money, StatusChip, EmptyState } from "@/components/kit";
+import { listarCasos } from "@/lib/seguros/datos";
+import { cerrado } from "@/lib/seguros/modelo";
+import { PageHeader, Band, Kpi, Money, EmptyState } from "@/components/kit";
 
 export const dynamic = "force-dynamic";
+
+type ResumenSeguros = {
+  abiertos: number;
+  audiencia: number;
+  pagadosMes: number;
+  total: number;
+};
 
 type Resumen = {
   ok: boolean;
@@ -22,14 +31,30 @@ type Resumen = {
   saldoTotal: number;
   cobranza: ResumenCobranza | null;
   comercial: ResumenComercial | null;
+  seguros: ResumenSeguros | null;
   error: string | null;
 };
+
+async function resumenSegurosHoy(): Promise<ResumenSeguros | null> {
+  try {
+    const casos = await listarCasos();
+    const mes = hoyPanama().slice(0, 7);
+    return {
+      total: casos.length,
+      abiertos: casos.filter((c) => !cerrado(c.caso.seccion)).length,
+      audiencia: casos.filter((c) => c.caso.seccion === "audiencia").length,
+      pagadosMes: casos.filter((c) => c.caso.seccion === "pagado" && c.fecha.startsWith(mes)).length,
+    };
+  } catch {
+    return null;
+  }
+}
 
 async function getResumen(): Promise<Resumen> {
   try {
     const sb = createServerSupabase();
     const hoy = hoyPanama();
-    const [clientes, contratos, vehiculos, pagosPend, cobrado, saldos, cobranza, comercial] =
+    const [clientes, contratos, vehiculos, pagosPend, cobrado, saldos, cobranza, comercial, seguros] =
       await Promise.all([
         sb.from("clientes").select("*", { count: "exact", head: true }),
         sb.from("contratos").select("*", { count: "exact", head: true }),
@@ -42,6 +67,7 @@ async function getResumen(): Promise<Resumen> {
         sb.from("vw_saldo_contrato").select("saldo_actual"),
         resumenCobranzaHoy(),
         resumenComercial(),
+        resumenSegurosHoy(),
       ]);
     const firstErr =
       clientes.error ?? contratos.error ?? vehiculos.error ?? pagosPend.error ?? saldos.error;
@@ -64,6 +90,7 @@ async function getResumen(): Promise<Resumen> {
       saldoTotal,
       cobranza,
       comercial: comercial.error ? null : comercial,
+      seguros,
       error: null,
     };
   } catch (e) {
@@ -77,6 +104,7 @@ async function getResumen(): Promise<Resumen> {
       saldoTotal: 0,
       cobranza: null,
       comercial: null,
+      seguros: null,
       error: e instanceof Error ? e.message : "Error",
     };
   }
@@ -235,17 +263,35 @@ export default async function ResumenPage() {
           </div>
         </Band>
 
-        <Band title="Agentes" status="active">
-          <div className="divide-y divide-line border-y border-line">
-            <AgentRow nombre="Cartera" nota="WhatsApp · cobra y concilia" href="/cartera" />
-            <AgentRow nombre="Comercial" nota="Lucía · citas y seguimientos" href="/comercial" />
-            <AgentRow
-              nombre="Operaciones"
-              nota="Hoja de vida · licencias · mant. · placas"
-              href="/operaciones"
-            />
-          </div>
-        </Band>
+        {r.seguros && (
+          <Band title="Seguros" status="active">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Kpi label="Casos abiertos" value={r.seguros.abiertos.toLocaleString("es-PA")} hint="Sin cerrar" />
+              <Kpi
+                label="En audiencia"
+                value={r.seguros.audiencia.toLocaleString("es-PA")}
+                tone={r.seguros.audiencia > 0 ? "warn" : "default"}
+                hint="Esperando fecha o fallo"
+              />
+              <Kpi
+                label="Pagados este mes"
+                value={r.seguros.pagadosMes.toLocaleString("es-PA")}
+                tone="good"
+                hint="Cerrados con pago"
+              />
+              <Kpi label="Casos totales" value={r.seguros.total.toLocaleString("es-PA")} hint="Histórico" />
+            </div>
+            <div className="mt-4">
+              <Link
+                href="/seguros"
+                className="flex items-center justify-between rounded-xl bg-white px-5 py-4 text-sm ring-1 ring-line transition hover:bg-surface-2"
+              >
+                <span className="text-ink">Abrir el tablero de choques</span>
+                <span className="font-medium text-ink">Seguros →</span>
+              </Link>
+            </div>
+          </Band>
+        )}
       </div>
     </div>
   );
@@ -400,16 +446,4 @@ function GapRow({
 function pctPaso(parte: number, total: number): string {
   if (!total) return "Sin base";
   return `${Math.round((parte / total) * 100)}% del paso anterior`;
-}
-
-function AgentRow({ nombre, nota, href }: { nombre: string; nota: string; href: string }) {
-  return (
-    <Link href={href} className="flex items-center justify-between gap-4 py-5 transition hover:bg-surface-2/60">
-      <div>
-        <p className="font-semibold">{nombre}</p>
-        <p className="text-xs text-muted">{nota}</p>
-      </div>
-      <StatusChip tone="good">Activo</StatusChip>
-    </Link>
-  );
 }
