@@ -29,7 +29,7 @@ const TABLAS: readonly TablaAsistente[] = [
   { nombre: "salidas_alertas", modulos: ["cartera", "operaciones"], uso: "Alertas de salida." },
   { nombre: "conceptos_cargo", modulos: ["cartera"], uso: "Catálogo de conceptos de cargo." },
   { nombre: "estados_cuenta", modulos: ["cartera"], uso: "Estados de cuenta guardados." },
-  { nombre: "vehiculo_eventos", modulos: ["operaciones", "seguros"], uso: "Hoja de vida, mantenimiento, chapistería y choques." },
+  { nombre: "vehiculo_eventos", modulos: ["operaciones", "seguros"], uso: "Hoja de vida, mantenimiento, chapistería y choques. Choque: origen=seguros, titulo=Colisión; el detalle JSON trae seccion, via, montoFiniquito, fechaPago, destinoCarro." },
   { nombre: "gps_dias", modulos: ["operaciones"], uso: "Kilometraje por día. No hay posiciones punto a punto." },
   { nombre: "conversaciones_comercial", modulos: ["comercial"], uso: "Chats de venta. etapa, temperatura, seguimiento_at (fecha de volver a escribirle), cerrado_at, intentos_seguimiento, resultado, anuncio, asesor_id. Seguimiento vencido = cerrado_at vacío y seguimiento_at ya pasó." },
   { nombre: "mensajes_comercial", modulos: ["comercial"], uso: "Mensajes de venta. Pide pocos y recientes." },
