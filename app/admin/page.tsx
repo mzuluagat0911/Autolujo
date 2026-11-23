@@ -7,6 +7,7 @@ import {
   resumenCobranzaHoy,
   type ResumenCobranza,
 } from "@/lib/cartera/resumen-cobranza";
+import { resumenComercial, type ResumenComercial } from "@/lib/comercial/resultados";
 import { PageHeader, Band, Kpi, Money, StatusChip, EmptyState } from "@/components/kit";
 
 export const dynamic = "force-dynamic";
@@ -20,6 +21,7 @@ type Resumen = {
   cobradoHoy: number;
   saldoTotal: number;
   cobranza: ResumenCobranza | null;
+  comercial: ResumenComercial | null;
   error: string | null;
 };
 
@@ -27,18 +29,20 @@ async function getResumen(): Promise<Resumen> {
   try {
     const sb = createServerSupabase();
     const hoy = hoyPanama();
-    const [clientes, contratos, vehiculos, pagosPend, cobrado, saldos, cobranza] = await Promise.all([
-      sb.from("clientes").select("*", { count: "exact", head: true }),
-      sb.from("contratos").select("*", { count: "exact", head: true }),
-      sb.from("vehiculos").select("*", { count: "exact", head: true }),
-      sb
-        .from("pagos")
-        .select("*", { count: "exact", head: true })
-        .in("estado_conciliacion", ["pendiente", "manual"]),
-      sb.from("pagos").select("monto").in("estado_conciliacion", ["conciliado", "manual"]).eq("fecha", hoy),
-      sb.from("vw_saldo_contrato").select("saldo_actual"),
-      resumenCobranzaHoy(),
-    ]);
+    const [clientes, contratos, vehiculos, pagosPend, cobrado, saldos, cobranza, comercial] =
+      await Promise.all([
+        sb.from("clientes").select("*", { count: "exact", head: true }),
+        sb.from("contratos").select("*", { count: "exact", head: true }),
+        sb.from("vehiculos").select("*", { count: "exact", head: true }),
+        sb
+          .from("pagos")
+          .select("*", { count: "exact", head: true })
+          .in("estado_conciliacion", ["pendiente", "manual"]),
+        sb.from("pagos").select("monto").in("estado_conciliacion", ["conciliado", "manual"]).eq("fecha", hoy),
+        sb.from("vw_saldo_contrato").select("saldo_actual"),
+        resumenCobranzaHoy(),
+        resumenComercial(),
+      ]);
     const firstErr =
       clientes.error ?? contratos.error ?? vehiculos.error ?? pagosPend.error ?? saldos.error;
     if (firstErr) throw firstErr;
@@ -59,6 +63,7 @@ async function getResumen(): Promise<Resumen> {
       cobradoHoy,
       saldoTotal,
       cobranza,
+      comercial: comercial.error ? null : comercial,
       error: null,
     };
   } catch (e) {
@@ -71,6 +76,7 @@ async function getResumen(): Promise<Resumen> {
       cobradoHoy: 0,
       saldoTotal: 0,
       cobranza: null,
+      comercial: null,
       error: e instanceof Error ? e.message : "Error",
     };
   }
@@ -175,22 +181,47 @@ export default async function ResumenPage() {
           </div>
         </Band>
 
-        <Band title="Comercial y Atención" status="pronto">
-          <div className="grid grid-cols-2 gap-x-10 gap-y-8 lg:grid-cols-4">
-            <Kpi label="Leads nuevos" value="" tone="pronto" />
-            <Kpi label="Sin seguimiento" value="" tone="pronto" />
-            <Kpi label="Citas" value="" tone="pronto" />
-            <Kpi label="Conversión" value="" tone="pronto" />
-          </div>
-        </Band>
+        {r.comercial && (
+          <Band title="Comercial" status="active">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Kpi label="Leads" value={r.comercial.leads.toLocaleString("es-PA")} hint="Todos los chats" />
+              <Kpi
+                label="Con cita"
+                value={r.comercial.conCita.toLocaleString("es-PA")}
+                hint={pctPaso(r.comercial.conCita, r.comercial.leads)}
+              />
+              <Kpi
+                label="Contratos"
+                value={r.comercial.ganados.toLocaleString("es-PA")}
+                tone="good"
+                hint={pctPaso(r.comercial.ganados, r.comercial.visitas)}
+              />
+              <Kpi
+                label="Seguimiento vencido"
+                value={r.comercial.vencidos.toLocaleString("es-PA")}
+                tone={r.comercial.vencidos > 0 ? "crit" : "default"}
+                hint="Ya toca volver a escribir"
+              />
+            </div>
+            <div className="mt-4">
+              <Link
+                href="/comercial/resultados"
+                className="flex items-center justify-between rounded-xl bg-white px-5 py-4 text-sm ring-1 ring-line transition hover:bg-surface-2"
+              >
+                <span className="text-ink">Ver embudo, temperatura y WhatsApp</span>
+                <span className="font-medium text-ink">Resultados →</span>
+              </Link>
+            </div>
+          </Band>
+        )}
 
         <Band title="Operaciones" status="active">
-          <div className="grid grid-cols-2 gap-x-10 gap-y-8 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-5">
             <Link href="/operaciones/hoja-vida" className="block transition hover:opacity-80">
               <Kpi label="Hoja de vida" value="→" hint="Historial editable del carro" />
             </Link>
             <Link href="/operaciones/mantenimiento" className="block transition hover:opacity-80">
-              <Kpi label="Mantenimiento" value="→" hint="FULL 6.000 · kit 60.000" />
+              <Kpi label="Mantenimiento" value="→" hint="Básico 6.000 · kit 100.000" />
             </Link>
             <Link href="/operaciones/chapisteria" className="block transition hover:opacity-80">
               <Kpi label="Chapistería" value="→" hint="Tarifas, cajas y talleres" />
@@ -204,21 +235,15 @@ export default async function ResumenPage() {
           </div>
         </Band>
 
-        <Band title="Seguros" status="pronto">
-          <div className="grid grid-cols-2 gap-x-10 gap-y-8 lg:grid-cols-4">
-            <Kpi label="Reclamaciones" value="" tone="pronto" />
-            <Kpi label="Audiencias" value="" tone="pronto" />
-            <Kpi label="Resoluciones" value="" tone="pronto" />
-            <Kpi label="Aseguradoras" value="" tone="pronto" />
-          </div>
-        </Band>
-
         <Band title="Agentes" status="active">
           <div className="divide-y divide-line border-y border-line">
-            <AgentRow nombre="Cartera" estado="activo" nota="WhatsApp · cobra y concilia" />
-            <AgentRow nombre="Comercial y Atención" estado="activando" />
-            <AgentRow nombre="Operaciones" estado="activo" nota="Hoja de vida · licencias · mant. · placas" />
-            <AgentRow nombre="Seguros" estado="activando" />
+            <AgentRow nombre="Cartera" nota="WhatsApp · cobra y concilia" href="/cartera" />
+            <AgentRow nombre="Comercial" nota="Lucía · citas y seguimientos" href="/comercial" />
+            <AgentRow
+              nombre="Operaciones"
+              nota="Hoja de vida · licencias · mant. · placas"
+              href="/operaciones"
+            />
           </div>
         </Band>
       </div>
@@ -372,26 +397,19 @@ function GapRow({
   );
 }
 
-function AgentRow({
-  nombre,
-  estado,
-  nota,
-}: {
-  nombre: string;
-  estado: "activo" | "activando";
-  nota?: string;
-}) {
+function pctPaso(parte: number, total: number): string {
+  if (!total) return "Sin base";
+  return `${Math.round((parte / total) * 100)}% del paso anterior`;
+}
+
+function AgentRow({ nombre, nota, href }: { nombre: string; nota: string; href: string }) {
   return (
-    <div className="flex items-center justify-between gap-4 py-5">
+    <Link href={href} className="flex items-center justify-between gap-4 py-5 transition hover:bg-surface-2/60">
       <div>
         <p className="font-semibold">{nombre}</p>
-        <p className="text-xs text-muted">{nota ?? "Módulo en preparación"}</p>
+        <p className="text-xs text-muted">{nota}</p>
       </div>
-      {estado === "activo" ? (
-        <StatusChip tone="good">Activo</StatusChip>
-      ) : (
-        <StatusChip tone="neutral">Preparando</StatusChip>
-      )}
-    </div>
+      <StatusChip tone="good">Activo</StatusChip>
+    </Link>
   );
 }
