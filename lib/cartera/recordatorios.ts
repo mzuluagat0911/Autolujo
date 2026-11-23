@@ -1,6 +1,6 @@
 // Escalera de recordatorios de pago.
 //
-// Tras el estado de cuenta de las 9am, si el cliente aún no paga, a las
+// Tras el estado de cuenta de las 10am, si el cliente aún no paga, a las
 // 5:30 p.m. sale `ultimo_aviso_pago`. El de la 1:00 p.m. (`recordatorio_pago`)
 // está apagado: era otra plantilla cobrada el mismo día.
 //

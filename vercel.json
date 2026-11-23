@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/devengo",
-      "schedule": "30 12 * * *"
+      "schedule": "0 14 * * *"
     },
     {
       "path": "/api/cron/recargo",
@@ -10,7 +10,7 @@
     },
     {
       "path": "/api/cron/estado-cuenta",
-      "schedule": "0 14 * * 0-6"
+      "schedule": "0 15 * * 0-6"
     },
     {
       "path": "/api/cron/ex-clientes",

@@ -978,7 +978,7 @@ export async function eliminarPagoHistorial(
   return { ok: true, msg: "Pago eliminado." };
 }
 
-/** Misma lectura que el mensaje de las 9: saldo, desglose y recargo ya cruzado. */
+/** Misma lectura que el mensaje de las 10: saldo, desglose y recargo ya cruzado. */
 export async function filaEstadoEnVivo(
   contratoId: string,
 ): Promise<{ ok: true; fila: EstadoCuentaFila } | { ok: false; error: string }> {

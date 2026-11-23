@@ -5,7 +5,7 @@ import { hoyPanama } from "@/lib/cartera/fecha";
 export const runtime = "nodejs";
 export const maxDuration = 300; // hasta 5 min (envío a toda la flota)
 
-// Cron diario (Vercel) — envía el estado de cuenta a las 9am Panamá (lun–dom;
+// Cron diario (Vercel) — envía el estado de cuenta a las 10am Panamá (lun–dom;
 // el domingo solo a quien arrastra deuda o tiene compromiso dominical).
 export async function GET(req: Request) {
   // Seguridad: Vercel manda Authorization: Bearer ${CRON_SECRET} si está configurado.
@@ -17,7 +17,7 @@ export async function GET(req: Request) {
     }
   }
 
-  // El martes, a las 9, cobra el $10 a quien sigue con la letra atrasada
+  // El martes, a las 10, cobra el $10 a quien sigue con la letra atrasada
   // (el comprobante que se validó antes ya no lo trae).
   try {
     await aplicarCierreSemana(hoyPanama());
