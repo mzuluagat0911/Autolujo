@@ -36,7 +36,7 @@ COMERCIAL (Lucía y el equipo de ventas)
 - seguimientos_comercial = envíos automáticos de Lucía. estado: pendiente, enviando, enviado, cancelado, fallido. El cron toma hasta 120 por hora.
 - Si un seguimiento no está enviado, di su estado real. No digas "porque no es enviado".
 - Citas: [Citas](/comercial/citas). Actividad del equipo: [Actividad](/comercial/actividad). Alta de contrato: [Nuevo contrato](/comercial/contrato).
-- Para conteos de leads/citas/ganados/vencidos: consultar o resumir sobre conversaciones_comercial / citas_comercial / seguimientos_comercial. No inventes columnas.
+- Para el pulso (leads, citas, ganados, vencidos, temperatura, Lucía): resumen_comercial. No armes esos KPIs a mano con consultar.
 `.trim();
 
 const FICHA_SEGUROS = `
@@ -45,10 +45,10 @@ SEGUROS (choques y pólizas)
 - Secciones: reportado → cita → (si via=parte: audiencia → resolucion) → facturas → seguimiento → pagado. También no_procede.
 - via: fud (el otro aceptó culpa; salta audiencia) o parte (tránsito / audiencia).
 - Al confirmar: destinoCarro circulando = el cobro sigue; taller = carro en colisión y se pausa la letra. Ex cliente: no se pausa al cliente actual.
-- Pagado = aseguradora pagó finiquito (montoFiniquito + fechaPago). Para listar quién cobró: filtrar casos con seccion pagado y fechaPago del mes. Pantalla: [Choques](/seguros?seccion=pagado).
+- Pagado = aseguradora pagó finiquito (montoFiniquito + fechaPago). Lista: pagos_choque. Pulso: resumen_seguros. Pantalla: [Choques](/seguros?seccion=pagado).
 - Pólizas: cada carro renueva una vez al año; aviso desde 30 días antes. [Pólizas](/seguros/polizas).
 - Registros vehiculares (ver/imprimir) y pagos por carro: [Registros vehiculares](/seguros/registros). Registros públicos de empresa: [Registros públicos](/seguros/registros-publicos).
-- Cifras de casos: consultar vehiculo_eventos con origen/título de seguros, o resumir. No inventes montos de finiquito.
+- No inventes montos de finiquito: salen de pagos_choque o resumen_seguros.
 `.trim();
 
 const REGLAS = [FICHA_COBRO, FICHA_OPERACIONES, FICHA_COMERCIAL, FICHA_SEGUROS].join("\n\n");
@@ -122,7 +122,10 @@ export function manualDe(
     "- Saldo de libro de la cartera o una empresa → saldo_cartera.",
     "- Cumpleaños → cumpleanos. Panapass → panapass.",
     "- Mantenimiento / kit / licencias / revisado → alertas_operaciones.",
-    "- Totales y conteos (leads, citas, pagos, etc.) → resumir. Detalle de filas → consultar. Si no sabes la columna → columnas primero.",
+    "- Pulso de ventas, vencidos, temperatura, Lucía → resumen_comercial. No armes esos KPIs a mano.",
+    "- Pulso de choques (abiertos, audiencia, pagados del mes) → resumen_seguros.",
+    "- Quién cobró finiquito / pagos de choque → pagos_choque (mes y/o carro).",
+    "- Otros totales y conteos → resumir. Detalle de filas → consultar. Si no sabes la columna → columnas primero.",
     "",
     "No cambias saldos, no creas pagos y no borras nada.",
     "Cuando digas dónde se hace algo, pon el enlace de la pantalla con esta forma exacta: [Estado de cuenta](/cartera/estados-cuenta). Usa solo una ruta de la lista de abajo. El equipo hace clic y abre esa página. Si no tiene el módulo, no pongas enlace.",

@@ -9,10 +9,12 @@ import type { ModuloId } from "@/lib/equipo/modulos";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { textoCatalogo } from "./catalogo";
 import { columnasDe, consultarTabla, resumirTabla, type Filtro } from "./consultar";
+import { resumenComercialAsistente } from "./comercial";
 import { alertasOperaciones } from "./operaciones";
 import { cobroDeCarro, saldoCartera } from "./cobro";
 import { cumpleanosDe, panapassDe } from "./ficha";
 import { manualDe } from "./manual";
+import { pagosChoque, resumenSeguros } from "./seguros";
 import { cifrasSinFuente } from "./verificar";
 
 export type TurnoAsistente = { rol: "user" | "assistant"; texto: string };
@@ -119,6 +121,27 @@ function herramientas(modulos: readonly ModuloId[]) {
         empresa: z.string().optional(),
       }),
       execute: async (input) => saldoCartera(input),
+    }),
+    resumen_comercial: tool({
+      description:
+        "KPIs de Comercial/Resultados: leads, citas, ganados, vencidos, temperatura, seguimientos de Lucía. Úsala para el pulso de ventas o 'cuántos vencidos'.",
+      inputSchema: z.object({}),
+      execute: async () => resumenComercialAsistente(),
+    }),
+    resumen_seguros: tool({
+      description:
+        "Pulso de choques: abiertos, en audiencia, por confirmar, choques del mes y pagados del mes (por fechaPago). mes opcional YYYY-MM.",
+      inputSchema: z.object({ mes: z.string().optional() }),
+      execute: async (input) => resumenSeguros(input),
+    }),
+    pagos_choque: tool({
+      description:
+        "Lista quién cobró finiquito de choque. mes opcional YYYY-MM (por defecto este mes, por fechaPago). carro opcional (92, AL10, KW130).",
+      inputSchema: z.object({
+        mes: z.string().optional(),
+        carro: z.string().optional(),
+      }),
+      execute: async (input) => pagosChoque(input),
     }),
   };
 }

@@ -10,8 +10,8 @@ type Burbuja = { rol: "user" | "assistant"; texto: string };
 
 const EJEMPLOS = [
   "¿Cuánto debe hoy el 92?",
-  "¿Qué es un seguimiento vencido?",
-  "¿Cómo va un choque con FUD?",
+  "¿Cuántos seguimientos vencidos hay?",
+  "¿Quién cobró finiquito este mes?",
 ];
 
 export function Asistente({ modulos }: { modulos: readonly ModuloId[] }) {
