@@ -32,6 +32,7 @@ export function Tablero({
   hoy,
   esteMes,
   mesPasado,
+  seccionInicial = "todas",
 }: {
   casos: CasoFila[];
   polizasPorVencer: number;
@@ -39,9 +40,10 @@ export function Tablero({
   hoy: string;
   esteMes: string;
   mesPasado: string;
+  seccionInicial?: Seccion | "todas";
 }) {
   const [q, setQ] = useState("");
-  const [seccion, setSeccion] = useState<Seccion | "todas">("todas");
+  const [seccion, setSeccion] = useState<Seccion | "todas">(seccionInicial);
 
   const avisos = useMemo(() => {
     const lista: { id: string; texto: string; href: string }[] = [];
@@ -133,14 +135,27 @@ export function Tablero({
         />
         <Resumen label="Para avisar" valor={String(avisos.length)} tono={avisos.length ? "text-ambar" : "text-ink"} />
         <Resumen label="Choques este mes" valor={String(choquesEste)} hint={`Mes pasado: ${choquesPasado}`} />
-        <Resumen
-          label="Pagado este mes"
-          valor={<Money amount={pagadoEste} />}
-          hint={<span>Mes pasado: <Money amount={pagadoPasado} /></span>}
-        />
+        <button
+          type="button"
+          onClick={() => {
+            setSeccion("pagado");
+            setQ("");
+            document.getElementById("pagos-choques")?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+          className="rounded-xl bg-surface p-4 text-left ring-1 ring-line transition hover:bg-surface-2"
+        >
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">Pagado este mes</p>
+          <p className="mt-2 text-2xl font-bold tabular-nums tracking-tight text-ink">
+            <Money amount={pagadoEste} />
+          </p>
+          <p className="mt-1 text-xs text-muted">
+            Mes pasado: <Money amount={pagadoPasado} /> · Ver lista →
+          </p>
+        </button>
       </div>
 
       <ChoquesDelMes casos={casos} hoy={hoy} />
+      <PagosDelMes casos={casos} hoy={hoy} />
 
       {porConfirmar.length > 0 && (
         <section className="rounded-xl bg-ambar-wash ring-1 ring-ambar/30">
@@ -421,6 +436,88 @@ function mesAnterior(ym: string): string {
     y -= 1;
   }
   return `${y}-${String(m).padStart(2, "0")}`;
+}
+
+/** Quién cobró finiquito este mes (y meses anteriores). */
+function PagosDelMes({ casos, hoy }: { casos: CasoFila[]; hoy: string }) {
+  const esteMes = hoy.slice(0, 7);
+  const conPago = casos.filter((c) => c.caso.seccion === "pagado" && c.caso.fechaPago);
+  const primero = conPago.reduce(
+    (min, c) => (c.caso.fechaPago.slice(0, 7) < min ? c.caso.fechaPago.slice(0, 7) : min),
+    esteMes,
+  );
+  const meses = mesesHasta(primero, esteMes);
+  const [mes, setMes] = useState(esteMes);
+  const delMes = conPago
+    .filter((c) => c.caso.fechaPago.startsWith(mes))
+    .sort(
+      (a, b) =>
+        b.caso.fechaPago.localeCompare(a.caso.fechaPago) ||
+        a.numero.localeCompare(b.numero, "es", { numeric: true }),
+    );
+  const total = delMes.reduce((s, c) => s + (c.caso.montoFiniquito ?? 0), 0);
+
+  return (
+    <section id="pagos-choques" className="scroll-mt-6 rounded-xl bg-surface ring-1 ring-line">
+      <div className="flex flex-wrap items-end justify-between gap-3 border-b border-line px-4 py-3">
+        <div>
+          <h2 className="text-sm font-semibold">Pagos de choques</h2>
+          <p className="mt-0.5 text-xs text-muted">
+            {delMes.length === 0
+              ? "Nadie cobró finiquito en este mes."
+              : `${delMes.length} ${delMes.length === 1 ? "pago" : "pagos"} · `}
+            {delMes.length > 0 && <Money amount={total} />}
+          </p>
+        </div>
+        <label className="flex flex-col gap-1">
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Mes</span>
+          <select
+            value={mes}
+            onChange={(e) => setMes(e.target.value)}
+            className="rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line"
+          >
+            {meses.map((ym) => (
+              <option key={ym} value={ym}>
+                {etiquetaMes(ym)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {delMes.length === 0 ? (
+        <p className="px-4 py-6 text-sm text-muted">Ese mes no tiene pagos.</p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-surface-2 text-[11px] uppercase tracking-[0.12em] text-muted">
+              <tr>
+                <th className="px-4 py-3 font-medium">Carro</th>
+                <th className="px-4 py-3 font-medium">Cliente</th>
+                <th className="px-4 py-3 font-medium">Pago</th>
+                <th className="px-4 py-3 font-medium text-right">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {delMes.map((c) => (
+                <tr key={c.id} className="border-t border-line">
+                  <td className="px-4 py-3">
+                    <Link href={`/seguros/${c.id}`} className="font-medium hover:underline">
+                      {etiquetaCarroUi(c.empresa, c.numero)} {c.placa}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3 text-muted">{c.caso.clienteNombre || "—"}</td>
+                  <td className="px-4 py-3 tabular-nums text-muted">{fechaCorta(c.caso.fechaPago)}</td>
+                  <td className="px-4 py-3 text-right font-medium tabular-nums">
+                    {c.caso.montoFiniquito != null ? <Money amount={c.caso.montoFiniquito} /> : "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
 }
 
 /** Choques del mes, y cuántos había a la misma fecha en los meses anteriores. */

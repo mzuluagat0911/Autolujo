@@ -10,10 +10,16 @@ const SECUNDARIO =
   "inline-flex rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2";
 const PRIMARIO = "inline-flex rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black";
 
-export default async function SegurosPage() {
+export default async function SegurosPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ seccion?: string }>;
+}) {
   const hoy = hoyPanama();
   const esteMes = hoy.slice(0, 7);
   const mesPasado = sumarDias(`${esteMes}-01`, -1).slice(0, 7);
+  const sp = await searchParams;
+  const seccionInicial = sp.seccion === "pagado" ? "pagado" : "todas";
   let error: string | null = null;
   let casos: Awaited<ReturnType<typeof listarCasos>> = [];
   let porVencer = 0;
@@ -38,6 +44,9 @@ export default async function SegurosPage() {
             <Link href="/seguros/polizas" className={SECUNDARIO}>
               Pólizas
             </Link>
+            <Link href="/seguros/registros" className={SECUNDARIO}>
+              Registros
+            </Link>
             <Link href="/seguros/nuevo" className={PRIMARIO}>
               Registrar choque
             </Link>
@@ -54,6 +63,7 @@ export default async function SegurosPage() {
           hoy={hoy}
           esteMes={esteMes}
           mesPasado={mesPasado}
+          seccionInicial={seccionInicial}
         />
       )}
     </div>

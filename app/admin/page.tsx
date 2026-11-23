@@ -43,7 +43,9 @@ async function resumenSegurosHoy(): Promise<ResumenSeguros | null> {
       total: casos.length,
       abiertos: casos.filter((c) => !cerrado(c.caso.seccion)).length,
       audiencia: casos.filter((c) => c.caso.seccion === "audiencia").length,
-      pagadosMes: casos.filter((c) => c.caso.seccion === "pagado" && c.fecha.startsWith(mes)).length,
+      pagadosMes: casos.filter(
+        (c) => c.caso.seccion === "pagado" && c.caso.fechaPago.startsWith(mes),
+      ).length,
     };
   } catch {
     return null;
@@ -266,28 +268,43 @@ export default async function ResumenPage() {
         {r.seguros && (
           <Band title="Seguros" status="active">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <Kpi label="Casos abiertos" value={r.seguros.abiertos.toLocaleString("es-PA")} hint="Sin cerrar" />
-              <Kpi
-                label="En audiencia"
-                value={r.seguros.audiencia.toLocaleString("es-PA")}
-                tone={r.seguros.audiencia > 0 ? "warn" : "default"}
-                hint="Esperando fecha o fallo"
-              />
-              <Kpi
-                label="Pagados este mes"
-                value={r.seguros.pagadosMes.toLocaleString("es-PA")}
-                tone="good"
-                hint="Cerrados con pago"
-              />
-              <Kpi label="Casos totales" value={r.seguros.total.toLocaleString("es-PA")} hint="Histórico" />
+              <Link href="/seguros" className="block transition hover:opacity-80">
+                <Kpi label="Casos abiertos" value={r.seguros.abiertos.toLocaleString("es-PA")} hint="Sin cerrar" />
+              </Link>
+              <Link href="/seguros" className="block transition hover:opacity-80">
+                <Kpi
+                  label="En audiencia"
+                  value={r.seguros.audiencia.toLocaleString("es-PA")}
+                  tone={r.seguros.audiencia > 0 ? "warn" : "default"}
+                  hint="Esperando fecha o fallo"
+                />
+              </Link>
+              <Link href="/seguros?seccion=pagado" className="block transition hover:opacity-80">
+                <Kpi
+                  label="Pagados este mes"
+                  value={r.seguros.pagadosMes.toLocaleString("es-PA")}
+                  tone="good"
+                  hint="Clic para ver la lista"
+                />
+              </Link>
+              <Link href="/seguros" className="block transition hover:opacity-80">
+                <Kpi label="Casos totales" value={r.seguros.total.toLocaleString("es-PA")} hint="Histórico" />
+              </Link>
             </div>
-            <div className="mt-4">
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <Link
                 href="/seguros"
                 className="flex items-center justify-between rounded-xl bg-white px-5 py-4 text-sm ring-1 ring-line transition hover:bg-surface-2"
               >
-                <span className="text-ink">Abrir el tablero de choques</span>
-                <span className="font-medium text-ink">Seguros →</span>
+                <span className="text-ink">Tablero de choques</span>
+                <span className="font-medium text-ink">Abrir →</span>
+              </Link>
+              <Link
+                href="/seguros/registros"
+                className="flex items-center justify-between rounded-xl bg-white px-5 py-4 text-sm ring-1 ring-line transition hover:bg-surface-2"
+              >
+                <span className="text-ink">Registros e imprimir</span>
+                <span className="font-medium text-ink">Ver →</span>
               </Link>
             </div>
           </Band>
