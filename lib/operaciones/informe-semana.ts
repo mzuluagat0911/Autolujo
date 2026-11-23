@@ -3,7 +3,7 @@
 // El WhatsApp al cliente del sábado sale de otro cron, con WHATSAPP_MANTENIMIENTO_PHONE_NUMBER_ID.
 
 import { diaSemana, fechaLarga, hoyPanama, sumarDias } from "@/lib/cartera/fecha";
-import { aceiteAtfKm, kitTiempoKm, mantenimientoKm, type KitTiempoItem, type MantenimientoItem } from "./alertas";
+import { kitTiempoKm, mantenimientoKm, type KitTiempoItem, type MantenimientoItem } from "./alertas";
 
 export type InformeSemana = {
   hoy: string;
@@ -44,12 +44,13 @@ export function armarInforme(
 }
 
 export async function informeSemana(ahora = new Date()): Promise<InformeSemana> {
-  const [mant, kit, atf] = await Promise.all([mantenimientoKm(), kitTiempoKm(), aceiteAtfKm()]);
+  const [mant, kit] = await Promise.all([mantenimientoKm(), kitTiempoKm()]);
+  // ATF entra cuando alertas.aceiteAtfKm esté en producción; por ahora vacío.
   return armarInforme(
     fechasInforme(ahora),
     mant.disponible ? mant.items : [],
     kit.disponible ? kit.items : [],
-    atf.disponible ? atf.items : [],
+    [],
   );
 }
 
