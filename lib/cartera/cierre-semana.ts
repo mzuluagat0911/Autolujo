@@ -11,8 +11,8 @@
 // mantenimiento, kilometraje o domingo, si esa cuota va al día. Quien viene
 // pagando el abono como se comprometió no paga el $10 aunque le quede saldo.
 //
-// Corre el martes a las 7:45. El mensaje sale a las 10.
-// Un pago de hoy antes de las 10 cubre el hueco. Si a las 10 el comprobante
+// Corre el martes a las 7:45. El mensaje sale a las 9.
+// Un pago de hoy antes de las 9 cubre el hueco. Si a las 9 el comprobante
 // sigue en validación, el cargo entra.
 
 import { createServerSupabase } from "@/lib/supabase/server";
@@ -114,7 +114,7 @@ export async function aplicarCierreSemana(fecha = hoyPanama()): Promise<Resultad
   const atrasoAcuerdo = await atrasoAcuerdoAcumuladoPorContrato(fecha);
   // Letra de ayer o antes, o cuota de acuerdo ya vencida.
   // El saldo del plan y los otros conceptos no disparan el $10.
-  // Antes de las 10, un comprobante todavía en validación no dispara el cargo.
+  // Antes de las 9, un comprobante todavía en validación no dispara el cargo.
   const deudores = estados.filter((e) => {
     const cobra = debeCobrarCierreSemana(
       entradaCierre(e, atrasoAcuerdo.get(e.contratoId) ?? 0, yaSet.has(e.contratoId)),
@@ -154,7 +154,7 @@ export async function aplicarCierreSemana(fecha = hoyPanama()): Promise<Resultad
   return res;
 }
 
-/** Si antes de las 10 la letra atrasada quedó cubierta, saca el $10 de hoy. */
+/** Si antes de las 9 la letra atrasada quedó cubierta, saca el $10 de hoy. */
 export async function quitarCierreSiLaLetraQuedoCubierta(contratoId: string): Promise<boolean> {
   const fecha = hoyPanama();
   if (diaSemana(fecha) !== 2 || !antesDelExtracto()) return false;

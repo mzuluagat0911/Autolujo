@@ -9,7 +9,7 @@ export const TZ = "America/Panama";
 export const HORA_CORTE = 19;
 
 /** Antes de esta hora el extracto del día todavía no salió. */
-export const HORA_EXTRACTO = 10;
+export const HORA_EXTRACTO = 9;
 
 const MESES = [
   "enero", "febrero", "marzo", "abril", "mayo", "junio",

@@ -4,8 +4,8 @@ import { invalidarLecturaEstados } from "@/lib/cartera/estado-cuenta-cache";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 
-// Cron diario, 9:00 a.m. Panamá — carga la cuota del día a cada contrato activo.
-// El mensaje sale a las 10:00 y lee el saldo ya devengado.
+// Cron diario — carga la cuota del día a cada contrato activo.
+// Debe correr ANTES del estado de cuenta: ese mensaje lee el saldo ya devengado.
 export async function GET(req: Request) {
   const secret = process.env.CRON_SECRET;
   if (secret) {

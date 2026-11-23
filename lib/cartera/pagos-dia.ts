@@ -194,7 +194,7 @@ function parseAsignacionesPago(raw: unknown): AsignacionPago[] {
 
 /**
  * Cuánto del arreglo abonado hoy cubre la cuota de HOY.
- * Un pago antes de las 10:00 a.m., si ayer no se cubrió la cuota diaria,
+ * Un pago antes de las 9:00 a.m., si ayer no se cubrió la cuota diaria,
  * abona ese día atrasado y no el de hoy.
  */
 export function abonoAcuerdoQueCubreHoy(opts: {
@@ -222,7 +222,7 @@ export function abonoAcuerdoQueCubreHoy(opts: {
 
 /**
  * Cuota del día anterior que sigue sin pagar.
- * Un abono de hoy antes de las 10 la cubre primero. Uno después de las 10
+ * Un abono de hoy antes de las 9 la cubre primero. Uno después de las 9
  * no se resta aquí: baja la cuota de hoy por el abono que cubre el día.
  */
 export function atrasoAcuerdoRestante(opts: {
@@ -311,8 +311,8 @@ function cuotaVencidaDeAcuerdo(a: AcuerdoActivo, fecha: string): number {
 /**
  * Cuotas de acuerdo ya vencidas (ayer y hasta 14 días atrás) que siguen
  * sin pagar. El saldo que el plan todavía tiene no cuenta: solo lo programado
- * de esos días, menos lo ya abonado al acuerdo. Un pago de hoy antes de las 10
- * cubre ese hueco. Lo de hoy después de las 10 es la cuota de hoy.
+ * de esos días, menos lo ya abonado al acuerdo. Un pago de hoy antes de las 9
+ * cubre ese hueco. Lo de hoy después de las 9 es la cuota de hoy.
  */
 export async function atrasoAcuerdoAcumuladoPorContrato(
   fecha: string,
