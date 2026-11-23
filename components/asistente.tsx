@@ -9,9 +9,9 @@ import type { ModuloId } from "@/lib/equipo/modulos";
 type Burbuja = { rol: "user" | "assistant"; texto: string };
 
 const EJEMPLOS = [
-  "¿Cuánto debe hoy el carro 92?",
-  "¿El domingo se cobra la cuota del acuerdo?",
-  "¿Dónde veo el estado de cuenta?",
+  "¿Cuánto debe hoy el 92?",
+  "¿Domingo se cobra el acuerdo?",
+  "¿Dónde está el estado de cuenta?",
 ];
 
 export function Asistente({ modulos }: { modulos: readonly ModuloId[] }) {
@@ -66,7 +66,7 @@ export function Asistente({ modulos }: { modulos: readonly ModuloId[] }) {
             {mensajes.length === 0 && (
               <div className="space-y-3">
                 <p className="text-sm text-muted">
-                  Pregunta cómo funciona una pantalla o un dato de los módulos que tienes.
+                  Pregunta directo: un carro, un cobro, una pantalla. Respuestas cortas.
                 </p>
                 <div className="flex flex-col gap-2">
                   {ejemplos.map((ej) => (

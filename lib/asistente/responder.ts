@@ -149,8 +149,8 @@ export async function responderAsistente(opts: {
       messages: msgs,
       tools,
       stopWhen: ({ steps }) => steps.length >= 6,
-      temperature: 0.1,
-      maxOutputTokens: 900,
+      temperature: 0.15,
+      maxOutputTokens: 520,
     });
     for (const step of result.steps) {
       for (const r of step.toolResults) {
@@ -168,6 +168,8 @@ export async function responderAsistente(opts: {
   });
 
   const PROMESA = /\b(voy a|déjame|dejame|permíteme|permiteme|intentaré|consultaré|buscaré|revisaré)\b/i;
+  const RELLENO =
+    /^(claro[,!.]?|por supuesto[,!.]?|con gusto[,!.]?|según los datos[,:.!]?|he consultado[,:.!]?|en base a|cabe destacar|es importante mencionar|déjame|dejame|permíteme|permiteme)/im;
 
   let texto = await correr(messages);
   let sueltas = cifrasSinFuente(texto, fuentes());
@@ -180,6 +182,11 @@ export async function responderAsistente(opts: {
   }
   if (PROMESA.test(texto)) {
     avisos.push("dijiste que ibas a hacer algo y no lo hiciste. Hazlo ahora con las herramientas y entrega la respuesta final. Si no se puede, di qué falló.");
+  }
+  if (RELLENO.test(texto) || texto.split(/\n/).filter((l) => l.trim()).length > 8) {
+    avisos.push(
+      "tu tono quedó de chatbot o demasiado largo. Reescribe humano y corto: respuesta primero, máximo 4 líneas salvo que pidan un listado. Sin Claro/Por supuesto/Según los datos.",
+    );
   }
   if (avisos.length > 0) {
     reintento = true;
