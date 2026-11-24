@@ -409,7 +409,8 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   // —— Entregas / devoluciones (mes actual + 3 meses atrás para el histórico) ——
   // Entrega = cada contrato por fecha_inicio; la sede sale del evento tipo "contrato"
   // del mismo día (registrarEntrega). Sin sucursal → Panamá, para no perder el carro.
-  // Devolución = solo vehiculo_eventos tipo "devolucion" (hoja de vida o estado Entregado).
+  // Devolución = sacar al cliente del carro: caso archivado, o evento tipo "devolucion"
+  // (estado Entregado / hoja de vida). Un carro un día cuenta una sola vez.
   const histDesde = inicioMes(sumarDias(mesIni, -100));
   const histHasta = hasta < mesFin ? hasta : mesFin;
   const contratosMes = await paginas<{
@@ -429,29 +430,41 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     lugar: string | null;
     vehiculo_id: string;
     titulo: string | null;
+    detalle: string | null;
   }>((a, b) =>
     sb
       .from("vehiculo_eventos")
-      .select("fecha, tipo, lugar, vehiculo_id, titulo")
-      .in("tipo", ["contrato", "devolucion"])
+      .select("fecha, tipo, lugar, vehiculo_id, titulo, detalle")
+      .or("tipo.in.(contrato,devolucion),detalle.like.caso-archivado:%")
       .gte("fecha", histDesde)
       .lte("fecha", histHasta)
       .range(a, b),
   );
   const lugarEntrega = new Map<string, string | null>();
   const movimientos: MovimientoSede[] = [];
+  const devolucionVistas = new Set<string>();
   for (const ev of eventosMov) {
+    const fechaEv = ev.fecha.slice(0, 10);
+    const det = ev.detalle ?? "";
     if (ev.tipo === "contrato" || /entrega/i.test(ev.titulo ?? "")) {
-      lugarEntrega.set(`${ev.vehiculo_id}|${ev.fecha.slice(0, 10)}`, ev.lugar);
-      continue;
+      if (!det.startsWith("caso-archivado:")) {
+        lugarEntrega.set(`${ev.vehiculo_id}|${fechaEv}`, ev.lugar);
+        continue;
+      }
     }
-    if (ev.tipo === "devolucion" || /devol/i.test(ev.titulo ?? "")) {
-      movimientos.push({
-        fecha: ev.fecha.slice(0, 10),
-        tipo: "devolucion",
-        sede: sedeDeLugar(ev.lugar),
-      });
-    }
+    const esDevolucion =
+      ev.tipo === "devolucion" ||
+      det.startsWith("caso-archivado:") ||
+      /devol/i.test(ev.titulo ?? "");
+    if (!esDevolucion) continue;
+    const clave = `${ev.vehiculo_id}|${fechaEv}`;
+    if (devolucionVistas.has(clave)) continue;
+    devolucionVistas.add(clave);
+    movimientos.push({
+      fecha: fechaEv,
+      tipo: "devolucion",
+      sede: sedeDeLugar(ev.lugar),
+    });
   }
   for (const c of contratosMes) {
     const fecha = String(c.fecha_inicio).slice(0, 10);

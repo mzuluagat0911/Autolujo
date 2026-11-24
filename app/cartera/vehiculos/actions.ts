@@ -11,6 +11,7 @@ import { siglaEmpresa } from "@/lib/cartera/empresa";
 import { aplicarEstadoProductivo, fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 import { hoyPanama } from "@/lib/cartera/fecha";
 import { dejarUltimaLetra, detalleCasoArchivado } from "@/lib/cartera/archivo-caso";
+import { nombreSucursal } from "@/lib/cartera/sucursal";
 
 function str(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
@@ -364,16 +365,21 @@ export async function archivarCasoCarro(
   vehiculoId: string,
   fechaUltimaLetra: string,
   motivoBaja: string,
+  sucursalDevolucion?: string | null,
 ): Promise<ResultadoFicha> {
   const id = String(vehiculoId ?? "").trim();
   const ultima = String(fechaUltimaLetra ?? "").trim();
   const motivo = String(motivoBaja ?? "").replace(/\s+/g, " ").trim();
+  const lugar = nombreSucursal(sucursalDevolucion);
   if (!id) return { ok: false, msg: "Falta el carro." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(ultima)) {
     return { ok: false, msg: "Indicá la fecha de la última letra." };
   }
   if (motivo.length < 3) {
     return { ok: false, msg: "Escribí la observación o el motivo de la baja." };
+  }
+  if (!lugar) {
+    return { ok: false, msg: "Indicá en qué sucursal se devolvió el carro (Juan Díaz o La Chorrera)." };
   }
   const sb = createServerSupabase();
   const { data: veh } = await sb.from("vehiculos").select("estado, numero").eq("id", id).maybeSingle();
@@ -414,12 +420,15 @@ export async function archivarCasoCarro(
     if (estErr) return { ok: false, msg: estErr.message };
     liberado = true;
   }
+  // El archivo del caso es la devolución operativa: el informe general la cuenta
+  // por detalle caso-archivado:… y la sede queda en lugar.
   await sb.from("vehiculo_eventos").insert({
     vehiculo_id: id,
     fecha: hoyPanama(),
     tipo: "otro",
     titulo: "Caso archivado",
     detalle: detalleCasoArchivado(ultima, contratoIds[0] ?? "", motivo),
+    lugar,
     origen: "manual",
   });
 

@@ -17,7 +17,7 @@ COBRO Y CARTERA
 - Pantallas: [Panel de cartera](/cartera) (recaudo del mes, sin pagar, improductivos), [Estado de cuenta](/cartera/estados-cuenta), [Conversaciones](/cartera/conversaciones), [Comprobantes](/cartera/pagos), [Conciliación](/cartera/extractos), [Carros](/cartera/vehiculos), [Rastreo](/cartera/rastreo), [Clientes](/cartera/clientes), [Ex clientes](/cartera/ex-clientes), [Tarifario](/cartera/tarifario), [Cobros de taller](/cartera/cobros-taller).
 
 REPORTES DE CARTERA (Estado de cuenta → botones arriba)
-- Informe general: Excel tipo contabilidad (varias pestañas, colores del archivo de referencia). Ruta /cartera/informes?desde=&hasta=. Botón "Informe general".
+- Informe general: Excel tipo contabilidad (varias pestañas, colores del archivo de referencia). Ruta /cartera/informes?desde=&hasta=. Botón "Informe general". En DEVOLUCIONES Y ENTREGAS, entrega = alta de contrato; devolución = archivar/sacar al cliente del carro (o estado Entregado). Al archivar o marcar Entregado hay que indicar la sucursal.
 - Informe diario: Excel clásico (fila por carro y día). Fecha con hora de Panamá; pago antes de las 12:00 queda en el día anterior. Ruta /cartera/informe?desde=&hasta=. Botón "Informe diario".
 - Extracto a cliente: por contrato, desde la ficha del cliente/contrato; Excel para entregarle al conductor.
 - Meta de cobranza: la carga admin en [Meta de cobranza](/admin/metas). El [Resumen](/admin) muestra Meta 100%/95%, recaudo del mes (todo ingreso conciliado o manual) e ideal por días hábiles.

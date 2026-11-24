@@ -649,12 +649,13 @@ function PanelEditarCarro({
   const [ingreso, setIngreso] = useState(carro.pausaDesde ?? "");
   const [activacion, setActivacion] = useState(carro.pausaHasta ?? "");
   const [devolucion, setDevolucion] = useState(carro.devueltoDesde ?? "");
-  const [sucursal, setSucursal] = useState("");
+  const [sucursal, setSucursal] = useState("juan_diaz");
   const [inactivoDesde, setInactivoDesde] = useState(carro.inactivoDesde ?? "");
   const [inactivoHasta, setInactivoHasta] = useState(carro.inactivoHasta ?? "");
   const [ultimaLetra, setUltimaLetra] = useState(hoyInput());
   const [bajaAbierta, setBajaAbierta] = useState(false);
   const [motivoBaja, setMotivoBaja] = useState("");
+  const [sucursalBaja, setSucursalBaja] = useState("juan_diaz");
   const [err, setErr] = useState<string | null>(null);
   const enTaller =
     estado === "mantenimiento" ||
@@ -713,6 +714,10 @@ function PanelEditarCarro({
   function guardar(e: FormEvent) {
     e.preventDefault();
     setErr(null);
+    if (estado === "entregado" && !sucursal) {
+      setErr("Indicá en qué sucursal se devolvió el carro.");
+      return;
+    }
     start(async () => {
       try {
         const r = await guardarIdentidadCarro({
@@ -727,7 +732,7 @@ function PanelEditarCarro({
           fechaIngreso: enTaller ? ingreso : null,
           fechaActivacion: enTaller ? activacion || null : null,
           fechaDevolucion: entregado ? devolucion : null,
-          sucursal: entregado ? sucursal || null : null,
+          sucursal: entregado ? sucursal : null,
           fechaInactivacion: inactivo ? inactivoDesde : null,
           fechaCobroInactivacion: inactivo ? inactivoHasta || null : null,
         });
@@ -860,17 +865,20 @@ function PanelEditarCarro({
             </label>
             <label className="flex flex-col gap-1.5">
               <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-                Sucursal
+                Sucursal de devolución *
               </span>
               <select
+                required
                 value={sucursal}
                 onChange={(e) => setSucursal(e.target.value)}
                 className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
               >
-                <option value="">Sin sucursal</option>
                 <option value="juan_diaz">Juan Díaz</option>
                 <option value="chorrera">La Chorrera</option>
               </select>
+              <span className="text-xs text-muted">
+                Dónde se recibió el carro al sacarlo del cliente.
+              </span>
             </label>
             </>
           )}
@@ -1137,6 +1145,23 @@ function PanelEditarCarro({
                 className="resize-y rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
               />
             </label>
+            <label className="mt-3 flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-rojo">
+                Sucursal de devolución *
+              </span>
+              <select
+                required
+                value={sucursalBaja}
+                onChange={(e) => setSucursalBaja(e.target.value)}
+                className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+              >
+                <option value="juan_diaz">Juan Díaz</option>
+                <option value="chorrera">La Chorrera</option>
+              </select>
+              <span className="text-xs text-muted">
+                Dónde se recibió el carro al sacarlo del cliente. Entra al informe general.
+              </span>
+            </label>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 type="button"
@@ -1152,6 +1177,10 @@ function PanelEditarCarro({
                     setErr("Escribí la observación o el motivo de la baja.");
                     return;
                   }
+                  if (!sucursalBaja) {
+                    setErr("Indicá en qué sucursal se devolvió el carro.");
+                    return;
+                  }
                   const [anio, mes, dia] = ultimaLetra.split("-");
                   const ok = window.confirm(
                     `Archivar el caso de ${quien}. La última letra es el ${dia}/${mes}/${anio}. Motivo: ${nota}. Ese día queda en la deuda y después el agente cobra ese saldo, sin letra nueva. Este carro queda libre para otro cliente.`,
@@ -1159,7 +1188,7 @@ function PanelEditarCarro({
                   if (!ok) return;
                   setErr(null);
                   start(async () => {
-                    const r = await archivarCasoCarro(carro.id, ultimaLetra, nota);
+                    const r = await archivarCasoCarro(carro.id, ultimaLetra, nota, sucursalBaja);
                     if (!r.ok) {
                       setErr(r.msg);
                       return;

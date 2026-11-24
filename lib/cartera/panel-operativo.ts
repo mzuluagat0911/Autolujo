@@ -105,8 +105,8 @@ async function leerMovimientos(desde: string, hasta: string, empresaIds: string[
 
   let eventosQ = sb
     .from("vehiculo_eventos")
-    .select("fecha, tipo, lugar, vehiculo_id, vehiculo:vehiculos!inner(numero, empresa_id, empresa:empresas(codigo))")
-    .in("tipo", ["contrato", "devolucion"])
+    .select("fecha, tipo, lugar, detalle, vehiculo_id, vehiculo:vehiculos!inner(numero, empresa_id, empresa:empresas(codigo))")
+    .or("tipo.in.(contrato,devolucion),detalle.like.caso-archivado:%")
     .gte("fecha", desde)
     .lte("fecha", hasta);
   if (empresaIds) eventosQ = eventosQ.in("vehiculo.empresa_id", empresaIds);
@@ -117,22 +117,30 @@ async function leerMovimientos(desde: string, hasta: string, empresaIds: string[
 
   const lugarEntrega = new Map<string, string | null>();
   const out: MovimientoDia[] = [];
+  const devolucionVistas = new Set<string>();
   for (const row of (eventos.data ?? []) as unknown as {
     fecha: string;
     tipo: string;
     lugar: string | null;
+    detalle: string | null;
     vehiculo_id: string;
     vehiculo: { numero: string; empresa: { codigo: string } | { codigo: string }[] | null } | { numero: string; empresa: { codigo: string } | { codigo: string }[] | null }[] | null;
   }[]) {
     const veh = uno(row.vehiculo);
     const carro = (veh?.numero ?? "").trim() || "—";
     const empresa = codigoEmpresa(veh?.empresa);
-    if (row.tipo === "contrato") {
-      lugarEntrega.set(`${row.vehiculo_id}|${row.fecha}`, row.lugar);
+    const fecha = String(row.fecha).slice(0, 10);
+    const det = row.detalle ?? "";
+    if (row.tipo === "contrato" && !det.startsWith("caso-archivado:")) {
+      lugarEntrega.set(`${row.vehiculo_id}|${fecha}`, row.lugar);
       continue;
     }
+    if (row.tipo !== "devolucion" && !det.startsWith("caso-archivado:")) continue;
+    const clave = `${row.vehiculo_id}|${fecha}`;
+    if (devolucionVistas.has(clave)) continue;
+    devolucionVistas.add(clave);
     out.push({
-      fecha: row.fecha,
+      fecha,
       tipo: "devolucion",
       carro,
       empresa,

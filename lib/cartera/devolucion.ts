@@ -122,10 +122,13 @@ export async function aplicarDevolucion(input: {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
     return { ok: false, msg: "Indicá la fecha de devolución." };
   }
+  const sucursal = nombreSucursal(input.sucursal);
+  if (!sucursal) {
+    return { ok: false, msg: "Indicá en qué sucursal se devolvió el carro (Juan Díaz o La Chorrera)." };
+  }
   const hoy = hoyPanama();
   const sb = createServerSupabase();
   const previa = await devolucionDeVehiculo(input.vehiculoId);
-  const sucursal = nombreSucursal(input.sucursal);
   await soltarPausa(input.vehiculoId, desde);
 
   const guardado = await sb.from("vehiculos").update({ estado: "entregado" }).eq("id", input.vehiculoId);
