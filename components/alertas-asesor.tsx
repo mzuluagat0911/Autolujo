@@ -104,7 +104,7 @@ export function AlertasAsesorProvider({
       const primera = nuevas[0];
       setToast(primera);
       window.setTimeout(() => setToast((t) => (t?.id === primera.id ? null : t)), 8000);
-      if (!opts?.prueba) setOpen(true);
+      // No abrimos el panel de la campana solo: el toast + badge bastan.
       void sonarAviso();
       for (const a of nuevas) {
         lanzarNotificacionEscritorio({
@@ -242,14 +242,28 @@ export function AlertasAsesorProvider({
     >
       {children}
       {toast && pathname !== (toast.href ?? `/cartera/conversaciones/${toast.id}`) && (
-        <div className="fixed bottom-4 right-4 z-50 w-[min(100%-2rem,22rem)] rounded-xl bg-surface p-4 ring-1 ring-line shadow-[0_12px_40px_rgba(0,0,0,0.12)] print:hidden">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ambar">
-            {toast.clase === "gps" ? "Alerta de rastreo" : "Cliente espera respuesta"}
-          </p>
-          <p className="mt-1 text-sm font-medium text-ink">{toast.titulo}</p>
-          <p className="mt-0.5 line-clamp-2 text-xs text-muted">
-            {toast.motivo ?? toast.preview ?? "Marcela pasó este chat a una persona."}
-          </p>
+        <div className="fixed bottom-28 right-4 z-40 w-[min(100%-2rem,20rem)] rounded-xl bg-surface p-3.5 ring-1 ring-line shadow-[0_12px_40px_rgba(0,0,0,0.12)] print:hidden sm:right-6">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-ambar">
+                {toast.clase === "gps" ? "Alerta de rastreo" : "Cliente espera respuesta"}
+              </p>
+              <p className="mt-1 text-sm font-medium text-ink">{toast.titulo}</p>
+              <p className="mt-0.5 line-clamp-2 text-xs text-muted">
+                {toast.motivo ?? toast.preview ?? "Marcela pasó este chat a una persona."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setToast(null)}
+              aria-label="Cerrar aviso"
+              className="shrink-0 rounded-lg p-1 text-muted hover:bg-surface-2 hover:text-ink"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+                <path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
           <div className="mt-3 flex gap-2">
             {toast.id !== "__prueba__" ? (
               <>
