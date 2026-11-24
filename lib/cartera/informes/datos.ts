@@ -16,6 +16,7 @@ import {
   type PagoInforme,
 } from "../informe-mes";
 import { metaCobranzaDeMes } from "../metas-cobranza";
+import { fueraDeFlota } from "../pausa-productiva";
 import { etiquetaSucursal } from "../sucursal";
 
 export type FilaRecaudo = {
@@ -606,7 +607,9 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   const acumuladoReal = r2(
     pagos.filter((p) => p.pago.fecha >= mesIni && p.pago.fecha <= hasta).reduce((s, p) => s + p.pago.monto, 0),
   );
-  const flota = vehs.filter((v) => v.estado === "activo").length;
+  // FLOTA X MES = carros que siguen en la flota (activo, taller, improductivo…).
+  // No entran pagado / pérdida total / terminación / entregado.
+  const flota = vehs.filter((v) => !fueraDeFlota(v.estado)).length;
   const meta100 = metaRow?.meta100 ?? null;
 
   // —— Informe noche (corte = hasta) ——
