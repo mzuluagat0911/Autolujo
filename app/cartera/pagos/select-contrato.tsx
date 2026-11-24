@@ -3,7 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ContratoOpt } from "./tipos";
 
-/** Select con buscador para anclar un pago a un contrato entre 200+. */
+/** Select con buscador para anclar un pago a un contrato o ex cliente (200+). */
 export function SelectContrato({
   name,
   contratos,
@@ -33,8 +33,9 @@ export function SelectContrato({
       ? contratos.filter((c) => c.label.toLowerCase().includes(needle))
       : contratos;
     return {
-      activos: base.filter((c) => c.activo),
-      inactivos: base.filter((c) => !c.activo),
+      activos: base.filter((c) => c.grupo !== "ex" && c.activo),
+      inactivos: base.filter((c) => c.grupo !== "ex" && !c.activo),
+      ex: base.filter((c) => c.grupo === "ex"),
     };
   }, [contratos, q]);
 
@@ -68,7 +69,9 @@ export function SelectContrato({
   }
 
   const vacioFiltro =
-    filtrados.activos.length === 0 && filtrados.inactivos.length === 0;
+    filtrados.activos.length === 0 &&
+    filtrados.inactivos.length === 0 &&
+    filtrados.ex.length === 0;
 
   return (
     <div ref={root} className="w-full min-w-0 max-w-md basis-full">
@@ -92,7 +95,7 @@ export function SelectContrato({
         className="flex w-full items-center justify-between gap-2 rounded-lg bg-paper px-3 py-2 text-left text-sm ring-1 ring-line hover:bg-surface-2 focus:outline-none focus:ring-2 focus:ring-ink/20"
       >
         <span className={elegido ? "truncate text-ink" : "truncate text-muted"}>
-          {elegido ? elegido.label : "Anclar a contrato…"}
+          {elegido ? elegido.label : "Anclar a contrato o ex cliente…"}
         </span>
         <svg
           width="16"
@@ -121,7 +124,7 @@ export function SelectContrato({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => e.stopPropagation()}
-              placeholder="Buscar carro, cliente…"
+              placeholder="Buscar carro, cliente, ex…"
               className="w-full rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink/20"
             />
           </div>
@@ -142,6 +145,14 @@ export function SelectContrato({
                   <Grupo
                     titulo="Inactivos"
                     items={filtrados.inactivos}
+                    valor={valor}
+                    onPick={elegir}
+                  />
+                )}
+                {filtrados.ex.length > 0 && (
+                  <Grupo
+                    titulo="Ex clientes"
+                    items={filtrados.ex}
                     valor={valor}
                     onPick={elegir}
                   />

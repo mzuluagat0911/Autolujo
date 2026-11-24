@@ -163,6 +163,81 @@ export async function registrarExClienteDesdeArchivo(opts: {
 }
 
 /**
+ * Abono a un ex cliente del Excel/manual sin contrato en el sistema.
+ * Baja el saldo de la fila; si queda en 0, lo cierra.
+ * Devuelve contrato_id si ya estaba amarrado (para usar el flujo normal).
+ */
+export async function resolverDestinoExCliente(exClienteId: string): Promise<
+  | { ok: true; modo: "contrato"; contratoId: string; carro: string | null }
+  | { ok: true; modo: "saldo"; id: string; carro: string | null; saldo: number; nombre: string }
+  | { ok: false; error: string }
+> {
+  const id = exClienteId.trim();
+  if (!id) return { ok: false, error: "Falta el ex cliente." };
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("ex_clientes")
+    .select("id, nombre, carro, saldo, estado, contrato_id")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "No encontré ese ex cliente." };
+  const f = data as {
+    id: string;
+    nombre: string;
+    carro: string | null;
+    saldo: number;
+    estado: string;
+    contrato_id: string | null;
+  };
+  if (f.estado === "baja" || f.estado === "cerrado") {
+    return { ok: false, error: "Ese ex cliente ya no está en cobro." };
+  }
+  if (f.contrato_id) {
+    return { ok: true, modo: "contrato", contratoId: f.contrato_id, carro: f.carro };
+  }
+  return {
+    ok: true,
+    modo: "saldo",
+    id: f.id,
+    carro: f.carro,
+    saldo: r2(Number(f.saldo) || 0),
+    nombre: f.nombre,
+  };
+}
+
+/** Resta el abono al saldo Excel del ex cliente (sin contrato). */
+export async function aplicarAbonoExClienteSaldo(
+  exClienteId: string,
+  monto: number,
+): Promise<{ ok: true; saldo: number } | { ok: false; error: string }> {
+  const id = exClienteId.trim();
+  const abono = r2(Math.max(Number(monto) || 0, 0));
+  if (!id) return { ok: false, error: "Falta el ex cliente." };
+  if (abono <= 0.009) return { ok: false, error: "El abono tiene que ser mayor a cero." };
+
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("ex_clientes")
+    .select("id, saldo, estado")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) return { ok: false, error: error.message };
+  if (!data) return { ok: false, error: "No encontré ese ex cliente." };
+  const f = data as { id: string; saldo: number; estado: string };
+  if (f.estado === "baja") return { ok: false, error: "Ese ex cliente está de baja." };
+
+  const saldo = Math.max(r2(Number(f.saldo) || 0) - abono, 0);
+  const patch: Record<string, unknown> = { saldo, updated_at: new Date().toISOString() };
+  if (saldo <= 0.009 && (f.estado === "cobro" || f.estado === "acuerdo" || f.estado === "pausado")) {
+    patch.estado = "cerrado";
+  }
+  const { error: upErr } = await sb.from("ex_clientes").update(patch).eq("id", id);
+  if (upErr) return { ok: false, error: upErr.message };
+  return { ok: true, saldo };
+}
+
+/**
  * Tras un pago (o su reversa) del contrato archivado: el saldo del ex cliente
  * queda igual al de la vista. Si llega a 0, se cierra.
  */

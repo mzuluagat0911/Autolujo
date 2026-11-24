@@ -55,7 +55,7 @@ function volverConAviso(msg: string): never {
 export async function resolverPago(formData: FormData): Promise<void> {
   const pagoId = String(formData.get("pago_id") ?? "");
   const accion = String(formData.get("accion") ?? "");
-  const contratoId = String(formData.get("contrato_id") ?? "").trim() || null;
+  const destinoRaw = String(formData.get("contrato_id") ?? "").trim() || null;
   if (!pagoId) volverConAviso("Falta el pago.");
 
   const nuevoEstado =
@@ -63,12 +63,34 @@ export async function resolverPago(formData: FormData): Promise<void> {
   if (!nuevoEstado) volverConAviso("Acción inválida.");
 
   const sb = createServerSupabase();
+
+  // Ex cliente del Excel sin contrato: valor `ex:<uuid>`.
+  let contratoId: string | null = destinoRaw;
+  let exClienteId: string | null = null;
+  let notaEx = "";
+  let carroEx: string | null = null;
+  let montoPago = 0;
+  if (nuevoEstado === "conciliado" && destinoRaw?.startsWith("ex:")) {
+    const { resolverDestinoExCliente } = await import("@/lib/cartera/ex-clientes-archivo");
+    const dest = await resolverDestinoExCliente(destinoRaw.slice(3));
+    if (!dest.ok) volverConAviso(dest.error);
+    if (dest.modo === "contrato") {
+      contratoId = dest.contratoId;
+      carroEx = dest.carro;
+    } else {
+      contratoId = null;
+      exClienteId = dest.id;
+      carroEx = dest.carro;
+      notaEx = `Abono a ex cliente ${dest.nombre} (saldo Excel). EX_CLIENTE:${dest.id}`;
+    }
+  }
+
   const rubroExcedente = String(formData.get("rubro_excedente") ?? "").trim();
   let notaAsignacion = "";
   if (nuevoEstado === "conciliado") {
     const { data: actual } = await sb
       .from("pagos")
-      .select("notas, rubro, asignaciones, contrato_id")
+      .select("notas, rubro, asignaciones, contrato_id, monto")
       .eq("id", pagoId)
       .maybeSingle();
     const row = actual as {
@@ -76,8 +98,15 @@ export async function resolverPago(formData: FormData): Promise<void> {
       rubro: string | null;
       asignaciones: unknown;
       contrato_id: string | null;
+      monto: number;
     } | null;
+    montoPago = Number(row?.monto) || 0;
     if (row && pagoEsperaConceptoExcedente(row.notas) && !row.rubro && !row.asignaciones) {
+      if (exClienteId) {
+        volverConAviso(
+          "Este pago trae excedente sin concepto. Anclalo a un contrato activo, no a un ex cliente del Excel.",
+        );
+      }
       const rubroOk =
         rubroExcedente === "cuenta" ||
         rubroExcedente === "acuerdo" ||
@@ -103,6 +132,7 @@ export async function resolverPago(formData: FormData): Promise<void> {
 
   const patch: Record<string, unknown> = { estado_conciliacion: nuevoEstado };
   if (contratoId) patch.contrato_id = contratoId;
+  if (carroEx && !contratoId) patch.numero_carro = carroEx;
   if (
     rubroExcedente === "cuenta" ||
     rubroExcedente === "acuerdo" ||
@@ -116,10 +146,11 @@ export async function resolverPago(formData: FormData): Promise<void> {
     await revertirPagoEnObligaciones(pagoId);
   }
 
-  if (notaAsignacion) {
+  const extras = [notaAsignacion, notaEx].filter(Boolean).join(" ");
+  if (extras) {
     const { data: prev } = await sb.from("pagos").select("notas").eq("id", pagoId).maybeSingle();
     const notas = (prev as { notas: string | null } | null)?.notas ?? "";
-    patch.notas = `${notas} ${notaAsignacion}`.trim();
+    patch.notas = `${notas} ${extras}`.trim();
   }
 
   const { data: pago, error } = await sb
@@ -130,6 +161,12 @@ export async function resolverPago(formData: FormData): Promise<void> {
     .maybeSingle();
   if (error) volverConAviso(error.message);
 
+  if (nuevoEstado === "conciliado" && exClienteId) {
+    const { aplicarAbonoExClienteSaldo } = await import("@/lib/cartera/ex-clientes-archivo");
+    const abono = await aplicarAbonoExClienteSaldo(exClienteId, montoPago);
+    if (!abono.ok) volverConAviso(abono.error);
+  }
+
   // Mientras el comprobante estuvo pendiente, el recargo de ese día quedó
   // congelado. Ya hay desenlace: si el pago era bueno se confirma la gracia,
   // si era malo entra el recargo que se le perdonó esa noche.
@@ -137,7 +174,7 @@ export async function resolverPago(formData: FormData): Promise<void> {
   if (p?.contrato_id && p.pagado_at) {
     await recalcularRecargo(p.contrato_id, fechaContable(p.pagado_at));
   }
-  if (nuevoEstado === "conciliado") {
+  if (nuevoEstado === "conciliado" && !exClienteId) {
     try {
       await atribuirHoraConciliacion(sb, pagoId);
       const aplicado = await aplicarPagoEnObligaciones(pagoId);
@@ -152,6 +189,7 @@ export async function resolverPago(formData: FormData): Promise<void> {
   }
 
   revalidatePath("/cartera/pagos");
+  revalidatePath("/cartera/ex-clientes");
   revalidatePath("/cartera");
   revalidatePath("/cartera/vehiculos");
   revalidatePath("/cartera/extractos");

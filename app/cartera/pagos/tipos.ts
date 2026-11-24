@@ -24,8 +24,12 @@ export type PagoFila = {
 };
 
 export type ContratoOpt = {
+  /** UUID de contrato, o `ex:<uuid>` si es deuda de Excel sin contrato. */
   id: string;
   label: string;
   empresa: string | null;
+  /** Solo contratos vivos. Ex clientes van en su propio grupo. */
   activo: boolean;
+  /** `ex` = lista de cobro (Excel/manual/archivo sin amarre usable en Activos). */
+  grupo?: "contrato" | "ex";
 };

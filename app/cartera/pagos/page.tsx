@@ -50,7 +50,7 @@ async function getData() {
     }
     await restaurarComprobantesMalRechazados();
     await rechazarComprobantesRepetidos();
-    const [pagosRes, contratosRes] = await Promise.all([
+    const [pagosRes, contratosRes, exRes] = await Promise.all([
       sb
         .from("pagos")
         .select(
@@ -62,6 +62,13 @@ async function getData() {
       sb
         .from("contratos")
         .select("id, estado, cliente:clientes(nombre), vehiculo:vehiculos(numero, empresa:empresas(codigo))")
+        .limit(1000),
+      // Deuda Excel/manual en cobro: sin esto no salen al anclar (ej. Delgado KW105).
+      sb
+        .from("ex_clientes")
+        .select("id, nombre, carro, saldo, estado, contrato_id, empresa:empresas(codigo)")
+        .in("estado", ["cobro", "acuerdo", "pausado"])
+        .order("nombre", { ascending: true })
         .limit(1000),
     ]);
 
@@ -143,7 +150,11 @@ async function getData() {
       });
     }
 
-    const contratos: ContratoOpt[] = ((contratosRes.data ?? []) as unknown as {
+    const contratosIds = new Set(
+      ((contratosRes.data ?? []) as { id: string }[]).map((c) => c.id),
+    );
+
+    const deContrato: ContratoOpt[] = ((contratosRes.data ?? []) as unknown as {
       id: string;
       estado: string;
       cliente: { nombre: string } | null;
@@ -157,13 +168,47 @@ async function getData() {
           id: c.id,
           empresa: siglaEmpresa(c.vehiculo?.empresa?.codigo) || null,
           activo,
+          grupo: "contrato" as const,
           label: activo ? `${carro} · ${nombre}` : `${carro} · ${nombre} · inactivo`,
         };
-      })
-      .sort((a, b) => {
-        if (a.activo !== b.activo) return a.activo ? -1 : 1;
-        return a.label.localeCompare(b.label, "es", { numeric: true, sensitivity: "base" });
       });
+
+    const deEx: ContratoOpt[] = (
+      (exRes.error ? [] : (exRes.data ?? [])) as unknown as {
+        id: string;
+        nombre: string;
+        carro: string | null;
+        saldo: number;
+        contrato_id: string | null;
+        empresa: { codigo: string } | null;
+      }[]
+    )
+      .map((x) => {
+        // Si ya tiene contrato en el select, no duplicar: se ancla por contrato.
+        if (x.contrato_id && contratosIds.has(x.contrato_id)) return null;
+        const emp = siglaEmpresa(x.empresa?.codigo) || null;
+        const carro = (x.carro ?? "").trim() || "sin carro";
+        const saldo = Math.round(Number(x.saldo) || 0);
+        // Sin contrato → `ex:` para bajar saldo Excel al confirmar Pago comprobado.
+        const id = x.contrato_id && !contratosIds.has(x.contrato_id)
+          ? x.contrato_id
+          : `ex:${x.id}`;
+        return {
+          id,
+          empresa: emp,
+          activo: false,
+          grupo: "ex" as const,
+          label: `${carro} · ${x.nombre} · ex · $${saldo}`,
+        };
+      })
+      .filter((x): x is ContratoOpt => Boolean(x));
+
+    const contratos: ContratoOpt[] = [...deContrato, ...deEx].sort((a, b) => {
+      const ga = a.grupo === "ex" ? 2 : a.activo ? 0 : 1;
+      const gb = b.grupo === "ex" ? 2 : b.activo ? 0 : 1;
+      if (ga !== gb) return ga - gb;
+      return a.label.localeCompare(b.label, "es", { numeric: true, sensitivity: "base" });
+    });
 
     return { pendientes, contratos, error: null as string | null };
   } catch (e) {
