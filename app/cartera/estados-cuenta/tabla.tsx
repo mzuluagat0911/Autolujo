@@ -100,7 +100,7 @@ export function EstadosTabla({
     }
     setArmando(true);
     try {
-      const res = await fetch(`/cartera/informe?desde=${desdeInforme}&hasta=${hastaInforme}`);
+      const res = await fetch(`/cartera/informes?desde=${desdeInforme}&hasta=${hastaInforme}`);
       if (!res.ok) {
         const cuerpo = (await res.json().catch(() => null)) as { error?: string } | null;
         setToast(cuerpo?.error || "No pude armar el archivo.");
@@ -110,7 +110,7 @@ export function EstadosTabla({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `informe-${desdeInforme}_${hastaInforme}.xlsx`;
+      a.download = `INFORMES-${desdeInforme}_${hastaInforme}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       setPedirFecha(false);
@@ -298,7 +298,7 @@ export function EstadosTabla({
           >
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Informe</p>
             <h2 id="informe-fecha" className="mt-1 text-base font-semibold text-ink">
-              Fechas del informe
+              Fechas de INFORMES
             </h2>
             <p className="mt-2 text-sm text-muted">
               Entran los días entre las dos fechas, también los carros improductivos, en taller y por entregar. El primer día trae el saldo que ya venía. El día cierra a las 12 del mediodía: un pago de antes de esa hora queda en el día anterior.
