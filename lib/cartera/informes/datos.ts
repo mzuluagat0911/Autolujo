@@ -5,6 +5,7 @@ import {
   diaSemana,
   diasHabilesEnRango,
   finMes,
+  hoyPanama,
   inicioMes,
   sumarDias,
 } from "../fecha";
@@ -15,6 +16,7 @@ import {
   tramosDeEventos,
   type PagoInforme,
 } from "../informe-mes";
+import { estadosCuentaPanel } from "../estado-cuenta-cache";
 import { metaCobranzaDeMes } from "../metas-cobranza";
 import { fueraDeFlota } from "../pausa-productiva";
 import { etiquetaSucursal } from "../sucursal";
@@ -634,6 +636,8 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   const meta100 = metaRow?.meta100 ?? null;
 
   // —— Informe noche (corte = hasta) ——
+  // AL DÍA = cobroHoy $0 (nada a pagar / letra o cuentas ya adelantadas).
+  // NO PAGO = cobroHoy > 0. Misma cifra del extracto, no “si pagó hoy”.
   const nocheEmp: ("AL" | "KW" | "GOLD")[] = ["AL", "KW", "GOLD"];
   const noPagoN: Record<string, BloqueNoche> = Object.fromEntries(
     nocheEmp.map((e) => [e, { empresa: e, cantidad: 0, valor: 0 }]),
@@ -648,6 +652,14 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     nocheEmp.map((e) => [e, { empresa: e, cantidad: 0, valor: 0 }]),
   );
 
+  const cobroPorContrato = new Map<string, number>();
+  if (hasta === hoyPanama()) {
+    const panel = await estadosCuentaPanel();
+    for (const e of panel) {
+      cobroPorContrato.set(e.contratoId, Number(e.totalCobrarHoy) || 0);
+    }
+  }
+
   for (const v of flotaVehs) {
     const emp = empresaCorta(uno(v.empresa)?.codigo ?? null);
     if (!emp) continue;
@@ -661,18 +673,22 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
       continue;
     }
     if (v.estado !== "activo") continue;
-    if (pagosHoy.has(activo.id)) {
+
+    let cobroHoy: number;
+    if (cobroPorContrato.has(activo.id)) {
+      cobroHoy = cobroPorContrato.get(activo.id)!;
+    } else {
+      // Sin panel del día (informe de una fecha pasada): al día si el libro de letra está cubierto.
+      const deuda = Math.max((saldoMap.get(activo.id) ?? 0) - (acuerdoMap.get(activo.id) ?? 0), 0);
+      cobroHoy = deuda > 0.009 ? deuda : 0;
+    }
+
+    if (cobroHoy <= 0.009) {
       alDiaN[emp].cantidad += 1;
       alDiaN[emp].valor = r2(alDiaN[emp].valor + letra);
     } else {
-      const deuda = Math.max((saldoMap.get(activo.id) ?? 0) - (acuerdoMap.get(activo.id) ?? 0), 0);
-      if (deuda > 0.009 || letra > 0.009) {
-        noPagoN[emp].cantidad += 1;
-        noPagoN[emp].valor = r2(noPagoN[emp].valor + (deuda > 0.009 ? deuda : letra));
-      } else {
-        alDiaN[emp].cantidad += 1;
-        alDiaN[emp].valor = r2(alDiaN[emp].valor + letra);
-      }
+      noPagoN[emp].cantidad += 1;
+      noPagoN[emp].valor = r2(noPagoN[emp].valor + cobroHoy);
     }
   }
   for (const p of pagos) {

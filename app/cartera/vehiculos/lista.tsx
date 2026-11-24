@@ -132,7 +132,13 @@ function fmtVisto(iso: string | null): string {
   }
 }
 
-type Filtro = "todos" | "alerta" | "sin_gps" | "salida" | "sin_contrato" | "exceso_km";
+type Filtro = "en_flota" | "todos" | "fuera" | "alerta" | "sin_gps" | "salida" | "sin_contrato" | "exceso_km";
+
+const FUERA_FLOTA = new Set(["entregado", "pagado", "perdida_total", "terminacion"]);
+
+function enFlota(v: { estado: string }): boolean {
+  return !FUERA_FLOTA.has(v.estado);
+}
 
 type Draft = { placa: string; gps_id: string; marca: string; modelo: string; anio: string };
 
@@ -145,7 +151,7 @@ export function ListaVehiculos({
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [filtro, setFiltro] = useState<Filtro>("todos");
+  const [filtro, setFiltro] = useState<Filtro>("en_flota");
   const [editando, setEditando] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const [msg, setMsg] = useState<string | null>(null);
@@ -160,6 +166,8 @@ export function ListaVehiculos({
   const visibles = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return filas.filter((v) => {
+      if (filtro === "en_flota" && !enFlota(v)) return false;
+      if (filtro === "fuera" && enFlota(v)) return false;
       if (filtro === "sin_gps" && v.gps_id) return false;
       if (filtro === "sin_contrato" && v.contratoId) return false;
       if (filtro === "salida" && !v.salida) return false;
@@ -193,7 +201,9 @@ export function ListaVehiculos({
   }, [filas, q, filtro, topeKmMes]);
 
   const chips: { id: Filtro; label: string; n: number }[] = [
+    { id: "en_flota", label: "En flota", n: filas.filter(enFlota).length },
     { id: "todos", label: "Todos", n: filas.length },
+    { id: "fuera", label: "Fuera de flota", n: filas.filter((v) => !enFlota(v)).length },
     {
       id: "alerta",
       label: "Con alerta",
