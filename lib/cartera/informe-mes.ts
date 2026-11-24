@@ -341,9 +341,11 @@ export function etiquetaDelDia(carro: CarroInforme, fecha: string): string | nul
 }
 
 /**
- * Detalle del día, con las mismas etiquetas del informe de contabilidad.
- * Un pago adelantado que ya cubre la letra deja AL DIA. NO PAGO queda
- * solo cuando esa letra sigue debiendo y ese día no entró a cuota.
+ * Detalle del día (informe diario), misma regla que INFORME NOCHE:
+ * - Día contable: 12:00 → 11:59 del día siguiente (fechaInformeCartera).
+ * - AL DIA: abonó a letra (cuota/atraso) ese día, o la letra ya estaba cubierta
+ *   (adelantado / saldo de cuota en 0). Pagar solo mantenimiento o acuerdo no cuenta.
+ * - NO PAGO: debía letra y no entró nada a cuota/letra en ese día.
  */
 export function detalleInforme(
   carro: CarroInforme,
@@ -357,7 +359,8 @@ export function detalleInforme(
   const etiqueta = etiquetaDelDia(carro, fecha);
   // Por entregar no trae fecha de ingreso. Si ese día igual hubo letra, manda la letra.
   if (etiqueta && !(etiqueta === "X ENTREGAR" && hayLetra)) return etiqueta;
-  if (hayLetra && !pagoLetra) return saldoCuota <= 0.009 ? "AL DIA" : "NO PAGO";
+  if (pagoLetra) return "";
+  if (hayLetra) return saldoCuota <= 0.009 ? "AL DIA" : "NO PAGO";
   if (!hayLetra && !pagoLetra) {
     const est = etiquetaEstado(carro.estadoVehiculo);
     if (!est) return "";

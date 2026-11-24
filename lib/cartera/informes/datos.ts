@@ -636,8 +636,11 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   const meta100 = metaRow?.meta100 ?? null;
 
   // —— Informe noche (corte = hasta) ——
-  // AL DÍA = cobroHoy $0 (nada a pagar / letra o cuentas ya adelantadas).
-  // NO PAGO = cobroHoy > 0. Misma cifra del extracto, no “si pagó hoy”.
+  // Día contable = desde las 12:00 del día hasta las 11:59 del siguiente (fechaInformeCartera).
+  // AL DÍA = abonó algo a letra (hoy o atraso) en ese día, O la letra ya estaba cubierta
+  //   (adelantado / sin cuenta por cobrar). Pagar solo mantenimiento o acuerdo NO cuenta.
+  // NO PAGO = debía letra y no entró nada atribuible a cuota/letra en ese día.
+  // Misma lógica de detalle que el informe diario (detalleInforme).
   const nocheEmp: ("AL" | "KW" | "GOLD")[] = ["AL", "KW", "GOLD"];
   const noPagoN: Record<string, BloqueNoche> = Object.fromEntries(
     nocheEmp.map((e) => [e, { empresa: e, cantidad: 0, valor: 0 }]),
@@ -652,11 +655,26 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     nocheEmp.map((e) => [e, { empresa: e, cantidad: 0, valor: 0 }]),
   );
 
-  const cobroPorContrato = new Map<string, number>();
+  /** Contratos con abono a letra (Cuota) en el día contable `hasta`. */
+  const pagoLetraHoy = new Set<string>();
+  for (const p of pagos) {
+    if (p.pago.fecha !== hasta || p.contratoEstado !== "activo") continue;
+    if (partirPago(p.pago).pagos.Cuota > 0.009) pagoLetraHoy.add(p.pago.contratoId);
+  }
+
+  /** Cuánto de letra sigue por cobrar hoy (línea "cuenta" del extracto). */
+  const letraPorCobrar = new Map<string, number>();
   if (hasta === hoyPanama()) {
     const panel = await estadosCuentaPanel();
     for (const e of panel) {
-      cobroPorContrato.set(e.contratoId, Number(e.totalCobrarHoy) || 0);
+      const deLinea = (e.lineasCobro ?? [])
+        .filter((l) => !l.aviso && l.etiqueta === "cuenta")
+        .reduce((s, l) => s + (Number(l.monto) || 0), 0);
+      const cuenta =
+        deLinea > 0.009 ? deLinea : Math.max(Number(e.cuenta) || 0, 0);
+      // Adelantado: la letra del día ya está cubierta aunque el extracto traiga otras cosas.
+      const cubierta = (Number(e.diasAdelantados) || 0) >= 1 || cuenta <= 0.009;
+      letraPorCobrar.set(e.contratoId, cubierta ? 0 : cuenta);
     }
   }
 
@@ -674,21 +692,22 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     }
     if (v.estado !== "activo") continue;
 
-    let cobroHoy: number;
-    if (cobroPorContrato.has(activo.id)) {
-      cobroHoy = cobroPorContrato.get(activo.id)!;
+    const abonoLetra = pagoLetraHoy.has(activo.id);
+    let debeLetra: number;
+    if (letraPorCobrar.has(activo.id)) {
+      debeLetra = letraPorCobrar.get(activo.id)!;
     } else {
-      // Sin panel del día (informe de una fecha pasada): al día si el libro de letra está cubierto.
-      const deuda = Math.max((saldoMap.get(activo.id) ?? 0) - (acuerdoMap.get(activo.id) ?? 0), 0);
-      cobroHoy = deuda > 0.009 ? deuda : 0;
+      // Fecha pasada sin panel: libro de letra (saldo − acuerdos).
+      debeLetra = Math.max((saldoMap.get(activo.id) ?? 0) - (acuerdoMap.get(activo.id) ?? 0), 0);
     }
 
-    if (cobroHoy <= 0.009) {
+    // Misma regla que detalleInforme: sin abono a letra, AL DÍA solo si no debe letra.
+    if (abonoLetra || debeLetra <= 0.009) {
       alDiaN[emp].cantidad += 1;
       alDiaN[emp].valor = r2(alDiaN[emp].valor + letra);
     } else {
       noPagoN[emp].cantidad += 1;
-      noPagoN[emp].valor = r2(noPagoN[emp].valor + cobroHoy);
+      noPagoN[emp].valor = r2(noPagoN[emp].valor + debeLetra);
     }
   }
   for (const p of pagos) {
