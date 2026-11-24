@@ -136,8 +136,11 @@ function datosDeIdentidad(
   if (!numero || numero.length < 4) return { error: "El número de licencia es obligatorio." };
   const vence = fechaIso(formData.get("fecha_vencimiento_licencia"));
   if (!vence) return { error: "El vencimiento de la licencia es obligatorio. Usá dd/mm/aaaa." };
-  const categoria = (str(formData.get("categoria_licencia")) ?? "").toUpperCase();
-  if (!/^[A-E]$/.test(categoria)) return { error: "Elegí la categoría de la licencia (A a E)." };
+  const categoria = (str(formData.get("categoria_licencia")) ?? "").toUpperCase().replace(/\s+/g, "");
+  if (!categoria) return { error: "La categoría de la licencia es obligatoria (ej. B, E1, F)." };
+  if (!/^[A-Z][A-Z0-9]{0,4}$/.test(categoria)) {
+    return { error: "Categoría de licencia inválida. Ejemplos: A, B, E1, E2, F, H." };
+  }
   return {
     fecha_nacimiento: nacimiento,
     numero_licencia: numero,
@@ -867,9 +870,9 @@ export async function actualizarDatosCliente(
   if (formData.get("fecha_vencimiento_licencia") && !vence) {
     return { ok: false, error: "El vencimiento va en dd/mm/aaaa." };
   }
-  const categoria = (str(formData.get("categoria_licencia")) ?? "").toUpperCase();
-  if (categoria && !/^[A-E]$/.test(categoria)) {
-    return { ok: false, error: "La categoría es A, B, C, D o E." };
+  const categoria = (str(formData.get("categoria_licencia")) ?? "").toUpperCase().replace(/\s+/g, "");
+  if (categoria && !/^[A-Z][A-Z0-9]{0,4}$/.test(categoria)) {
+    return { ok: false, error: "Categoría inválida. Ejemplos: A, B, E1, E2, F, H." };
   }
   const fila: Record<string, unknown> = {
     nombre,

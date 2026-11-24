@@ -268,18 +268,11 @@ export function AltaContratoForm({
         <Field label="WhatsApp" name="whatsapp" placeholder="+50760000000" />
         <Field label="Fecha de nacimiento *" name="fecha_nacimiento" required placeholder="dd/mm/aaaa" />
         <Field label="Nº de licencia *" name="numero_licencia" required placeholder="8-888-8888" />
-        <Select
+        <Field
           label="Categoría de licencia *"
           name="categoria_licencia"
           required
-          placeholder="Elegí…"
-          options={[
-            { value: "A", label: "A" },
-            { value: "B", label: "B" },
-            { value: "C", label: "C" },
-            { value: "D", label: "D" },
-            { value: "E", label: "E" },
-          ]}
+          placeholder="B, E1, F, H…"
         />
         <Field
           label="Vencimiento de licencia *"
