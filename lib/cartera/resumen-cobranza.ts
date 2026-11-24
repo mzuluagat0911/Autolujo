@@ -15,7 +15,7 @@ import {
   sumarDias,
 } from "./fecha";
 import { metaCobranzaDeMes } from "./metas-cobranza";
-import { PAGADO } from "./pagos-dia";
+import { sumaRecaudoEntre } from "./recaudo-cartera";
 
 export type FlotaPorEmpresa = { sigla: string; carros: number };
 
@@ -79,26 +79,9 @@ async function metaDiariaEstimada(fechaRef: string): Promise<number> {
   return r2(total);
 }
 
+/** Todo ingreso de cartera (conciliado/manual), sin recortar por rubro. */
 async function cobradoEntre(desde: string, hasta: string): Promise<number> {
-  // Meta de cobranza = dinero entrado (conciliado/manual), no solo lo que baja letra.
-  // PostgREST corta en 1.000 filas: hay que paginar.
-  const sb = createServerSupabase();
-  let total = 0;
-  for (let offset = 0; ; offset += 1000) {
-    const { data, error } = await sb
-      .from("pagos")
-      .select("monto")
-      .gte("fecha", desde)
-      .lte("fecha", hasta)
-      .in("estado_conciliacion", [...PAGADO])
-      .order("id", { ascending: true })
-      .range(offset, offset + 999);
-    if (error) throw error;
-    const chunk = (data ?? []) as { monto: number }[];
-    for (const p of chunk) total += Number(p.monto) || 0;
-    if (chunk.length < 1000) break;
-  }
-  return r2(total);
+  return sumaRecaudoEntre(desde, hasta);
 }
 
 async function flotaActual(): Promise<{ total: number; porEmpresa: FlotaPorEmpresa[]; contratos: number }> {

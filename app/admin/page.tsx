@@ -368,7 +368,9 @@ function CifrasCobranza({ c }: { c: ResumenCobranza }) {
         <div className="rounded-xl bg-surface p-5 ring-1 ring-line">
           <p className="text-xs text-muted">Recaudado a hoy</p>
           <p className="mt-1 text-2xl font-bold tabular-nums text-ink">{money2(c.recaudadoMtd)}</p>
-          <p className="mt-1 text-sm text-muted">{pctTxt(c.pctRecaudado)} de la meta 100%</p>
+          <p className="mt-1 text-sm text-muted">
+            {pctTxt(c.pctRecaudado)} de la meta 100% · todos los ingresos de cartera
+          </p>
         </div>
         <div className="rounded-xl bg-surface p-5 ring-1 ring-line">
           <p className="text-xs text-muted">

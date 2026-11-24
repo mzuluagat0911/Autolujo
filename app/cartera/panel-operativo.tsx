@@ -110,7 +110,7 @@ export function PanelOperativoVista({ datos }: { datos: PanelOperativo }) {
           <Kpi
             label="Recaudo del filtro"
             value={<Money amount={total} />}
-            hint={`${recaudo.reduce((a, r) => a + r.pagos, 0)} pagos conciliados`}
+            hint={`${recaudo.reduce((a, r) => a + r.pagos, 0)} pagos · todo ingreso a cartera`}
             tone="good"
           />
           <Kpi

@@ -78,52 +78,18 @@ export function noPagosDe(estados: {
     .sort((a, b) => b.monto - a.monto);
 }
 
-type FilaRecaudo = {
-  fecha: string;
-  monto: number | null;
-  contrato: { empresa_id: string; empresa: { codigo: string } | { codigo: string }[] | null } | { empresa_id: string; empresa: { codigo: string } | { codigo: string }[] | null }[] | null;
-};
-
-async function paginaRecaudo(
-  desde: string,
-  hasta: string,
-  empresaIds: string[] | null,
-  from: number,
-): Promise<FilaRecaudo[]> {
-  const sb = createServerSupabase();
-  let q = sb
-    .from("pagos")
-    .select("fecha, monto, contrato:contratos!inner(empresa_id, empresa:empresas(codigo))")
-    .gte("fecha", desde)
-    .lte("fecha", hasta)
-    .in("estado_conciliacion", ["conciliado", "manual"])
-    .range(from, from + 999);
-  if (empresaIds) q = q.in("contrato.empresa_id", empresaIds);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  return (data ?? []) as unknown as FilaRecaudo[];
-}
-
 async function leerRecaudo(desde: string, hasta: string, empresaIds: string[] | null): Promise<RecaudoDia[]> {
+  // Misma fuente que el Resumen: todo ingreso conciliado/manual va a cartera.
+  const { filtroEmpresaRecaudo, pagosRecaudoEntre } = await import("./recaudo-cartera");
+  const filas = filtroEmpresaRecaudo(await pagosRecaudoEntre(desde, hasta), empresaIds);
   const mapa = new Map<string, RecaudoDia>();
-  const primera = await paginaRecaudo(desde, hasta, empresaIds, 0);
-  const resto =
-    primera.length < 1000
-      ? []
-      : (
-          await Promise.all([1000, 2000, 3000, 4000, 5000, 6000, 7000].map((from) => paginaRecaudo(desde, hasta, empresaIds, from)))
-        ).flatMap((chunk, i, todos) => {
-          const previaCorta = todos.slice(0, i).some((p) => p.length < 1000);
-          return previaCorta ? [] : chunk;
-        });
-  for (const row of [...primera, ...resto]) {
-      const contrato = uno(row.contrato);
-      const empresa = codigoEmpresa(contrato?.empresa);
-      const clave = `${row.fecha}|${empresa}`;
-      const cur = mapa.get(clave) ?? { fecha: row.fecha, empresa, monto: 0, pagos: 0 };
-      cur.monto += Number(row.monto) || 0;
-      cur.pagos += 1;
-      mapa.set(clave, cur);
+  for (const row of filas) {
+    const empresa = row.empresa || "—";
+    const clave = `${row.fecha}|${empresa}`;
+    const cur = mapa.get(clave) ?? { fecha: row.fecha, empresa, monto: 0, pagos: 0 };
+    cur.monto += row.monto;
+    cur.pagos += 1;
+    mapa.set(clave, cur);
   }
   return [...mapa.values()].map((f) => ({ ...f, monto: redondear(f.monto) }));
 }
@@ -283,7 +249,7 @@ async function leerBaseOperativa(hoy: string, empresasKey: string): Promise<Base
   };
 }
 
-const baseOperativa = unstable_cache(leerBaseOperativa, ["panel-operativo-v1"], {
+const baseOperativa = unstable_cache(leerBaseOperativa, ["panel-operativo-v2"], {
   revalidate: 60 * 10,
   tags: ["extracto-dia"],
 });
