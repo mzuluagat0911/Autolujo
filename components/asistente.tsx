@@ -11,7 +11,7 @@ type Burbuja = { rol: "user" | "assistant"; texto: string };
 
 const EJEMPLOS = [
   "¿Cuánto debe hoy el 92?",
-  "¿Dónde bajo INFORMES?",
+  "¿Dónde bajo el informe general?",
   "¿Cuántos seguimientos vencidos hay?",
 ];
 

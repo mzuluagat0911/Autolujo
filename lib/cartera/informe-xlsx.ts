@@ -28,6 +28,18 @@ function fechaCelda(iso: string): Date {
   return new Date(`${iso}T12:00:00Z`);
 }
 
+/** Fecha + primera hora de pago (Panamá) para la pestaña inicial del informe diario. */
+function fechaHoraCelda(iso: string, horas: string[]): { value: Date; fmt: string } {
+  const hm = horas[0];
+  if (!hm) return { value: fechaCelda(iso), fmt: "yyyy-mm-dd" };
+  const [h, m] = hm.split(":").map(Number);
+  const [y, mo, d] = iso.split("-").map(Number);
+  return {
+    value: new Date(Date.UTC(y, mo - 1, d, h || 0, m || 0)),
+    fmt: "yyyy-mm-dd hh:mm",
+  };
+}
+
 function monto(n: number): number | null {
   return Math.abs(n) > 0.009 ? Math.round(n * 100) / 100 : null;
 }
@@ -64,7 +76,7 @@ function hojaBase(wb: ExcelJS.Workbook, filas: FilaInforme[]) {
     "# Carro",
     "Empresa",
     "Conductor",
-    "KM",
+    "Hora",
     "Letras diarias",
     "PAGO",
     "DETALLES DEL PAGO",
@@ -101,11 +113,14 @@ function hojaBase(wb: ExcelJS.Workbook, filas: FilaInforme[]) {
   filas.forEach((fila, i) => {
     const r = i + 2;
     const row = ws.getRow(r);
-    row.getCell(1).value = fechaCelda(fila.fecha);
-    row.getCell(1).numFmt = "yyyy-mm-dd";
+    // Fecha con hora (corte 12:00 Panamá): así se ve por qué un pago cayó en ese día.
+    const fh = fechaHoraCelda(fila.fecha, fila.horasPago);
+    row.getCell(1).value = fh.value;
+    row.getCell(1).numFmt = fh.fmt;
     row.getCell(2).value = /^\d+$/.test(fila.carro) ? Number(fila.carro) : fila.carro;
     row.getCell(3).value = fila.empresa;
     row.getCell(4).value = fila.conductor;
+    row.getCell(5).value = fila.horasPago.length ? fila.horasPago.join(", ") : null;
     row.getCell(6).value = monto(fila.letra);
     row.getCell(7).value = { formula: `SUM(I${r}:J${r})`, result: pagoDe(fila) };
     row.getCell(8).value = fila.detalle || null;
@@ -123,8 +138,9 @@ function hojaBase(wb: ExcelJS.Workbook, filas: FilaInforme[]) {
       row.getCell(col).numFmt = "#,##0.00";
     }
   });
-  ws.getColumn(1).width = 14;
+  ws.getColumn(1).width = 16;
   ws.getColumn(4).width = 36;
+  ws.getColumn(5).width = 14;
   ws.getColumn(8).width = 28;
   for (let c = 6; c <= 31; c++) ws.getColumn(c).width = 16;
 }

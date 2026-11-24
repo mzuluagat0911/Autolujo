@@ -28,7 +28,7 @@ export async function GET(req: Request) {
     return new NextResponse(new Uint8Array(archivo), {
       headers: {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="informe-${desde}_${hasta}.xlsx"`,
+        "Content-Disposition": `attachment; filename="informe-diario-${desde}_${hasta}.xlsx"`,
         "Cache-Control": "no-store",
       },
     });

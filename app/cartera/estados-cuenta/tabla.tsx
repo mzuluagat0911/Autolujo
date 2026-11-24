@@ -115,8 +115,8 @@ export function EstadosTabla({
       const a = document.createElement("a");
       a.href = url;
       a.download = esInformes
-        ? `INFORMES-${desdeInforme}_${hastaInforme}.xlsx`
-        : `informe-${desdeInforme}_${hastaInforme}.xlsx`;
+        ? `informe-general-${desdeInforme}_${hastaInforme}.xlsx`
+        : `informe-diario-${desdeInforme}_${hastaInforme}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       setPedirFecha(false);
@@ -284,7 +284,7 @@ export function EstadosTabla({
           onClick={() => abrirDescarga("informes")}
           className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
         >
-          {armando && tipoInforme === "informes" ? "Armando…" : "INFORMES"}
+          {armando && tipoInforme === "informes" ? "Armando…" : "Informe general"}
         </button>
         <button
           type="button"
@@ -292,7 +292,7 @@ export function EstadosTabla({
           onClick={() => abrirDescarga("informe")}
           className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
         >
-          {armando && tipoInforme === "informe" ? "Armando…" : "Informe cartera"}
+          {armando && tipoInforme === "informe" ? "Armando…" : "Informe diario"}
         </button>
       </div>
 
@@ -315,15 +315,15 @@ export function EstadosTabla({
             }}
           >
             <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
-              {tipoInforme === "informes" ? "INFORMES" : "Informe cartera"}
+              {tipoInforme === "informes" ? "Informe general" : "Informe diario"}
             </p>
             <h2 id="informe-fecha" className="mt-1 text-base font-semibold text-ink">
-              {tipoInforme === "informes" ? "Fechas de INFORMES" : "Fechas del informe de cartera"}
+              {tipoInforme === "informes" ? "Fechas del informe general" : "Fechas del informe diario"}
             </h2>
             <p className="mt-2 text-sm text-muted">
               {tipoInforme === "informes"
                 ? "Entran los días entre las dos fechas, también los carros improductivos, en taller y por entregar. El primer día trae el saldo que ya venía. El día cierra a las 12 del mediodía: un pago de antes de esa hora queda en el día anterior."
-                : "Excel del informe mensual de cartera (fila por carro y día) entre las dos fechas. El primer día arrastra el saldo anterior."}
+                : "Excel del informe diario (fila por carro y día). La fecha del pago lleva hora de Panamá; antes de las 12:00 queda en el día anterior."}
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <Field

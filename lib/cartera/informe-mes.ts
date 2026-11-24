@@ -6,7 +6,7 @@
 // cuota se suma además la letra del rango.
 
 import { etiquetaCargo } from "./extracto-desglose";
-import { diasHabilesEnRango, finMes, inicioMes, partesPagoPanama, sumarDias } from "./fecha";
+import { diasHabilesEnRango, finMes, horaPanama, inicioMes, partesPagoPanama, sumarDias } from "./fecha";
 
 export const HOJA_BASE = "INFORME_2025";
 
@@ -29,6 +29,8 @@ export type MontosInforme = Record<ConceptoInforme, number>;
 
 export type FilaInforme = {
   fecha: string;
+  /** Horas de Panamá de los pagos de ese día (HH:MM), por el corte de mediodía. */
+  horasPago: string[];
   carro: string;
   empresa: string;
   conductor: string;
@@ -73,6 +75,8 @@ export type CargoInforme = {
 export type PagoInforme = {
   contratoId: string;
   fecha: string;
+  /** Instantáneo real del pago (para mostrar hora en el Excel). */
+  pagadoAt: string | null;
   monto: number;
   metodo: string | null;
   notas: string | null;
@@ -93,6 +97,14 @@ export function fechaInformeCartera(pagadoAt: string | null | undefined, fechaGu
   const { fecha, hora } = partesPagoPanama(instante);
   if (hora < 12) return sumarDias(fecha, -1);
   return fecha;
+}
+
+/** Hora de Panamá del pago, para la columna Fecha del informe diario. */
+export function horaInformePago(pagadoAt: string | null | undefined): string | null {
+  if (!pagadoAt) return null;
+  const instante = new Date(pagadoAt);
+  if (Number.isNaN(instante.getTime())) return null;
+  return horaPanama(instante);
 }
 
 export type MetaInforme = {
@@ -414,6 +426,7 @@ export function filasDelInforme(
       let letra = 0;
       let general = 0;
       let efect = 0;
+      const horasPago: string[] = [];
       if (primero) {
         for (const concepto of CONCEPTOS) deudas[concepto] = apertura[concepto];
         primero = false;
@@ -430,10 +443,14 @@ export function filasDelInforme(
         general = r2(general + parte.general);
         efect = r2(efect + parte.efect);
         for (const concepto of CONCEPTOS) pagosDia[concepto] = r2(pagosDia[concepto] + parte.pagos[concepto]);
+        const hm = horaInformePago(p.pagadoAt);
+        if (hm && !horasPago.includes(hm)) horasPago.push(hm);
       }
+      horasPago.sort();
       saldoCuota = r2(saldoCuota + letra - pagosDia.Cuota);
       filas.push({
         fecha: dia,
+        horasPago,
         carro: carro.numero.trim(),
         empresa: carro.empresa,
         conductor: carro.conductor.trim(),

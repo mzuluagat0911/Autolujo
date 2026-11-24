@@ -251,9 +251,11 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
 
   for (const row of pagosRaw) {
     if (!row.contrato_id) continue;
+    const pagadoAt = (row.pagado_at as string | null) ?? null;
     const pago: PagoInforme = {
       contratoId: String(row.contrato_id),
-      fecha: fechaInformeCartera((row.pagado_at as string | null) ?? null, String(row.fecha).slice(0, 10)),
+      fecha: fechaInformeCartera(pagadoAt, String(row.fecha).slice(0, 10)),
+      pagadoAt,
       monto: Number(row.monto) || 0,
       metodo: (row.metodo as string | null) ?? null,
       notas: (row.notas as string | null) ?? null,

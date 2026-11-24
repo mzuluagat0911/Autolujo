@@ -166,9 +166,11 @@ async function cargosEntre(sb: Sb, desde: string | null, hasta: string | null): 
 
 function pagoInformeDe(p: Record<string, unknown>): PagoInforme {
   const guardada = String(p.fecha).slice(0, 10);
+  const pagadoAt = (p.pagado_at as string | null) ?? null;
   return {
     contratoId: String(p.contrato_id),
-    fecha: fechaInformeCartera((p.pagado_at as string | null) ?? null, guardada),
+    fecha: fechaInformeCartera(pagadoAt, guardada),
+    pagadoAt,
     monto: Number(p.monto) || 0,
     metodo: (p.metodo as string | null) ?? null,
     notas: (p.notas as string | null) ?? null,

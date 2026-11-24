@@ -32,6 +32,7 @@ const pagos: PagoInforme[] = [
   {
     contratoId: "c1",
     fecha: "2026-09-20",
+    pagadoAt: "2026-09-20T20:15:00.000Z",
     monto: 40,
     metodo: "transferencia",
     notas: null,
@@ -41,6 +42,7 @@ const pagos: PagoInforme[] = [
   {
     contratoId: "c1",
     fecha: "2026-10-01",
+    pagadoAt: "2026-10-01T19:30:00.000Z",
     monto: 80,
     metodo: "efectivo",
     notas: null,
@@ -130,6 +132,7 @@ const letrasAdelanto: CargoInforme[] = [1, 2, 3, 4].map((d) => ({
 const pagoAdelanto: PagoInforme = {
   contratoId: "c2",
   fecha: "2026-10-01",
+  pagadoAt: "2026-10-01T18:00:00.000Z",
   monto: 90,
   metodo: "transferencia",
   notas: "lectura ia del comprobante",

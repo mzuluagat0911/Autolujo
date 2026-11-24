@@ -17,8 +17,8 @@ COBRO Y CARTERA
 - Pantallas: [Panel de cartera](/cartera) (recaudo del mes, sin pagar, improductivos), [Estado de cuenta](/cartera/estados-cuenta), [Conversaciones](/cartera/conversaciones), [Comprobantes](/cartera/pagos), [Conciliación](/cartera/extractos), [Carros](/cartera/vehiculos), [Rastreo](/cartera/rastreo), [Clientes](/cartera/clientes), [Ex clientes](/cartera/ex-clientes), [Tarifario](/cartera/tarifario), [Cobros de taller](/cartera/cobros-taller).
 
 REPORTES DE CARTERA (Estado de cuenta → botones arriba)
-- INFORMES: Excel tipo contabilidad (varias pestañas, colores del archivo de referencia). Ruta de descarga /cartera/informes?desde=&hasta=. Botón "INFORMES".
-- Informe cartera: Excel mensual clásico (fila por carro y día, estilo INFORME OCTUBRE). Ruta /cartera/informe?desde=&hasta=. Botón "Informe cartera".
+- Informe general: Excel tipo contabilidad (varias pestañas, colores del archivo de referencia). Ruta /cartera/informes?desde=&hasta=. Botón "Informe general".
+- Informe diario: Excel clásico (fila por carro y día). Fecha con hora de Panamá; pago antes de las 12:00 queda en el día anterior. Ruta /cartera/informe?desde=&hasta=. Botón "Informe diario".
 - Extracto a cliente: por contrato, desde la ficha del cliente/contrato; Excel para entregarle al conductor.
 - Meta de cobranza: la carga admin en [Meta de cobranza](/admin/metas). El [Resumen](/admin) muestra Meta 100%/95%, recaudo del mes (todo ingreso conciliado o manual) e ideal por días hábiles.
 - Recaudo del Resumen / panel = suma de pagos conciliado + manual del mes. Todo ingreso de cartera cuenta (letra, panapass, acuerdo, etc.), no solo la letra.
@@ -75,7 +75,7 @@ const FICHAS: Record<FichaId, string> = {
 };
 
 const INDICE: Record<FichaId, string> = {
-  cobro: "Cartera (cobro, INFORMES, informe cartera, comprobantes, ex clientes, meta)",
+  cobro: "Cartera (cobro, informe general, informe diario, comprobantes, ex clientes, meta)",
   operaciones: "Operaciones (mantenimiento, kit, ATF, licencias, placas)",
   comercial: "Comercial (Lucía, leads, vencidos, resultados)",
   seguros: "Seguros (choques, finiquito, pólizas, registros)",
@@ -112,7 +112,7 @@ CÓMO HABLAS (persona del equipo, no chatbot)
 - No digas que eres IA, bot, modelo ni asistente virtual. Si preguntan quién eres: "Soy el asistente de la plataforma AutoLujo."
 - No repitas la pregunta. No listes disclaimers. Si algo no está, dilo llano ("no aparece en la base").
 - Un solo enlace al final, y solo si sirve para abrir la pantalla. Forma exacta: [Estado de cuenta](/cartera/estados-cuenta).
-- Montos con $. Ejemplos buenos: "AL 52 debe $45 hoy." / "INFORMES se baja desde Estado de cuenta, botón INFORMES." / "Domingo al día: $0."
+- Montos con $. Ejemplos buenos: "AL 52 debe $45 hoy." / "El informe general se baja desde Estado de cuenta." / "Domingo al día: $0."
 `.trim();
 
 export function manualDe(
@@ -141,7 +141,7 @@ export function manualDe(
         : null;
   return [
     "Eres el asistente de la plataforma AutoLujo, para el equipo interno. Hablas con gente de cartera, operaciones, comercial o seguros. No hablas con clientes y no envías WhatsApp.",
-    "Conoces toda la plataforma: pantallas del mapa, reportes (INFORMES e Informe cartera), cobro, conciliación, ex clientes, operaciones (mant/kit/ATF), comercial (Lucía) y seguros. Si preguntan dónde está algo, usa el MAPA y pon el enlace.",
+    "Conoces toda la plataforma: pantallas del mapa, reportes (informe general e informe diario), cobro, conciliación, ex clientes, operaciones (mant/kit/ATF), comercial (Lucía) y seguros. Si preguntan dónde está algo, usa el MAPA y pon el enlace.",
     `Hoy es ${DIAS[diaSemana(opts.hoy)]} ${fechaLarga(opts.hoy)} de ${opts.hoy.slice(0, 4)} (${opts.hoy}), hora de Panamá.`,
     `Sus pantallas son: ${nombres || "ninguna"}. Otras pantallas del mapa: ${otros || "ninguna"}. Lees los datos de todos los módulos, también los de una pantalla que esta persona no abre. No digas que no tienes permiso.`,
     contextoPantalla,

@@ -158,6 +158,7 @@ export async function cargarExtractoCliente(
     const parte = partirPago({
       contratoId,
       fecha,
+      pagadoAt: pago.pagado_at,
       monto: Number(pago.monto) || 0,
       metodo: pago.metodo,
       notas: pago.notas,
