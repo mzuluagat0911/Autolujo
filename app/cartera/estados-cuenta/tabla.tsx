@@ -267,30 +267,34 @@ export function EstadosTabla({
         activeChip={filtro}
         onChip={(id) => setFiltro(id as Filtro)}
         actions={
-          <div className="flex items-center gap-3">
-            <p className="text-sm text-muted">
-              <span className="font-medium tabular-nums text-ink">{visibles.length}</span> de{" "}
-              {estados.length}
-            </p>
-            <button
-              type="button"
-              disabled={armando}
-              onClick={() => abrirDescarga("informes")}
-              className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-            >
-              {armando && tipoInforme === "informes" ? "Armando…" : "INFORMES"}
-            </button>
-            <button
-              type="button"
-              disabled={armando}
-              onClick={() => abrirDescarga("informe")}
-              className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-            >
-              {armando && tipoInforme === "informe" ? "Armando…" : "Informe cartera"}
-            </button>
-          </div>
+          <p className="text-sm text-muted">
+            <span className="font-medium tabular-nums text-ink">{visibles.length}</span> de{" "}
+            {estados.length}
+          </p>
         }
       />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="mr-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+          Descargar
+        </p>
+        <button
+          type="button"
+          disabled={armando}
+          onClick={() => abrirDescarga("informes")}
+          className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+        >
+          {armando && tipoInforme === "informes" ? "Armando…" : "INFORMES"}
+        </button>
+        <button
+          type="button"
+          disabled={armando}
+          onClick={() => abrirDescarga("informe")}
+          className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+        >
+          {armando && tipoInforme === "informe" ? "Armando…" : "Informe cartera"}
+        </button>
+      </div>
 
       {pedirFecha && (
         <div
