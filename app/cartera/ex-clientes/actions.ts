@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createServerSupabase } from "@/lib/supabase/server";
 import { telefonosDeAlta } from "@/lib/cartera/enlazar-alta";
+import { darDeBajaExCliente as bajaEx } from "@/lib/cartera/ex-clientes-archivo";
 
 function str(v: FormDataEntryValue | null): string | null {
   const s = String(v ?? "").trim();
@@ -87,4 +88,14 @@ export async function registrarExCliente(formData: FormData): Promise<void> {
 
   revalidatePath("/cartera/ex-clientes");
   aviso(`Quedó ${nombre} con $${Math.round(saldo)} de deuda.`);
+}
+
+/** Sacamos del cobro: nos bloquearon o ya no responden / no pagan. */
+export async function darDeBajaExCliente(formData: FormData): Promise<void> {
+  const id = String(formData.get("id") ?? "").trim();
+  const motivo = String(formData.get("motivo") ?? "").trim();
+  const r = await bajaEx({ id, motivo });
+  if (!r.ok) aviso(r.error);
+  revalidatePath("/cartera/ex-clientes");
+  aviso("Quedó de baja. Ya no recibe cobro por WhatsApp.");
 }

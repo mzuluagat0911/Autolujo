@@ -173,7 +173,17 @@ empresa) y en el catálogo `conceptos_cargo`.
 
 ---
 
-## 9. Contactos operativos (del contrato)
+## 9. Revisiones de taller
+
+Tres revisiones, aparte una de otra. Salen del reporte de kilometraje.
+
+1. **Revisión mensual.** Una vez al mes.
+2. **Mantenimiento básico.** Cada 6.000 km.
+3. **Kit de tiempos.** La primera vez a los 100.000 km. Después, cada 60.000 km.
+
+El sábado, sobre la 1:00 p.m., se avisa por el WhatsApp de mantenimiento a los carros próximos a alguna de las tres. Ese envío es un cron en Vercel. El número de ese WhatsApp se anota cuando lo den; no es el de cartera ni el de Lucía.
+
+## 10. Contactos operativos (del contrato)
 
 - **Cobros:** Claudia 6922-9957 · Marcela 6643-2422 · (oficina Ángela 6996-4199)
 - **Novedades operativas:** 6330-3437

@@ -3,7 +3,15 @@
 // El WhatsApp al cliente del sábado sale de otro cron, con WHATSAPP_MANTENIMIENTO_PHONE_NUMBER_ID.
 
 import { diaSemana, fechaLarga, hoyPanama, sumarDias } from "@/lib/cartera/fecha";
-import { kitTiempoKm, mantenimientoKm, type KitTiempoItem, type MantenimientoItem } from "./alertas";
+import {
+  aceiteAtfKm,
+  kitTiempoKm,
+  mantenimientoKm,
+  revisionMensual,
+  type KitTiempoItem,
+  type MantenimientoItem,
+  type RevisionMensualItem,
+} from "./alertas";
 
 export type InformeSemana = {
   hoy: string;
@@ -12,7 +20,7 @@ export type InformeSemana = {
   mantenimiento: MantenimientoItem[];
   kit: KitTiempoItem[];
   atf: KitTiempoItem[];
-  revision: "sin_fecha";
+  revision: RevisionMensualItem[] | "sin_fecha";
 };
 
 /** Lunes de la semana que cubre el informe. Viernes y sábado apuntan a la que entra. */
@@ -33,24 +41,30 @@ export function armarInforme(
   mant: MantenimientoItem[],
   kit: KitTiempoItem[],
   atf: KitTiempoItem[],
+  revision: RevisionMensualItem[] | "sin_fecha" = "sin_fecha",
 ): InformeSemana {
   return {
     ...fechas,
     mantenimiento: mant.filter((i) => i.estado !== "ok"),
     kit: kit.filter((i) => i.estado !== "ok"),
     atf: atf.filter((i) => i.estado !== "ok"),
-    revision: "sin_fecha",
+    revision,
   };
 }
 
 export async function informeSemana(ahora = new Date()): Promise<InformeSemana> {
-  const [mant, kit] = await Promise.all([mantenimientoKm(), kitTiempoKm()]);
-  // ATF entra cuando alertas.aceiteAtfKm esté en producción; por ahora vacío.
+  const [mant, kit, atf, rev] = await Promise.all([
+    mantenimientoKm(),
+    kitTiempoKm(),
+    aceiteAtfKm(),
+    revisionMensual(),
+  ]);
   return armarInforme(
     fechasInforme(ahora),
     mant.disponible ? mant.items : [],
     kit.disponible ? kit.items : [],
-    [],
+    atf.disponible ? atf.items : [],
+    rev.disponible ? rev.items.filter((i) => i.estado !== "ok") : "sin_fecha",
   );
 }
 

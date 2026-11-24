@@ -103,6 +103,10 @@
     {
       "path": "/api/cron/aviso-temblor",
       "schedule": "0 14 10 10 *"
+    },
+    {
+      "path": "/api/cron/informe-mantenimiento",
+      "schedule": "0 18 * * 5"
     }
   ]
 }

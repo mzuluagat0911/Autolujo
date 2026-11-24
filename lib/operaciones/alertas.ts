@@ -10,10 +10,13 @@ import { fueraDeFlota } from "@/lib/cartera/pausa-productiva";
 
 export const KM_MANTENIMIENTO = 6000;
 export const KM_AVISO = 5000; // "pronto" antes de llegar a los 6.000
-/** Kit de tiempo: preventivo ~cada 60.000 km; ventana de citación 55–65 mil del ciclo. */
+/** Kit de tiempo: la primera vez a los 100.000 km. Después, cada 60.000. */
+export const KM_KIT_PRIMERA = 100_000;
 export const KM_KIT_TIEMPO = 60_000;
 export const KM_KIT_AVISO = 5_000;
 export const KM_KIT_HOLGURA = 5_000; // hasta +5k se considera “por hacer”
+/** Aceite ATF y filtro del carro nuevo. No es el kit de tiempos. */
+export const KM_ATF = 50_000;
 
 
 export type NivelSemaforo = "vencido" | "rojo" | "amarillo" | "verde";
@@ -196,29 +199,55 @@ export type KitTiempoItem = {
   estado: "vencido" | "pronto" | "ok";
 };
 
-/** Próxima marca de kit (60k, 120k, …) y estado de citación. */
+/** Próxima marca de kit: 100.000 la primera vez, después cada 60.000. */
 export function evaluarKitTiempo(kmActual: number): {
   marcaKm: number;
   faltan: number;
   estado: KitTiempoItem["estado"];
 } {
   const km = Math.max(0, Math.round(kmActual));
-  const ciclo = Math.floor(km / KM_KIT_TIEMPO);
-  const ultima = ciclo * KM_KIT_TIEMPO;
-  const siguiente = (ciclo + 1) * KM_KIT_TIEMPO;
-
-  // Pasó la marca y sigue en holgura (ej. 60–65k) → citar ya.
-  if (ultima >= KM_KIT_TIEMPO && km < ultima + KM_KIT_HOLGURA) {
+  if (km < KM_KIT_PRIMERA) {
+    const faltan = KM_KIT_PRIMERA - km;
+    return {
+      marcaKm: KM_KIT_PRIMERA,
+      faltan,
+      estado: faltan <= KM_KIT_AVISO ? "pronto" : "ok",
+    };
+  }
+  const pasadas = Math.floor((km - KM_KIT_PRIMERA) / KM_KIT_TIEMPO);
+  const ultima = KM_KIT_PRIMERA + pasadas * KM_KIT_TIEMPO;
+  const siguiente = ultima + KM_KIT_TIEMPO;
+  if (km <= ultima + KM_KIT_HOLGURA) {
     return { marcaKm: ultima, faltan: ultima - km, estado: "vencido" };
   }
   const faltan = siguiente - km;
-  if (faltan <= KM_KIT_AVISO) {
-    return { marcaKm: siguiente, faltan, estado: "pronto" };
-  }
-  return { marcaKm: siguiente, faltan, estado: "ok" };
+  return {
+    marcaKm: siguiente,
+    faltan,
+    estado: faltan <= KM_KIT_AVISO ? "pronto" : "ok",
+  };
 }
 
-export async function kitTiempoKm(): Promise<{ disponible: boolean; items: KitTiempoItem[] }> {
+/** Aceite ATF y filtro a los 50.000 km. Se cita 5.000 antes y hasta 5.000 después. */
+export function evaluarAceiteAtf(kmActual: number): {
+  marcaKm: number;
+  faltan: number;
+  estado: KitTiempoItem["estado"];
+} {
+  const km = Math.max(0, Math.round(kmActual));
+  const faltan = KM_ATF - km;
+  if (km >= KM_ATF && km <= KM_ATF + KM_KIT_HOLGURA) {
+    return { marcaKm: KM_ATF, faltan, estado: "vencido" };
+  }
+  if (faltan >= 0 && faltan <= KM_KIT_AVISO) {
+    return { marcaKm: KM_ATF, faltan, estado: "pronto" };
+  }
+  return { marcaKm: KM_ATF, faltan, estado: "ok" };
+}
+
+async function citasPorKm(
+  evaluar: (km: number) => { marcaKm: number; faltan: number; estado: KitTiempoItem["estado"] },
+): Promise<{ disponible: boolean; items: KitTiempoItem[] }> {
   const sb = createServerSupabase();
   const { data, error } = await sb
     .from("vehiculos")
@@ -237,7 +266,7 @@ export async function kitTiempoKm(): Promise<{ disponible: boolean; items: KitTi
   }[])
     .filter((v) => !fueraDeFlota(v.estado))
     .map((v) => {
-      const ev = evaluarKitTiempo(Number(v.km_actual));
+      const ev = evaluar(Number(v.km_actual));
       const c = clientes.get(v.id);
       return {
         vehiculoNumero: v.numero,
@@ -251,6 +280,73 @@ export async function kitTiempoKm(): Promise<{ disponible: boolean; items: KitTi
       };
     })
     .filter((i) => i.estado !== "ok")
+    .sort((a, b) => a.faltan - b.faltan);
+
+  return { disponible: true, items };
+}
+
+export function kitTiempoKm() {
+  return citasPorKm(evaluarKitTiempo);
+}
+
+export function aceiteAtfKm() {
+  return citasPorKm(evaluarAceiteAtf);
+}
+
+/** Días desde la última revisión mensual hasta que toca otra (≈ 1 mes). */
+export const DIAS_REVISION_MENSUAL = 30;
+export const DIAS_REVISION_AVISO = 7;
+
+export type RevisionMensualItem = {
+  vehiculoNumero: string;
+  empresa: string | null;
+  cliente: string | null;
+  contacto: string | null;
+  ultima: string;
+  diasDesde: number;
+  faltan: number;
+  estado: "vencido" | "pronto" | "ok";
+};
+
+/** Revisión mensual: una vez al mes, distinta del FULL y del kit. */
+export async function revisionMensual(): Promise<{
+  disponible: boolean;
+  items: RevisionMensualItem[];
+}> {
+  const sb = createServerSupabase();
+  const { data, error } = await sb
+    .from("vehiculos")
+    .select("id, numero, fecha_ultima_revision, estado, empresa:empresas(codigo)")
+    .not("fecha_ultima_revision", "is", null);
+  if (error) return { disponible: false, items: [] };
+
+  const clientes = await clientePorVehiculoActivo();
+  const hoy = hoyPanama();
+  const items = ((data ?? []) as unknown as {
+    id: string;
+    numero: string;
+    fecha_ultima_revision: string;
+    estado: string | null;
+    empresa: { codigo: string } | null;
+  }[])
+    .filter((v) => !fueraDeFlota(v.estado))
+    .map((v) => {
+      const diasDesde = -diasHasta(v.fecha_ultima_revision, hoy);
+      const faltan = DIAS_REVISION_MENSUAL - diasDesde;
+      const estado: RevisionMensualItem["estado"] =
+        faltan <= 0 ? "vencido" : faltan <= DIAS_REVISION_AVISO ? "pronto" : "ok";
+      const c = clientes.get(v.id);
+      return {
+        vehiculoNumero: v.numero,
+        empresa: v.empresa?.codigo ?? null,
+        cliente: c?.nombre ?? null,
+        contacto: c?.contacto ?? null,
+        ultima: v.fecha_ultima_revision,
+        diasDesde,
+        faltan,
+        estado,
+      };
+    })
     .sort((a, b) => a.faltan - b.faltan);
 
   return { disponible: true, items };

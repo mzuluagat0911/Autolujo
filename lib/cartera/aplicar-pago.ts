@@ -965,6 +965,10 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       }
     }
     await quitarCierreSiLaLetraQuedoCubierta(pago.contrato_id);
+    const { sincronizarSaldoExClientePorContrato } = await import("./ex-clientes-archivo");
+    await sincronizarSaldoExClientePorContrato(pago.contrato_id).catch((e) =>
+      console.error("[aplicar-pago] sync ex cliente", e),
+    );
     return ya;
   }
 
@@ -1387,6 +1391,10 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   }
 
   await quitarCierreSiLaLetraQuedoCubierta(contratoId);
+  const { sincronizarSaldoExClientePorContrato } = await import("./ex-clientes-archivo");
+  await sincronizarSaldoExClientePorContrato(contratoId).catch((e) =>
+    console.error("[aplicar-pago] sync ex cliente", e),
+  );
   return resultado;
 }
 
@@ -1441,4 +1449,10 @@ export async function revertirPagoEnObligaciones(pagoId: string): Promise<void> 
     borrarCargoSalidaDelPago(pagoId),
     borrarCargosAcuerdoDelPago(pagoId),
   ]);
+  if (contratoId) {
+    const { sincronizarSaldoExClientePorContrato } = await import("./ex-clientes-archivo");
+    await sincronizarSaldoExClientePorContrato(contratoId).catch((e) =>
+      console.error("[aplicar-pago] sync ex cliente revert", e),
+    );
+  }
 }

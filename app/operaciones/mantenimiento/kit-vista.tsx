@@ -11,7 +11,7 @@ export function KitTiempoVista({ items }: { items: KitTiempoItem[] }) {
     return (
       <EmptyState
         title="Nadie en ventana de kit de tiempo"
-        hint="Aparecen carros cerca o pasados de cada marca de 60.000 km (55–65 mil del ciclo)."
+        hint="Aparecen 5.000 km antes de los 100.000, y después cada 60.000."
       />
     );
   }

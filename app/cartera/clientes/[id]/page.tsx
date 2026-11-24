@@ -195,6 +195,12 @@ export default async function ClienteDetallePage({ params }: { params: Promise<{
               >
                 Descargar Word
               </a>
+              <a
+                href={`/cartera/clientes/${id}/contrato/${c.id}/extracto`}
+                className="inline-flex rounded-lg bg-white px-3 py-2 text-sm font-medium text-ink ring-1 ring-line transition hover:bg-surface-2"
+              >
+                Descargar extracto
+              </a>
             </div>
           </div>
         ))}

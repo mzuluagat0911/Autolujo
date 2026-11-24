@@ -16,14 +16,6 @@ export type TipoAlerta = "mantenimiento" | "kit" | "licencias" | "revisado";
 
 const TOPE = 40;
 
-/** Regla del negocio: primer kit a los 100.000 km, después cada 60.000. */
-function kitNegocio(km: number) {
-  if (km < 100_000) return { ultimaMarca: null, proximaMarca: 100_000, faltan: 100_000 - km };
-  const pasadas = Math.floor((km - 100_000) / 60_000);
-  const ultima = 100_000 + pasadas * 60_000;
-  return { ultimaMarca: ultima, proximaMarca: ultima + 60_000, faltan: ultima + 60_000 - km };
-}
-
 async function kitDeCarro(carro: string) {
   const pista = pistaDeCarro(carro);
   const sb = createServerSupabase();
@@ -38,12 +30,12 @@ async function kitDeCarro(carro: string) {
   return {
     tipo: "kit",
     regla:
-      "pantalla = lo que muestra Operaciones hoy (cada 60.000 km). negocio = 100.000 la primera vez y después cada 60.000. Da las dos si no coinciden. No hay registro de si el kit ya se hizo.",
+      "Primer kit a los 100.000 km y después cada 60.000. Se cita 5.000 km antes y hasta 5.000 km después. No hay registro de si el kit ya se hizo.",
     carros: vehs.map((v) => {
       const etiqueta = `${siglaEmpresa(v.empresa?.codigo ?? null)} ${v.numero}`.trim();
       if (v.km_actual == null) return { carro: etiqueta, error: "Sin km del odómetro." };
       const km = Math.round(Number(v.km_actual));
-      return { carro: etiqueta, kmActual: km, pantalla: evaluarKitTiempo(km), negocio: kitNegocio(km) };
+      return { carro: etiqueta, kmActual: km, kit: evaluarKitTiempo(km) };
     }),
   };
 }
@@ -94,7 +86,7 @@ export async function alertasOperaciones(tipo: TipoAlerta, soloPendientes = true
     return {
       tipo,
       regla:
-        "Pantalla de hoy: marcas cada 60.000 km del odómetro, sin la primera de 100.000. La regla del negocio es 100.000 la primera vez y después cada 60.000: dilo si el resultado puede cambiar por eso.",
+        "Primer kit a los 100.000 km y después cada 60.000. Se cita 5.000 km antes y hasta 5.000 km después. No hay registro de si el kit ya se hizo.",
       total: r.items.length,
       recortado: r.items.length > TOPE,
       carros: r.items.slice(0, TOPE).map((i) => ({

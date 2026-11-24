@@ -303,7 +303,7 @@ export async function exClienteSinContratoActivo(
   }
   const { data } = await sb
     .from("ex_clientes")
-    .select("nombre, carro, saldo, motivo, whatsapp, telefono, empresa_id, empresa:empresas(codigo)")
+    .select("nombre, carro, saldo, motivo, origen, whatsapp, telefono, empresa_id, empresa:empresas(codigo)")
     .in("estado", ["cobro", "acuerdo"])
     .gt("saldo", 0)
     .limit(500);
@@ -313,6 +313,7 @@ export async function exClienteSinContratoActivo(
     carro: string | null;
     saldo: number;
     motivo: string | null;
+    origen: string | null;
     whatsapp: string | null;
     telefono: string | null;
     empresa_id: string;
@@ -335,12 +336,16 @@ export async function exClienteSinContratoActivo(
   const cuenta = cta as { banco: string; numero_cuenta: string; tipo: string; titular: string } | null;
   const saldo = Number(fila.saldo) || 0;
   const carro = fila.carro || "su vehículo";
+  const origenSaldo =
+    fila.origen === "archivo"
+      ? "El saldo es el del contrato archivado (se actualiza con cada pago validado)."
+      : "El saldo es el del Excel / registro de ex clientes.";
   const lineas = [
-    `EX CLIENTE. No tiene letra diaria. El saldo que se cobra es el del Excel, no el del contrato viejo.`,
+    `EX CLIENTE. No tiene letra diaria. ${origenSaldo}`,
     `Nombre: ${fila.nombre}.`,
     `Carro: ${carro}. Empresa: ${emp?.codigo ?? "—"}.`,
     `SALDO PENDIENTE: $${saldo.toFixed(2)}. Es el único total que puedes decir. No desgloses cuotas, daños ni recargos.`,
-    fila.motivo ? `Motivo de la baja (interno, no lo leas como lista de cargos): ${fila.motivo}.` : "",
+    fila.motivo ? `Motivo de la entrega (interno, no lo leas como lista de cargos): ${fila.motivo}.` : "",
     saldo > 500
       ? `Si propone un acuerdo y la deuda pasa de $500, el mínimo es $50 por quincena. Si propone más, se acepta.`
       : `La deuda es de $500 o menos: se acepta el abono que proponga.`,

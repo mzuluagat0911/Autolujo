@@ -422,6 +422,20 @@ export async function archivarCasoCarro(
     detalle: detalleCasoArchivado(ultima, contratoIds[0] ?? "", motivo),
     origen: "manual",
   });
+
+  // Con deuda y sin otro carro: pasa a ex clientes y entra al cobro por rango.
+  const { registrarExClienteDesdeArchivo } = await import("@/lib/cartera/ex-clientes-archivo");
+  const deudas: number[] = [];
+  const avisosEx: string[] = [];
+  for (const contratoId of contratoIds) {
+    const ex = await registrarExClienteDesdeArchivo({ contratoId, motivo });
+    if (!ex.ok) {
+      avisosEx.push(ex.error);
+      continue;
+    }
+    if (ex.saldo > 0.009) deudas.push(ex.saldo);
+  }
+
   try {
     await invalidarLecturaEstados();
   } catch (e) {
@@ -429,13 +443,20 @@ export async function archivarCasoCarro(
   }
   revalidatePath("/cartera/vehiculos");
   revalidatePath("/cartera/estados-cuenta");
+  revalidatePath("/cartera/ex-clientes");
   revalidatePath("/cartera/conversaciones");
   revalidatePath("/cartera");
+
+  const deudaTxt =
+    deudas.length > 0
+      ? ` Quedó en Ex clientes con $${Math.round(Math.max(...deudas))} a cobro (WhatsApp según rango).`
+      : " Sin saldo pendiente: no entró a Ex clientes.";
+  const falloEx = avisosEx.length ? ` Aviso ex clientes: ${avisosEx[0]}` : "";
   return {
     ok: true,
     msg: liberado
-      ? "Caso archivado. La deuda sigue y el agente la cobra en el chat de ese cliente, sin letra nueva. El carro pasó a Por entregar para asignarlo a otro."
-      : "Caso archivado. La deuda sigue y el agente la cobra en el chat de ese cliente, sin letra nueva. El carro ya se puede asignar a otro cliente.",
+      ? `Caso archivado. Sin letra nueva.${deudaTxt} El carro pasó a Por entregar.${falloEx}`
+      : `Caso archivado. Sin letra nueva.${deudaTxt} El carro ya se puede asignar a otro cliente.${falloEx}`,
   };
 }
 

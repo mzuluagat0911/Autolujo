@@ -12,7 +12,7 @@ import {
 } from "@/components/kit";
 import { Field, FormCard, Select, SubmitButton, Textarea } from "@/components/form";
 import type { EmpresaEx, EstadoExCliente, ExCliente } from "@/lib/cartera/ex-clientes";
-import { registrarExCliente } from "./actions";
+import { darDeBajaExCliente, registrarExCliente } from "./actions";
 
 const ESTADOS: { id: "todos" | EstadoExCliente; label: string }[] = [
   { id: "todos", label: "Todos" },
@@ -20,13 +20,67 @@ const ESTADOS: { id: "todos" | EstadoExCliente; label: string }[] = [
   { id: "acuerdo", label: "Acuerdo" },
   { id: "pausado", label: "Pausado" },
   { id: "cerrado", label: "Cerrado" },
+  { id: "baja", label: "De baja" },
 ];
 
 function chipEstado(estado: EstadoExCliente) {
   if (estado === "cobro") return <StatusChip tone="warn">En cobro</StatusChip>;
   if (estado === "acuerdo") return <StatusChip tone="azul">Acuerdo</StatusChip>;
   if (estado === "pausado") return <StatusChip tone="neutral">Pausado</StatusChip>;
+  if (estado === "baja") return <StatusChip tone="crit">De baja</StatusChip>;
   return <StatusChip tone="good">Cerrado</StatusChip>;
+}
+
+function puedeDarDeBaja(estado: EstadoExCliente) {
+  return estado === "cobro" || estado === "acuerdo" || estado === "pausado";
+}
+
+function BajaFila({ id, nombre }: { id: string; nombre: string }) {
+  const [abierto, setAbierto] = useState(false);
+
+  if (!abierto) {
+    return (
+      <button
+        type="button"
+        onClick={() => setAbierto(true)}
+        className="rounded-lg px-2.5 py-1.5 text-xs font-medium text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash"
+      >
+        Dar de baja
+      </button>
+    );
+  }
+
+  return (
+    <form action={darDeBajaExCliente} className="flex min-w-[16rem] flex-col gap-2">
+      <input type="hidden" name="id" value={id} />
+      <p className="text-xs text-muted">
+        Baja de {nombre}: nos bloquearon o ya no responden / no pagan.
+      </p>
+      <textarea
+        name="motivo"
+        required
+        minLength={3}
+        rows={2}
+        placeholder="Ej. Nos bloquearon · Sin respuesta tras muchos cobros"
+        className="w-full rounded-lg border-0 bg-white px-3 py-2 text-sm text-ink ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink/20"
+      />
+      <div className="flex gap-2">
+        <button
+          type="submit"
+          className="rounded-lg bg-ink px-3 py-1.5 text-xs font-medium text-white hover:bg-black"
+        >
+          Confirmar baja
+        </button>
+        <button
+          type="button"
+          onClick={() => setAbierto(false)}
+          className="rounded-lg px-3 py-1.5 text-xs font-medium text-muted ring-1 ring-line hover:bg-surface-2"
+        >
+          Cancelar
+        </button>
+      </div>
+    </form>
+  );
 }
 
 export function ListaExClientes({
@@ -45,7 +99,7 @@ export function ListaExClientes({
   const [alta, setAlta] = useState(false);
 
   const conteos = useMemo(() => {
-    const n = { cobro: 0, acuerdo: 0, pausado: 0, cerrado: 0 };
+    const n = { cobro: 0, acuerdo: 0, pausado: 0, cerrado: 0, baja: 0 };
     for (const f of filas) n[f.estado] += 1;
     return n;
   }, [filas]);
@@ -55,7 +109,7 @@ export function ListaExClientes({
     return filas.filter((f) => {
       if (filtro !== "todos" && f.estado !== filtro) return false;
       if (!needle) return true;
-      const blob = [f.nombre, f.cedula, f.telefono, f.whatsapp, f.carro, f.empresa, f.motivo]
+      const blob = [f.nombre, f.cedula, f.telefono, f.whatsapp, f.carro, f.empresa, f.motivo, f.motivoBaja]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
@@ -71,7 +125,7 @@ export function ListaExClientes({
       <PageHeader
         eyebrow="Cartera"
         title="Ex clientes"
-        subtitle="Deuda del Excel. El cobro por WhatsApp arranca el lunes 16 de noviembre, aparte de la letra diaria."
+        subtitle="Deuda de quien entregó el carro o del Excel. Cobro por WhatsApp según rango, aparte de la letra diaria."
         action={
           <button
             type="button"
@@ -101,7 +155,7 @@ export function ListaExClientes({
             <div>
               <h2 className="text-lg font-semibold tracking-tight">Registro manual</h2>
               <p className="mt-1 text-sm text-muted">
-                Nombre, empresa y saldo. El celular sirve para cobrarle por WhatsApp cuando el agente esté listo.
+                Nombre, empresa y saldo. El celular sirve para cobrarle por WhatsApp.
               </p>
             </div>
             <button type="button" onClick={() => setAlta(false)} className="text-sm text-muted hover:text-ink">
@@ -157,7 +211,7 @@ export function ListaExClientes({
             title={filas.length === 0 ? "Todavía no hay ex clientes cargados" : "Nadie coincide con el filtro"}
             hint={
               filas.length === 0
-                ? "Registrá a mano a quien aparezca a pagar, o cargá el Excel cuando llegue."
+                ? "Al archivar un carro con deuda entran solos. También podés registrar a mano o cargar el Excel."
                 : "Probá otro nombre o estado."
             }
             action={
@@ -175,7 +229,7 @@ export function ListaExClientes({
         </div>
       ) : (
         <div className="mt-6 overflow-x-auto rounded-xl bg-surface ring-1 ring-line">
-          <table className="w-full min-w-[44rem] text-sm">
+          <table className="w-full min-w-[52rem] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-[11px] uppercase tracking-wide text-muted">
                 <th className="px-4 py-3">Nombre</th>
@@ -186,12 +240,20 @@ export function ListaExClientes({
                 <th className="px-4 py-3 text-right">Saldo</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3">Motivo</th>
+                <th className="px-4 py-3">Acción</th>
               </tr>
             </thead>
             <tbody>
               {visibles.map((f) => (
                 <tr key={f.id} className="border-b border-line last:border-0 hover:bg-surface-2">
-                  <td className="px-4 py-2.5 font-medium">{f.nombre}</td>
+                  <td className="px-4 py-2.5 font-medium">
+                    {f.nombre}
+                    {f.origen === "archivo" && (
+                      <span className="mt-0.5 block text-[10px] font-medium uppercase tracking-wide text-muted">
+                        Desde archivo
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-2.5 tabular-nums text-muted">{f.cedula ?? "—"}</td>
                   <td className="px-4 py-2.5 tabular-nums">{f.telefono ?? f.whatsapp ?? "—"}</td>
                   <td className="px-4 py-2.5">{f.empresa}</td>
@@ -200,7 +262,16 @@ export function ListaExClientes({
                     <Money amount={f.saldo} />
                   </td>
                   <td className="px-4 py-2.5">{chipEstado(f.estado)}</td>
-                  <td className="max-w-[220px] px-4 py-2.5 text-muted">{f.motivo ?? "—"}</td>
+                  <td className="max-w-[220px] px-4 py-2.5 text-muted">
+                    {f.estado === "baja" ? f.motivoBaja ?? f.motivo ?? "—" : f.motivo ?? "—"}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    {puedeDarDeBaja(f.estado) ? (
+                      <BajaFila id={f.id} nombre={f.nombre} />
+                    ) : (
+                      <span className="text-xs text-muted">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

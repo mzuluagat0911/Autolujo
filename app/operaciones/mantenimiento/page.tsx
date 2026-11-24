@@ -2,17 +2,34 @@ import { PageHeader, EmptyState, PageShell } from "@/components/kit";
 import {
   mantenimientoKm,
   kitTiempoKm,
+  aceiteAtfKm,
+  revisionMensual,
   KM_MANTENIMIENTO,
+  KM_KIT_PRIMERA,
   KM_KIT_TIEMPO,
 } from "@/lib/operaciones/alertas";
+import { armarInforme, fechasInforme } from "@/lib/operaciones/informe-semana";
 import { MantenimientoVista } from "./vista";
 import { KitTiempoVista } from "./kit-vista";
+import { InformeSemanaVista } from "./informe-vista";
 import { TarifarioMecanicaVista } from "./tarifario-vista";
 
 export const dynamic = "force-dynamic";
 
 export default async function MantenimientoPage() {
-  const [mant, kit] = await Promise.all([mantenimientoKm(), kitTiempoKm()]);
+  const [mant, kit, atf, rev] = await Promise.all([
+    mantenimientoKm(),
+    kitTiempoKm(),
+    aceiteAtfKm(),
+    revisionMensual(),
+  ]);
+  const informe = armarInforme(
+    fechasInforme(),
+    mant.disponible ? mant.items : [],
+    kit.disponible ? kit.items : [],
+    atf.disponible ? atf.items : [],
+    rev.disponible ? rev.items.filter((i) => i.estado !== "ok") : "sin_fecha",
+  );
   const vencidos = mant.items.filter((i) => i.estado === "vencido").length;
   const kitCrit = kit.items.filter((i) => i.estado === "vencido").length;
 
@@ -21,11 +38,11 @@ export default async function MantenimientoPage() {
       <PageHeader
         eyebrow="Operaciones"
         title="Mantenimiento"
-        subtitle={`FULL cada ${KM_MANTENIMIENTO.toLocaleString("es-PA")} km · kit de tiempo ~cada ${KM_KIT_TIEMPO.toLocaleString("es-PA")} km. Citas preferentes jueves y viernes.`}
+        subtitle={`Básico cada ${KM_MANTENIMIENTO.toLocaleString("es-PA")} km · kit a los ${KM_KIT_PRIMERA.toLocaleString("es-PA")} y luego cada ${KM_KIT_TIEMPO.toLocaleString("es-PA")}. El informe queda el viernes a la 1:00 p.m.`}
         action={
           <div className="hidden text-right sm:block">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
-              Por citar FULL
+              Por citar
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-rojo">{vencidos}</p>
             <p className="mt-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
@@ -36,9 +53,11 @@ export default async function MantenimientoPage() {
         }
       />
 
-      <section className="mt-8">
+      <InformeSemanaVista informe={informe} />
+
+      <section className="mt-12">
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-          Preventivo FULL · {KM_MANTENIMIENTO.toLocaleString("es-PA")} km
+          Mantenimiento básico · {KM_MANTENIMIENTO.toLocaleString("es-PA")} km
         </h2>
         {!mant.disponible ? (
           <div className="mt-4">
@@ -61,11 +80,10 @@ export default async function MantenimientoPage() {
 
       <section className="mt-12">
         <h2 className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted">
-          Kit de tiempo · ~{KM_KIT_TIEMPO.toLocaleString("es-PA")} km
+          Kit de tiempo · {KM_KIT_PRIMERA.toLocaleString("es-PA")} km y luego cada {KM_KIT_TIEMPO.toLocaleString("es-PA")}
         </h2>
         <p className="mt-1 mb-4 text-sm text-muted">
-          Ventana de citación ~55–65 mil de cada ciclo. El Jefe de Taller los mete en la agenda
-          semanal junto con las novedades.
+          Se cita 5.000 km antes de la marca y hasta 5.000 km después.
         </p>
         {!kit.disponible ? (
           <EmptyState

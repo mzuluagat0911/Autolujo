@@ -1,8 +1,8 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { siglaEmpresa } from "./empresa";
 
-export type EstadoExCliente = "cobro" | "acuerdo" | "pausado" | "cerrado";
-export type OrigenExCliente = "manual" | "excel";
+export type EstadoExCliente = "cobro" | "acuerdo" | "pausado" | "cerrado" | "baja";
+export type OrigenExCliente = "manual" | "excel" | "archivo";
 
 export type ExCliente = {
   id: string;
@@ -15,9 +15,11 @@ export type ExCliente = {
   carro: string | null;
   saldo: number;
   motivo: string | null;
+  motivoBaja: string | null;
   notas: string | null;
   origen: OrigenExCliente;
   estado: EstadoExCliente;
+  contratoId: string | null;
   createdAt: string;
 };
 
@@ -25,6 +27,16 @@ export type EmpresaEx = { id: string; codigo: string; nombre: string };
 
 function tablaAusente(message: string): boolean {
   return /ex_clientes|schema cache|could not find the table/i.test(message);
+}
+
+function origenDe(v: unknown): OrigenExCliente {
+  if (v === "excel" || v === "archivo") return v;
+  return "manual";
+}
+
+function estadoDe(v: unknown): EstadoExCliente {
+  if (v === "acuerdo" || v === "pausado" || v === "cerrado" || v === "baja") return v;
+  return "cobro";
 }
 
 function fila(row: Record<string, unknown>): ExCliente {
@@ -40,9 +52,11 @@ function fila(row: Record<string, unknown>): ExCliente {
     carro: (row.carro as string | null) ?? null,
     saldo: Number(row.saldo ?? 0),
     motivo: (row.motivo as string | null) ?? null,
+    motivoBaja: (row.motivo_baja as string | null) ?? null,
     notas: (row.notas as string | null) ?? null,
-    origen: row.origen === "excel" ? "excel" : "manual",
-    estado: (row.estado as EstadoExCliente) || "cobro",
+    origen: origenDe(row.origen),
+    estado: estadoDe(row.estado),
+    contratoId: (row.contrato_id as string | null) ?? null,
     createdAt: String(row.created_at ?? ""),
   };
 }
@@ -62,9 +76,28 @@ export async function listarExClientes(): Promise<{ filas: ExCliente[]; error: s
     const sb = createServerSupabase();
     const { data, error } = await sb
       .from("ex_clientes")
-      .select("id, nombre, cedula, telefono, whatsapp, empresa_id, carro, saldo, motivo, notas, origen, estado, created_at, empresa:empresas(codigo)")
+      .select(
+        "id, nombre, cedula, telefono, whatsapp, empresa_id, carro, saldo, motivo, motivo_baja, notas, origen, estado, contrato_id, created_at, empresa:empresas(codigo)",
+      )
       .order("created_at", { ascending: false });
     if (error) {
+      if (/motivo_baja|contrato_id/i.test(error.message)) {
+        const retry = await sb
+          .from("ex_clientes")
+          .select(
+            "id, nombre, cedula, telefono, whatsapp, empresa_id, carro, saldo, motivo, notas, origen, estado, created_at, empresa:empresas(codigo)",
+          )
+          .order("created_at", { ascending: false });
+        if (retry.error) {
+          return {
+            filas: [],
+            error: tablaAusente(retry.error.message)
+              ? "Falta aplicar la migración 0048 para registrar ex clientes."
+              : retry.error.message,
+          };
+        }
+        return { filas: ((retry.data ?? []) as Record<string, unknown>[]).map(fila), error: null };
+      }
       return {
         filas: [],
         error: tablaAusente(error.message)
