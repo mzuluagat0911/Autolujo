@@ -190,6 +190,11 @@ function sedeDeLugar(lugar: string | null | undefined): "PANAMA" | "CHORRERA" | 
   return null;
 }
 
+/** Entrega sin sucursal registrada: cuenta en Panamá para no perder el carro del total. */
+function sedeEntrega(lugar: string | null | undefined): "PANAMA" | "CHORRERA" {
+  return sedeDeLugar(lugar) ?? "PANAMA";
+}
+
 function condicionDe(etiqueta: string | null | undefined, estado: string | null | undefined): string | null {
   const e = (etiqueta ?? "").toUpperCase();
   if (e === "CHAPISTERIA") return "CHAPISTERIA";
@@ -402,6 +407,9 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   improductivos.sort((a, b) => a.fecha.localeCompare(b.fecha) || a.carro.localeCompare(b.carro));
 
   // —— Entregas / devoluciones (mes actual + 3 meses atrás para el histórico) ——
+  // Entrega = cada contrato por fecha_inicio; la sede sale del evento tipo "contrato"
+  // del mismo día (registrarEntrega). Sin sucursal → Panamá, para no perder el carro.
+  // Devolución = solo vehiculo_eventos tipo "devolucion" (hoja de vida o estado Entregado).
   const histDesde = inicioMes(sumarDias(mesIni, -100));
   const histHasta = hasta < mesFin ? hasta : mesFin;
   const contratosMes = await paginas<{
@@ -451,7 +459,7 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     movimientos.push({
       fecha,
       tipo: "entrega",
-      sede: sedeDeLugar(lugarEntrega.get(`${c.vehiculo_id}|${fecha}`)),
+      sede: sedeEntrega(lugarEntrega.get(`${c.vehiculo_id}|${fecha}`)),
     });
   }
 
@@ -471,8 +479,8 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     for (const mov of movimientos) {
       if (mov.fecha < mi || mov.fecha > tope) continue;
       if (mov.tipo === "entrega") {
-        if (mov.sede === "PANAMA") ep += 1;
-        else if (mov.sede === "CHORRERA") ec += 1;
+        if ((mov.sede ?? "PANAMA") === "CHORRERA") ec += 1;
+        else ep += 1;
       } else {
         dev += 1;
       }

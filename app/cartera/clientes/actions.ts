@@ -307,6 +307,10 @@ export async function createClienteConContrato(
     num(formData.get("cuota_domingo")) ?? (cobraDomingo ? CUOTA_DOMINGO_DEFAULT : 0);
   const fechaInicio = str(formData.get("fecha_inicio")) ?? hoyPanama();
   const fechaInicioLetra = str(formData.get("fecha_inicio_letra")) ?? fechaInicio;
+  const sucursalEntrega = str(formData.get("sucursal"));
+  if (!sucursalEntrega || !/^(juan_diaz|chorrera)$/i.test(sucursalEntrega)) {
+    return { ok: false, error: "Elegí la sucursal de entrega (Juan Díaz o La Chorrera)." };
+  }
 
   const panapassCargo = PANAPASS_ENTRADA;
   const diasForm = num(formData.get("dias_domingos"));
@@ -508,7 +512,7 @@ export async function createClienteConContrato(
     await sb.from("vehiculos").update({ estado: "activo" }).eq("id", vehiculoId);
   }
 
-  await registrarEntrega(vehiculoId, fechaInicio, str(formData.get("sucursal")));
+  await registrarEntrega(vehiculoId, fechaInicio, sucursalEntrega);
 
   // --- Cargos de entrada ---
   const cargos: Record<string, unknown>[] = [];

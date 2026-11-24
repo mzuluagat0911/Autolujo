@@ -142,8 +142,13 @@ function contarMov(
     if (m.tipo !== tipo) continue;
     if (m.fecha < desde || m.fecha > lim) continue;
     if (dow != null && diaSemana(m.fecha) !== dow) continue;
-    if (sede && m.sede !== sede) continue;
-    if (!sede && tipo === "entrega") continue;
+    if (sede) {
+      // Entrega sin sucursal cuenta en Panamá (misma regla que en datos.ts).
+      const sedeMov = tipo === "entrega" ? m.sede ?? "PANAMA" : m.sede;
+      if (sedeMov !== sede) continue;
+    } else if (tipo === "entrega") {
+      continue;
+    }
     n += 1;
   }
   return n;

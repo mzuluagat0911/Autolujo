@@ -325,11 +325,11 @@ export function AltaContratoForm({
           hint="Entrega / inicio del deal"
         />
         <Select
-          label="Sucursal de entrega"
+          label="Sucursal de entrega *"
           name="sucursal"
-          defaultValue=""
+          required
+          defaultValue="juan_diaz"
           options={[
-            { value: "", label: "Sin sucursal" },
             { value: "juan_diaz", label: "Juan Díaz" },
             { value: "chorrera", label: "La Chorrera" },
           ]}
