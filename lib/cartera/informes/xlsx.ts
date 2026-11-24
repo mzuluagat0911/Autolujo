@@ -1,8 +1,21 @@
 // Arma INFORMES.xlsx con la misma estructura de pestañas del archivo de contabilidad.
+// Colores y bordes copian el Excel de referencia (amarillo / verde / grises / naranja).
 
 import ExcelJS from "exceljs";
 import { diaSemana, finMes } from "../fecha";
 import type { DatosInformes, FilaRecaudo, MovimientoSede } from "./datos";
+
+/** Paleta del INFORMES.xlsx de contabilidad. */
+const COLOR = {
+  amarillo: "FFFF00",
+  verde: "92D050",
+  gris: "D9D9D9",
+  grisOscuro: "BFBFBF",
+  naranja: "FCD5B4",
+  rosa: "F2DCDB",
+} as const;
+
+type Borde = "thin" | "medium" | "none";
 
 function money(cell: ExcelJS.Cell) {
   cell.numFmt = "#,##0.00";
@@ -10,6 +23,81 @@ function money(cell: ExcelJS.Cell) {
 
 function bold(row: ExcelJS.Row) {
   row.font = { bold: true };
+}
+
+function pintar(cell: ExcelJS.Cell, hex: string) {
+  cell.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: `FF${hex}` },
+  };
+}
+
+function fuente(
+  cell: ExcelJS.Cell,
+  opts: { bold?: boolean; size?: number; center?: boolean; wrap?: boolean; middle?: boolean } = {},
+) {
+  cell.font = { bold: Boolean(opts.bold), size: opts.size ?? 11, name: "Calibri" };
+  if (opts.center || opts.wrap || opts.middle) {
+    cell.alignment = {
+      horizontal: opts.center ? "center" : undefined,
+      vertical: opts.middle ? "middle" : undefined,
+      wrapText: Boolean(opts.wrap),
+    };
+  }
+}
+
+function borde(
+  cell: ExcelJS.Cell,
+  sides: { l?: Borde; r?: Borde; t?: Borde; b?: Borde } | Borde,
+) {
+  const all = typeof sides === "string" ? sides : null;
+  const l = all ?? (typeof sides === "object" ? sides.l : undefined) ?? "none";
+  const r = all ?? (typeof sides === "object" ? sides.r : undefined) ?? "none";
+  const t = all ?? (typeof sides === "object" ? sides.t : undefined) ?? "none";
+  const b = all ?? (typeof sides === "object" ? sides.b : undefined) ?? "none";
+  const side = (s: Borde) => (s === "none" ? undefined : { style: s, color: { argb: "FF000000" } });
+  cell.border = { left: side(l), right: side(r), top: side(t), bottom: side(b) };
+}
+
+function pintarRango(
+  ws: ExcelJS.Worksheet,
+  r1: number,
+  c1: number,
+  r2: number,
+  c2: number,
+  hex: string,
+  opts: { bold?: boolean; center?: boolean; wrap?: boolean; middle?: boolean; borde?: Borde } = {},
+) {
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      const cell = ws.getCell(r, c);
+      pintar(cell, hex);
+      fuente(cell, opts);
+      if (opts.borde) borde(cell, opts.borde);
+    }
+  }
+}
+
+function caja(
+  ws: ExcelJS.Worksheet,
+  r1: number,
+  c1: number,
+  r2: number,
+  c2: number,
+  estilo: Borde = "thin",
+) {
+  for (let r = r1; r <= r2; r++) {
+    for (let c = c1; c <= c2; c++) {
+      const cell = ws.getCell(r, c);
+      borde(cell, {
+        l: c === c1 ? estilo : "thin",
+        r: c === c2 ? estilo : "thin",
+        t: r === r1 ? estilo : "thin",
+        b: r === r2 ? estilo : "thin",
+      });
+    }
+  }
 }
 
 function fechaLargaEs(iso: string): string {
@@ -116,8 +204,35 @@ function hojaRecaudo(wb: ExcelJS.Workbook, filas: FilaRecaudo[]) {
     ws.getCell(total, c).value = { formula: `SUM(${col}4:${col}${total - 1})` };
     money(ws.getCell(total, c));
   }
-  ws.getColumn(1).width = 22;
-  for (let c = 2; c <= 10; c++) ws.getColumn(c).width = 14;
+
+  // Estilos como el Excel de referencia
+  pintar(ws.getCell("A1"), COLOR.amarillo);
+  fuente(ws.getCell("A1"), { bold: true, center: true });
+  borde(ws.getCell("A1"), "medium");
+  pintarRango(ws, 2, 1, 2, 7, COLOR.verde, { bold: true, center: true, middle: true });
+  pintarRango(ws, 2, 8, 2, 9, COLOR.verde, { bold: true, center: true, middle: true });
+  pintar(ws.getCell("J2"), COLOR.verde);
+  fuente(ws.getCell("J2"), { bold: true, center: true, middle: true });
+  pintarRango(ws, 3, 1, 3, 9, COLOR.gris, { center: true, wrap: true, middle: true });
+  ws.getRow(3).height = 76;
+  caja(ws, 2, 1, total, 10, "medium");
+  for (let r = 4; r <= total; r++) {
+    for (let c = 1; c <= 10; c++) borde(ws.getCell(r, c), "thin");
+  }
+  for (let c = 1; c <= 10; c++) {
+    borde(ws.getCell(total, c), "medium");
+    fuente(ws.getCell(total, c), { bold: true, center: c === 1 });
+  }
+  ws.getColumn(1).width = 23;
+  ws.getColumn(2).width = 13.5;
+  ws.getColumn(3).width = 17.5;
+  ws.getColumn(4).width = 20;
+  ws.getColumn(5).width = 16.5;
+  ws.getColumn(6).width = 11.5;
+  ws.getColumn(7).width = 13;
+  ws.getColumn(8).width = 12;
+  ws.getColumn(9).width = 15.5;
+  ws.getColumn(10).width = 16.5;
 }
 
 function hojaImproductivos(wb: ExcelJS.Workbook, datos: DatosInformes) {
@@ -199,6 +314,37 @@ function hojaImproductivos(wb: ExcelJS.Workbook, datos: DatosInformes) {
     "este se envia por dia, pero debemos tener la informacion por mes resumida";
   ws.getCell(37, 1).value = "Comparativo meses anteriores";
   ws.getCell(41, 1).value = "IMPRODUCTIVOS SON LOS CARROS QUE NO GENERAN LETRAS";
+
+  // Cuadro resumen (derecha)
+  pintarRango(ws, 2, 9, 2, 11, COLOR.grisOscuro, { bold: true, center: true });
+  for (let r = 3; r <= 7; r++) {
+    pintar(ws.getCell(r, 10), COLOR.gris);
+    borde(ws.getCell(r, 9), "thin");
+    borde(ws.getCell(r, 10), "thin");
+    borde(ws.getCell(r, 11), "thin");
+  }
+  pintar(ws.getCell(8, 10), COLOR.verde);
+  pintar(ws.getCell(8, 11), COLOR.verde);
+  fuente(ws.getCell(8, 10), { bold: true });
+  fuente(ws.getCell(8, 11), { bold: true });
+  borde(ws.getCell(8, 10), "thin");
+  borde(ws.getCell(8, 11), "thin");
+  pintarRango(ws, 17, 9, 17, 11, COLOR.amarillo, { bold: true, center: true });
+  pintar(ws.getCell(31, 9), COLOR.verde);
+  pintar(ws.getCell(31, 11), COLOR.verde);
+  fuente(ws.getCell(31, 9), { bold: true });
+  fuente(ws.getCell(31, 11), { bold: true });
+  borde(ws.getCell(31, 9), "medium");
+  borde(ws.getCell(31, 11), "medium");
+  pintarRango(ws, 41, 1, 41, 4, COLOR.amarillo, { bold: true });
+  caja(ws, 1, 1, Math.max(datos.improductivos.length + 1, 2), 6, "thin");
+  ws.getColumn(1).width = 13;
+  ws.getColumn(2).width = 13;
+  ws.getColumn(3).width = 13;
+  ws.getColumn(4).width = 17;
+  ws.getColumn(9).width = 18;
+  ws.getColumn(10).width = 13;
+  ws.getColumn(11).width = 26;
 }
 
 function hojaEntregasDevoluciones(wb: ExcelJS.Workbook, datos: DatosInformes) {
@@ -331,6 +477,33 @@ function hojaEntregasDevoluciones(wb: ExcelJS.Workbook, datos: DatosInformes) {
     ws.getCell(r, 1).value = `DEL 1 AL ${dia} DE ${m.mesNombre}`;
     ws.getCell(r, 2).value = m.devoluciones || null;
   });
+
+  // Estilos cuadros entregas / devoluciones
+  ws.getRow(1).height = 26;
+  pintarRango(ws, 1, 1, 1, 17, COLOR.grisOscuro, { bold: true, center: true, middle: true });
+  pintarRango(ws, 2, 1, 3, 17, COLOR.gris, { bold: true, center: true, middle: true });
+  caja(ws, 1, 1, 11, 17, "medium");
+  pintar(ws.getCell(10, 2), COLOR.amarillo);
+  fuente(ws.getCell(10, 2), { bold: true, center: true });
+  pintarRango(ws, 14, 1, 15, 4, COLOR.amarillo, { bold: true, center: true, middle: true });
+  pintar(ws.getCell(16, 2), COLOR.naranja);
+  pintar(ws.getCell(16, 3), COLOR.naranja);
+  fuente(ws.getCell(16, 1), { bold: true });
+  fuente(ws.getCell(16, 2), { bold: true, center: true });
+  fuente(ws.getCell(16, 3), { bold: true, center: true });
+  fuente(ws.getCell(16, 4), { bold: true });
+  caja(ws, 16, 1, 16 + Math.max(datos.historicoMeses.length, 1), 4, "thin");
+  pintarRango(ws, 24, 1, 24, 9, COLOR.amarillo, { bold: true, center: true });
+  pintarRango(ws, 25, 1, 25, 9, COLOR.grisOscuro, { bold: true, center: true });
+  pintar(ws.getCell(25, 9), COLOR.rosa);
+  pintarRango(ws, 31, 1, 31, 2, COLOR.naranja, { bold: true });
+  caja(ws, 24, 1, 33, 9, "medium");
+  pintarRango(ws, 36, 1, 36, 2, COLOR.amarillo, { bold: true });
+  fuente(ws.getCell(37, 1), { bold: true });
+  fuente(ws.getCell(37, 2), { bold: true });
+  caja(ws, 36, 1, 37 + Math.max(datos.historicoMeses.length, 1), 2, "thin");
+  ws.getColumn(1).width = 27;
+  for (let c = 2; c <= 17; c++) ws.getColumn(c).width = 13;
 }
 
 function hojaNoPagos(wb: ExcelJS.Workbook, datos: DatosInformes) {
@@ -391,7 +564,18 @@ function hojaNoPagos(wb: ExcelJS.Workbook, datos: DatosInformes) {
     ws.getCell(r, 6).value = f.otrasMultas || null;
     money(ws.getCell(r, 6));
   });
+
+  pintarRango(ws, 1, 1, 1, 6, COLOR.grisOscuro, { bold: true, center: true });
+  caja(ws, 1, 1, Math.max(n + 1, 2), 6, "thin");
+  fuente(ws.getCell(totR, 3), { bold: true });
+  pintarRango(ws, hdr, 1, hdr, 6, COLOR.grisOscuro, { bold: true, center: true });
+  if (graves.length) caja(ws, hdr, 1, hdr + graves.length, 6, "thin");
+  ws.getColumn(1).width = 13;
   ws.getColumn(2).width = 36;
+  ws.getColumn(3).width = 16;
+  ws.getColumn(4).width = 13.5;
+  ws.getColumn(5).width = 18;
+  ws.getColumn(6).width = 14;
 }
 
 function hojaMeta(wb: ExcelJS.Workbook, datos: DatosInformes) {
@@ -459,6 +643,12 @@ function hojaMeta(wb: ExcelJS.Workbook, datos: DatosInformes) {
   ws.getCell(3, 11).value = m.flota;
 
   ws.getCell(11, 1).value = "Debemos tener los valores al 100% y al 95% por mes";
+
+  pintarRango(ws, 1, 1, 1, 11, COLOR.amarillo, { bold: true, center: true, wrap: true });
+  caja(ws, 1, 1, 3, 11, "thin");
+  for (let c = 1; c <= 11; c++) {
+    ws.getColumn(c).width = c === 1 ? 13 : c === 5 || c === 6 ? 15 : 13;
+  }
 }
 
 function hojaLetras(wb: ExcelJS.Workbook, datos: DatosInformes) {
@@ -505,6 +695,16 @@ function hojaLetras(wb: ExcelJS.Workbook, datos: DatosInformes) {
     money(ws.getCell(26, 4));
   }
   ws.getCell(29, 2).value = "EJEMPLOS";
+
+  for (const b of bloques) {
+    pintarRango(ws, b.headerRow, 1, b.headerRow, 5, COLOR.amarillo, { bold: true, center: true });
+    const filas = datos.letras.filter((l) => l.empresa === b.emp);
+    if (filas.length) caja(ws, b.headerRow, 1, b.start + filas.length - 1, 5, "thin");
+  }
+  pintarRango(ws, 25, 3, 25, 5, COLOR.amarillo, { bold: true, center: true });
+  caja(ws, 25, 3, 26, 5, "medium");
+  fuente(ws.getCell(29, 2), { bold: true });
+  for (let c = 1; c <= 5; c++) ws.getColumn(c).width = c >= 4 ? 16 : 13;
 }
 
 function hojaNoche(wb: ExcelJS.Workbook, datos: DatosInformes) {
@@ -563,6 +763,26 @@ function hojaNoche(wb: ExcelJS.Workbook, datos: DatosInformes) {
   money(ws.getCell(26, 4));
   ws.getCell(27, 2).value = "TOTAL CARROS";
   ws.getCell(27, 3).value = { formula: "C9+C14+C19+C24" };
+
+  pintarRango(ws, 3, 1, 3, 4, COLOR.gris, { bold: true, center: true });
+  pintarRango(ws, 5, 2, 5, 4, COLOR.gris, { bold: true, center: true });
+  for (const r of [6, 11, 16, 20]) {
+    pintar(ws.getCell(r, 1), COLOR.rosa);
+    fuente(ws.getCell(r, 1), { bold: true });
+  }
+  for (const r of [9, 14, 19, 24]) {
+    fuente(ws.getCell(r, 1), { bold: true });
+    caja(ws, r, 1, r, 4, "thin");
+  }
+  pintar(ws.getCell(20, 2), COLOR.amarillo);
+  fuente(ws.getCell(20, 2), { bold: true, center: true });
+  pintarRango(ws, 26, 2, 26, 4, COLOR.amarillo, { bold: true });
+  pintarRango(ws, 27, 2, 27, 3, COLOR.amarillo, { bold: true });
+  caja(ws, 3, 1, 27, 4, "medium");
+  ws.getColumn(1).width = 21;
+  ws.getColumn(2).width = 14.5;
+  ws.getColumn(3).width = 13;
+  ws.getColumn(4).width = 13;
 }
 
 export async function libroInformes(datos: DatosInformes): Promise<Buffer> {
