@@ -79,11 +79,13 @@ export function EstadosTabla({
   const [toast, setToast] = useState<string | null>(null);
   const [armando, setArmando] = useState(false);
   const [pedirFecha, setPedirFecha] = useState(false);
+  const [tipoInforme, setTipoInforme] = useState<"informes" | "informe">("informes");
   const [desdeInforme, setDesdeInforme] = useState("");
   const [hastaInforme, setHastaInforme] = useState("");
 
-  function abrirDescarga() {
+  function abrirDescarga(tipo: "informes" | "informe") {
     const hoy = (estados[0]?.hoyIso ?? hoyPanama()).slice(0, 10);
+    setTipoInforme(tipo);
     setDesdeInforme(inicioMes(hoy));
     setHastaInforme(hoy);
     setPedirFecha(true);
@@ -99,8 +101,10 @@ export function EstadosTabla({
       return;
     }
     setArmando(true);
+    const esInformes = tipoInforme === "informes";
     try {
-      const res = await fetch(`/cartera/informes?desde=${desdeInforme}&hasta=${hastaInforme}`);
+      const ruta = esInformes ? "/cartera/informes" : "/cartera/informe";
+      const res = await fetch(`${ruta}?desde=${desdeInforme}&hasta=${hastaInforme}`);
       if (!res.ok) {
         const cuerpo = (await res.json().catch(() => null)) as { error?: string } | null;
         setToast(cuerpo?.error || "No pude armar el archivo.");
@@ -110,7 +114,9 @@ export function EstadosTabla({
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `INFORMES-${desdeInforme}_${hastaInforme}.xlsx`;
+      a.download = esInformes
+        ? `INFORMES-${desdeInforme}_${hastaInforme}.xlsx`
+        : `informe-${desdeInforme}_${hastaInforme}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       setPedirFecha(false);
@@ -269,10 +275,18 @@ export function EstadosTabla({
             <button
               type="button"
               disabled={armando}
-              onClick={abrirDescarga}
+              onClick={() => abrirDescarga("informes")}
               className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
             >
-              {armando ? "Armando…" : "Descargar"}
+              {armando && tipoInforme === "informes" ? "Armando…" : "INFORMES"}
+            </button>
+            <button
+              type="button"
+              disabled={armando}
+              onClick={() => abrirDescarga("informe")}
+              className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
+            >
+              {armando && tipoInforme === "informe" ? "Armando…" : "Informe cartera"}
             </button>
           </div>
         }
@@ -296,12 +310,16 @@ export function EstadosTabla({
               void onDescargar();
             }}
           >
-            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">Informe</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+              {tipoInforme === "informes" ? "INFORMES" : "Informe cartera"}
+            </p>
             <h2 id="informe-fecha" className="mt-1 text-base font-semibold text-ink">
-              Fechas de INFORMES
+              {tipoInforme === "informes" ? "Fechas de INFORMES" : "Fechas del informe de cartera"}
             </h2>
             <p className="mt-2 text-sm text-muted">
-              Entran los días entre las dos fechas, también los carros improductivos, en taller y por entregar. El primer día trae el saldo que ya venía. El día cierra a las 12 del mediodía: un pago de antes de esa hora queda en el día anterior.
+              {tipoInforme === "informes"
+                ? "Entran los días entre las dos fechas, también los carros improductivos, en taller y por entregar. El primer día trae el saldo que ya venía. El día cierra a las 12 del mediodía: un pago de antes de esa hora queda en el día anterior."
+                : "Excel del informe mensual de cartera (fila por carro y día) entre las dos fechas. El primer día arrastra el saldo anterior."}
             </p>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <Field
