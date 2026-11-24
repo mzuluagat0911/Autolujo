@@ -16,7 +16,6 @@ import {
 } from "./fecha";
 import { metaCobranzaDeMes } from "./metas-cobranza";
 import { PAGADO } from "./pagos-dia";
-import { montoQueCubreCuota } from "./salidas-aplicar";
 
 export type FlotaPorEmpresa = { sigla: string; carros: number };
 
@@ -81,26 +80,22 @@ async function metaDiariaEstimada(fechaRef: string): Promise<number> {
 }
 
 async function cobradoEntre(desde: string, hasta: string): Promise<number> {
-  // PostgREST corta en 1.000 filas: sin paginar el MTD queda en ~un tercio del real.
+  // Meta de cobranza = dinero entrado (conciliado/manual), no solo lo que baja letra.
+  // PostgREST corta en 1.000 filas: hay que paginar.
   const sb = createServerSupabase();
   let total = 0;
   for (let offset = 0; ; offset += 1000) {
     const { data, error } = await sb
       .from("pagos")
-      .select("monto, rubro, destino_interior, asignaciones, estado_conciliacion")
+      .select("monto")
       .gte("fecha", desde)
       .lte("fecha", hasta)
       .in("estado_conciliacion", [...PAGADO])
       .order("id", { ascending: true })
       .range(offset, offset + 999);
     if (error) throw error;
-    const chunk = (data ?? []) as {
-      monto: number;
-      rubro?: string | null;
-      destino_interior?: string | null;
-      asignaciones?: unknown;
-    }[];
-    for (const p of chunk) total += montoQueCubreCuota(p);
+    const chunk = (data ?? []) as { monto: number }[];
+    for (const p of chunk) total += Number(p.monto) || 0;
     if (chunk.length < 1000) break;
   }
   return r2(total);
