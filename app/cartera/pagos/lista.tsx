@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { StatusChip, Money, FiltersBar, EmptyState } from "@/components/kit";
 import { accionDarAval, resolverPago } from "./actions";
+import { SelectContrato } from "./select-contrato";
 import type { ContratoOpt, PagoFila } from "./tipos";
 
 type Filtro = "todos" | "banco" | "alerta" | "contrato";
@@ -286,38 +287,12 @@ function Fila({
         >
           <input type="hidden" name="pago_id" value={p.id} />
           <input type="hidden" name="accion" value="conciliar" />
-          <select
+          <SelectContrato
             name="contrato_id"
-            required={necesitaContrato}
+            contratos={contratos}
             defaultValue={p.contrato_id ?? ""}
-            className="max-w-md rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line"
-          >
-            <option value="" disabled>
-              Anclar a contrato…
-            </option>
-            {contratos.some((c) => c.activo) && (
-              <optgroup label="Activos">
-                {contratos
-                  .filter((c) => c.activo)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-              </optgroup>
-            )}
-            {contratos.some((c) => !c.activo) && (
-              <optgroup label="Inactivos">
-                {contratos
-                  .filter((c) => !c.activo)
-                  .map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.label}
-                    </option>
-                  ))}
-              </optgroup>
-            )}
-          </select>
+            required={necesitaContrato}
+          />
           {p.notas?.includes("EXCEDENTE_SIN_CONCEPTO") && (
             <label className="w-full text-xs text-muted">
               A dónde va el excedente
