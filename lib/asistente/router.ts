@@ -18,7 +18,7 @@ const DESDE_MODULO: Partial<Record<string, FichaId>> = {
 const PALABRAS: { ficha: FichaId; re: RegExp }[] = [
   {
     ficha: "cobro",
-    re: /\b(cobr|debe|deuda|letra|cuota|domingo|extracto|estado\s*de\s*cuenta|saldo|recargo|acuerdo|abono|comprobante|concili|pago\s*hoy|a\s*pagar|panapass|cumplea|mensaje|cierre\s*de\s*semana)/i,
+    re: /\b(cobr|debe|deuda|letra|cuota|domingo|extracto|estado\s*de\s*cuenta|saldo|recargo|acuerdo|abono|comprobante|concili|pago\s*hoy|a\s*pagar|panapass|cumplea|mensaje|cierre\s*de\s*semana|informes?|reporte|meta\s*de\s*cobranza|ex\s*clientes?|yappy|atribu)/i,
   },
   {
     ficha: "operaciones",
