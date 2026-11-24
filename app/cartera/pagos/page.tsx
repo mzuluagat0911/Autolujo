@@ -173,35 +173,31 @@ async function getData() {
         };
       });
 
-    const deEx: ContratoOpt[] = (
-      (exRes.error ? [] : (exRes.data ?? [])) as unknown as {
-        id: string;
-        nombre: string;
-        carro: string | null;
-        saldo: number;
-        contrato_id: string | null;
-        empresa: { codigo: string } | null;
-      }[]
-    )
-      .map((x) => {
-        // Si ya tiene contrato en el select, no duplicar: se ancla por contrato.
-        if (x.contrato_id && contratosIds.has(x.contrato_id)) return null;
-        const emp = siglaEmpresa(x.empresa?.codigo) || null;
-        const carro = (x.carro ?? "").trim() || "sin carro";
-        const saldo = Math.round(Number(x.saldo) || 0);
-        // Sin contrato → `ex:` para bajar saldo Excel al confirmar Pago comprobado.
-        const id = x.contrato_id && !contratosIds.has(x.contrato_id)
-          ? x.contrato_id
-          : `ex:${x.id}`;
-        return {
-          id,
-          empresa: emp,
-          activo: false,
-          grupo: "ex" as const,
-          label: `${carro} · ${x.nombre} · ex · $${saldo}`,
-        };
-      })
-      .filter((x): x is ContratoOpt => Boolean(x));
+    const deEx: ContratoOpt[] = [];
+    for (const x of (exRes.error ? [] : (exRes.data ?? [])) as unknown as {
+      id: string;
+      nombre: string;
+      carro: string | null;
+      saldo: number;
+      contrato_id: string | null;
+      empresa: { codigo: string } | null;
+    }[]) {
+      // Si ya tiene contrato en el select, no duplicar: se ancla por contrato.
+      if (x.contrato_id && contratosIds.has(x.contrato_id)) continue;
+      const emp = siglaEmpresa(x.empresa?.codigo) || null;
+      const carro = (x.carro ?? "").trim() || "sin carro";
+      const saldo = Math.round(Number(x.saldo) || 0);
+      // Sin contrato → `ex:` para bajar saldo Excel al confirmar Pago comprobado.
+      const id =
+        x.contrato_id && !contratosIds.has(x.contrato_id) ? x.contrato_id : `ex:${x.id}`;
+      deEx.push({
+        id,
+        empresa: emp,
+        activo: false,
+        grupo: "ex",
+        label: `${carro} · ${x.nombre} · ex · $${saldo}`,
+      });
+    }
 
     const contratos: ContratoOpt[] = [...deContrato, ...deEx].sort((a, b) => {
       const ga = a.grupo === "ex" ? 2 : a.activo ? 0 : 1;
