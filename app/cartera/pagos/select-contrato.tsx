@@ -17,6 +17,7 @@ export function SelectContrato({
 }) {
   const listId = useId();
   const root = useRef<HTMLDivElement>(null);
+  const buscarRef = useRef<HTMLInputElement>(null);
   const [abierto, setAbierto] = useState(false);
   const [q, setQ] = useState("");
   const [valor, setValor] = useState(defaultValue);
@@ -39,6 +40,7 @@ export function SelectContrato({
 
   useEffect(() => {
     if (!abierto) return;
+    buscarRef.current?.focus();
     function fuera(e: MouseEvent) {
       if (root.current && !root.current.contains(e.target as Node)) {
         setAbierto(false);
@@ -69,7 +71,7 @@ export function SelectContrato({
     filtrados.activos.length === 0 && filtrados.inactivos.length === 0;
 
   return (
-    <div ref={root} className="relative w-full max-w-md">
+    <div ref={root} className="w-full min-w-0 max-w-md basis-full">
       {/* No type=hidden: el required de HTML5 no aplica ahí. */}
       <input
         name={name}
@@ -106,17 +108,19 @@ export function SelectContrato({
         </svg>
       </button>
 
+      {/* En flujo (no absolute): el listado padre usa overflow-hidden y cortaba el panel. */}
       {abierto && (
         <div
           id={listId}
           role="listbox"
-          className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg bg-surface ring-1 ring-line"
+          className="mt-1 overflow-hidden rounded-lg bg-surface shadow-lg ring-1 ring-line"
         >
           <div className="border-b border-line p-2">
             <input
-              autoFocus
+              ref={buscarRef}
               value={q}
               onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => e.stopPropagation()}
               placeholder="Buscar carro, cliente…"
               className="w-full rounded-lg bg-paper px-3 py-2 text-sm ring-1 ring-line placeholder:text-faint focus:outline-none focus:ring-2 focus:ring-ink/20"
             />
