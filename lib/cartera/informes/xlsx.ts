@@ -767,7 +767,8 @@ function hojaNoche(wb: ExcelJS.Workbook, datos: DatosInformes) {
   ws.getCell(26, 4).value = { formula: "D24" };
   money(ws.getCell(26, 4));
   ws.getCell(27, 2).value = "TOTAL CARROS";
-  ws.getCell(27, 3).value = { formula: "C9+C14+C19+C24" };
+  // Solo no pago + al día + improductivos. C24 es recaudo (cuentas), no carros.
+  ws.getCell(27, 3).value = { formula: "C9+C14+C19" };
 
   pintarRango(ws, 3, 1, 3, 4, COLOR.gris, { bold: true, center: true });
   pintarRango(ws, 5, 2, 5, 4, COLOR.gris, { bold: true, center: true });

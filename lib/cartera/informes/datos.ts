@@ -196,6 +196,25 @@ function sedeEntrega(lugar: string | null | undefined): "PANAMA" | "CHORRERA" {
   return sedeDeLugar(lugar) ?? "PANAMA";
 }
 
+/**
+ * Carros que cuentan en META / INFORME NOCHE.
+ * Fuera: pagado/pérdida/terminación/entregado, sin placa, 9999 de prueba, GOLD con número raro (ej. "05").
+ */
+function cuentaEnFlotaInforme(v: {
+  numero: string;
+  placa?: string | null;
+  estado: string;
+  empresa?: { codigo?: string } | { codigo?: string }[] | null;
+}): boolean {
+  if (fueraDeFlota(v.estado)) return false;
+  const numero = String(v.numero ?? "").trim();
+  if (!numero || numero === "9999") return false;
+  if (!(v.placa ?? "").trim()) return false;
+  const emp = (uno(v.empresa)?.codigo ?? "").toUpperCase();
+  if (emp === "GOLD" && !/^G\d+$/i.test(numero)) return false;
+  return true;
+}
+
 function condicionDe(etiqueta: string | null | undefined, estado: string | null | undefined): string | null {
   const e = (etiqueta ?? "").toUpperCase();
   if (e === "CHAPISTERIA") return "CHAPISTERIA";
@@ -343,6 +362,7 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   const vehs = await paginas<{
     id: string;
     numero: string;
+    placa: string | null;
     anio: number | null;
     estado: string;
     empresa: { codigo: string } | { codigo: string }[] | null;
@@ -351,7 +371,7 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     sb
       .from("vehiculos")
       .select(
-        "id, numero, anio, estado, empresa:empresas(codigo), contratos(id, estado, fecha_inicio, letra_diaria)",
+        "id, numero, placa, anio, estado, empresa:empresas(codigo), contratos(id, estado, fecha_inicio, letra_diaria)",
       )
       .range(a, b),
   );
@@ -585,6 +605,7 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   // —— Letras reales ——
   const letrasCorr = new Map<string, FilaLetra>();
   for (const v of vehs) {
+    if (!cuentaEnFlotaInforme(v)) continue;
     const emp = empresaCorta(uno(v.empresa)?.codigo ?? null);
     if (!emp) continue;
     const activoC = (v.contratos ?? []).find((c) => c.estado === "activo");
@@ -607,9 +628,9 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   const acumuladoReal = r2(
     pagos.filter((p) => p.pago.fecha >= mesIni && p.pago.fecha <= hasta).reduce((s, p) => s + p.pago.monto, 0),
   );
-  // FLOTA X MES = carros que siguen en la flota (activo, taller, improductivo…).
-  // No entran pagado / pérdida total / terminación / entregado.
-  const flota = vehs.filter((v) => !fueraDeFlota(v.estado)).length;
+  // FLOTA X MES = misma base que INFORME NOCHE (sin pruebas ni fantasmas).
+  const flotaVehs = vehs.filter((v) => cuentaEnFlotaInforme(v));
+  const flota = flotaVehs.length;
   const meta100 = metaRow?.meta100 ?? null;
 
   // —— Informe noche (corte = hasta) ——
@@ -627,18 +648,19 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     nocheEmp.map((e) => [e, { empresa: e, cantidad: 0, valor: 0 }]),
   );
 
-  for (const v of vehs) {
+  for (const v of flotaVehs) {
     const emp = empresaCorta(uno(v.empresa)?.codigo ?? null);
     if (!emp) continue;
     const activo = (v.contratos ?? []).find((c) => c.estado === "activo");
     const letra = Number(activo?.letra_diaria) || 0;
     const cond = condicionDe(null, v.estado);
-    if (cond) {
+    // Sin contrato activo (libre / por asignar) o en taller/improductivo → IMPRODUCTIVOS.
+    if (cond || !activo) {
       improN[emp].cantidad += 1;
       improN[emp].valor = r2(improN[emp].valor + letra);
       continue;
     }
-    if (v.estado !== "activo" || !activo) continue;
+    if (v.estado !== "activo") continue;
     if (pagosHoy.has(activo.id)) {
       alDiaN[emp].cantidad += 1;
       alDiaN[emp].valor = r2(alDiaN[emp].valor + letra);
