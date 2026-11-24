@@ -100,19 +100,23 @@ function diaSiguiente(iso: string, n: number): string {
   return dt.toISOString().slice(0, 10);
 }
 
-/** Sobrante: días siguientes. En cada día, el acuerdo de pago, luego la letra, luego el abono inicial. */
+/** Sobrante: días siguientes. En cada día, el acuerdo de pago, luego la letra, luego el abono inicial.
+ *  `letraDesde`: no abre letra antes de fecha_inicio_letra. Con `letra` en 0 no adelanta cuenta. */
 function adelantarDias(opts: {
   sobrante: number;
   acuerdos: AcuerdoActivo[];
   abono?: AcuerdoActivo | null;
   letra: number;
   desde: string;
+  /** Primera fecha en la que puede nacer letra (fecha_inicio_letra). */
+  letraDesde?: string | null;
 }): { asignaciones: AsignacionPago[]; sobrante: number; aplicado: number } {
   let queda = r2(opts.sobrante);
   const saldos = new Map(opts.acuerdos.map((a) => [a.id, Math.max(Number(a.saldo) || 0, 0)]));
   if (opts.abono) saldos.set(opts.abono.id, Math.max(Number(opts.abono.saldo) || 0, 0));
   const asignaciones: AsignacionPago[] = [];
   let aplicado = 0;
+  const pisoLetra = (opts.letraDesde ?? "").trim();
   for (let i = 1; i <= 14 && queda > 0.009; i++) {
     const fecha = diaSiguiente(opts.desde, i);
     const vivo = opts.acuerdos.find((a) => (saldos.get(a.id) ?? 0) > 0.009);
@@ -132,7 +136,9 @@ function adelantarDias(opts: {
         aplicado = r2(aplicado + toma);
       }
     }
-    if (opts.letra > 0.009 && queda > 0.009) {
+    const letraPermitida =
+      opts.letra > 0.009 && (!pisoLetra || fecha >= pisoLetra);
+    if (letraPermitida && queda > 0.009) {
       const toma = r2(Math.min(opts.letra, queda));
       asignaciones.push({ tipo: "cuenta_diaria", aplicado: toma, etiqueta: `letra ${fecha}` });
       queda = r2(queda - toma);
@@ -166,6 +172,8 @@ export function partirSobranteDomingo(opts: {
   acuerdos: AcuerdoActivo[];
   letra: number;
   desde: string;
+  /** Primera fecha en la que puede nacer letra (fecha_inicio_letra). */
+  letraDesde?: string | null;
   bucketNeto: number;
   adelantarDomingo: boolean;
 }): { asignaciones: AsignacionPago[]; sobrante: number; aplicado: number } {
@@ -209,6 +217,7 @@ export function partirSobranteDomingo(opts: {
       acuerdos: [],
       letra: opts.letra,
       desde: opts.desde,
+      letraDesde: opts.letraDesde,
     });
     extra.push(...adelanto.asignaciones);
     aplicado = r2(aplicado + adelanto.aplicado);
@@ -926,6 +935,8 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
     await asegurarLetraAdelantada({
       contratoId: pago.contrato_id,
       asignaciones: ya.asignaciones,
+      // Solo materializa letras futuras si el equipo adelantó a propósito.
+      permitirFuturo: pago.rubro === "cuenta",
     });
     if (dest) {
       const interior = ya.asignaciones
@@ -1180,12 +1191,15 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
         : null;
   const rubroOtro = Boolean(rubroConcepto && rubroConcepto !== "domingo");
   if (hoyEsDomingo && resultado.sobrante > 0.009 && !rubroOtro) {
+    const letraAdelantoDom =
+      letraNoEmpieza && pago.rubro !== "cuenta" ? 0 : letraDiaria;
     const parte = partirSobranteDomingo({
       sobrante: resultado.sobrante,
       ya: resultado.asignaciones,
       acuerdos: acuerdosDePago,
-      letra: letraDiaria,
+      letra: letraAdelantoDom,
       desde: fecha,
+      letraDesde: iniLetra || null,
       bucketNeto: domingoAbierto.bucketNeto,
       adelantarDomingo: pago.rubro === "domingo" && !pausaDomingo,
     });
@@ -1220,8 +1234,16 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
       const restantes = acuerdosDePago.map((a) =>
         a.id === plan.id ? { ...a, saldo: r2(Number(a.saldo) - ya - toma) } : a,
       );
+      // Rubro acuerdo: nunca abre letra antes de fecha_inicio_letra.
       const cola = resto > 0.009 && !enPausa
-        ? adelantarDias({ sobrante: resto, acuerdos: restantes, abono: abonoPlan, letra: letraDiaria, desde: fecha })
+        ? adelantarDias({
+            sobrante: resto,
+            acuerdos: restantes,
+            abono: abonoPlan,
+            letra: letraNoEmpieza ? 0 : letraDiaria,
+            desde: fecha,
+            letraDesde: iniLetra || null,
+          })
         : { asignaciones: [] as AsignacionPago[], sobrante: enPausa ? resto : 0, aplicado: 0 };
       resultado = {
         asignaciones: [
@@ -1247,12 +1269,18 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   ) {
     // Sábado sin decisión del equipo: no se asume letra ni domingo.
   } else if (resultado.sobrante > 0.009 && !enPausa) {
+    // Si la letra aún no empieza, el sobrante NO abre letras futuras
+    // (G48 / KW 111: reaplicar un alta convertía el abono en cuenta adelantada).
+    // Solo con rubro "cuenta" el equipo pide adelantar a propósito.
+    const letraAdelanto =
+      letraNoEmpieza && pago.rubro !== "cuenta" ? 0 : letraDiaria;
     const adelanto = adelantarDias({
       sobrante: resultado.sobrante,
       acuerdos: acuerdosDePago,
       abono: abonoPlan,
-      letra: letraDiaria,
+      letra: letraAdelanto,
       desde: fecha,
+      letraDesde: iniLetra || null,
     });
     if (adelanto.aplicado > 0.009) {
       resultado = {
@@ -1330,6 +1358,7 @@ export async function aplicarPagoEnObligaciones(pagoId: string): Promise<Resulta
   await asegurarLetraAdelantada({
     contratoId,
     asignaciones: resultado.asignaciones,
+    permitirFuturo: pago.rubro === "cuenta",
   });
 
   if (dest) {

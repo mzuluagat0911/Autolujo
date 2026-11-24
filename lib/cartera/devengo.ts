@@ -367,14 +367,22 @@ export async function ultimoDiaDevengado(contratoId: string): Promise<string | n
 export async function asegurarLetraAdelantada(opts: {
   contratoId: string;
   asignaciones: { tipo?: string; etiqueta?: string | null; aplicado?: number }[];
+  /**
+   * Si es false, no crea cargos con fecha > hoy.
+   * Evita que un reaplicar abra semana de letras “atrasadas” (G48 / KW 111).
+   * true = el equipo adelantó a propósito (rubro cuenta / prepago).
+   */
+  permitirFuturo?: boolean;
 }): Promise<number> {
   const hoy = hoyPanama();
+  const permitirFuturo = opts.permitirFuturo === true;
   const porDia = new Map<string, number>();
   for (const a of opts.asignaciones) {
     const tipo = (a.tipo ?? "").toLowerCase();
     if (tipo !== "cuenta_diaria" && tipo !== "cuenta") continue;
     const marca = /^letra (\d{4}-\d{2}-\d{2})$/i.exec(a.etiqueta ?? "");
     if (!marca || marca[1] < hoy) continue;
+    if (marca[1] > hoy && !permitirFuturo) continue;
     const aplicado = Math.max(Number(a.aplicado) || 0, 0);
     if (aplicado <= 0.009) continue;
     porDia.set(marca[1], Math.round(((porDia.get(marca[1]) ?? 0) + aplicado) * 100) / 100);

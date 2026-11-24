@@ -544,7 +544,7 @@ export async function editarPagoHistorial(
   const sb = createServerSupabase();
   const { data: actual, error: errGet } = await sb
     .from("pagos")
-    .select("id, contrato_id, estado_conciliacion, notas, asignaciones, pagado_at")
+    .select("id, contrato_id, estado_conciliacion, notas, asignaciones, pagado_at, monto")
     .eq("id", pagoId)
     .maybeSingle();
   if (errGet) return { ok: false, msg: errGet.message };
@@ -556,9 +556,11 @@ export async function editarPagoHistorial(
   const prevEstado = String((actual as { estado_conciliacion: string }).estado_conciliacion);
   const contabaAntes = prevEstado === "conciliado" || prevEstado === "manual";
   const contaraDespues = estado === "conciliado" || estado === "manual";
+  const prevAsignaciones = (actual as { asignaciones?: unknown }).asignaciones;
+  const prevMonto = Number((actual as { monto?: number }).monto);
 
   // Siempre deshacer waterfall previo antes de mutar montos/fecha/estado.
-  if (contabaAntes || (actual as { asignaciones: unknown }).asignaciones) {
+  if (contabaAntes || prevAsignaciones) {
     try {
       await revertirPagoEnObligaciones(pagoId);
     } catch (e) {
@@ -573,6 +575,20 @@ export async function editarPagoHistorial(
     .filter(Boolean)
     .join(" · ");
 
+  // Si el desglose ya traía abono del alta y el monto no cambió, se conserva.
+  // Si no, el waterfall volvía a abrir letras futuras con el “sobrante” (G48).
+  const desglose = prevAsignaciones && typeof prevAsignaciones === "object" ? prevAsignaciones : null;
+  const lineasPrev = Array.isArray((desglose as { asignaciones?: unknown } | null)?.asignaciones)
+    ? ((desglose as { asignaciones: { tipo?: string; aplicado?: number }[] }).asignaciones)
+    : Array.isArray(desglose)
+      ? (desglose as { tipo?: string; aplicado?: number }[])
+      : [];
+  const tieneAbonoAlta = lineasPrev.some(
+    (a) => a.tipo === "abono" || a.tipo === "abono_inicial" || a.tipo === "afiliacion",
+  );
+  const mismoMonto = Number.isFinite(prevMonto) && Math.abs(prevMonto - monto) < 0.05;
+  const conservarDesglose = Boolean(tieneAbonoAlta && mismoMonto && desglose);
+
   const { error: errUp } = await sb
     .from("pagos")
     .update({
@@ -583,7 +599,7 @@ export async function editarPagoHistorial(
       referencia,
       estado_conciliacion: estado,
       notas,
-      asignaciones: null,
+      asignaciones: conservarDesglose ? desglose : null,
     })
     .eq("id", pagoId);
   if (errUp) return { ok: false, msg: errUp.message };
