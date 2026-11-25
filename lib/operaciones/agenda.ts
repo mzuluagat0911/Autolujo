@@ -10,6 +10,7 @@ export const TIPOS_CITA_TALLER = [
   { value: "revision_mensual", label: "Revisión mensual" },
   { value: "mantenimiento_6000", label: "Mantenimiento 6.000 km" },
   { value: "kit_tiempos", label: "Kit de tiempos" },
+  { value: "atf", label: "Aceite ATF (50.000)" },
   { value: "mecanica", label: "Cita mecánica" },
 ] as const;
 

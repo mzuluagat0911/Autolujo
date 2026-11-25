@@ -14,7 +14,7 @@ export type ItemMecanica = {
 export const VEHICULO_TARIFA_MECANICA = "Compacto (Grand i10 / Kia Soluto)";
 
 export const TARIFAS_MECANICA: ItemMecanica[] = [
-  { concepto: "KIT DE TIEMPOS CARRO AUTOMATICO GRAND I10 Y KIA SOLUTO", precio: 232, edison: null },
+  { concepto: "KIT DE TIEMPOS CARRO AUTOMATICO GRAND I10 Y KIA SOLUTO", precio: 234, edison: null },
   { concepto: "KIT DE TIEMPOS CARRO MANUAL GRAND I10 Y KIA SOLUTO", precio: 212, edison: 60 },
   { concepto: "Cambio de Campana", precio: null, edison: 15 },
   { concepto: "Cambio / Revisión de Amortiguadores delanteros C/U", precio: 25, edison: 20 },

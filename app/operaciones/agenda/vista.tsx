@@ -10,6 +10,13 @@ import {
   type NotaCitaTaller,
 } from "@/lib/operaciones/agenda";
 import {
+  FOTOS_MINIMAS,
+  ITEMS_FULL,
+  ITEMS_KIT_DEFAULT,
+  PRECIO_KIT_AUTO,
+  PRECIO_KIT_MANUAL,
+} from "@/lib/operaciones/registro-taller";
+import {
   cargarNotasCita,
   cerrarCitaAction,
   crearCitaAction,
@@ -35,11 +42,20 @@ export function AgendaVista({
   carros,
   fechaHoy,
   errorInicial,
+  atendidosHoy = [],
 }: {
   iniciales: CitaTaller[];
   carros: CarroAgenda[];
   fechaHoy: string;
   errorInicial: string | null;
+  atendidosHoy?: {
+    id: string;
+    tipo: string;
+    carro: string;
+    sucursal: string;
+    km: number | null;
+    avisoMulta: boolean;
+  }[];
 }) {
   const [citas, setCitas] = useState(iniciales);
   const [filtroSede, setFiltroSede] = useState<"todas" | "juan_diaz" | "chorrera">("todas");
@@ -47,6 +63,8 @@ export function AgendaVista({
   const [notas, setNotas] = useState<NotaCitaTaller[]>([]);
   const [aviso, setAviso] = useState<string | null>(errorInicial);
   const [pending, start] = useTransition();
+  const [stickerIdx, setStickerIdx] = useState(0);
+  const [fotoCount, setFotoCount] = useState(0);
 
   const elegida = citas.find((c) => c.id === sel) ?? null;
   const visibles =
@@ -253,6 +271,25 @@ export function AgendaVista({
           <p className="rounded-lg bg-ambar-wash px-4 py-3 text-sm text-ink ring-1 ring-ambar/40">{aviso}</p>
         )}
 
+        {atendidosHoy.length > 0 && (
+          <div className="rounded-xl bg-surface p-4 ring-1 ring-line">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
+              Atendidos hoy · {fechaCorta(fechaHoy)}
+            </p>
+            <ul className="mt-2 space-y-1">
+              {atendidosHoy.map((a) => (
+                <li key={a.id} className="flex flex-wrap items-center gap-2 text-sm text-ink">
+                  <span className="font-medium">{a.carro}</span>
+                  <span className="text-muted">{etiquetaTipoCita(a.tipo)}</span>
+                  <span className="text-muted">{a.sucursal}</span>
+                  {a.km != null && <span className="tabular-nums text-muted">{a.km} km</span>}
+                  {a.avisoMulta && <StatusChip tone="warn">Multa → Cartera</StatusChip>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
         {visibles.length === 0 ? (
           <EmptyState title="Sin citas en esta ventana" hint="Agendá arriba o ampliá el rango." />
         ) : (
@@ -337,18 +374,159 @@ export function AgendaVista({
             {(elegida.estado === "llego" || elegida.estado === "programada") && (
               <form onSubmit={cerrar} className="space-y-3 border-t border-line pt-4">
                 <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">
-                  Cerrar y anclar próxima
+                  Registro de visita ({etiquetaTipoCita(elegida.tipo)})
                 </p>
                 <input
                   name="km"
                   inputMode="numeric"
-                  placeholder="Km al atender (opcional)"
+                  placeholder="Km (GPS / sistema)"
                   className="w-full rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
                 />
+
+                {elegida.tipo === "mantenimiento_6000" && (
+                  <div className="space-y-2 rounded-lg bg-surface-2 p-3">
+                    <p className="text-xs font-medium text-ink">FULL — marcar todo</p>
+                    {ITEMS_FULL.map((it) => (
+                      <label key={it.id} className="flex items-center gap-2 text-sm text-ink">
+                        <input type="checkbox" name={it.campo} className="rounded border-line" />
+                        {it.label}
+                      </label>
+                    ))}
+                    <label className="flex items-center gap-2 text-sm text-ink">
+                      <input type="checkbox" name="promo_gratis" className="rounded border-line" />
+                      Promo gratis (se confirma en sucursal)
+                    </label>
+                    <label className="flex items-center gap-2 text-sm text-ink">
+                      <input type="checkbox" name="sticker_ok" className="rounded border-line" />
+                      Sticker pegado
+                    </label>
+                    <input
+                      name="monto_cobrado"
+                      inputMode="decimal"
+                      placeholder="Monto cobrado (0 si promo)"
+                      className="w-full rounded-lg bg-surface px-3 py-2 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                    />
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="text-muted">Carro limpio</span>
+                      <select
+                        name="carro_limpio"
+                        className="rounded-lg bg-surface px-3 py-2 ring-1 ring-line outline-none"
+                      >
+                        <option value="">—</option>
+                        <option value="si">Sí</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
+
+                {elegida.tipo === "kit_tiempos" && (
+                  <div className="space-y-2 rounded-lg bg-surface-2 p-3">
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="text-muted">Transmisión</span>
+                      <select
+                        name="transmision"
+                        required
+                        defaultValue=""
+                        className="rounded-lg bg-surface px-3 py-2 ring-1 ring-line outline-none"
+                      >
+                        <option value="" disabled>
+                          Elegí
+                        </option>
+                        <option value="manual">Manual · ${PRECIO_KIT_MANUAL}</option>
+                        <option value="automatico">Automático · ${PRECIO_KIT_AUTO}</option>
+                      </select>
+                    </label>
+                    <input
+                      name="monto_cliente_kit"
+                      required
+                      inputMode="decimal"
+                      placeholder="Monto que asume el cliente"
+                      className="w-full rounded-lg bg-surface px-3 py-2 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                    />
+                    <p className="text-xs text-muted">Ítems hechos</p>
+                    {ITEMS_KIT_DEFAULT.map((it) => (
+                      <label key={it} className="flex items-center gap-2 text-sm text-ink">
+                        <input type="checkbox" name="items_kit" value={it} className="rounded border-line" />
+                        {it}
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                {(elegida.tipo === "mecanica" || elegida.tipo === "atf") && (
+                  <input
+                    name="trabajo"
+                    placeholder={elegida.tipo === "atf" ? "ATF + filtro…" : "Trabajo realizado"}
+                    className="w-full rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                  />
+                )}
+
+                {elegida.tipo === "mecanica" && (
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="text-muted">¿Queda operativo?</span>
+                    <select name="operativo" className="rounded-lg bg-surface px-3 py-2 ring-1 ring-line">
+                      <option value="">—</option>
+                      <option value="si">Sí</option>
+                      <option value="no">No</option>
+                    </select>
+                  </label>
+                )}
+
+                <input
+                  name="costo_edison"
+                  inputMode="decimal"
+                  placeholder="Costo interno Edison (opcional)"
+                  className="w-full rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+
+                <div className="space-y-2">
+                  <label className="flex flex-col gap-1 text-sm">
+                    <span className="text-muted">Fotos (mín. {FOTOS_MINIMAS})</span>
+                    <input
+                      type="file"
+                      name="fotos"
+                      accept="image/*"
+                      multiple
+                      required
+                      onChange={(e) => setFotoCount(e.target.files?.length ?? 0)}
+                      className="text-sm"
+                    />
+                  </label>
+                  {fotoCount > 0 && elegida.tipo === "mantenimiento_6000" && (
+                    <label className="flex flex-col gap-1 text-sm">
+                      <span className="text-muted">¿Cuál es la foto del sticker? (nº 1…)</span>
+                      <input
+                        type="number"
+                        name="sticker_idx_ui"
+                        min={1}
+                        max={fotoCount}
+                        value={stickerIdx + 1}
+                        onChange={(e) => setStickerIdx(Math.max(0, Number(e.target.value) - 1))}
+                        className="w-24 rounded-lg bg-surface px-3 py-2 ring-1 ring-line"
+                      />
+                      <input type="hidden" name="sticker_idx" value={stickerIdx} />
+                    </label>
+                  )}
+                  {elegida.tipo !== "mantenimiento_6000" && (
+                    <input type="hidden" name="sticker_idx" value="-1" />
+                  )}
+                </div>
+
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" name="aviso_cartera_multa" className="rounded border-line" />
+                  Avisar a Cartera (multa $10 inasistencia / sucio)
+                </label>
+                <input
+                  name="motivo_multa"
+                  placeholder="Motivo multa (si aplica)"
+                  className="w-full rounded-lg bg-surface px-3 py-2 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
+                />
+
                 <textarea
                   name="comentario"
                   rows={2}
-                  placeholder="Qué se hizo / observación"
+                  placeholder="Observación / novedades"
                   className="w-full rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
                 />
                 <button
@@ -356,7 +534,7 @@ export function AgendaVista({
                   disabled={pending}
                   className="w-full rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
                 >
-                  Marcar hecha
+                  {pending ? "Guardando…" : "Guardar registro y cerrar"}
                 </button>
               </form>
             )}
