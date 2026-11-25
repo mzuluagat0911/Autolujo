@@ -102,6 +102,7 @@ export function Textarea({
   placeholder,
   rows = 3,
   hint,
+  defaultValue,
 }: {
   label: string;
   name: string;
@@ -109,6 +110,7 @@ export function Textarea({
   placeholder?: string;
   rows?: number;
   hint?: string;
+  defaultValue?: string;
 }) {
   return (
     <label className="flex flex-col gap-1.5">
@@ -118,6 +120,7 @@ export function Textarea({
         required={required}
         placeholder={placeholder}
         rows={rows}
+        defaultValue={defaultValue}
         className={`${INPUT} resize-y`}
       />
       {hint && <span className="text-xs text-muted">{hint}</span>}

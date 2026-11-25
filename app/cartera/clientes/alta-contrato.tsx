@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { Field, Select, Textarea } from "@/components/form";
 import {
   DIAS_SEMANA,
@@ -25,10 +25,21 @@ function filaVacia(): RefFila {
   return { nombre: "", parentesco: "", telefono: "" };
 }
 
-function DatosDelContrato() {
-  const [refs, setRefs] = useState<RefFila[]>(() =>
-    Array.from({ length: REFERENCIAS_MIN }, filaVacia),
-  );
+function refsDesdeIniciales(iniciales?: Record<string, string>): RefFila[] {
+  const filas: RefFila[] = [];
+  for (let i = 1; i <= REFERENCIAS_MAX; i++) {
+    const nombre = (iniciales?.[`ref_nombre_${i}`] ?? "").trim();
+    const parentesco = (iniciales?.[`ref_parentesco_${i}`] ?? "").trim();
+    const telefono = (iniciales?.[`ref_telefono_${i}`] ?? "").trim();
+    if (!nombre && !parentesco && !telefono) continue;
+    filas.push({ nombre, parentesco, telefono });
+  }
+  while (filas.length < REFERENCIAS_MIN) filas.push(filaVacia());
+  return filas;
+}
+
+function DatosDelContrato({ iniciales }: { iniciales?: Record<string, string> }) {
+  const [refs, setRefs] = useState<RefFila[]>(() => refsDesdeIniciales(iniciales));
 
   function setCampo(i: number, campo: keyof RefFila, valor: string) {
     setRefs((prev) => prev.map((fila, idx) => (idx === i ? { ...fila, [campo]: valor } : fila)));
@@ -43,6 +54,7 @@ function DatosDelContrato() {
             name="provincia"
             required
             placeholder="Elegí la provincia…"
+            defaultValue={(iniciales?.provincia ?? "").trim()}
             options={PROVINCIAS_PANAMA.map((p) => ({ value: p, label: p }))}
           />
         </div>
@@ -53,6 +65,7 @@ function DatosDelContrato() {
           rows={6}
           placeholder="Barrio, calle, número de casa, color de la fachada y cómo llegar"
           hint="Campo amplio: es la dirección que queda escrita en el contrato."
+          defaultValue={(iniciales?.direccion ?? "").trim()}
         />
       </div>
       <div className="flex flex-col gap-3 sm:col-span-2 lg:col-span-3">
@@ -126,53 +139,97 @@ function money(n: number) {
   return "$" + (Number.isInteger(v) ? String(v) : v.toFixed(2));
 }
 
+function valorInicial(iniciales: Record<string, string> | undefined, key: string, fallback = "") {
+  const v = iniciales?.[key];
+  return v != null && String(v).trim() !== "" ? String(v) : fallback;
+}
+
 export function AltaContratoForm({
   carros,
   fechaHoy,
   action,
   puedeCobrar = true,
+  iniciales,
+  submitLabel = "Crear cliente y contrato",
+  submittingLabel = "Creando…",
+  avisoSinCobro = "El contrato queda creado. El pago de hoy lo registran Claudia o Marcela.",
+  extras,
 }: {
   carros: CarroLibre[];
   fechaHoy: string;
-  action: (fd: FormData) => Promise<{ ok: boolean; error?: string; msg?: string; clienteId?: string }>;
+  action: (fd: FormData) => Promise<{
+    ok: boolean;
+    error?: string;
+    msg?: string;
+    clienteId?: string;
+    redirectTo?: string;
+  }>;
   puedeCobrar?: boolean;
+  /** Valores previos (solicitud a modificar/aprobar). */
+  iniciales?: Record<string, string>;
+  submitLabel?: string;
+  submittingLabel?: string;
+  /** Texto si no puede cobrar hoy (comercial sin permiso). */
+  avisoSinCobro?: string;
+  /** Campos hidden extra (ej. solicitud_id). */
+  extras?: ReactNode;
 }) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const [cobraDomingo, setCobraDomingo] = useState(true);
-  const [cuotaDomingo, setCuotaDomingo] = useState(String(CUOTA_DOMINGO));
-  const [diasDomingos, setDiasDomingos] = useState(String(DIAS_DOMINGO));
-  const [fechaInicioDomingo, setFechaInicioDomingo] = useState(fechaHoy);
-  const [abonoPactado, setAbonoPactado] = useState("");
-  const [abonoPagado, setAbonoPagado] = useState("");
-  const [abonoCuota, setAbonoCuota] = useState("5");
-  const [abonoFrecuencia, setAbonoFrecuencia] = useState<FrecuenciaAcuerdo>("dia");
-  const [abonoEmpieza, setAbonoEmpieza] = useState("");
-  const [panapassPagado, setPanapassPagado] = useState(String(PANAPASS));
-  const [domingosPagado, setDomingosPagado] = useState(String(DIAS_DOMINGO * CUOTA_DOMINGO));
-  const [prepagoLetras, setPrepagoLetras] = useState("0");
-  const [prepagoDomingos, setPrepagoDomingos] = useState("0");
-  const [extMotivo, setExtMotivo] = useState<"" | MotivoExtension>("");
-  const [extPactado, setExtPactado] = useState("");
-  const [extPagado, setExtPagado] = useState("");
-  const [extFrecuencia, setExtFrecuencia] = useState<FrecuenciaAcuerdo>("dia");
-  const [extCuota, setExtCuota] = useState("5");
-  const [extDomingo, setExtDomingo] = useState("0");
-  const [extEmpieza, setExtEmpieza] = useState("");
-  const [letra, setLetra] = useState("");
-  const [vehiculoId, setVehiculoId] = useState("");
-  const [ficha, setFicha] = useState({
-    placa: "",
-    marca: "",
-    chasis: "",
-    motor: "",
-    tipo: "",
-    modelo: "",
-    anio: "",
-    color: "",
-  });
+  const [cobraDomingo, setCobraDomingo] = useState(
+    () => valorInicial(iniciales, "cobra_domingo", "on") === "on",
+  );
+  const [cuotaDomingo, setCuotaDomingo] = useState(() =>
+    valorInicial(iniciales, "cuota_domingo", String(CUOTA_DOMINGO)),
+  );
+  const [diasDomingos, setDiasDomingos] = useState(() =>
+    valorInicial(iniciales, "dias_domingos", String(DIAS_DOMINGO)),
+  );
+  const [fechaInicioDomingo, setFechaInicioDomingo] = useState(() =>
+    valorInicial(iniciales, "fecha_inicio_domingo", fechaHoy),
+  );
+  const [abonoPactado, setAbonoPactado] = useState(() => valorInicial(iniciales, "abono_inicial"));
+  const [abonoPagado, setAbonoPagado] = useState(() => valorInicial(iniciales, "abono_pagado"));
+  const [abonoCuota, setAbonoCuota] = useState(() => valorInicial(iniciales, "abono_cuota_diaria", "5"));
+  const [abonoFrecuencia, setAbonoFrecuencia] = useState<FrecuenciaAcuerdo>(
+    () => (valorInicial(iniciales, "abono_frecuencia", "dia") as FrecuenciaAcuerdo) || "dia",
+  );
+  const [abonoEmpieza, setAbonoEmpieza] = useState(() => valorInicial(iniciales, "abono_empieza"));
+  const [panapassPagado, setPanapassPagado] = useState(() =>
+    valorInicial(iniciales, "panapass_pagado", String(PANAPASS)),
+  );
+  const [domingosPagado, setDomingosPagado] = useState(() =>
+    valorInicial(iniciales, "domingos_pagado", String(DIAS_DOMINGO * CUOTA_DOMINGO)),
+  );
+  const [prepagoLetras, setPrepagoLetras] = useState(() => valorInicial(iniciales, "prepago_letras", "0"));
+  const [prepagoDomingos, setPrepagoDomingos] = useState(() =>
+    valorInicial(iniciales, "prepago_domingos", "0"),
+  );
+  const [extMotivo, setExtMotivo] = useState<"" | MotivoExtension>(
+    () => (valorInicial(iniciales, "extension_motivo") as MotivoExtension | "") || "",
+  );
+  const [extPactado, setExtPactado] = useState(() => valorInicial(iniciales, "extension_pactado"));
+  const [extPagado, setExtPagado] = useState(() => valorInicial(iniciales, "extension_pagado"));
+  const [extFrecuencia, setExtFrecuencia] = useState<FrecuenciaAcuerdo>(
+    () => (valorInicial(iniciales, "extension_frecuencia", "dia") as FrecuenciaAcuerdo) || "dia",
+  );
+  const [extCuota, setExtCuota] = useState(() => valorInicial(iniciales, "extension_cuota", "5"));
+  const [extDomingo, setExtDomingo] = useState(() => valorInicial(iniciales, "extension_cuota_domingo", "0"));
+  const [extEmpieza, setExtEmpieza] = useState(() => valorInicial(iniciales, "extension_empieza"));
+  const [letra, setLetra] = useState(() => valorInicial(iniciales, "letra_diaria"));
+  const [vehiculoId, setVehiculoId] = useState(() => valorInicial(iniciales, "vehiculo_id"));
+  const [ficha, setFicha] = useState(() => ({
+    placa: valorInicial(iniciales, "carro_placa"),
+    marca: valorInicial(iniciales, "carro_marca"),
+    chasis: valorInicial(iniciales, "carro_chasis"),
+    motor: valorInicial(iniciales, "carro_motor"),
+    tipo: valorInicial(iniciales, "carro_tipo"),
+    modelo: valorInicial(iniciales, "carro_modelo"),
+    anio: valorInicial(iniciales, "carro_anio"),
+    color: valorInicial(iniciales, "carro_color"),
+  }));
 
   function elegirCarro(id: string) {
     setVehiculoId(id);
@@ -237,6 +294,10 @@ export function AltaContratoForm({
         setErr(r.error ?? "No se pudo guardar.");
         return;
       }
+      if (r.redirectTo) {
+        window.location.assign(r.redirectTo);
+        return;
+      }
       const destino = r.clienteId
         ? `/cartera/clientes/${r.clienteId}`
         : `/cartera/clientes?aviso=${encodeURIComponent(r.msg ?? "Cliente y contrato creados.")}`;
@@ -244,44 +305,73 @@ export function AltaContratoForm({
     });
   }
 
+  const ini = (key: string, fallback = "") => valorInicial(iniciales, key, fallback);
+
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-5">
+      {extras}
       {/* Cliente */}
       <section className="grid grid-cols-1 gap-4 rounded-xl bg-surface p-5 ring-1 ring-line sm:grid-cols-2 lg:grid-cols-3">
         <h3 className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted sm:col-span-2 lg:col-span-3">
           Cliente
         </h3>
-        <Field label="Nombre *" name="nombre" required placeholder="María González" />
+        <Field
+          label="Nombre *"
+          name="nombre"
+          required
+          placeholder="María González"
+          defaultValue={ini("nombre")}
+        />
         <Select
           label="Género / tratamiento *"
           name="genero"
           required
           placeholder="Elegí…"
+          defaultValue={ini("genero")}
           options={[
             { value: "m", label: "Masculino — Sr." },
             { value: "f", label: "Femenino — Sra." },
           ]}
         />
-        <Field label="Código conductor" name="codigo" placeholder="1725" />
-        <Field label="Cédula" name="cedula" placeholder="8-888-8888" />
-        <Field label="Teléfono" name="telefono" placeholder="6000-0000" />
-        <Field label="WhatsApp" name="whatsapp" placeholder="+50760000000" />
-        <Field label="Fecha de nacimiento *" name="fecha_nacimiento" required placeholder="dd/mm/aaaa" />
-        <Field label="Nº de licencia *" name="numero_licencia" required placeholder="8-888-8888" />
+        <Field label="Código conductor" name="codigo" placeholder="1725" defaultValue={ini("codigo")} />
+        <Field label="Cédula" name="cedula" placeholder="8-888-8888" defaultValue={ini("cedula")} />
+        <Field label="Teléfono" name="telefono" placeholder="6000-0000" defaultValue={ini("telefono")} />
+        <Field label="WhatsApp" name="whatsapp" placeholder="+50760000000" defaultValue={ini("whatsapp")} />
+        <Field
+          label="Fecha de nacimiento *"
+          name="fecha_nacimiento"
+          required
+          placeholder="dd/mm/aaaa"
+          defaultValue={ini("fecha_nacimiento")}
+        />
+        <Field
+          label="Nº de licencia *"
+          name="numero_licencia"
+          required
+          placeholder="8-888-8888"
+          defaultValue={ini("numero_licencia")}
+        />
         <Field
           label="Categoría de licencia *"
           name="categoria_licencia"
           required
           placeholder="B, E1, F, H…"
+          defaultValue={ini("categoria_licencia")}
         />
         <Field
           label="Vencimiento de licencia *"
           name="fecha_vencimiento_licencia"
           required
           placeholder="dd/mm/aaaa"
+          defaultValue={ini("fecha_vencimiento_licencia")}
         />
         <label className="flex items-center gap-2 text-sm text-muted sm:col-span-2 lg:col-span-3">
-          <input type="checkbox" name="mayor_de_25" className="h-4 w-4" defaultChecked />
+          <input
+            type="checkbox"
+            name="mayor_de_25"
+            className="h-4 w-4"
+            defaultChecked={ini("mayor_de_25", "on") === "on"}
+          />
           Mayor de 25 años
         </label>
       </section>
@@ -291,7 +381,7 @@ export function AltaContratoForm({
         <h3 className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted sm:col-span-2 lg:col-span-3">
           Contrato
         </h3>
-        <DatosDelContrato />
+        <DatosDelContrato iniciales={iniciales} />
         <Select
           label="Carro libre *"
           name="vehiculo_id"
@@ -321,14 +411,14 @@ export function AltaContratoForm({
           name="fecha_inicio"
           type="date"
           required
-          defaultValue={fechaHoy}
+          defaultValue={ini("fecha_inicio", fechaHoy)}
           hint="Entrega / inicio del deal"
         />
         <Select
           label="Sucursal de entrega *"
           name="sucursal"
           required
-          defaultValue="juan_diaz"
+          defaultValue={ini("sucursal", "juan_diaz")}
           options={[
             { value: "juan_diaz", label: "Juan Díaz" },
             { value: "chorrera", label: "La Chorrera" },
@@ -884,7 +974,7 @@ export function AltaContratoForm({
       </>
       ) : (
         <p className="rounded-xl bg-surface px-5 py-4 text-sm text-muted ring-1 ring-line">
-          El contrato queda creado. El pago de hoy lo registran Claudia o Marcela.
+          {avisoSinCobro}
         </p>
       )}
 
@@ -894,7 +984,7 @@ export function AltaContratoForm({
           disabled={pending || carros.length === 0}
           className="rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
         >
-          {pending ? "Creando…" : "Crear cliente y contrato"}
+          {pending ? submittingLabel : submitLabel}
         </button>
         {carros.length === 0 && (
           <p className="text-sm text-ambar">No hay carros libres (todos tienen contrato activo).</p>
