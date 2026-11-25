@@ -191,7 +191,12 @@ export function AltaContratoForm({
     valorInicial(iniciales, "fecha_inicio_domingo", fechaHoy),
   );
   const [abonoPactado, setAbonoPactado] = useState(() => valorInicial(iniciales, "abono_inicial"));
+  /** Solo cobro real (cartera / Claudia / Marcela). No lo usa comercial sin permiso. */
   const [abonoPagado, setAbonoPagado] = useState(() => valorInicial(iniciales, "abono_pagado"));
+  /** Propuesta comercial: cuánto paga al firmar. No crea pago ni cargo. */
+  const [abonoEnEntrega, setAbonoEnEntrega] = useState(() =>
+    valorInicial(iniciales, "abono_en_entrega", valorInicial(iniciales, "abono_inicial")),
+  );
   const [abonoCuota, setAbonoCuota] = useState(() => valorInicial(iniciales, "abono_cuota_diaria", "5"));
   const [abonoFrecuencia, setAbonoFrecuencia] = useState<FrecuenciaAcuerdo>(
     () => (valorInicial(iniciales, "abono_frecuencia", "dia") as FrecuenciaAcuerdo) || "dia",
@@ -212,6 +217,9 @@ export function AltaContratoForm({
   );
   const [extPactado, setExtPactado] = useState(() => valorInicial(iniciales, "extension_pactado"));
   const [extPagado, setExtPagado] = useState(() => valorInicial(iniciales, "extension_pagado"));
+  const [extEnEntrega, setExtEnEntrega] = useState(() =>
+    valorInicial(iniciales, "extension_en_entrega", valorInicial(iniciales, "extension_pactado")),
+  );
   const [extFrecuencia, setExtFrecuencia] = useState<FrecuenciaAcuerdo>(
     () => (valorInicial(iniciales, "extension_frecuencia", "dia") as FrecuenciaAcuerdo) || "dia",
   );
@@ -252,11 +260,16 @@ export function AltaContratoForm({
 
   const abonoP = Math.max(Number(String(abonoPactado).replace(",", ".")) || 0, 0);
   const abonoPay = Math.max(Number(String(abonoPagado).replace(",", ".")) || 0, 0);
-  const restante = Math.max(Math.round((abonoP - abonoPay) * 100) / 100, 0);
+  const abonoEntregaN = Math.max(Number(String(abonoEnEntrega).replace(",", ".")) || 0, 0);
+  /** Cobro real usa pagado hoy. Comercial usa en entrega solo para armar el plan. */
+  const abonoCubiertoUi = puedeCobrar ? abonoPay : abonoEntregaN;
+  const restante = Math.max(Math.round((abonoP - abonoCubiertoUi) * 100) / 100, 0);
   const abonoSoloDomingo = restante > 0.009 && abonoFrecuencia === "domingo";
   const extP = Math.max(Number(String(extPactado).replace(",", ".")) || 0, 0);
   const extPay = Math.max(Number(String(extPagado).replace(",", ".")) || 0, 0);
-  const extRestante = Math.max(Math.round((extP - extPay) * 100) / 100, 0);
+  const extEntregaN = Math.max(Number(String(extEnEntrega).replace(",", ".")) || 0, 0);
+  const extCubiertoUi = puedeCobrar ? extPay : extEntregaN;
+  const extRestante = Math.max(Math.round((extP - extCubiertoUi) * 100) / 100, 0);
   const panPay = Math.max(Number(String(panapassPagado).replace(",", ".")) || 0, 0);
   const domPay = abonoSoloDomingo
     ? 0
@@ -534,27 +547,58 @@ export function AltaContratoForm({
             value={abonoPactado}
             onChange={(e) => {
               setAbonoPactado(e.target.value);
-              if (puedeCobrar && !abonoPagado) setAbonoPagado(e.target.value);
+              if (puedeCobrar) {
+                if (!abonoPagado) setAbonoPagado(e.target.value);
+              } else if (!abonoEnEntrega) {
+                setAbonoEnEntrega(e.target.value);
+              }
             }}
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
           />
         </label>
-        {puedeCobrar && (
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-            Abono pagado hoy
-          </span>
-          <input
-            name="abono_pagado"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="150"
-            value={abonoPagado}
-            onChange={(e) => setAbonoPagado(e.target.value)}
-            className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
-          />
-        </label>
+        {puedeCobrar ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              Abono pagado hoy
+            </span>
+            <input
+              name="abono_pagado"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="150"
+              value={abonoPagado}
+              onChange={(e) => setAbonoPagado(e.target.value)}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
+            />
+            {abonoEntregaN > 0.009 && (
+              <>
+                <input type="hidden" name="abono_en_entrega" value={abonoEnEntrega} />
+                <span className="text-xs text-muted">
+                  Comercial indicó {money(abonoEntregaN)} en la entrega.
+                </span>
+              </>
+            )}
+          </label>
+        ) : (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              Abono en entrega
+            </span>
+            <input
+              name="abono_en_entrega"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="150"
+              value={abonoEnEntrega}
+              onChange={(e) => setAbonoEnEntrega(e.target.value)}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
+            />
+            <span className="text-xs text-muted">
+              Lo que paga al firmar. Si cubre el pactado, no hace falta financiar. No registra cobro.
+            </span>
+          </label>
         )}
         {restante > 0.009 && (
           <>
@@ -660,7 +704,11 @@ export function AltaContratoForm({
           </>
         )}
         {restante <= 0.009 && abonoP > 0 && (
-          <p className="text-sm text-verde sm:col-span-2">Abono cubierto completo hoy.</p>
+          <p className="text-sm text-verde sm:col-span-2">
+            {puedeCobrar
+              ? "Abono cubierto completo hoy."
+              : "Abono cubierto en la entrega. Sin financiamiento."}
+          </p>
         )}
       </section>
 
@@ -694,33 +742,60 @@ export function AltaContratoForm({
             value={extPactado}
             onChange={(e) => {
               setExtPactado(e.target.value);
-              if (puedeCobrar && !extPagado) setExtPagado(e.target.value);
+              if (puedeCobrar) {
+                if (!extPagado) setExtPagado(e.target.value);
+              } else if (!extEnEntrega) {
+                setExtEnEntrega(e.target.value);
+              }
             }}
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
           />
         </label>
-        {puedeCobrar && (
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
-            Pagado hoy
-          </span>
-          <input
-            name="extension_pagado"
-            type="number"
-            step="0.01"
-            min="0"
-            placeholder="150"
-            value={extPagado}
-            onChange={(e) => setExtPagado(e.target.value)}
-            className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
-          />
-        </label>
+        {puedeCobrar ? (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              Pagado hoy
+            </span>
+            <input
+              name="extension_pagado"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="150"
+              value={extPagado}
+              onChange={(e) => setExtPagado(e.target.value)}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
+            />
+            {extEntregaN > 0.009 && (
+              <input type="hidden" name="extension_en_entrega" value={extEnEntrega} />
+            )}
+          </label>
+        ) : (
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+              En entrega
+            </span>
+            <input
+              name="extension_en_entrega"
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="150"
+              value={extEnEntrega}
+              onChange={(e) => setExtEnEntrega(e.target.value)}
+              className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
+            />
+          </label>
         )}
-        {extPay - extP > 0.009 && (
-          <p className="text-sm text-rojo sm:col-span-2 lg:col-span-3">Lo pagado no puede pasar de lo pactado.</p>
+        {(puedeCobrar ? extPay : extEntregaN) - extP > 0.009 && (
+          <p className="text-sm text-rojo sm:col-span-2 lg:col-span-3">
+            {puedeCobrar ? "Lo pagado" : "Lo de la entrega"} no puede pasar de lo pactado.
+          </p>
         )}
-        {extRestante <= 0.009 && extP > 0 && extPay - extP <= 0.009 && (
-          <p className="text-sm text-verde sm:col-span-2 lg:col-span-3">Extensión cubierta completa hoy.</p>
+        {extRestante <= 0.009 && extP > 0 && (puedeCobrar ? extPay : extEntregaN) - extP <= 0.009 && (
+          <p className="text-sm text-verde sm:col-span-2 lg:col-span-3">
+            {puedeCobrar ? "Extensión cubierta completa hoy." : "Extensión cubierta en la entrega."}
+          </p>
         )}
         {extRestante > 0.009 && (
         <>

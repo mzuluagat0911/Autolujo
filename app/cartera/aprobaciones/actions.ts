@@ -31,6 +31,24 @@ export async function crearSolicitudContrato(formData: FormData): Promise<Result
   const armado = await armarAltaSolicitud({ formData, solicitanteId: sesion.id });
   if (!armado.ok) return { ok: false, error: armado.error };
 
+  // Sin permiso de cobro: la propuesta de entrega no es pago. No dejes montos
+  // "pagados" en el payload o al aprobar se inventa el cobro.
+  const nombre = (sesion.nombre ?? "").toLowerCase();
+  const puedeCobrar =
+    sesion.modulos.includes("cartera")
+    || nombre.includes("claudia")
+    || nombre.includes("marcela");
+  if (!puedeCobrar) {
+    const payload = armado.fila.payload as Record<string, string>;
+    // Solo deal: abono_en_entrega / extension_en_entrega. Sin montos "pagados".
+    delete payload.abono_pagado;
+    delete payload.extension_pagado;
+    delete payload.panapass_pagado;
+    delete payload.domingos_pagado;
+    delete payload.prepago_letras;
+    delete payload.prepago_domingos;
+  }
+
   const sb = createServerSupabase();
   const { data, error } = await sb
     .from("solicitudes_contrato")
