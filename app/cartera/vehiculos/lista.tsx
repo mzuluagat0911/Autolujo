@@ -14,6 +14,7 @@ import {
   rellenarKmDelMes,
   descuentosLetraDelCarro,
   guardarDescuentoLetra,
+  quitarDescuentoLetraAction,
 } from "./actions";
 
 export type FilaVehiculo = {
@@ -719,6 +720,27 @@ function PanelEditarCarro({
       onSaved(r.msg);
     });
   }
+
+  function quitarDescuento(descuentoId: string) {
+    setDescErr(null);
+    if (!carro.contratoId) {
+      setDescErr("Este carro no tiene un contrato activo.");
+      return;
+    }
+    startDesc(async () => {
+      const r = await quitarDescuentoLetraAction({
+        vehiculoId: carro.id,
+        contratoId: carro.contratoId!,
+        descuentoId,
+      });
+      if (!r.ok) {
+        setDescErr(r.msg);
+        return;
+      }
+      setDescuentos(await descuentosLetraDelCarro(carro.id));
+      onSaved(r.msg);
+    });
+  }
   const titulo = `${carro.empresa ? `${siglaEmpresa(carro.empresa)} · ` : ""}${carro.numero}`;
 
   function guardar(e: FormEvent) {
@@ -1083,13 +1105,23 @@ function PanelEditarCarro({
               {descuentos.length > 0 && (
                 <ul className="space-y-2">
                   {descuentos.map((d) => (
-                    <li key={d.id} className="text-sm text-ink">
-                      <span className="tabular-nums">{fechaCorta(d.fecha)}</span>
-                      <span className="text-muted"> · </span>
-                      <span className="tabular-nums font-medium">
-                        {Number.isInteger(d.monto) ? money(d.monto) : `$${d.monto.toFixed(2)}`}
+                    <li key={d.id} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink">
+                      <span>
+                        <span className="tabular-nums">{fechaCorta(d.fecha)}</span>
+                        <span className="text-muted"> · </span>
+                        <span className="tabular-nums font-medium">
+                          {Number.isInteger(d.monto) ? money(d.monto) : `$${d.monto.toFixed(2)}`}
+                        </span>
+                        {d.motivo ? <span className="text-muted"> · {d.motivo}</span> : null}
                       </span>
-                      {d.motivo ? <span className="text-muted"> · {d.motivo}</span> : null}
+                      <button
+                        type="button"
+                        disabled={descPending}
+                        onClick={() => quitarDescuento(d.id)}
+                        className="text-xs font-medium text-muted underline-offset-2 hover:text-ink hover:underline disabled:opacity-50"
+                      >
+                        Quitar
+                      </button>
                     </li>
                   ))}
                 </ul>

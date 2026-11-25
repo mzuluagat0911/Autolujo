@@ -173,3 +173,75 @@ export async function aplicarDescuentoLetra(input: {
       : `Letra del ${cuando}: $0. Ese día no se cobra letra (${motivo}).`,
   };
 }
+
+/** Quita el descuento de ese día y, si hay letra cargada, la deja otra vez en la cuota plena. */
+export async function quitarDescuentoLetra(input: {
+  vehiculoId: string;
+  contratoId: string;
+  descuentoId: string;
+}): Promise<{ ok: true; msg: string } | { ok: false; msg: string }> {
+  const vehiculoId = String(input.vehiculoId ?? "").trim();
+  const contratoId = String(input.contratoId ?? "").trim();
+  const descuentoId = String(input.descuentoId ?? "").trim();
+  if (!vehiculoId || !contratoId || !descuentoId) {
+    return { ok: false, msg: "Faltan datos para quitar el descuento." };
+  }
+
+  const sb = createServerSupabase();
+  const { data: ev, error: eErr } = await sb
+    .from("vehiculo_eventos")
+    .select("id, fecha, valor, vehiculo_id")
+    .eq("id", descuentoId)
+    .eq("titulo", TITULO)
+    .maybeSingle();
+  if (eErr) return { ok: false, msg: eErr.message };
+  if (!ev) return { ok: false, msg: "No encontré ese descuento." };
+  const row = ev as { id: string; fecha: string; valor: number | null; vehiculo_id: string };
+  if (row.vehiculo_id !== vehiculoId) return { ok: false, msg: "Ese descuento no es de este carro." };
+  const fecha = String(row.fecha).slice(0, 10);
+
+  const { data: contrato, error: cErr } = await sb
+    .from("contratos")
+    .select("id, vehiculo_id, estado, letra_diaria, descuento_puntual, cobra_domingo, cuota_domingo")
+    .eq("id", contratoId)
+    .maybeSingle();
+  if (cErr || !contrato) return { ok: false, msg: "No encontré el contrato de este carro." };
+  const c = contrato as {
+    id: string;
+    vehiculo_id: string;
+    estado: string;
+    letra_diaria: number;
+    descuento_puntual: number | null;
+    cobra_domingo: boolean | null;
+    cuota_domingo: number | null;
+  };
+  if (c.vehiculo_id !== vehiculoId) return { ok: false, msg: "Ese contrato no es de este carro." };
+
+  const { error: delErr } = await sb.from("vehiculo_eventos").delete().eq("id", descuentoId);
+  if (delErr) return { ok: false, msg: delErr.message };
+
+  const letra = cuotaDeFecha(c, fecha);
+  const { data: cargos } = await sb
+    .from("cargos")
+    .select("id, concepto, monto")
+    .eq("contrato_id", contratoId)
+    .eq("fecha", fecha)
+    .eq("tipo", "renta")
+    .limit(1);
+  const cargo = ((cargos ?? [])[0] as { id: string; concepto: string | null; monto: number } | undefined) ?? null;
+  if (cargo && letra > 0.009) {
+    const { error } = await sb
+      .from("cargos")
+      .update({ monto: letra, concepto: "Cuota diaria" })
+      .eq("id", cargo.id);
+    if (error) return { ok: false, msg: error.message };
+  }
+
+  const cuando = fecha.split("-").reverse().join("/");
+  return {
+    ok: true,
+    msg: letra > 0.009
+      ? `Descuento del ${cuando} quitado. Letra otra vez ${money(letra)}.`
+      : `Descuento del ${cuando} quitado.`,
+  };
+}

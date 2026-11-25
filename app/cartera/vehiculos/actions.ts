@@ -643,3 +643,19 @@ export async function guardarDescuentoLetra(input: {
   }
   return r;
 }
+
+/** Quita un descuento de letra diaria y deja la cuota de ese día en valor pleno. */
+export async function quitarDescuentoLetraAction(input: {
+  vehiculoId: string;
+  contratoId: string;
+  descuentoId: string;
+}) {
+  const { quitarDescuentoLetra } = await import("@/lib/cartera/descuento-letra");
+  const r = await quitarDescuentoLetra(input);
+  if (r.ok) {
+    revalidatePath("/cartera/vehiculos");
+    revalidatePath("/cartera/estados-cuenta");
+    await invalidarLecturaEstados(input.contratoId);
+  }
+  return r;
+}
