@@ -724,6 +724,23 @@ export async function createClienteConContrato(
         .eq("tipo", "afiliacion")
         .is("pago_id", null);
     }
+    // Mismo criterio que el abono: el cargo del alta se reclama, no se crea espejo después.
+    if (pagoId && panapassPagado > 0.009) {
+      await sb
+        .from("cargos")
+        .update({ pago_id: pagoId })
+        .eq("contrato_id", contratoId)
+        .eq("tipo", "panapass")
+        .is("pago_id", null);
+    }
+    if (pagoId && domingosPagado > 0.009) {
+      await sb
+        .from("cargos")
+        .update({ pago_id: pagoId })
+        .eq("contrato_id", contratoId)
+        .eq("concepto_codigo", "DOMINGOS")
+        .is("pago_id", null);
+    }
   }
 
   void acuerdoId; // creado; el extracto lo toma de acuerdos activos

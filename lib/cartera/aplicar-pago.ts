@@ -52,7 +52,7 @@ import {
   upsertSalidaAutorizada,
 } from "./salidas-aplicar";
 import { destinoLibre, destinoPorNombre, partirMontoInterior, type DestinoInterior } from "./salidas-interior";
-import { CARGO_DE_CONCEPTO, cubetaDeConcepto } from "./rubros-pago";
+import { CARGO_DE_CONCEPTO, cubetaDeConcepto, decidirCargoDeConcepto } from "./rubros-pago";
 import { quitarCierreSiLaLetraQuedoCubierta } from "./cierre-semana";
 import { asegurarLetraAdelantada } from "./devengo";
 
@@ -650,9 +650,11 @@ export async function asegurarCargoRecargoDelPago(opts: {
 }
 
 /**
- * Domingo, mantenimiento y el resto de conceptos viven fuera de la letra.
- * Si el equipo asigna plata a uno y no hay cargo pendiente que la cubra,
- * se carga la diferencia. Si el cargo ya estaba, no se duplica.
+ * Domingo, mantenimiento, panapass y el resto viven fuera de la letra.
+ * Si el equipo asigna plata a uno:
+ * 1) Si ya hay cargo suelto del alta (sin pago_id), se RECLAMA (no se duplica).
+ * 2) Si no hay, se inserta solo la diferencia.
+ * Panapass del alta + espejo del pago = se vuelve a cobrar (AL 328).
  */
 export async function asegurarCargosConceptoDelPago(opts: {
   contratoId: string;
@@ -717,13 +719,37 @@ export async function asegurarCargosConceptoDelPago(opts: {
     const monto = pedidos.get(cubeta) ?? 0;
     const deCubeta = filas.filter((c) => cubetaDeCargoFila(c) === cubeta);
     const propios = deCubeta.filter((c) => c.pago_id === opts.pagoId);
-    const ajenos = r2(
-      deCubeta
-        .filter((c) => c.pago_id !== opts.pagoId)
-        .reduce((s, c) => s + (Number(c.monto) || 0), 0),
-    );
-    const libre = r2(Math.max(ajenos - (abonoAjeno.get(cubeta) ?? 0), 0));
-    const falta = r2(Math.max(monto - libre, 0));
+    const abiertos = deCubeta.filter((c) => !c.pago_id);
+    const deOtrosPagos = deCubeta.filter((c) => c.pago_id && c.pago_id !== opts.pagoId);
+    const sumaAbiertos = r2(abiertos.reduce((s, c) => s + (Number(c.monto) || 0), 0));
+    const sumaOtros = r2(deOtrosPagos.reduce((s, c) => s + (Number(c.monto) || 0), 0));
+    const decision = decidirCargoDeConcepto({
+      asignado: monto,
+      abiertos: sumaAbiertos,
+      deOtrosPagos: sumaOtros,
+      pagadoPorOtros: abonoAjeno.get(cubeta) ?? 0,
+    });
+
+    // Espejos viejos de este pago sobran si el alta ya cubre.
+    if (decision.reclamarAbiertos || decision.faltaInsertar <= 0.009) {
+      if (propios.length > 0) {
+        await sb.from("cargos").delete().in("id", propios.map((c) => c.id));
+      }
+    }
+
+    if (decision.reclamarAbiertos) {
+      let resto = monto;
+      for (const c of abiertos) {
+        if (resto <= 0.009) break;
+        await sb.from("cargos").update({ pago_id: opts.pagoId }).eq("id", c.id).is("pago_id", null);
+        // Refleja en memoria por si la cubeta se repite (no debería).
+        c.pago_id = opts.pagoId;
+        resto = r2(resto - (Number(c.monto) || 0));
+      }
+      continue;
+    }
+
+    const falta = decision.faltaInsertar;
     const sumaPropia = r2(propios.reduce((s, c) => s + (Number(c.monto) || 0), 0));
     if (Math.abs(sumaPropia - falta) < 0.05 && (falta > 0.009) === (propios.length > 0)) continue;
     if (propios.length > 0) {
@@ -747,6 +773,65 @@ export async function asegurarCargosConceptoDelPago(opts: {
       if (retry.error) console.error("[aplicar-pago] cargo concepto:", retry.error.message);
     } else if (error) {
       console.error("[aplicar-pago] cargo concepto:", error.message);
+    }
+  }
+}
+
+/** Al revertir un pago: suelta cargos del alta y borra espejos de concepto. */
+export async function liberarCargosConceptoDelPago(pagoId: string): Promise<void> {
+  if (!pagoId) return;
+  const sb = createServerSupabase();
+  const { data } = await sb
+    .from("cargos")
+    .select("id, contrato_id, monto, tipo, concepto, concepto_codigo, pago_id")
+    .eq("pago_id", pagoId);
+  const propios = (data ?? []) as {
+    id: string;
+    contrato_id: string;
+    monto: number;
+    tipo: string;
+    concepto: string | null;
+    concepto_codigo: string | null;
+    pago_id: string | null;
+  }[];
+  if (propios.length === 0) return;
+
+  const porContrato = new Map<string, typeof propios>();
+  for (const c of propios) {
+    if (c.tipo === "acuerdo" || c.tipo === "renta" || c.tipo === "cuenta_diaria") continue;
+    const cubeta = cubetaDeCargoFila(c);
+    if (!cubeta || cubeta === "por no pagar" || cubeta === "abono inicial") continue;
+    const lista = porContrato.get(c.contrato_id) ?? [];
+    lista.push(c);
+    porContrato.set(c.contrato_id, lista);
+  }
+
+  for (const [contratoId, lista] of porContrato) {
+    const { data: hermanos } = await sb
+      .from("cargos")
+      .select("id, monto, tipo, concepto, concepto_codigo, pago_id")
+      .eq("contrato_id", contratoId);
+    const todos = (hermanos ?? []) as {
+      id: string;
+      monto: number;
+      tipo: string;
+      concepto: string | null;
+      concepto_codigo: string | null;
+      pago_id: string | null;
+    }[];
+    for (const c of lista) {
+      const cubeta = cubetaDeCargoFila(c);
+      if (!cubeta) continue;
+      const hayOtroAbierto = todos.some(
+        (h) => h.id !== c.id && !h.pago_id && cubetaDeCargoFila(h) === cubeta,
+      );
+      if (hayOtroAbierto) {
+        // Era espejo: el alta sigue suelto.
+        await sb.from("cargos").delete().eq("id", c.id);
+      } else {
+        // Era el del alta reclamado: se suelta.
+        await sb.from("cargos").update({ pago_id: null }).eq("id", c.id);
+      }
     }
   }
 }
@@ -1448,6 +1533,7 @@ export async function revertirPagoEnObligaciones(pagoId: string): Promise<void> 
     sb.from("pagos").update({ asignaciones: null, rubro: null, destino_interior: null }).eq("id", pagoId),
     borrarCargoSalidaDelPago(pagoId),
     borrarCargosAcuerdoDelPago(pagoId),
+    liberarCargosConceptoDelPago(pagoId),
   ]);
   if (contratoId) {
     const { sincronizarSaldoExClientePorContrato } = await import("./ex-clientes-archivo");

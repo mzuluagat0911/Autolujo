@@ -216,7 +216,7 @@ function EditorAsignaciones({
           Reasignar conceptos
         </p>
         <p className="mt-1 text-xs text-muted">
-          Letra, acuerdo y recargo, y también domingo, mantenimiento, panapass, cierre, exceso de km, cobro presencial, ajuste, piratería, seguro menor de edad, área geográfica y beneficiario adicional. Si asignás una parte a uno de esos y no había cargo, se carga ese monto para que no baje la letra. La suma + sobrante debe igualar {money(pago.monto)}.
+          Letra, acuerdo y recargo, y también domingo, mantenimiento, panapass, cierre, exceso de km, cobro presencial, ajuste, piratería, seguro menor de edad, área geográfica y beneficiario adicional. Si ya hay cargo del alta (panapass, domingo, etc.), se usa ese: no se duplica. Solo si faltaba cargo se carga la diferencia para que no baje la letra. La suma + sobrante debe igualar {money(pago.monto)}.
         </p>
       </div>
 

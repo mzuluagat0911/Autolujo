@@ -104,6 +104,29 @@ export const CARGO_DE_CONCEPTO: Record<
   beneficiario: { tipo: "otras", codigo: "BENEFICIARIO", concepto: "Beneficiario adicional" },
 };
 
+/**
+ * Si el alta (u otro cargo suelto) ya cubre lo asignado, se reclama ese cargo.
+ * No se inserta espejo: panapass/domingo duplicados vuelven a cobrarse.
+ */
+export function decidirCargoDeConcepto(opts: {
+  asignado: number;
+  abiertos: number;
+  deOtrosPagos: number;
+  pagadoPorOtros: number;
+}): { reclamarAbiertos: boolean; faltaInsertar: number } {
+  const asignado = Math.round(Math.max(opts.asignado, 0) * 100) / 100;
+  if (asignado <= 0.009) return { reclamarAbiertos: false, faltaInsertar: 0 };
+  const abiertos = Math.round(Math.max(opts.abiertos, 0) * 100) / 100;
+  if (abiertos + 0.009 >= asignado) {
+    return { reclamarAbiertos: true, faltaInsertar: 0 };
+  }
+  const deOtros = Math.round(Math.max(opts.deOtrosPagos, 0) * 100) / 100;
+  const pagadoOtros = Math.round(Math.max(opts.pagadoPorOtros, 0) * 100) / 100;
+  const libre = Math.round(Math.max(abiertos + deOtros - pagadoOtros, 0) * 100) / 100;
+  const falta = Math.round(Math.max(asignado - libre, 0) * 100) / 100;
+  return { reclamarAbiertos: false, faltaInsertar: falta };
+}
+
 export function cubetaDeConcepto(tipo: string, etiqueta?: string | null): string | null {
   const t = (tipo ?? "").toLowerCase();
   // Alta de contrato: mismos baldes que el extracto.
