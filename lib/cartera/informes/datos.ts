@@ -12,11 +12,12 @@ import {
 import {
   empresaInforme,
   fechaInformeCartera,
+  letraCubiertaEnExtracto,
   partirPago,
   tramosDeEventos,
   type PagoInforme,
 } from "../informe-mes";
-import { estadosCuentaPanel } from "../estado-cuenta-cache";
+import { estadosCuentaPanelVivo } from "../estado-cuenta-cache";
 import { metaCobranzaDeMes } from "../metas-cobranza";
 import { fueraDeFlota } from "../pausa-productiva";
 import { etiquetaSucursal } from "../sucursal";
@@ -578,15 +579,36 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     }
   }
 
-  const pagosHoy = new Set(
-    pagos.filter((p) => p.pago.fecha === hasta && p.contratoEstado === "activo").map((p) => p.pago.contratoId),
-  );
+  /** Abono a letra en el día contable (no basta mantenimiento/acuerdo). */
+  const pagoLetraCorte = new Set<string>();
+  for (const p of pagos) {
+    if (p.pago.fecha !== hasta || p.contratoEstado !== "activo") continue;
+    if (partirPago(p.pago).pagos.Cuota > 0.009) pagoLetraCorte.add(p.pago.contratoId);
+  }
+
+  /** Extracto de hoy: letra cubierta / monto por cobrar. Una sola lectura para NO PAGOS y NOCHE. */
+  const letraPorCobrarHoy = new Map<string, number>();
+  if (hasta === hoyPanama()) {
+    const panel = await estadosCuentaPanelVivo();
+    for (const e of panel) {
+      if (letraCubiertaEnExtracto(e)) {
+        letraPorCobrarHoy.set(e.contratoId, 0);
+        continue;
+      }
+      const deLinea = (e.lineasCobro ?? [])
+        .filter((l) => !l.aviso && l.etiqueta === "cuenta")
+        .reduce((s, l) => s + (Number(l.monto) || 0), 0);
+      const cuenta = deLinea > 0.009 ? deLinea : Math.max(Number(e.cuenta) || 0, 0);
+      letraPorCobrarHoy.set(e.contratoId, cuenta);
+    }
+  }
 
   const noPagos: FilaNoPago[] = [];
   for (const c of activos) {
     const veh = uno(c.vehiculo);
     if (!veh || veh.estado !== "activo") continue;
-    if (pagosHoy.has(c.id)) continue;
+    if (pagoLetraCorte.has(c.id)) continue;
+    if (letraPorCobrarHoy.has(c.id) && letraPorCobrarHoy.get(c.id)! <= 0.009) continue;
     const saldo = saldoMap.get(c.id) ?? 0;
     const acuerdos = acuerdoMap.get(c.id) ?? 0;
     const otras = multaMap.get(c.id) ?? 0;
@@ -636,11 +658,9 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   const meta100 = metaRow?.meta100 ?? null;
 
   // —— Informe noche (corte = hasta) ——
-  // Día contable = desde las 12:00 del día hasta las 11:59 del siguiente (fechaInformeCartera).
-  // AL DÍA = abonó algo a letra (hoy o atraso) en ese día, O la letra ya estaba cubierta
-  //   (adelantado / sin cuenta por cobrar). Pagar solo mantenimiento o acuerdo NO cuenta.
-  // NO PAGO = debía letra y no entró nada atribuible a cuota/letra en ese día.
-  // Misma lógica de detalle que el informe diario (detalleInforme).
+  // Misma regla que el informe diario (detalleInforme + extracto de hoy):
+  // AL DÍA = abonó a letra ese día, o el extracto ya la tenía cubierta/adelantada.
+  // NO PAGO = debía letra y no entró nada a cuota. Solo mantenimiento/acuerdo = NO PAGO.
   const nocheEmp: ("AL" | "KW" | "GOLD")[] = ["AL", "KW", "GOLD"];
   const noPagoN: Record<string, BloqueNoche> = Object.fromEntries(
     nocheEmp.map((e) => [e, { empresa: e, cantidad: 0, valor: 0 }]),
@@ -654,29 +674,6 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
   const recaudoN: Record<string, BloqueNoche> = Object.fromEntries(
     nocheEmp.map((e) => [e, { empresa: e, cantidad: 0, valor: 0 }]),
   );
-
-  /** Contratos con abono a letra (Cuota) en el día contable `hasta`. */
-  const pagoLetraHoy = new Set<string>();
-  for (const p of pagos) {
-    if (p.pago.fecha !== hasta || p.contratoEstado !== "activo") continue;
-    if (partirPago(p.pago).pagos.Cuota > 0.009) pagoLetraHoy.add(p.pago.contratoId);
-  }
-
-  /** Cuánto de letra sigue por cobrar hoy (línea "cuenta" del extracto). */
-  const letraPorCobrar = new Map<string, number>();
-  if (hasta === hoyPanama()) {
-    const panel = await estadosCuentaPanel();
-    for (const e of panel) {
-      const deLinea = (e.lineasCobro ?? [])
-        .filter((l) => !l.aviso && l.etiqueta === "cuenta")
-        .reduce((s, l) => s + (Number(l.monto) || 0), 0);
-      const cuenta =
-        deLinea > 0.009 ? deLinea : Math.max(Number(e.cuenta) || 0, 0);
-      // Adelantado: la letra del día ya está cubierta aunque el extracto traiga otras cosas.
-      const cubierta = (Number(e.diasAdelantados) || 0) >= 1 || cuenta <= 0.009;
-      letraPorCobrar.set(e.contratoId, cubierta ? 0 : cuenta);
-    }
-  }
 
   for (const v of flotaVehs) {
     const emp = empresaCorta(uno(v.empresa)?.codigo ?? null);
@@ -692,16 +689,16 @@ export async function cargarDatosInformes(desde: string, hasta: string): Promise
     }
     if (v.estado !== "activo") continue;
 
-    const abonoLetra = pagoLetraHoy.has(activo.id);
+    const abonoLetra = pagoLetraCorte.has(activo.id);
     let debeLetra: number;
-    if (letraPorCobrar.has(activo.id)) {
-      debeLetra = letraPorCobrar.get(activo.id)!;
+    if (letraPorCobrarHoy.has(activo.id)) {
+      debeLetra = letraPorCobrarHoy.get(activo.id)!;
     } else {
       // Fecha pasada sin panel: libro de letra (saldo − acuerdos).
       debeLetra = Math.max((saldoMap.get(activo.id) ?? 0) - (acuerdoMap.get(activo.id) ?? 0), 0);
     }
 
-    // Misma regla que detalleInforme: sin abono a letra, AL DÍA solo si no debe letra.
+    // Misma regla que el diario alineado al extracto.
     if (abonoLetra || debeLetra <= 0.009) {
       alDiaN[emp].cantidad += 1;
       alDiaN[emp].valor = r2(alDiaN[emp].valor + letra);

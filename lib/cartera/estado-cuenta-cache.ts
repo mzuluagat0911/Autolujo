@@ -60,9 +60,19 @@ const flotaDelDia = unstable_cache(
   { revalidate: HORAS, tags: [TAG_DIA] },
 );
 
+/** Extracto del día sin caché (informes / scripts). */
+export async function estadosCuentaPanelVivo(): Promise<EstadoCuentaFila[]> {
+  return conLectura(async () => ordenar(await enriquecer(await armarEstadosAlcance())));
+}
+
 /** Extracto del día. Una lectura; si se vació, se arma una vez. */
 export async function estadosCuentaPanel(): Promise<EstadoCuentaFila[]> {
-  return flotaDelDia(hoyPanama());
+  try {
+    return await flotaDelDia(hoyPanama());
+  } catch {
+    // Fuera de Next (scripts) o sin incrementalCache: misma flota en vivo.
+    return estadosCuentaPanelVivo();
+  }
 }
 
 /** Alta, pago, cargo, alcance o devengo: la siguiente visita rearma la flota. */

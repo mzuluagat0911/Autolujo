@@ -1,10 +1,12 @@
 import { createServerSupabase } from "@/lib/supabase/server";
-import { sumarDias } from "./fecha";
+import { estadosCuentaPanelVivo } from "./estado-cuenta-cache";
+import { hoyPanama, sumarDias } from "./fecha";
 import { metaCobranzaDeMes } from "./metas-cobranza";
 import {
   empresaInforme,
   fechaInformeCartera,
   filasDelInforme,
+  letraCubiertaEnExtracto,
   metaDelInforme,
   tramosDeEventos,
   type CargoInforme,
@@ -299,11 +301,51 @@ export async function datosInforme(desde: string, hasta: string): Promise<{ fila
     desde,
     hasta,
   );
+  await alinearDetalleHoyConExtracto(filas, desde, hasta);
   const flota = new Set(filas.map((f) => `${f.empresa}|${f.carro}`)).size;
   return {
     filas,
     meta: metaDelInforme(desde, hasta, metaRow?.meta100 ?? null, metaRow?.nota ?? null, flota),
   };
+}
+
+/**
+ * Hoy: AL DÍA / NO PAGO siguen el extracto (adelantado o sin cuenta por cobrar),
+ * no el saldo libro de cuota. Así no marcan NO PAGO a quien ya está al día.
+ */
+async function alinearDetalleHoyConExtracto(
+  filas: FilaInforme[],
+  desde: string,
+  hasta: string,
+): Promise<void> {
+  const hoy = hoyPanama();
+  if (hoy < desde || hoy > hasta) return;
+  if (!filas.some((f) => f.fecha === hoy)) return;
+
+  const panel = await estadosCuentaPanelVivo();
+
+  const cubierta = new Map<string, boolean>();
+  for (const e of panel) {
+    const emp = empresaInforme(e.empresa);
+    const carro = String(e.vehiculoNumero ?? "").trim();
+    if (!emp || !carro) continue;
+    cubierta.set(`${emp}|${carro}`, letraCubiertaEnExtracto(e));
+  }
+
+  for (const f of filas) {
+    if (f.fecha !== hoy) continue;
+    if (f.detalle && f.detalle !== "NO PAGO" && f.detalle !== "AL DIA") continue;
+    const key = `${f.empresa}|${f.carro.trim()}`;
+    if (!cubierta.has(key)) continue;
+    const pagoLetra = f.pagos.Cuota > 0.009;
+    if (pagoLetra) {
+      f.detalle = "";
+      continue;
+    }
+    if (f.letra > 0.009) {
+      f.detalle = cubierta.get(key) ? "AL DIA" : "NO PAGO";
+    }
+  }
 }
 
 export async function archivoInforme(desde: string, hasta: string): Promise<Buffer> {

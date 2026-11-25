@@ -1,11 +1,18 @@
 import Link from "next/link";
 import { Kpi, PageHeader, PageShell, StatusChip } from "@/components/kit";
-import { resumenComercial } from "@/lib/comercial/resultados";
+import { resolverRangoResultados, resumenComercial } from "@/lib/comercial/resultados";
+import { FiltroResultados } from "./filtro";
 
 export const dynamic = "force-dynamic";
 
-export default async function ResultadosComercialPage() {
-  const r = await resumenComercial();
+export default async function ResultadosComercialPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ periodo?: string; desde?: string; hasta?: string }>;
+}) {
+  const sp = await searchParams;
+  const rango = resolverRangoResultados(sp);
+  const r = await resumenComercial(rango);
   const abiertos = r.calientes + r.tibios + r.frios;
   const embudo = [
     { label: "Leads", value: r.leads, base: null as number | null },
@@ -29,13 +36,23 @@ export default async function ResultadosComercialPage() {
           </Link>
         }
       />
+
+      <FiltroResultados
+        periodo={rango.periodo}
+        desde={rango.desde}
+        hasta={rango.hasta}
+        etiqueta={rango.etiqueta}
+      />
+
       {r.error && <p className="mt-4 text-sm text-rojo">{r.error}</p>}
 
       <section className="mt-8 rounded-xl bg-surface p-5 ring-1 ring-line sm:p-6">
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Embudo</h2>
-            <p className="mt-1 text-sm text-muted">Cuántos pasan de un paso al siguiente.</p>
+            <p className="mt-1 text-sm text-muted">
+              Leads creados en {rango.etiqueta.toLowerCase()}. Cuántos pasan de un paso al siguiente.
+            </p>
           </div>
           {r.primeraRespuestaMin != null && (
             <p className="text-sm text-muted">
@@ -76,18 +93,20 @@ export default async function ResultadosComercialPage() {
           <p className={`mt-3 text-3xl font-bold tabular-nums tracking-tight ${r.vencidos > 0 ? "text-rojo" : "text-ink"}`}>
             {fmt(r.vencidos)}
           </p>
-          <p className="mt-2 text-sm text-muted">Chats abiertos cuya fecha de volver a escribir ya pasó.</p>
+          <p className="mt-2 text-sm text-muted">
+            Chats abiertos de este periodo cuya fecha de volver a escribir ya pasó.
+          </p>
         </div>
         <div className="rounded-xl bg-surface p-5 ring-1 ring-line">
           <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted">Perdidos</p>
           <p className="mt-3 text-3xl font-bold tabular-nums tracking-tight text-ink">{fmt(r.perdidos)}</p>
-          <p className="mt-2 text-sm text-muted">Leads cerrados sin contrato.</p>
+          <p className="mt-2 text-sm text-muted">Leads de este periodo cerrados sin contrato.</p>
         </div>
       </section>
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold">Temperatura</h2>
-        <p className="mt-1 text-sm text-muted">Chats abiertos según qué tan cerca están de cerrar.</p>
+        <p className="mt-1 text-sm text-muted">Chats abiertos de este periodo según qué tan cerca están de cerrar.</p>
         <div className="mt-4 rounded-xl bg-surface p-5 ring-1 ring-line">
           <div className="flex h-3 overflow-hidden rounded-full bg-surface-2">
             <BarParte valor={r.calientes} total={abiertos} clase="bg-ambar" />
@@ -104,7 +123,7 @@ export default async function ResultadosComercialPage() {
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold">Cadencia de seguimiento</h2>
-        <p className="mt-1 text-sm text-muted">En qué intento va cada chat abierto.</p>
+        <p className="mt-1 text-sm text-muted">En qué intento va cada chat abierto de este periodo.</p>
         <div className="mt-4 grid grid-cols-3 gap-3">
           <Kpi label="1.er seguimiento" value={fmt(r.cadencia.uno)} />
           <Kpi label="2.º seguimiento" value={fmt(r.cadencia.dos)} />
@@ -114,7 +133,7 @@ export default async function ResultadosComercialPage() {
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold">WhatsApp</h2>
-        <p className="mt-1 text-sm text-muted">Cola de Lucía y lectura de los mensajes salientes.</p>
+        <p className="mt-1 text-sm text-muted">Envíos de Lucía y lectura en este periodo.</p>
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
           <Kpi label="Seguimientos enviados" value={fmt(r.seguimientos.enviados)} />
           <Kpi
@@ -122,8 +141,17 @@ export default async function ResultadosComercialPage() {
             value={fmt(r.seguimientos.pendientes)}
             tone={r.seguimientos.pendientes > 0 ? "warn" : "default"}
           />
-          <Kpi label="Entregados" value={fmt(r.entregas.entregados)} />
-          <Kpi label="Leídos" value={fmt(r.entregas.leidos)} tone="good" />
+          <Kpi
+            label="Entregados"
+            value={fmt(r.entregas.entregados)}
+            hint={`${fmt(r.entregas.enviados)} salientes`}
+          />
+          <Kpi
+            label="Leídos"
+            value={fmt(r.entregas.leidos)}
+            tone="good"
+            hint="Incluidos en entregados"
+          />
         </div>
       </section>
 
@@ -197,7 +225,7 @@ function Tabla({
             {filas.length === 0 && (
               <tr>
                 <td className="px-4 py-6 text-muted" colSpan={6}>
-                  Todavía no hay leads para esta vista.
+                  Todavía no hay leads para este periodo.
                 </td>
               </tr>
             )}

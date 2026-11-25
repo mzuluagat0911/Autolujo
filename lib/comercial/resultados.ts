@@ -1,7 +1,24 @@
 import { createServerSupabase } from "@/lib/supabase/server";
+import {
+  finMes,
+  hoyPanama,
+  inicioMes,
+  instantePanama,
+  mesLargo,
+  sumarDias,
+} from "@/lib/cartera/fecha";
 import { listarAsesoresComerciales } from "./chats";
 
 export type FilaResultado = { nombre: string; leads: number; citas: number; ganados: number };
+
+export type PeriodoResultados = "hoy" | "mes" | "mes_ant" | "rango";
+
+export type RangoResultados = {
+  periodo: PeriodoResultados;
+  desde: string;
+  hasta: string;
+  etiqueta: string;
+};
 
 export type ResumenComercial = {
   leads: number;
@@ -19,6 +36,7 @@ export type ResumenComercial = {
   porCampana: FilaResultado[];
   porAsesor: FilaResultado[];
   seguimientos: { enviados: number; pendientes: number };
+  rango: RangoResultados | null;
   error: string | null;
 };
 
@@ -34,6 +52,8 @@ type Lead = {
   intentos_seguimiento?: number | null;
 };
 
+const FECHA = /^\d{4}-\d{2}-\d{2}$/;
+
 export function medianaMinutos(valores: number[]): number | null {
   const limpios = valores.filter((n) => n >= 0).sort((a, b) => a - b);
   if (!limpios.length) return null;
@@ -42,8 +62,58 @@ export function medianaMinutos(valores: number[]): number | null {
   return Math.round(valor);
 }
 
-export async function resumenComercial(): Promise<ResumenComercial> {
-  const vacio: ResumenComercial = {
+/** Arma el rango desde query (?periodo=&desde=&hasta=). Por defecto: mes en curso. */
+export function resolverRangoResultados(opts?: {
+  periodo?: string | null;
+  desde?: string | null;
+  hasta?: string | null;
+}): RangoResultados {
+  const hoy = hoyPanama();
+  const periodo = (opts?.periodo ?? "mes").trim().toLowerCase();
+
+  if (periodo === "hoy") {
+    return { periodo: "hoy", desde: hoy, hasta: hoy, etiqueta: "Hoy" };
+  }
+  if (periodo === "mes_ant") {
+    const ant = inicioMes(sumarDias(inicioMes(hoy), -1));
+    return {
+      periodo: "mes_ant",
+      desde: ant,
+      hasta: finMes(ant),
+      etiqueta: mesLargo(ant),
+    };
+  }
+  if (periodo === "rango") {
+    let desde = FECHA.test(opts?.desde ?? "") ? (opts!.desde as string) : inicioMes(hoy);
+    let hasta = FECHA.test(opts?.hasta ?? "") ? (opts!.hasta as string) : hoy;
+    if (desde > hasta) [desde, hasta] = [hasta, desde];
+    if (hasta > hoy) hasta = hoy;
+    return {
+      periodo: "rango",
+      desde,
+      hasta,
+      etiqueta: desde === hasta ? desde : `${desde} → ${hasta}`,
+    };
+  }
+
+  return {
+    periodo: "mes",
+    desde: inicioMes(hoy),
+    hasta: hoy,
+    etiqueta: mesLargo(hoy),
+  };
+}
+
+/** Límites ISO (Panamá) para filtrar created_at / enviado_at. hasta es inclusivo. */
+export function limitesIsoRango(desde: string, hasta: string): { gte: string; lt: string } {
+  return {
+    gte: instantePanama(desde, 0, 0).toISOString(),
+    lt: instantePanama(sumarDias(hasta, 1), 0, 0).toISOString(),
+  };
+}
+
+function vacio(rango: RangoResultados | null, error: string | null = null): ResumenComercial {
+  return {
     leads: 0,
     conCita: 0,
     visitas: 0,
@@ -59,16 +129,33 @@ export async function resumenComercial(): Promise<ResumenComercial> {
     porCampana: [],
     porAsesor: [],
     seguimientos: { enviados: 0, pendientes: 0 },
-    error: null,
+    rango,
+    error,
   };
+}
+
+/**
+ * Resumen comercial. Sin `rango` = todo el historial (admin).
+ * Con rango = leads y envíos creados entre desde y hasta (días de Panamá).
+ */
+export async function resumenComercial(rango?: RangoResultados | null): Promise<ResumenComercial> {
+  const rangoActivo = rango ?? null;
   try {
     const sb = createServerSupabase();
     const { cuadrarGanadosConContratos } = await import("./cierre-contrato");
     await cuadrarGanadosConContratos();
     const ahoraIso = new Date().toISOString();
+    const lim =
+      rangoActivo != null ? limitesIsoRango(rangoActivo.desde, rangoActivo.hasta) : null;
+
+    const enRango = (q: any) => {
+      if (!lim) return q;
+      return q.gte("created_at", lim.gte).lt("created_at", lim.lt);
+    };
+
     const contarLeads = async (aplicar: (q: any) => any): Promise<number | null> => {
       const { count, error } = await aplicar(
-        sb.from("conversaciones_comercial").select("id", { count: "exact", head: true }),
+        enRango(sb.from("conversaciones_comercial").select("id", { count: "exact", head: true })),
       );
       if (error) return null;
       return count ?? 0;
@@ -103,7 +190,7 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       contarLeads((q) => abiertos(q).lt("seguimiento_at", ahoraIso)),
     ]);
     if (leadsTotal == null) {
-      return { ...vacio, error: "Falta aplicar la migración 0039 para ver resultados." };
+      return vacio(rangoActivo, "Falta aplicar la migración 0039 para ver resultados.");
     }
 
     const nombres = new Map((await listarAsesoresComerciales()).map((a) => [a.id, a.nombre]));
@@ -116,17 +203,21 @@ export async function resumenComercial(): Promise<ResumenComercial> {
     };
     const minutos: number[] = [];
     for (let desde = 0; desde < 8000; desde += 1000) {
-      const { data, error } = await sb
+      let q = sb
         .from("conversaciones_comercial")
         .select("etapa, anuncio, asesor_id, created_at, primera_respuesta_at")
         .order("created_at", { ascending: false })
         .range(desde, desde + 999);
+      if (lim) q = q.gte("created_at", lim.gte).lt("created_at", lim.lt);
+      const { data, error } = await q;
       if (error && /primera_respuesta_at/i.test(error.message)) {
-        const retry = await sb
+        let retryQ = sb
           .from("conversaciones_comercial")
           .select("etapa, anuncio, asesor_id")
           .order("created_at", { ascending: false })
           .range(desde, desde + 999);
+        if (lim) retryQ = retryQ.gte("created_at", lim.gte).lt("created_at", lim.lt);
+        const retry = await retryQ;
         if (retry.error) break;
         for (const lead of (retry.data ?? []) as Lead[]) {
           const campana = lead.anuncio?.trim() || "Sin campaña";
@@ -171,31 +262,38 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       if (pagina.length < 1000) break;
     }
 
-    const contar = async (estado: string) => {
-      const { count, error } = await sb
+    const contarSeg = async (estado: string, col: "enviado_at" | "programado_at") => {
+      let q = sb
         .from("seguimientos_comercial")
         .select("id", { count: "exact", head: true })
         .eq("estado", estado);
+      if (lim) q = q.gte(col, lim.gte).lt(col, lim.lt);
+      const { count, error } = await q;
       if (error) return null;
       return count ?? 0;
     };
     const [enviados, pendientes] = await Promise.all([
-      contar("enviado"),
-      contar("pendiente"),
+      contarSeg("enviado", "enviado_at"),
+      contarSeg("pendiente", "programado_at"),
     ]);
-    const contarEntrega = async (entrega: string) => {
-      const { count, error } = await sb
+
+    // WhatsApp avanza el mismo campo: enviado → entregado → leido.
+    // "Entregados" y "leídos" van acumulados (quien leyó también entregó).
+    const contarEntregaEn = async (estados: string[]) => {
+      let q = sb
         .from("mensajes_comercial")
         .select("id", { count: "exact", head: true })
         .eq("direccion", "out")
-        .eq("entrega", entrega);
+        .in("entrega", estados);
+      if (lim) q = q.gte("created_at", lim.gte).lt("created_at", lim.lt);
+      const { count, error } = await q;
       if (error) return 0;
       return count ?? 0;
     };
-    const [soloEnviados, entregados, leidos] = await Promise.all([
-      contarEntrega("enviado"),
-      contarEntrega("entregado"),
-      contarEntrega("leido"),
+    const [enviadosWa, entregados, leidos] = await Promise.all([
+      contarEntregaEn(["enviado", "entregado", "leido"]),
+      contarEntregaEn(["entregado", "leido"]),
+      contarEntregaEn(["leido"]),
     ]);
 
     return {
@@ -210,7 +308,7 @@ export async function resumenComercial(): Promise<ResumenComercial> {
       frios: friosN ?? 0,
       cadencia: { uno: cad1 ?? 0, dos: cad2 ?? 0, tres: cad3 ?? 0 },
       entregas: {
-        enviados: soloEnviados + entregados + leidos,
+        enviados: enviadosWa,
         entregados,
         leidos,
       },
@@ -221,26 +319,13 @@ export async function resumenComercial(): Promise<ResumenComercial> {
         enviados: enviados ?? 0,
         pendientes: pendientes ?? 0,
       },
+      rango: rangoActivo,
       error: null,
     };
   } catch (e) {
-    return {
-      leads: 0,
-      conCita: 0,
-      visitas: 0,
-      ganados: 0,
-      perdidos: 0,
-      vencidos: 0,
-      calientes: 0,
-      tibios: 0,
-      frios: 0,
-      cadencia: { uno: 0, dos: 0, tres: 0 },
-      entregas: { enviados: 0, entregados: 0, leidos: 0 },
-      primeraRespuestaMin: null,
-      porCampana: [],
-      porAsesor: [],
-      seguimientos: { enviados: 0, pendientes: 0 },
-      error: e instanceof Error ? e.message : "No pude armar los resultados.",
-    };
+    return vacio(
+      rangoActivo,
+      e instanceof Error ? e.message : "No pude armar los resultados.",
+    );
   }
 }

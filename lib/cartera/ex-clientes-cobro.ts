@@ -303,7 +303,7 @@ export async function exClienteSinContratoActivo(
   }
   const { data } = await sb
     .from("ex_clientes")
-    .select("nombre, carro, saldo, motivo, origen, whatsapp, telefono, empresa_id, empresa:empresas(codigo)")
+    .select("nombre, carro, saldo, motivo, notas, estado, origen, whatsapp, telefono, empresa_id, empresa:empresas(codigo)")
     .in("estado", ["cobro", "acuerdo"])
     .gt("saldo", 0)
     .limit(500);
@@ -313,6 +313,8 @@ export async function exClienteSinContratoActivo(
     carro: string | null;
     saldo: number;
     motivo: string | null;
+    notas: string | null;
+    estado: string;
     origen: string | null;
     whatsapp: string | null;
     telefono: string | null;
@@ -340,16 +342,22 @@ export async function exClienteSinContratoActivo(
     fila.origen === "archivo"
       ? "El saldo es el del contrato archivado (se actualiza con cada pago validado)."
       : "El saldo es el del Excel / registro de ex clientes.";
+  const conAcuerdo = fila.estado === "acuerdo" || Boolean(fila.notas?.trim());
   const lineas = [
     `EX CLIENTE. No tiene letra diaria. ${origenSaldo}`,
     `Nombre: ${fila.nombre}.`,
     `Carro: ${carro}. Empresa: ${emp?.codigo ?? "—"}.`,
     `SALDO PENDIENTE: $${saldo.toFixed(2)}. Es el único total que puedes decir. No desgloses cuotas, daños ni recargos.`,
     fila.motivo ? `Motivo de la entrega (interno, no lo leas como lista de cargos): ${fila.motivo}.` : "",
-    saldo > 500
-      ? `Si propone un acuerdo y la deuda pasa de $500, el mínimo es $50 por quincena. Si propone más, se acepta.`
-      : `La deuda es de $500 o menos: se acepta el abono que proponga.`,
-    `Plazo del acuerdo: el que él diga (diario, semanal, quincenal, mensual o una fecha). Sin plazo máximo.`,
+    fila.notas?.trim()
+      ? `ACUERDO VIGENTE (interno; sí puedes recordárselo si pregunta cuánto abonar): ${fila.notas.trim()}. Cobrá solo según ese acuerdo mientras cumpla.`
+      : "",
+    conAcuerdo
+      ? `Tiene acuerdo de pago. No le ofrezcas otro plan ni le cambies el monto acordado.`
+      : saldo > 500
+        ? `Si propone un acuerdo y la deuda pasa de $500, el mínimo es $50 por quincena. Si propone más, se acepta.`
+        : `La deuda es de $500 o menos: se acepta el abono que proponga.`,
+    conAcuerdo ? "" : `Plazo del acuerdo: el que él diga (diario, semanal, quincenal, mensual o una fecha). Sin plazo máximo.`,
     cuenta?.numero_cuenta
       ? `CUENTA PARA TRANSFERIR: ${cuenta.banco} · ${cuenta.tipo} · ${cuenta.numero_cuenta} · a nombre de ${cuenta.titular}.`
       : `CUENTA PARA TRANSFERIR: no está cargada. Dile que se la confirman en un momento.`,

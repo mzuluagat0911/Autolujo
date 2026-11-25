@@ -341,11 +341,30 @@ export function etiquetaDelDia(carro: CarroInforme, fecha: string): string | nul
 }
 
 /**
+ * ¿La letra del extracto ya está cubierta? Misma regla que INFORME NOCHE.
+ * Adelantado o sin línea "cuenta" por cobrar → cubierta. El saldo libro de
+ * cuota no manda: puede ir atrasado respecto al extracto.
+ */
+export function letraCubiertaEnExtracto(e: {
+  diasAdelantados?: number | null;
+  cuenta?: number | null;
+  lineasCobro?: { aviso?: boolean; etiqueta: string; monto: number }[] | null;
+}): boolean {
+  if ((Number(e.diasAdelantados) || 0) >= 1) return true;
+  const deLinea = (e.lineasCobro ?? [])
+    .filter((l) => !l.aviso && l.etiqueta === "cuenta")
+    .reduce((s, l) => s + (Number(l.monto) || 0), 0);
+  const cuenta = deLinea > 0.009 ? deLinea : Math.max(Number(e.cuenta) || 0, 0);
+  return cuenta <= 0.009;
+}
+
+/**
  * Detalle del día (informe diario), misma regla que INFORME NOCHE:
  * - Día contable: 12:00 → 11:59 del día siguiente (fechaInformeCartera).
  * - AL DIA: abonó a letra (cuota/atraso) ese día, o la letra ya estaba cubierta
- *   (adelantado / saldo de cuota en 0). Pagar solo mantenimiento o acuerdo no cuenta.
+ *   (adelantado / extracto sin cuenta por cobrar). Pagar solo mantenimiento o acuerdo no cuenta.
  * - NO PAGO: debía letra y no entró nada a cuota/letra en ese día.
+ * - Para el día de hoy, `cubiertaExtracto` (panel) manda sobre el saldo libro.
  */
 export function detalleInforme(
   carro: CarroInforme,
@@ -353,6 +372,7 @@ export function detalleInforme(
   letra: number,
   pagoCuota: number,
   saldoCuota: number,
+  cubiertaExtracto?: boolean | null,
 ): string {
   const pagoLetra = pagoCuota > 0.009;
   const hayLetra = letra > 0.009;
@@ -360,7 +380,11 @@ export function detalleInforme(
   // Por entregar no trae fecha de ingreso. Si ese día igual hubo letra, manda la letra.
   if (etiqueta && !(etiqueta === "X ENTREGAR" && hayLetra)) return etiqueta;
   if (pagoLetra) return "";
-  if (hayLetra) return saldoCuota <= 0.009 ? "AL DIA" : "NO PAGO";
+  if (hayLetra) {
+    if (cubiertaExtracto === true) return "AL DIA";
+    if (cubiertaExtracto === false) return "NO PAGO";
+    return saldoCuota <= 0.009 ? "AL DIA" : "NO PAGO";
+  }
   if (!hayLetra && !pagoLetra) {
     const est = etiquetaEstado(carro.estadoVehiculo);
     if (!est) return "";
