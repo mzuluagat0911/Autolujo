@@ -73,6 +73,16 @@ export default async function OperacionesPage() {
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <SubCard
+          href="/operaciones/agenda"
+          title="Agenda de taller"
+          desc="Néstor confirma llegada, comenta y cierra la cita. La sede sale de la entrega del contrato."
+        />
+        <SubCard
+          href="/operaciones/conversaciones"
+          title="Conversaciones"
+          desc="WhatsApp de mantenimiento (+507 6623-6501). Citas y respuestas del taller."
+        />
+        <SubCard
           href="/operaciones/hoja-vida"
           title="Hoja de vida"
           desc="Historial editable: mantos, chapistería, entregas y novedades."

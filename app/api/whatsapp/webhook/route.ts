@@ -210,12 +210,33 @@ async function procesar(payload: WebhookPayload) {
   const messages = value?.messages;
   if (!Array.isArray(messages)) return;
 
-  // Avisos de mantenimiento: no pasan a Claudia ni a Lucía. El envío al cliente
-  // lo arma Operaciones; aquí solo se reconoce el número para no mezclar cobro.
+  // Mantenimiento: bandeja propia (Operaciones). No pasa a Claudia ni a Lucía.
   if (esMantenimiento) {
-    console.info(
-      "[whatsapp/webhook] mensaje al número de mantenimiento (sin agente):",
-      messages.length,
+    const { guardarMensajeMantenimiento } = await import("@/lib/operaciones/chats");
+    const perfilesMant = new Map(
+      (value?.contacts ?? []).map((c) => [String(c.wa_id ?? ""), c.profile?.name ?? ""]),
+    );
+    await Promise.all(
+      messages.map(async (msg) => {
+        if (!msg.from) return;
+        const texto =
+          msg.text?.body ??
+          msg.button?.text ??
+          msg.interactive?.button_reply?.title ??
+          msg.interactive?.list_reply?.title ??
+          (msg.type === "audio" ? "[nota de voz]" : msg.type === "image" ? "[imagen]" : null);
+        try {
+          await guardarMensajeMantenimiento({
+            waNumero: msg.from,
+            texto,
+            direccion: "in",
+            waMessageId: msg.id ?? null,
+            nombrePerfil: perfilesMant.get(msg.from) || null,
+          });
+        } catch (e) {
+          console.error("[whatsapp/webhook] mantenimiento:", e);
+        }
+      }),
     );
     return;
   }
