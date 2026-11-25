@@ -1,5 +1,6 @@
 // Número de WhatsApp de mantenimiento (avisos de revisión / kit / básico).
 // Sale de la misma App/token que cartera; el phone id es otro.
+// Textos: lib/operaciones/plantillas.ts
 
 /** Phone number ID de Meta. Vacío = todavía no conectado en este entorno. */
 export function phoneIdMantenimiento(): string | null {

@@ -94,7 +94,7 @@ export function InformeSemanaVista({ informe }: { informe: InformeSemana }) {
         </p>
         <p className="mt-1 text-sm text-muted">
           El sistema lo deja listo el viernes a la 1:00 p.m. Néstor cita. Amalia confirma que sí asistan.
-          El aviso WhatsApp al cliente del sábado espera las plantillas y el cron.
+          Plantillas listas (cita mecánica, 6.000 km, kit, revisión mensual). El cron del sábado las manda cuando esté armado.
         </p>
       </div>
 
