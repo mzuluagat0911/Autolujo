@@ -1,0 +1,399 @@
+{
+  "at": "2026-09-23T03:27:40.990706+00:00",
+  "template": "aviso_numero_cartera",
+  "ok": [
+    {
+      "contratoId": "0832fbe2-14c3-4dcd-940d-546868697818",
+      "carro": "G01",
+      "nombre": "Jonathan alexis gonzalez",
+      "var1": "Jonathan",
+      "wa": "50769562429",
+      "messageId": "wamid.HBgLNTA3Njk1NjI0MjkVAgARGBJBQzFFODhFMUJGRjdDRjA1QkEA"
+    },
+    {
+      "contratoId": "42e14e46-0f17-4878-9819-3dca6e7ce701",
+      "carro": "G02",
+      "nombre": "Ernesto Atencio Gomez",
+      "var1": "Ernesto",
+      "wa": "50764007024",
+      "messageId": "wamid.HBgLNTA3NjQwMDcwMjQVAgARGBI5MzY5OUMzQTMyMkZFNkVBNjYA"
+    },
+    {
+      "contratoId": "bf549050-b268-4b0d-baee-7c586cefa849",
+      "carro": "G03",
+      "nombre": "Edwin Alberto Gil Castillo",
+      "var1": "Edwin",
+      "wa": "50765655698",
+      "messageId": "wamid.HBgLNTA3NjU2NTU2OTgVAgARGBJFQzBEM0M3REZFNkQwODJBMzYA"
+    },
+    {
+      "contratoId": "194943a4-c0ea-45ff-b767-50a3858c1f03",
+      "carro": "G04",
+      "nombre": "Daniel Hermogenes Castro Gonzalez",
+      "var1": "Daniel",
+      "wa": "50766706392",
+      "messageId": "wamid.HBgLNTA3NjY3MDYzOTIVAgARGBIyNTMzMUFFNUI5MzNBNDU4QzgA"
+    },
+    {
+      "contratoId": "6089a97e-f685-49c7-8920-5b2b6ee4b9ad",
+      "carro": "G05",
+      "nombre": "Brayan Andres Barrios Muñoz",
+      "var1": "Brayan",
+      "wa": "50767254852",
+      "messageId": "wamid.HBgLNTA3NjcyNTQ4NTIVAgARGBJCQjZBRTJEQzJCNjkzRkVFRUQA"
+    },
+    {
+      "contratoId": "086fc5f6-9ae9-4968-9a98-047171892ab5",
+      "carro": "G06",
+      "nombre": "Enrique Alexander Paredes Pineda",
+      "var1": "Enrique",
+      "wa": "50762944792",
+      "messageId": "wamid.HBgLNTA3NjI5NDQ3OTIVAgARGBI1NzVBNTAwOEQ1Rjc1MTZERTUA"
+    },
+    {
+      "contratoId": "5e7086fb-9098-48f5-bb52-8969e573034f",
+      "carro": "G07",
+      "nombre": "Aurelio Alfredo Jimenez Gonzalez",
+      "var1": "Aurelio",
+      "wa": "50761639616",
+      "messageId": "wamid.HBgLNTA3NjE2Mzk2MTYVAgARGBI4NkRGMkZGNjU3MjJGQ0ZBQUYA"
+    },
+    {
+      "contratoId": "422ac57d-2769-410f-9c56-d0c75d060ce5",
+      "carro": "G08",
+      "nombre": "Yancarlos Rivera Campo",
+      "var1": "Yancarlos",
+      "wa": "50768535569",
+      "messageId": "wamid.HBgLNTA3Njg1MzU1NjkVAgARGBI3OUQ2OEIzQkFFMEUzNTQ0OEYA"
+    },
+    {
+      "contratoId": "714d2b98-dd7a-4155-aa09-422995f126b5",
+      "carro": "G09",
+      "nombre": "Andres Arturo Torres",
+      "var1": "Andres",
+      "wa": "50769633707",
+      "messageId": "wamid.HBgLNTA3Njk2MzM3MDcVAgARGBI0NUExNjczQjhDMjA5MjUzMjgA"
+    },
+    {
+      "contratoId": "03cda824-bb99-4305-9c85-6e3014e2244d",
+      "carro": "G10",
+      "nombre": "Bladimir Enrique Labarsa Gonzalez",
+      "var1": "Bladimir",
+      "wa": "50763029759",
+      "messageId": "wamid.HBgLNTA3NjMwMjk3NTkVAgARGBI5MzREQkQyM0FEQkUwMEIxMTAA"
+    },
+    {
+      "contratoId": "f7bc2e68-fdbd-41c8-9547-3afe152c408b",
+      "carro": "G11",
+      "nombre": "Keren Yireth Cordoba Aparicio",
+      "var1": "Keren",
+      "wa": "50768688298",
+      "messageId": "wamid.HBgLNTA3Njg2ODgyOTgVAgARGBIzNUIwMjIwNjc0MDE5OTREOTkA"
+    },
+    {
+      "contratoId": "2c5b4b33-a2b7-4112-82ee-42c28e721f3a",
+      "carro": "G12",
+      "nombre": "Jose Antonio Caballero Villareal",
+      "var1": "Jose",
+      "wa": "50767301712",
+      "messageId": "wamid.HBgLNTA3NjczMDE3MTIVAgARGBIzQzM2MjEzQzMyN0QwNTdBNTQA"
+    },
+    {
+      "contratoId": "218b9b28-8e56-49ed-86aa-f902d617ddd4",
+      "carro": "G13",
+      "nombre": "Jose Eriberto Rodriguez Caicedo",
+      "var1": "Jose",
+      "wa": "50768185430",
+      "messageId": "wamid.HBgLNTA3NjgxODU0MzAVAgARGBI0MTg2OTg5OTc3MzIxM0QxMzUA"
+    },
+    {
+      "contratoId": "26159650-4841-459b-9814-e5b893d0b08d",
+      "carro": "G14",
+      "nombre": "Jorge Javier Gonzalez Berrio",
+      "var1": "Jorge",
+      "wa": "50767696327",
+      "messageId": "wamid.HBgLNTA3Njc2OTYzMjcVAgARGBIyQjE2NDQ0NjI2NEU5MDIyOTcA"
+    },
+    {
+      "contratoId": "493b4b5a-480e-4a91-8349-14cd59589797",
+      "carro": "G15",
+      "nombre": "Ivan Ariel Palacios Rojas",
+      "var1": "Ivan",
+      "wa": "50764798922",
+      "messageId": "wamid.HBgLNTA3NjQ3OTg5MjIVAgARGBI0NTBFRDdGQzYzRUQyMERDMjEA"
+    },
+    {
+      "contratoId": "b2092860-c3d9-46ed-90d2-ea37ced22280",
+      "carro": "G16",
+      "nombre": "Raul Antonio Ruiz Villaverde",
+      "var1": "Raul",
+      "wa": "50760327788",
+      "messageId": "wamid.HBgLNTA3NjAzMjc3ODgVAgARGBJGRkVCRDZBNzhCRjY3MDEyQzMA"
+    },
+    {
+      "contratoId": "c8c2d2db-aab1-4b29-a76f-1fffb9ce90d6",
+      "carro": "G17",
+      "nombre": "Ruben Dario Insignares Urueta",
+      "var1": "Ruben",
+      "wa": "50769019854",
+      "messageId": "wamid.HBgLNTA3NjkwMTk4NTQVAgARGBJDRUY1RDA1NzQ5QzIyMjBGOTkA"
+    },
+    {
+      "contratoId": "c082ff6a-0f7f-4bde-bfff-43249f442862",
+      "carro": "G18",
+      "nombre": "Luis Carlos Alveo",
+      "var1": "Luis",
+      "wa": "50766487714",
+      "messageId": "wamid.HBgLNTA3NjY0ODc3MTQVAgARGBIyNzg4QjU5MDUyMzVFRTgzNEMA"
+    },
+    {
+      "contratoId": "e8951b5d-02a9-4bfc-8b04-5ca51e3978d9",
+      "carro": "G19",
+      "nombre": "Hector Ricardo Ortiz Mateo",
+      "var1": "Hector",
+      "wa": "50760866540",
+      "messageId": "wamid.HBgLNTA3NjA4NjY1NDAVAgARGBJDQTk1ODU3RkZGMEM4NUJDNzQA"
+    },
+    {
+      "contratoId": "24a85c56-d6cc-4dec-bb59-b40c72eaedf3",
+      "carro": "G20",
+      "nombre": "Luis Carlos Echeverria Olmedo",
+      "var1": "Luis",
+      "wa": "50761347455",
+      "messageId": "wamid.HBgLNTA3NjEzNDc0NTUVAgARGBIwODNEMDVFQTZBRTJFRDhDNEQA"
+    },
+    {
+      "contratoId": "a9eb00f6-6ce1-43b3-890e-e1e14d730c2b",
+      "carro": "G22",
+      "nombre": "Zack Roberto Calvera Oro",
+      "var1": "Zack",
+      "wa": "50769850098",
+      "messageId": "wamid.HBgLNTA3Njk4NTAwOTgVAgARGBI1QzFGMzdCQTk1QzZBRUZFNDkA"
+    },
+    {
+      "contratoId": "c179e6c8-d81d-4eec-b8b1-6e1644ee8358",
+      "carro": "G23",
+      "nombre": "Anabela Cordoba Ayarza",
+      "var1": "Anabela",
+      "wa": "50769930464",
+      "messageId": "wamid.HBgLNTA3Njk5MzA0NjQVAgARGBI5MzY5NDdCM0I2RDM4OTkxOUYA"
+    },
+    {
+      "contratoId": "0257396f-6a6c-4384-b33f-f875a3a975eb",
+      "carro": "G24",
+      "nombre": "Anthony Daniel Medianero",
+      "var1": "Anthony",
+      "wa": "50760385385",
+      "messageId": "wamid.HBgLNTA3NjAzODUzODUVAgARGBJEMzVCNjdBRUIwMTc4MDFFMkEA"
+    },
+    {
+      "contratoId": "1e6d01c0-7f52-41a3-a810-eb7235c005df",
+      "carro": "G25",
+      "nombre": "Odalys Maite Perez De Gracia",
+      "var1": "Odalys",
+      "wa": "50768197020",
+      "messageId": "wamid.HBgLNTA3NjgxOTcwMjAVAgARGBI3ODk2NjI3N0MzNUQ2RjgzRUIA"
+    },
+    {
+      "contratoId": "12672cb0-9b17-469c-8056-84829da140f5",
+      "carro": "G26",
+      "nombre": "Edisberto Ubaldo Méndez García",
+      "var1": "Edisberto",
+      "wa": "50769374412",
+      "messageId": "wamid.HBgLNTA3NjkzNzQ0MTIVAgARGBIwQ0M1NjM1NkExQTM5RDA3MUIA"
+    },
+    {
+      "contratoId": "e70eeaa3-ae50-4fa8-996a-520c8eb54c41",
+      "carro": "G27",
+      "nombre": "Hector Javier Marin Flaco",
+      "var1": "Hector",
+      "wa": "50764737630",
+      "messageId": "wamid.HBgLNTA3NjQ3Mzc2MzAVAgARGBI2NDJDNEM5ODdGNzMzMjBBRTIA"
+    },
+    {
+      "contratoId": "604e1d2e-b474-4676-8c68-151268dcc483",
+      "carro": "G28",
+      "nombre": "Nathanael Javier Gonzalez Serrano",
+      "var1": "Nathanael",
+      "wa": "50760350743",
+      "messageId": "wamid.HBgLNTA3NjAzNTA3NDMVAgARGBI1Rjc1QzU4M0MxNEZBNUNBMzMA"
+    },
+    {
+      "contratoId": "a18eb1ca-7511-44a8-9081-6d491c8166ca",
+      "carro": "G29",
+      "nombre": "Jose Angel Bonilla Fernandez",
+      "var1": "Jose",
+      "wa": "50763632251",
+      "messageId": "wamid.HBgLNTA3NjM2MzIyNTEVAgARGBJCNzU1QjdFNzlEMDBCQ0Q0N0UA"
+    },
+    {
+      "contratoId": "1de94b18-8dc3-4b4a-b40c-9309a4d58451",
+      "carro": "G30",
+      "nombre": "Jose Del Carmen Arauz Smith",
+      "var1": "Jose",
+      "wa": "50766896908",
+      "messageId": "wamid.HBgLNTA3NjY4OTY5MDgVAgARGBJGNENCRDAyQTVFM0Y2QkRFMzcA"
+    },
+    {
+      "contratoId": "c2cf7887-14a0-4d5b-9241-9f0b27600a92",
+      "carro": "G31",
+      "nombre": "Orlando Lara",
+      "var1": "Orlando",
+      "wa": "50767993823",
+      "messageId": "wamid.HBgLNTA3Njc5OTM4MjMVAgARGBI4QzY3RkM2QTg2NkJCRkQwNkMA"
+    },
+    {
+      "contratoId": "8ca3303e-5321-4293-8747-e68ce7eef68b",
+      "carro": "G32",
+      "nombre": "Juan Jose Montero Oda",
+      "var1": "Juan",
+      "wa": "50767544640",
+      "messageId": "wamid.HBgLNTA3Njc1NDQ2NDAVAgARGBI0M0RFMzdCQkY3QzUxQTA2Q0MA"
+    },
+    {
+      "contratoId": "20e988e0-1cc2-46c9-bbbb-525910285055",
+      "carro": "G33",
+      "nombre": "Aaron Jafet Vinda Gudiño",
+      "var1": "Aaron",
+      "wa": "50761673548",
+      "messageId": "wamid.HBgLNTA3NjE2NzM1NDgVAgARGBI3RDlFQjhGNkI3NEZEMzIzQTkA"
+    },
+    {
+      "contratoId": "e2a6911c-6d5e-45d3-b324-948310e2d4bd",
+      "carro": "G34",
+      "nombre": "Chris Tyrone Moreno Villarreal",
+      "var1": "Chris",
+      "wa": "50769099469",
+      "messageId": "wamid.HBgLNTA3NjkwOTk0NjkVAgARGBJENjlBNEU5QUEzOTI5NDFDNzMA"
+    },
+    {
+      "contratoId": "eb295190-0175-4875-b4ad-9e8898c1f7e0",
+      "carro": "G35",
+      "nombre": "Elias Manuel Arenas Rodriguez",
+      "var1": "Elias",
+      "wa": "50761653900",
+      "messageId": "wamid.HBgLNTA3NjE2NTM5MDAVAgARGBI5MDY0REI2ODk0MzZGMDAwRjUA"
+    },
+    {
+      "contratoId": "807be666-c06b-4550-9cef-934e43ebf946",
+      "carro": "G36",
+      "nombre": "Luis Isaac Pineda Tejada",
+      "var1": "Luis",
+      "wa": "50763643413",
+      "messageId": "wamid.HBgLNTA3NjM2NDM0MTMVAgARGBI4QTQ5MEQxOEFCQjU3OTk0NEYA"
+    },
+    {
+      "contratoId": "f60ed91e-9c53-4d37-9458-e80e2cae2225",
+      "carro": "G37",
+      "nombre": "Eric Alberto Flores Soto",
+      "var1": "Eric",
+      "wa": "50767314308",
+      "messageId": "wamid.HBgLNTA3NjczMTQzMDgVAgARGBI1MDE2OUNDQTk5OEI4NDRGNTYA"
+    },
+    {
+      "contratoId": "d19c0d33-97dc-4f6f-a733-03a36be4c9dd",
+      "carro": "G38",
+      "nombre": "Faustino Cordoba Cabrera",
+      "var1": "Faustino",
+      "wa": "50762504185",
+      "messageId": "wamid.HBgLNTA3NjI1MDQxODUVAgARGBI2MDgzODZBRkVBRThFN0IzMTIA"
+    },
+    {
+      "contratoId": "f36ac3db-3e3a-4464-8182-10fab45e7b9e",
+      "carro": "G39",
+      "nombre": "Jarienca Marixsa Givans Williams De Duncan",
+      "var1": "Jarienca",
+      "wa": "50763217443",
+      "messageId": "wamid.HBgLNTA3NjMyMTc0NDMVAgARGBJERkZGNTFGMDk2ODJCRUYwQjMA"
+    },
+    {
+      "contratoId": "902e417d-fa6f-40fc-9cf2-33b6b6c93bc6",
+      "carro": "G40",
+      "nombre": "Yisell Yanira Mela Chavez",
+      "var1": "Yisell",
+      "wa": "50766840604",
+      "messageId": "wamid.HBgLNTA3NjY4NDA2MDQVAgARGBIzQjU4MzY4RTc1MDI1NTk5RDMA"
+    },
+    {
+      "contratoId": "b425a47f-78c5-4a06-bd4e-8745f3fb197f",
+      "carro": "G41",
+      "nombre": "Zoellner Daniel Campos Jaen",
+      "var1": "Zoellner",
+      "wa": "50760222931",
+      "messageId": "wamid.HBgLNTA3NjAyMjI5MzEVAgARGBI1QjQ5MEIyNEJEQkEwNjU3MzYA"
+    },
+    {
+      "contratoId": "ba3c6fbb-a527-4d35-9435-f3947deaa5e0",
+      "carro": "G42",
+      "nombre": "Baker Jose De Leon Castillo",
+      "var1": "Baker",
+      "wa": "50767133934",
+      "messageId": "wamid.HBgLNTA3NjcxMzM5MzQVAgARGBJCNjZCNzc1NkI0NjgxMkEzMUYA"
+    },
+    {
+      "contratoId": "34e3d53b-2541-49b1-aaf9-8a9a1bbebc65",
+      "carro": "G43",
+      "nombre": "Luis Gabriel Gonzalez Rodriguez",
+      "var1": "Luis",
+      "wa": "50764060956",
+      "messageId": "wamid.HBgLNTA3NjQwNjA5NTYVAgARGBJBOUIzMjBENDNFRDRCN0U1Q0YA"
+    },
+    {
+      "contratoId": "d1476707-b997-4511-8c57-ebcc13c14bb4",
+      "carro": "G44",
+      "nombre": "Juanita Rios Morrices",
+      "var1": "Juanita",
+      "wa": "50762068284",
+      "messageId": "wamid.HBgLNTA3NjIwNjgyODQVAgARGBI2QzkwN0Q0QjRCODNEMkYzRUUA"
+    },
+    {
+      "contratoId": "773bcda3-b4d9-4281-ac81-4ebb9d6cfc50",
+      "carro": "G45",
+      "nombre": "Omar Alexis Moreira Aguilar",
+      "var1": "Omar",
+      "wa": "50764410383",
+      "messageId": "wamid.HBgLNTA3NjQ0MTAzODMVAgARGBJCMjk3Njc3MUI0RTQ1NTBBNTgA"
+    },
+    {
+      "contratoId": "f03c67de-6071-4b75-bedd-fa54ff61b739",
+      "carro": "G46",
+      "nombre": "Adrian Arturo De La Cruz Guerra",
+      "var1": "Adrian",
+      "wa": "50763958643",
+      "messageId": "wamid.HBgLNTA3NjM5NTg2NDMVAgARGBJGNjYyNDBERUU1NzIzNjNFN0QA"
+    },
+    {
+      "contratoId": "c6b0e83a-8655-4c85-af05-b9d14a978818",
+      "carro": "G47",
+      "nombre": "Anibal Arce Castillero",
+      "var1": "Anibal",
+      "wa": "50769594693",
+      "messageId": "wamid.HBgLNTA3Njk1OTQ2OTMVAgARGBJGNTcxMkQ5QjBENDgyOTIxOTkA"
+    },
+    {
+      "contratoId": "afa8f32b-5456-45bb-ab0e-fffaeedec419",
+      "carro": "G48",
+      "nombre": "Lizbeth Johana Gomez Rodriguez",
+      "var1": "Lizbeth",
+      "wa": "50761448979",
+      "messageId": "wamid.HBgLNTA3NjE0NDg5NzkVAgARGBJBN0QwODhDNTk1RjE2RENFMzYA"
+    },
+    {
+      "contratoId": "73bdcb30-2f08-4c82-a4ec-1fdebeb8ad72",
+      "carro": "G49",
+      "nombre": "Isaias Pinto Sanchez",
+      "var1": "Isaias",
+      "wa": "50763742889",
+      "messageId": "wamid.HBgLNTA3NjM3NDI4ODkVAgARGBI3MjIxN0E1NDk3NkNDRkM0RkIA"
+    },
+    {
+      "contratoId": "1875c2e3-74eb-4697-8417-6b7d4f12aa64",
+      "carro": "G50",
+      "nombre": "Jaime Alberto Bolaños Del Cid",
+      "var1": "Jaime",
+      "wa": "50764677241",
+      "messageId": "wamid.HBgLNTA3NjQ2NzcyNDEVAgARGBI0NDZGQzk2NjEzNERCQUU1MEEA"
+    }
+  ],
+  "fail": []
+}
