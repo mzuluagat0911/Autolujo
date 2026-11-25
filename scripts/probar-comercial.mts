@@ -20,12 +20,14 @@ import {
 } from "../lib/comercial/cita-pedido.ts";
 import {
   domingoPascua,
+  esDiaEspecialComercial,
   esFeriadoNacional,
   fechaMencionada,
   feriadoNacional,
   jornadaOperativa,
   textoFeriado,
   textoJornadaHoy,
+  textoJornadaNormal,
   textoNoviembre2026,
 } from "../lib/comercial/feriados.ts";
 import { mensajePedirHora, sedeDesdeTexto, validarHorario } from "../lib/comercial/sedes.ts";
@@ -411,7 +413,23 @@ assert.match(
 assert.match(textoFeriado("2026-11-05"), /cerrado|descanso/i);
 assert.match(textoFeriado("2026-11-04"), /jornada habitual/);
 assert.match(textoJornadaHoy("2026-11-03") ?? "", /8:00/);
+assert.match(textoJornadaHoy("2026-11-25") ?? "", /HOY NO ES FERIADO/);
+assert.equal(esDiaEspecialComercial("2026-11-25"), false);
+assert.equal(esDiaEspecialComercial("2026-11-10"), true);
+assert.match(textoFeriado("2026-11-25"), /no es feriado/i);
+assert.match(textoJornadaNormal("2026-11-25"), /no es feriado/i);
+assert.match(
+  mensajeNaturalLucia("Hoy es feriado, solo atendemos en la mañana.", "Buenos días", { hoy: "2026-11-25" }),
+  /no es feriado/i,
+);
+assert.equal(
+  mensajeNaturalLucia("Hoy es feriado, solo atendemos en la mañana.", "Buenos días", { hoy: "2026-11-25" })
+    .toLowerCase()
+    .includes("hoy es feriado"),
+  false,
+);
 assert.match(textoNoviembre2026("2026-11-01") ?? "", /Jueves 5: CERRADO/);
+assert.match(textoNoviembre2026("2026-11-01") ?? "", /PROHIBIDO inventar/);
 assert.equal(textoNoviembre2026("2026-12-01"), null);
 assert.ok(
   mensajeNaturalLucia("¿A qué hora le queda bien? Puede ser en punto o a la media.", "Por la mañana estaria bien").includes("8"),

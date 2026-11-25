@@ -1,7 +1,16 @@
 import { pideAsesorHumano } from "./lead";
 import { esClicDeAnuncio } from "./bienvenida";
 import { esSaludoCorto, mensajeSaludoConCita } from "./cita-pedido";
-import { fechaMencionada, jornadaOperativa, preguntaSiAbreFeriado, textoFeriado } from "./feriados";
+import {
+  afirmaQueEsFeriado,
+  esDiaEspecialComercial,
+  fechaMencionada,
+  jornadaOperativa,
+  preguntaSiAbreFeriado,
+  textoFeriado,
+  textoJornadaHoy,
+  textoJornadaNormal,
+} from "./feriados";
 import { mensajePedirHora, sedeDesdeTexto } from "./sedes";
 
 const SIGUE = "Cuénteme qué carro le llama más y le dejo la visita en la sede que le quede.";
@@ -463,9 +472,16 @@ function corrigeRespuestaComercial(texto: string, cliente: string, opts?: Opcion
   if (/domingo/.test(c) && /chorrera/.test(t) && !/solo abre juan|solo juan diaz|domingo solo/.test(t)) {
     return conCierreVisita(`${texto} El domingo solo abre Juan Díaz.`, hayCita);
   }
-  if (preguntaSiAbreFeriado(cliente) && !/feriado|juan diaz atiende/.test(t)) {
+  if (preguntaSiAbreFeriado(cliente) && !/feriado|festivo|juan diaz atiende|no es feriado|jornada habitual/.test(t)) {
     const fecha = fechaMencionada(cliente, opts?.hoy ?? "") ?? opts?.hoy;
     return textoFeriado(fecha);
+  }
+  // Nunca dejes pasar un "hoy/ese día es feriado" inventado.
+  if (afirmaQueEsFeriado(texto)) {
+    const fecha = fechaMencionada(cliente, opts?.hoy ?? "") ?? opts?.hoy ?? null;
+    if (!fecha || !esDiaEspecialComercial(fecha)) {
+      return fecha ? textoJornadaNormal(fecha) : (opts?.hoy ? (textoJornadaHoy(opts.hoy) ?? textoJornadaNormal(opts.hoy)) : textoJornadaNormal());
+    }
   }
   if (/por la manana|en la manana|de manana/.test(c) && /a que hora|en punto|a la media/.test(t) && !/\d/.test(c)) {
     return MANANA_HORAS;

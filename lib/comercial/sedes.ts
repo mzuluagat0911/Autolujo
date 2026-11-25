@@ -147,6 +147,7 @@ export function textoSedes(hoy = hoyPanama()): string {
     `  Dirección: ${SEDES[1].direccion}.`,
     "La cita es cada 15 minutos (8:00, 8:15, 8:30…). En la misma hora caben todas las citas que hagan falta: no digas que una hora está tomada. No ofrezcas una hora fuera de la ventana. Prohibido preguntar «en punto o a la media».",
     "Feriados nacionales (si el contexto no trae otra jornada): Juan Díaz 8:00 a.m. a 12:00 m. La Chorrera no se agenda. Si preguntan si abren, dilo primero.",
+    "PROHIBIDO decir que un día es feriado o festivo si la línea de HOY / el calendario de este contexto no lo marca. Si no es feriado, dilo: no es feriado, y da el horario habitual.",
     "Si comercial abre ese día, también feriado, la visita y la entrega son normales: sí se puede llevar el carro el mismo día.",
     "Si preguntan cómo llegar, da la dirección. El sistema manda el video de esa sede.",
   ];

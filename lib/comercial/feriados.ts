@@ -1,4 +1,4 @@
-import { sumarDias } from "@/lib/cartera/fecha";
+import { diaSemana, sumarDias } from "@/lib/cartera/fecha";
 
 const FIJOS: { mmdd: string; nombre: string }[] = [
   { mmdd: "01-01", nombre: "Año Nuevo" },
@@ -102,6 +102,7 @@ export function textoNoviembre2026(hoy: string): string | null {
     "- Jueves 5: CERRADO por descanso obligatorio. No agendes. Ofrece el 4 o el 6.",
     "- Martes 10: 8:00 a.m. a 12:00 m., medio equipo, las dos sedes. No agendes tarde.",
     "- Sábado 28: Independencia de España. Por ahora se agenda como sábado (8 a 12, las dos sedes). Aún se confirma si se labora; no lo cierres.",
+    "- Cualquier OTRO día de noviembre (incluido hoy si no está en esta lista) NO es feriado ni festivo. Jornada habitual. PROHIBIDO inventar que un día es feriado.",
   ].join("\n");
 }
 
@@ -110,7 +111,14 @@ export function textoJornadaHoy(fecha: string): string | null {
   const op = jornadaOperativa(fecha);
   const nombre = feriadoNacional(fecha);
   if (!op) {
-    if (!nombre) return null;
+    if (!nombre) {
+      // Noviembre 2026 sigue en el contexto con varios feriados; sin esta línea
+      // el modelo a veces dice que HOY es festivo aunque no lo sea.
+      if (fecha >= "2026-11-01" && fecha <= "2026-11-28") {
+        return "HOY NO ES FERIADO. Jornada habitual: las dos sedes 8:00 a.m. a 4:00 p.m. (si es sábado, 8:00 a 12:00; domingo solo Juan Díaz 8:00 a 12:00). No digas que hoy es festivo.";
+      }
+      return null;
+    }
     return `HOY ES FERIADO (${nombre}). Juan Díaz 8:00 a 12:00. La Chorrera no se agenda.`;
   }
   if (op.tipo === "cerrado") {
@@ -144,7 +152,38 @@ export function fechaMencionada(texto: string, hoy: string): string | null {
 
 export function preguntaSiAbreFeriado(texto: string): boolean {
   const t = plano(texto);
-  return /feriado|estan abiert|abren|hay atencion|trabajan (ese|el) dia/.test(t);
+  return /feriado|festivo|estan abiert|abren|hay atencion|trabajan (ese|el) dia/.test(t);
+}
+
+/** Solo true si el calendario (ley u operativa especial) marca ese día. */
+export function esDiaEspecialComercial(fecha: string): boolean {
+  return jornadaOperativa(fecha) != null || feriadoNacional(fecha) != null;
+}
+
+/** True si el texto afirma que HOY / ese día es feriado o festivo. */
+export function afirmaQueEsFeriado(texto: string): boolean {
+  const t = plano(texto);
+  return (
+    /hoy (es |esta )?(feriado|festivo)/.test(t)
+    || /ese dia (es |esta )?(feriado|festivo)/.test(t)
+    || /por (ser |el )?feriado/.test(t)
+    || /por (ser |el )?festivo/.test(t)
+    || /(estamos|estoy) (cerrados?|de descanso) por (feriado|festivo)/.test(t)
+  );
+}
+
+/** Jornada normal cuando el día NO es feriado ni operativa especial. */
+export function textoJornadaNormal(fecha?: string | null): string {
+  if (fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha)) {
+    const dia = diaSemana(fecha);
+    if (dia === 0) {
+      return "Ese día no es feriado. El domingo solo abre Juan Díaz de 8:00 a.m. a 12:00 m. La Chorrera no se agenda. ¿Le sirve esa mañana?";
+    }
+    if (dia === 6) {
+      return "Ese día no es feriado. El sábado las dos sedes atienden de 8:00 a.m. a 12:00 m. ¿Le sirve esa mañana?";
+    }
+  }
+  return "Ese día no es feriado. Comercial atiende jornada habitual: Juan Díaz y La Chorrera de 8:00 a.m. a 4:00 p.m. ¿Le sirve a las 8, las 9 o las 10, o por la tarde a la 1, las 2 o las 3?";
 }
 
 export function textoFeriado(fecha?: string | null): string {
@@ -158,11 +197,15 @@ export function textoFeriado(fecha?: string | null): string {
     return `Ese día es feriado${etiqueta}. El área comercial atiende de 8:00 a.m. a 12:00 m. en Juan Díaz y La Chorrera, con medio equipo. ¿Le sirve esa mañana?`;
   }
   if (op?.tipo === "habitual") {
-    return `Ese día${etiqueta ? ` es ${nombre}` : " es feriado"}, pero comercial trabaja jornada habitual. Juan Díaz y La Chorrera de 8:00 a.m. a 4:00 p.m. ¿Le sirve a las 8, las 9 o las 10, o por la tarde a la 1, las 2 o las 3?`;
+    return `Ese día${etiqueta ? ` es ${nombre}, pero` : ""} comercial trabaja jornada habitual. Juan Díaz y La Chorrera de 8:00 a.m. a 4:00 p.m. ¿Le sirve a las 8, las 9 o las 10, o por la tarde a la 1, las 2 o las 3?`;
   }
   if (op?.tipo === "sabado_confirmar") {
     return `Ese sábado es feriado${etiqueta}. Por ahora se agenda de 8:00 a.m. a 12:00 m. en las dos sedes, como un sábado. Si cambia, le avisamos. ¿Le sirve esa mañana?`;
   }
-  const dia = nombre ? `Ese día es feriado (${nombre}). ` : "Ese día es feriado. ";
-  return `${dia}Juan Díaz atiende de 8:00 a.m. a 12:00 m. La Chorrera no se agenda. ¿Le sirve esa mañana o el hábil siguiente?`;
+  // Sin operativa especial: solo di "feriado" si el calendario de ley lo marca.
+  if (nombre) {
+    return `Ese día es feriado (${nombre}). Juan Díaz atiende de 8:00 a.m. a 12:00 m. La Chorrera no se agenda. ¿Le sirve esa mañana o el hábil siguiente?`;
+  }
+  if (fecha) return textoJornadaNormal(fecha);
+  return "Cuénteme qué día le interesa y le digo el horario de ese día.";
 }
