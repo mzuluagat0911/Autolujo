@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition, type FormEvent } from "react";
 import Link from "next/link";
-import { EmptyState } from "@/components/kit";
+import { EmptyState, FiltersBar, Toast } from "@/components/kit";
 import type { ChatMantenimiento, MensajeMantenimiento } from "@/lib/operaciones/chats";
 import {
   cargarBandejaMantenimiento,
@@ -39,22 +39,39 @@ export function BandejaMantenimiento({
 }) {
   const [chats, setChats] = useState(inicial);
   const [error, setError] = useState(errorInicial);
-  const [sel, setSel] = useState<string | null>(inicial[0]?.id ?? null);
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState<string | null>(null);
   const [mensajes, setMensajes] = useState<MensajeMantenimiento[]>([]);
   const [aviso, setAviso] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const fondo = useRef<HTMLDivElement>(null);
+  const stickBottom = useRef(true);
+
+  const visibles = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return chats;
+    return chats.filter((c) => {
+      const blob = [c.nombre, c.waNumero, c.ultimoTexto].filter(Boolean).join(" ").toLowerCase();
+      return blob.includes(needle);
+    });
+  }, [chats, q]);
 
   useEffect(() => {
+    if (!stickBottom.current) return;
     fondo.current?.scrollTo({ top: fondo.current.scrollHeight });
   }, [mensajes]);
 
   useEffect(() => {
-    if (!sel) return;
+    if (!sel) {
+      setMensajes([]);
+      return;
+    }
+    stickBottom.current = true;
     start(async () => {
       const hilo = await cargarHiloMantenimiento(sel);
       setMensajes(hilo.mensajes);
       if (hilo.error) setError(hilo.error);
+      setChats((prev) => prev.map((c) => (c.id === sel ? { ...c, noLeidos: 0 } : c)));
     });
   }, [sel]);
 
@@ -73,6 +90,18 @@ export function BandejaMantenimiento({
   }, [sel]);
 
   const elegido = chats.find((c) => c.id === sel) ?? null;
+  const noLeidos = chats.reduce((n, c) => n + (c.noLeidos || 0), 0);
+
+  function onScrollHilo() {
+    const el = fondo.current;
+    if (!el) return;
+    stickBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
+  function irAbajo() {
+    stickBottom.current = true;
+    fondo.current?.scrollTo({ top: fondo.current.scrollHeight, behavior: "smooth" });
+  }
 
   function enviar(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -86,6 +115,7 @@ export function BandejaMantenimiento({
       }
       setAviso(null);
       form.reset();
+      stickBottom.current = true;
       if (sel) {
         const hilo = await cargarHiloMantenimiento(sel);
         setMensajes(hilo.mensajes);
@@ -98,122 +128,188 @@ export function BandejaMantenimiento({
   return (
     <div className="-mx-5 flex h-[calc(100dvh-3rem)] flex-col sm:-mx-8 lg:-mx-12 md:h-dvh">
       <header className="shrink-0 border-b border-line bg-surface px-5 py-4 sm:px-6">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">Operaciones</p>
-        <div className="mt-1 flex items-center justify-between gap-3">
-          <h1 className="text-2xl font-bold tracking-tight">Mantenimiento</h1>
+        <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Operaciones</p>
+        <div className="mt-1 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight text-ink">Conversaciones</h1>
+            <p className="mt-1 text-sm text-muted">
+              WhatsApp +507 6623-6501
+              {noLeidos > 0 ? (
+                <>
+                  {" "}
+                  · <span className="font-medium tabular-nums text-ink">{noLeidos}</span> sin leer
+                </>
+              ) : null}
+            </p>
+          </div>
           <Link
             href="/operaciones/agenda"
-            className="text-sm font-medium text-ink underline-offset-2 hover:underline"
+            className="rounded-lg bg-white px-4 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
           >
             Agenda
           </Link>
         </div>
-        <p className="mt-1 text-sm text-muted">WhatsApp +507 6623-6501 · citas de taller</p>
       </header>
 
       {error && (
-        <p className="border-b border-ambar/40 bg-ambar-wash px-5 py-3 text-sm text-ink">{error}</p>
+        <p className="shrink-0 border-b border-line bg-ambar-wash px-5 py-2.5 text-sm text-ink">
+          {error}
+        </p>
       )}
 
       <div className="flex min-h-0 flex-1">
-        <aside className="w-full max-w-[320px] shrink-0 overflow-y-auto border-r border-line bg-surface">
-          {chats.length === 0 ? (
-            <div className="p-4">
-              <EmptyState title="Sin chats aún" hint="Cuando un cliente escriba al número de mantenimiento, aparece acá." />
-            </div>
-          ) : (
-            <ul>
-              {chats.map((c) => (
-                <li key={c.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSel(c.id)}
-                    className={`flex w-full flex-col gap-0.5 border-b border-line px-4 py-3 text-left hover:bg-surface-2 ${
-                      sel === c.id ? "bg-surface-2" : ""
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-semibold text-ink">
-                        {c.nombre || telefono(c.waNumero)}
+        <aside
+          className={`${sel ? "hidden sm:flex" : "flex"} w-full shrink-0 flex-col border-r border-line bg-surface sm:w-80`}
+        >
+          <div className="shrink-0 border-b border-line p-3">
+            <FiltersBar
+              variant="bare"
+              search={{ value: q, onChange: setQ }}
+              searchPlaceholder="Nombre o número…"
+            />
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            {visibles.length === 0 ? (
+              <div className="p-4">
+                <EmptyState
+                  title={chats.length === 0 ? "Sin chats aún" : "Sin coincidencias"}
+                  hint={
+                    chats.length === 0
+                      ? "Cuando escriban al número de mantenimiento, aparecen acá."
+                      : "Probá otro texto de búsqueda."
+                  }
+                />
+              </div>
+            ) : (
+              visibles.map((c) => (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setSel(c.id)}
+                  className={`block w-full border-b border-line px-4 py-3 text-left transition hover:bg-surface-2 ${
+                    c.id === sel ? "bg-surface-2" : "bg-surface"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-sm font-medium text-ink">
+                      {c.nombre || telefono(c.waNumero)}
+                    </span>
+                    {c.noLeidos > 0 && (
+                      <span className="rounded-full bg-ink px-1.5 text-[11px] font-medium tabular-nums text-white">
+                        {c.noLeidos}
                       </span>
-                      {c.noLeidos > 0 && (
-                        <span className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-semibold text-white">
-                          {c.noLeidos}
-                        </span>
-                      )}
-                    </div>
-                    <p className="truncate text-xs text-muted">{c.ultimoTexto || "—"}</p>
-                    <p className="text-[10px] text-faint">{hora(c.ultimoMensajeAt)}</p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                    )}
+                  </div>
+                  {c.nombre && (
+                    <p className="mt-0.5 truncate text-[11px] text-muted">{telefono(c.waNumero)}</p>
+                  )}
+                  <p className="mt-1 truncate text-[12px] text-muted">{c.ultimoTexto || "Sin mensajes"}</p>
+                  <p className="mt-0.5 text-[10px] text-faint">{hora(c.ultimoMensajeAt)}</p>
+                </button>
+              ))
+            )}
+          </div>
         </aside>
 
-        <section className="flex min-w-0 flex-1 flex-col bg-paper">
+        <section className={`${sel ? "flex" : "hidden"} min-w-0 flex-1 flex-col sm:flex`}>
           {!elegido ? (
-            <div className="flex flex-1 items-center justify-center p-6">
-              <EmptyState title="Elegí un chat" hint="Respondé desde el número de mantenimiento." />
+            <div className="m-6">
+              <EmptyState
+                title="Elegí un chat"
+                hint="Respondé desde el número de mantenimiento. El cliente solo confirma o mueve citas."
+              />
             </div>
           ) : (
             <>
-              <div className="border-b border-line px-5 py-3">
+              <div className="shrink-0 border-b border-line bg-surface px-5 py-3">
+                <button
+                  type="button"
+                  onClick={() => setSel(null)}
+                  className="mb-1 text-[12px] text-muted hover:text-ink sm:hidden"
+                >
+                  ← Chats
+                </button>
                 <p className="text-sm font-semibold text-ink">
                   {elegido.nombre || telefono(elegido.waNumero)}
                 </p>
-                <p className="text-xs text-muted">{telefono(elegido.waNumero)}</p>
+                <p className="mt-0.5 text-xs text-muted">{telefono(elegido.waNumero)}</p>
               </div>
-              <div ref={fondo} className="flex-1 space-y-2 overflow-y-auto px-5 py-4">
+
+              <div
+                ref={fondo}
+                onScroll={onScrollHilo}
+                className="relative min-h-0 flex-1 space-y-2 overflow-y-auto bg-paper px-5 py-4"
+              >
                 {mensajes.map((m) => (
                   <div
                     key={m.id}
-                    className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
-                      m.direccion === "out"
-                        ? "ml-auto bg-ink text-white"
-                        : "bg-gris-wash text-ink"
-                    }`}
+                    className={`flex ${m.direccion === "out" ? "justify-end" : "justify-start"}`}
                   >
-                    <p className="whitespace-pre-wrap">{m.texto || "—"}</p>
-                    <p
-                      className={`mt-1 text-[10px] ${
-                        m.direccion === "out" ? "text-white/60" : "text-muted"
+                    <div
+                      className={`max-w-[36rem] rounded-2xl px-3 py-2 text-sm ${
+                        m.direccion === "out" ? "bg-ink text-white" : "bg-gris-wash text-ink"
                       }`}
                     >
-                      {hora(m.createdAt)}
-                      {m.autorNombre ? ` · ${m.autorNombre}` : ""}
-                    </p>
+                      <p className="whitespace-pre-wrap">{m.texto || "—"}</p>
+                      <p
+                        className={`mt-1 text-[10px] ${
+                          m.direccion === "out" ? "text-white/60" : "text-muted"
+                        }`}
+                      >
+                        {m.direccion === "out" ? m.autorNombre || "Taller" : "Cliente"} ·{" "}
+                        {hora(m.createdAt)}
+                      </p>
+                    </div>
                   </div>
                 ))}
+                {!stickBottom.current && mensajes.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={irAbajo}
+                    className="sticky bottom-2 left-1/2 z-10 -translate-x-1/2 rounded-full bg-ink px-3 py-1.5 text-xs font-medium text-white shadow-sm"
+                  >
+                    Ir abajo
+                  </button>
+                )}
               </div>
-              {aviso && <p className="px-5 pb-2 text-sm text-rojo">{aviso}</p>}
-              <form onSubmit={enviar} className="flex gap-2 border-t border-line p-4">
+
+              <form
+                onSubmit={enviar}
+                className="shrink-0 border-t border-line bg-surface px-4 py-3"
+              >
                 <input type="hidden" name="conversacion_id" value={elegido.id} />
-                <textarea
-                  name="texto"
-                  required
-                  rows={1}
-                  placeholder="Escribí el mensaje…"
-                  className="min-h-[42px] flex-1 resize-none rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      e.currentTarget.form?.requestSubmit();
-                    }
-                  }}
-                />
-                <button
-                  type="submit"
-                  disabled={pending}
-                  className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
-                >
-                  Enviar
-                </button>
+                {aviso && <p className="mb-2 text-sm text-rojo">{aviso}</p>}
+                <div className="flex items-end gap-2">
+                  <textarea
+                    name="texto"
+                    required
+                    rows={2}
+                    placeholder="Escribí desde el número de mantenimiento…"
+                    className="min-h-[44px] flex-1 resize-none rounded-lg bg-white px-3 py-2.5 text-sm ring-1 ring-line outline-none placeholder:text-faint focus:ring-2 focus:ring-ink/20"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        e.currentTarget.form?.requestSubmit();
+                      }
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={pending}
+                    className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
+                  >
+                    {pending ? "Enviando…" : "Enviar"}
+                  </button>
+                </div>
               </form>
             </>
           )}
         </section>
       </div>
+
+      {aviso ? (
+        <Toast message={aviso} tone="crit" onDismiss={() => setAviso(null)} />
+      ) : null}
     </div>
   );
 }
