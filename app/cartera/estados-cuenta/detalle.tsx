@@ -12,7 +12,11 @@ import {
 } from "@/lib/cartera/estado-cuenta";
 import { partesSaldoAnterior, type PlanAcuerdoVista } from "@/lib/cartera/extracto-desglose";
 import { resumenFrecuencia, type FrecuenciaAcuerdo } from "@/lib/cartera/acuerdo";
-import { filaEstadoEnVivo } from "./actions";
+import {
+  acuerdosCerradosDelContrato,
+  filaEstadoEnVivo,
+  type AcuerdoCerradoVista,
+} from "./actions";
 import { etiquetaCarroUi } from "@/lib/cartera/empresa";
 import { fechaConDia, fechaLarga } from "@/lib/cartera/fecha";
 import type { EstadoCuentaFila } from "./types";
@@ -162,6 +166,8 @@ export function DetalleEstadoModal({
   const [toast, setToast] = useState<string | null>(null);
   const [vivo, setVivo] = useState(estado);
   const [historico, setHistorico] = useState(false);
+  const [acuerdosCerrados, setAcuerdosCerrados] = useState<AcuerdoCerradoVista[] | null>(null);
+  const [tickAcuerdos, setTickAcuerdos] = useState(0);
   const carro = etiquetaCarroUi(vivo.empresa, vivo.vehiculoNumero);
   const progreso = pctCuotas(vivo);
   const adelantado = esAdelantado(vivo);
@@ -210,6 +216,18 @@ export function DetalleEstadoModal({
   }, [vivo.contratoId]);
 
   useEffect(() => {
+    let cancel = false;
+    setAcuerdosCerrados(null);
+    acuerdosCerradosDelContrato(vivo.contratoId).then((res) => {
+      if (cancel) return;
+      setAcuerdosCerrados(res.ok ? res.filas : []);
+    });
+    return () => {
+      cancel = true;
+    };
+  }, [vivo.contratoId, tickAcuerdos]);
+
+  useEffect(() => {
     closeRef.current?.focus();
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -236,6 +254,10 @@ export function DetalleEstadoModal({
   function afterSave(msg: string) {
     setToast(msg);
     setTab("resumen");
+    setTickAcuerdos((n) => n + 1);
+    filaEstadoEnVivo(vivo.contratoId).then((res) => {
+      if (res.ok) setVivo(res.fila);
+    });
     onSaved?.();
   }
 
@@ -485,6 +507,52 @@ export function DetalleEstadoModal({
                       {money(vivo.acuerdoHoy)}
                     </Fila>
                   )}
+                </Seccion>
+              )}
+
+              {acuerdosCerrados && acuerdosCerrados.length > 0 && (
+                <Seccion title="Historial de acuerdos">
+                  <p className="mb-2 text-[11px] text-muted">
+                    Suspendidos o cerrados: comentario de origen y motivo de cierre.
+                  </p>
+                  {acuerdosCerrados.map((a) => {
+                    const cerrado = fechaLargaUi(a.cerrado_at?.slice(0, 10)) ?? fechaCorta(a.cerrado_at);
+                    return (
+                      <div key={a.id} className="border-t border-line py-3 first:border-t-0">
+                        <div className="mb-1 flex items-baseline justify-between gap-3">
+                          <p className="text-sm font-medium text-ink">{a.descripcion || "Acuerdo de pago"}</p>
+                          <StatusChip tone="neutral">Suspendido</StatusChip>
+                        </div>
+                        <div className="divide-y divide-line">
+                          {a.comentario ? (
+                            <Fila label="De qué era" tone="muted">
+                              <span className="max-w-[16rem] text-right font-normal normal-case tracking-normal">
+                                {a.comentario}
+                              </span>
+                            </Fila>
+                          ) : null}
+                          {a.motivo_cierre ? (
+                            <Fila label="Motivo de cierre" tone="muted">
+                              <span className="max-w-[16rem] text-right font-normal normal-case tracking-normal">
+                                {a.motivo_cierre}
+                              </span>
+                            </Fila>
+                          ) : null}
+                          <Fila label="Acordado" tone="muted">
+                            {money(a.monto_total)}
+                          </Fila>
+                          <Fila label="Saldo al cerrar" tone="muted">
+                            {money(a.saldo)}
+                          </Fila>
+                          {cerrado ? (
+                            <Fila label="Cerrado" tone="muted">
+                              {cerrado}
+                            </Fila>
+                          ) : null}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </Seccion>
               )}
 

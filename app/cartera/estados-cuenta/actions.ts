@@ -1078,6 +1078,61 @@ export async function eliminarPagoHistorial(
   return { ok: true, msg: "Pago eliminado." };
 }
 
+/** Acuerdos ya suspendidos/cerrados: comentario + motivo para trazabilidad en el detalle. */
+export type AcuerdoCerradoVista = {
+  id: string;
+  descripcion: string;
+  comentario: string;
+  motivo_cierre: string;
+  monto_total: number;
+  saldo: number;
+  cerrado_at: string | null;
+  created_at: string | null;
+};
+
+export async function acuerdosCerradosDelContrato(
+  contratoId: string,
+): Promise<{ ok: true; filas: AcuerdoCerradoVista[] } | { ok: false; error: string }> {
+  const id = String(contratoId ?? "").trim();
+  if (!id) return { ok: false, error: "Falta el contrato." };
+  const sb = createServerSupabase();
+  const selFull =
+    "id, descripcion, comentario, motivo_cierre, monto_total, saldo, cerrado_at, created_at, activo";
+  const selBase = "id, descripcion, monto_total, saldo, created_at, activo";
+  let { data, error } = await sb
+    .from("acuerdos")
+    .select(selFull)
+    .eq("contrato_id", id)
+    .eq("activo", false)
+    .order("cerrado_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false });
+  if (error && /comentario|motivo_cierre|cerrado_at/i.test(error.message)) {
+    const retry = await sb
+      .from("acuerdos")
+      .select(selBase)
+      .eq("contrato_id", id)
+      .eq("activo", false)
+      .order("created_at", { ascending: false });
+    data = retry.data as typeof data;
+    error = retry.error;
+  }
+  if (error) return { ok: false, error: error.message };
+
+  const filas: AcuerdoCerradoVista[] = ((data ?? []) as Record<string, unknown>[])
+    .filter((a) => !esExtension(String(a.descripcion ?? "")))
+    .map((a) => ({
+      id: String(a.id),
+      descripcion: String(a.descripcion ?? "Acuerdo de pago"),
+      comentario: String(a.comentario ?? ""),
+      motivo_cierre: String(a.motivo_cierre ?? ""),
+      monto_total: Number(a.monto_total) || 0,
+      saldo: Number(a.saldo) || 0,
+      cerrado_at: (a.cerrado_at as string | null) ?? null,
+      created_at: (a.created_at as string | null) ?? null,
+    }));
+  return { ok: true, filas };
+}
+
 /** Misma lectura que el mensaje de las 10: saldo, desglose y recargo ya cruzado. */
 export async function filaEstadoEnVivo(
   contratoId: string,
