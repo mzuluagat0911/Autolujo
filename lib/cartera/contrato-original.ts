@@ -411,14 +411,38 @@ function planoTitulo(texto: string): string {
   return texto.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
 }
 
-/** El aire de contrato-KW·182. No se inventa otro. */
-function spacingDeReferencia(texto: string, enCuerpo: boolean): string {
+/** ¿Seguimos en PRIMERA…DÉCIMA? (antes de DÉCIMA PRIMERA). */
+function marcarPrimerasDiez(plano: string, actual: boolean): boolean {
+  if (/^DECIMA\s+(PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|SEPTIMA|OCTAVA|NOVENA)\b/.test(plano)) {
+    return false;
+  }
+  if (/^(UNDECIMA|VIGESIMA|TRIGESIMA|CUATRIGESIMA|CUATROGESIMA|QUINCUAGESIMA|QUICUAGESIMA)\b/.test(plano)) {
+    return false;
+  }
+  if (/^(PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|SEPTIMA|OCTAVA|NOVENA)\b/.test(plano)) {
+    return true;
+  }
+  // Solo "DÉCIMA" / "DECIMA", no "DÉCIMA PRIMERA…"
+  if (/^DECIMA\b/.test(plano) && !/^DECIMA\s+\w/.test(plano)) return true;
+  return actual;
+}
+
+/** El aire de contrato-KW·182. En las primeras 10 cláusulas se aprieta para que las firmas quepan en una hoja. */
+function spacingDeReferencia(texto: string, enCuerpo: boolean, primerasDiez: boolean): string {
   const t = texto.trim();
   const p = planoTitulo(t);
   if (!enCuerpo) {
     if (/^CONTRATO DE ARRENDAMIENTO/.test(p)) return `<w:spacing w:after="280"${LINEA}/>`;
     if (/^\d+\s+\S/.test(t)) return `<w:spacing w:after="40"${LINEA}/>`;
     return `<w:spacing w:after="60"${LINEA}/>`;
+  }
+  // PRIMERA → DÉCIMA: sin aire entre párrafos (firmas al pie de la misma hoja).
+  if (primerasDiez) {
+    if (/^NOTA\b/.test(p)) return `<w:spacing w:before="40" w:after="0"${LINEA}/>`;
+    if (/^(PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|SEPTIMA|OCTAVA|NOVENA|DECIMA)\b/.test(p)) {
+      return `<w:spacing w:before="60" w:after="0"${LINEA}/>`;
+    }
+    return `<w:spacing w:before="0" w:after="0"${LINEA}/>`;
   }
   if (/^NOTA\b/.test(p)) return `<w:spacing w:before="200" w:after="140"${LINEA}/>`;
   if (/^(PRIMERA|SEGUNDA|TERCERA|CUARTA|QUINTA|SEXTA|SEPTIMA|OCTAVA|NOVENA|DECIMA|VIGESIMA|TRIGESIMA|CUATRIGESIMA|QUINCUAGESIMA|QUICUAGESIMA)\b/.test(p)) {
@@ -431,6 +455,7 @@ function spacingDeReferencia(texto: string, enCuerpo: boolean): string {
 function compactarHuecos(xml: string): string {
   return editarParrafos(xml, (lista) => {
     let enCuerpo = false;
+    let primerasDiez = false;
     for (const p of lista) {
       if (vacio(p.xml)) {
         p.deleted = true;
@@ -439,7 +464,9 @@ function compactarHuecos(xml: string): string {
       const texto = textoDe(p.xml).trim();
       if (/^Entre los suscritos/i.test(texto)) enCuerpo = true;
       if (/w:type="page"/.test(p.xml) && !texto) continue;
-      p.xml = ponerSpacing(p.xml, spacingDeReferencia(texto, enCuerpo));
+      const plano = planoTitulo(texto);
+      if (enCuerpo) primerasDiez = marcarPrimerasDiez(plano, primerasDiez);
+      p.xml = ponerSpacing(p.xml, spacingDeReferencia(texto, enCuerpo, primerasDiez));
     }
   });
 }
