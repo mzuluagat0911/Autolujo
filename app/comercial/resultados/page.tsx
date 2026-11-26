@@ -155,7 +155,6 @@ export default async function ResultadosComercialPage({
         </div>
       </section>
 
-      <Tabla titulo="Por campaña" filas={r.porCampana} />
       <Tabla titulo="Por asesor" filas={r.porAsesor} />
     </PageShell>
   );
