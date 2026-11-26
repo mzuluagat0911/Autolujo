@@ -46,11 +46,15 @@ export default function AdministrativoPage() {
             paga el cliente o la empresa.
           </li>
           <li>
-            <span className="font-medium text-ink">3. Comprar</span> — mirá “Qué comprar” según lo que
-            más salió; registrá la entrada.
+            <span className="font-medium text-ink">3. Comprar</span> — mirá “Qué comprar”; en la
+            entrada poné proveedor y precio.
           </li>
           <li>
-            <span className="font-medium text-ink">4. Transferir</span> — si falta en una sede y sobra
+            <span className="font-medium text-ink">4. Proveedores</span> — se arman solos; con el
+            tiempo verás quién conviene más por pieza.
+          </li>
+          <li>
+            <span className="font-medium text-ink">5. Transferir</span> — si falta en una sede y sobra
             en la otra.
           </li>
         </ol>

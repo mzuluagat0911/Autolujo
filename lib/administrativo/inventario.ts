@@ -72,14 +72,20 @@ export type ItemInventarioVista = {
   cantidad: number;
 };
 
+export type DestinoSalidaInventario = "carro" | "taller";
+
 export type MovimientoInventarioVista = {
   id: string;
+  item_id: string;
   tipo: TipoMovimientoInventario;
   cantidad: number;
   fecha: string;
   vehiculo_numero: string | null;
   vehiculo_id: string | null;
+  /** Consumo de taller: sin carro. */
+  para_taller: boolean;
   proveedor: string | null;
+  precio_unitario: number | null;
   notas: string | null;
   codigo: string;
   descripcion: string;
@@ -88,6 +94,16 @@ export type MovimientoInventarioVista = {
   sede_destino: SedeInventario | null;
   cobro_a: CobroInventario | null;
   created_at: string;
+  ediciones: number;
+};
+
+export type EdicionMovimientoVista = {
+  id: string;
+  motivo: string;
+  antes: Record<string, unknown>;
+  despues: Record<string, unknown>;
+  created_at: string;
+  editor: string | null;
 };
 
 export type RecomendacionCompra = {
@@ -101,4 +117,44 @@ export type RecomendacionCompra = {
   salidas_periodo: number;
   sugerido: number;
   costo_sugerido: number | null;
+  /** Si hay historial de entradas con precio. */
+  proveedor_mas_barato: string | null;
+  precio_mas_barato: number | null;
 };
+
+export type ProveedorVista = {
+  id: string;
+  nombre: string;
+  entradas: number;
+  items_distintos: number;
+  ultima_fecha: string | null;
+};
+
+/** Comparativa de precios por pieza entre proveedores (desde entradas). */
+export type ComparativaPrecioItem = {
+  item_id: string;
+  codigo: string;
+  descripcion: string;
+  rubro: RubroInventario;
+  opciones: {
+    proveedor_id: string;
+    proveedor: string;
+    precio_ultimo: number;
+    precio_min: number;
+    compras: number;
+    ultima_fecha: string;
+  }[];
+  mas_barato: { proveedor: string; precio: number } | null;
+  /** true si hay ≥2 proveedores con precio (recomendación útil). */
+  comparable: boolean;
+};
+
+/** Normaliza nombre de proveedor para no duplicar (Asia / asia / ASIA). */
+export function normalizarNombreProveedor(nombre: string): string {
+  return String(nombre ?? "")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
