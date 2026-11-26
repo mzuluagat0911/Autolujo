@@ -122,15 +122,36 @@ export function faltantesDelCaso(caso: Caso): string[] {
   return faltantesPaquete(papeles, caso.via);
 }
 
-/** Si nadie escribió otro conductor, maneja el cliente del carro. */
+/** Completa conductor/cédula para la carátula. Ex cliente usa solo datos del caso. */
 export function conConductor(caso: Caso, cliente: { nombre: string; cedula: string } | null): Caso {
-  if (!cliente) return caso;
-  const otro = caso.conductor.trim() !== "" && caso.conductor.trim().toLowerCase() !== cliente.nombre.trim().toLowerCase();
-  if (otro) return caso;
+  if (caso.exCliente) {
+    return {
+      ...caso,
+      conductor: caso.conductor.trim() || caso.clienteNombre.trim(),
+      cedulaConductor: caso.cedulaConductor.trim(),
+    };
+  }
+  if (!cliente) {
+    return {
+      ...caso,
+      conductor: caso.conductor.trim() || caso.clienteNombre.trim(),
+      cedulaConductor: caso.cedulaConductor.trim(),
+    };
+  }
+  const otro =
+    caso.conductor.trim() !== ""
+    && caso.conductor.trim().toLowerCase() !== cliente.nombre.trim().toLowerCase();
+  if (otro) {
+    return {
+      ...caso,
+      conductor: caso.conductor.trim(),
+      cedulaConductor: caso.cedulaConductor.trim(),
+    };
+  }
   return {
     ...caso,
-    conductor: caso.conductor.trim() || cliente.nombre,
-    cedulaConductor: caso.cedulaConductor.trim() || cliente.cedula,
+    conductor: caso.conductor.trim() || cliente.nombre.trim() || caso.clienteNombre.trim(),
+    cedulaConductor: caso.cedulaConductor.trim() || cliente.cedula.trim(),
   };
 }
 

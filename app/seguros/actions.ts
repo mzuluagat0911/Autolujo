@@ -127,9 +127,20 @@ export async function crearCaso(fd: FormData): Promise<Resultado> {
   const exCliente = fd.get("ex_cliente") === "1";
   caso.exCliente = exCliente;
   caso.clienteId = exCliente ? null : carro.clienteId;
-  caso.clienteNombre = exCliente ? texto(fd.get("ex_nombre")) || "Ex cliente" : carro.cliente;
-  caso.contratoId = exCliente ? null : carro.contratoId;
-  caso.cedulaConductor = exCliente ? texto(fd.get("ex_cedula")) : "";
+  const exNombre = texto(fd.get("ex_nombre"));
+  const exCedula = texto(fd.get("ex_cedula"));
+  if (exCliente) {
+    if (!exNombre) return { ok: false, error: "Indicá el nombre del ex cliente." };
+    if (!exCedula) return { ok: false, error: "Indicá la cédula del ex cliente (va en la carátula)." };
+    caso.clienteNombre = exNombre;
+    caso.conductor = exNombre;
+    caso.cedulaConductor = exCedula;
+    caso.contratoId = null;
+  } else {
+    caso.clienteNombre = carro.cliente;
+    caso.contratoId = carro.contratoId;
+    caso.cedulaConductor = "";
+  }
   caso.aseguradora = aseguradoraOk(texto(fd.get("aseguradora")));
   caso.destinoCarro = destino;
 

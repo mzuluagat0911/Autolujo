@@ -95,7 +95,15 @@ export function FichaCaso({
   const enTaller = fila.estadoCarro === "colision";
   const dias = diasEnSeccion(fila, hoy);
   const trabado = atraso(fila, hoy);
-  const conductorCliente = !fila.caso.conductor.trim() && cliente ? cliente : null;
+  // Ex cliente: no usar el cliente actual del carro (rompe la carátula).
+  const conductorCliente =
+    fila.caso.exCliente
+      ? null
+      : !fila.caso.conductor.trim() && cliente
+        ? cliente
+        : null;
+  const conductorPortada = fila.caso.conductor.trim() || fila.caso.clienteNombre.trim() || conductorCliente?.nombre || "";
+  const cedulaPortada = fila.caso.cedulaConductor.trim() || conductorCliente?.cedula || "";
 
   useEffect(() => {
     if (!sucio) return;
@@ -539,26 +547,40 @@ export function FichaCaso({
         <Bloque
           titulo="Portada del paquete"
           abierto={abre(seccion, ["facturas", "seguimiento"])}
-          resumen={fila.caso.conductor || conductorCliente?.nombre || ""}
+          resumen={conductorPortada}
         >
           <p className="text-xs text-muted sm:col-span-2">
             Estos datos salen en la hoja amarilla que encabeza el paquete del reclamo.
+            {fila.caso.exCliente
+              ? " Este caso es de un ex cliente: no se toma el nombre del que tiene el carro hoy."
+              : ""}
           </p>
+          {(!conductorPortada || !cedulaPortada) && (
+            <p className="rounded-lg bg-ambar-wash px-3 py-2 text-xs text-ambar ring-1 ring-ambar/20 sm:col-span-2">
+              Falta {[!conductorPortada && "nombre", !cedulaPortada && "cédula"].filter(Boolean).join(" y ")} para la carátula. Completalo antes de imprimir.
+            </p>
+          )}
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Conductor</span>
-            <input name="conductor" defaultValue={fila.caso.conductor || conductorCliente?.nombre || ""} className={INPUT} />
+            <input name="conductor" defaultValue={conductorPortada} required className={INPUT} />
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Cédula del conductor</span>
             <input
               name="cedula_conductor"
-              defaultValue={fila.caso.cedulaConductor || conductorCliente?.cedula || ""}
+              defaultValue={cedulaPortada}
+              required
               className={INPUT}
             />
           </label>
           {conductorCliente && (
             <p className="-mt-2 text-xs text-muted sm:col-span-2">
               Tomado del cliente del carro. Si manejaba otra persona, cámbielo.
+            </p>
+          )}
+          {fila.caso.exCliente && (
+            <p className="-mt-2 text-xs text-muted sm:col-span-2">
+              Ex cliente del caso: {fila.caso.clienteNombre || "—"}.
             </p>
           )}
           <label className="flex flex-col gap-1.5">
@@ -708,12 +730,35 @@ export function FichaCaso({
           titulo="Reclamo"
           abierto={abre(seccion, ["seguimiento", "pagado", "no_procede"])}
           resumen={[
+            nombreAseguradora(aseguradora) || "",
             fila.caso.numeroReclamo,
             fila.caso.montoFiniquito != null ? `Finiquito USD ${plata(fila.caso.montoFiniquito)}` : "",
           ]
             .filter(Boolean)
             .join(" · ")}
         >
+          <label className="flex flex-col gap-1.5">
+            <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Aseguradora</span>
+            <select
+              value={aseguradora}
+              onChange={(e) => {
+                setAseguradora(e.target.value as typeof aseguradora);
+                setSucio(true);
+              }}
+              className={INPUT}
+            >
+              <option value="">Todavía no sé</option>
+              {ASEGURADORAS.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.telefono ? `${a.nombre} · ${a.telefono}` : a.nombre}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-muted">
+              Dónde va el trámite
+              {nombreAseguradora(aseguradora) ? `: ${nombreAseguradora(aseguradora)}` : "."}
+            </span>
+          </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Número de reclamo</span>
             <input name="numero_reclamo" defaultValue={fila.caso.numeroReclamo} placeholder="000-00-00000" className={INPUT} />

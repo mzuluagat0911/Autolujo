@@ -355,7 +355,7 @@ const PLAZO: Partial<Record<Seccion, number>> = {
   cita: 2,
   resolucion: 10,
   facturas: 7,
-  seguimiento: 15,
+  seguimiento: 30,
 };
 
 /** Por qué el caso está trabado, o null si va a tiempo. */
@@ -365,7 +365,14 @@ export function atraso(fila: Pick<CasoFila, "fecha" | "caso">, hoy: string): str
   if (caso.porConfirmar) return null;
   if (caso.seccion === "audiencia") {
     const ultima = caso.fechaAudiencia2 || caso.fechaAudiencia;
-    if (ultima && ultima < hoy) return `La audiencia fue el ${fechaCorta(ultima)}: pase a esperar la resolución.`;
+    // Alerta recién a los 30 días de pasada la audiencia, no antes.
+    if (ultima) {
+      const diasTras = diasEntre(ultima, hoy);
+      if (diasTras >= 30) {
+        return `La audiencia fue el ${fechaCorta(ultima)} (hace ${diasTras} días): pase a esperar la resolución.`;
+      }
+      return null;
+    }
     if (!caso.fechaAudiencia && diasEnSeccion(fila, hoy) > 3) return "Sin fecha de audiencia: anótela.";
     return null;
   }

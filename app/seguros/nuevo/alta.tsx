@@ -134,7 +134,7 @@ export function AltaChoque({ carros, hoy }: { carros: CarroParaCaso[]; hoy: stri
           </label>
           <label className="flex flex-col gap-1.5">
             <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Cédula</span>
-            <input name="ex_cedula" className={INPUT} />
+            <input name="ex_cedula" required className={INPUT} />
           </label>
         </div>
       )}

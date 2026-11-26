@@ -546,10 +546,12 @@ export type ClienteDelCaso = {
   venceLicencia: string;
 };
 
-/** El cliente guardado en el caso; si el caso es viejo, el del contrato activo del carro. */
+/** El cliente del caso. En ex cliente NUNCA cae al contrato activo (sería el dueño actual). */
 export async function clienteDelCaso(fila: CasoFila): Promise<ClienteDelCaso | null> {
   const sb = createServerSupabase();
   let clienteId = fila.caso.clienteId;
+  // Ex cliente: solo el id guardado en el caso. Sin fallback al carro.
+  if (!clienteId && fila.caso.exCliente) return null;
   if (!clienteId) {
     const { data } = await sb
       .from("contratos")

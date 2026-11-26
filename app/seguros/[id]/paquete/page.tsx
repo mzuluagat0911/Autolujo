@@ -43,6 +43,7 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
     registroVehiculo: registroListo || Boolean(urls[pathVehiculo(fila.vehiculoId, "registro")]),
   });
   const faltan = faltantesPaquete(papeles, fila.caso.via);
+  const casoHoja = conConductor(fila.caso, cliente);
   const hoja = hojaAmarilla({
     empresa: fila.empresa,
     numero: fila.numero,
@@ -50,9 +51,13 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
     marca: fila.marca,
     modelo: fila.modelo,
     fecha: fila.fecha,
-    caso: conConductor(fila.caso, cliente),
+    caso: casoHoja,
     papeles,
   });
+  const faltaIdentidad = [
+    !casoHoja.conductor.trim() && "nombre del conductor",
+    !casoHoja.cedulaConductor.trim() && "cédula",
+  ].filter(Boolean) as string[];
 
   return (
     <div className="mx-auto max-w-4xl py-8 print:max-w-none print:py-0">
@@ -71,6 +76,12 @@ export default async function PaquetePage({ params }: { params: Promise<{ id: st
       <p className="mb-4 text-sm text-muted print:hidden">
         La hoja amarilla es la portada. El PDF le suma la cotización, el registro del carro y los papeles del caso. La cédula y la licencia no van: se imprimen aparte.
       </p>
+      {faltaIdentidad.length > 0 ? (
+        <p className="mb-4 rounded-lg bg-rojo-wash px-4 py-3 text-sm text-rojo ring-1 ring-rojo/20 print:hidden">
+          La carátula va incompleta: falta {faltaIdentidad.join(" y ")}. Completalo en el caso antes de imprimir
+          {fila.caso.exCliente ? " (este choque es de un ex cliente; no uses al cliente actual del carro)" : ""}.
+        </p>
+      ) : null}
       {faltan.length > 0 ? (
         <p className="mb-4 rounded-lg bg-ambar-wash px-4 py-3 text-sm text-ambar ring-1 ring-ambar/20 print:hidden">
           Falta para el paquete: {faltan.join(", ")}.
