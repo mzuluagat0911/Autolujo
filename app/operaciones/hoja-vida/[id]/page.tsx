@@ -11,10 +11,14 @@ export const dynamic = "force-dynamic";
 
 export default async function HojaVidaCarroPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ q?: string }>;
 }) {
   const { id } = await params;
+  const sp = await searchParams;
+  const qInicial = String(sp.q ?? "").trim();
   const sb = createServerSupabase();
   const { data: veh, error } = await sb
     .from("vehiculos")
@@ -83,7 +87,7 @@ export default async function HojaVidaCarroPage({
           <h2 className="text-lg font-semibold tracking-tight">Historial</h2>
           <p className="text-xs tabular-nums text-muted">{eventos.length} eventos</p>
         </div>
-        <TimelineEventos vehiculoId={id} eventos={eventos} />
+        <TimelineEventos vehiculoId={id} eventos={eventos} busquedaInicial={qInicial} />
       </section>
     </div>
   );

@@ -17,7 +17,10 @@ async function listarFlota(): Promise<{ filas: FilaHojaVida[]; error: string | n
 
     const flota = (vehs ?? []).filter((v) => !fueraDeFlota(v.estado));
     const ids = flota.map((v) => v.id);
-    const conteo = new Map<string, { n: number; ultimo: string | null }>();
+    const conteo = new Map<
+      string,
+      { n: number; ultimo: string | null; lineas: { fecha: string; texto: string }[] }
+    >();
 
     if (ids.length > 0) {
       const pageSize = 1000;
@@ -25,7 +28,7 @@ async function listarFlota(): Promise<{ filas: FilaHojaVida[]; error: string | n
       for (;;) {
         const { data: evs, error: e2 } = await sb
           .from("vehiculo_eventos")
-          .select("vehiculo_id, fecha")
+          .select("vehiculo_id, fecha, tipo, titulo, detalle, lugar")
           .neq("origen", "seguros")
           .in("vehiculo_id", ids)
           .range(from, from + pageSize - 1);
@@ -35,9 +38,15 @@ async function listarFlota(): Promise<{ filas: FilaHojaVida[]; error: string | n
         }
         const batch = evs ?? [];
         for (const e of batch) {
-          const cur = conteo.get(e.vehiculo_id) ?? { n: 0, ultimo: null };
+          const cur = conteo.get(e.vehiculo_id) ?? { n: 0, ultimo: null, lineas: [] };
           cur.n += 1;
           if (!cur.ultimo || e.fecha > cur.ultimo) cur.ultimo = e.fecha;
+          const texto = [e.tipo, e.titulo, e.detalle, e.lugar]
+            .filter(Boolean)
+            .join(" ")
+            .replace(/\s+/g, " ")
+            .trim();
+          if (texto) cur.lineas.push({ fecha: e.fecha, texto });
           conteo.set(e.vehiculo_id, cur);
         }
         if (batch.length < pageSize) break;
@@ -68,6 +77,7 @@ async function listarFlota(): Promise<{ filas: FilaHojaVida[]; error: string | n
           empresa: v.empresa,
           eventos: c?.n ?? 0,
           ultimo: c?.ultimo ?? null,
+          historial: c?.lineas ?? [],
         };
       })
       .sort((a, b) => {
@@ -93,7 +103,7 @@ export default async function HojaVidaIndexPage() {
       <PageHeader
         eyebrow="Operaciones"
         title="Hoja de vida"
-        subtitle="Historial del carro: mantenimientos, revisiones, chapistería y entregas. Editable."
+        subtitle="Historial del carro: mantenimientos, revisiones, chapistería y entregas. Buscá por carro o por una palabra del historial (ej. ventilador)."
         action={
           <div className="hidden text-right sm:block">
             <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">

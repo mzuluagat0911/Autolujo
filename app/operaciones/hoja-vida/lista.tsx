@@ -16,9 +16,22 @@ export type FilaHojaVida = {
   empresa: { codigo: string } | null;
   eventos: number;
   ultimo: string | null;
+  /** Texto de eventos para buscar (fecha + tipo/título/detalle/lugar). */
+  historial: { fecha: string; texto: string }[];
 };
 
 type Filtro = "todas" | "con" | "sin";
+
+function fmtFecha(iso: string) {
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+}
+
+function matchHistorial(lineas: FilaHojaVida["historial"], needle: string) {
+  if (!needle) return [] as { fecha: string; texto: string }[];
+  return lineas.filter((l) => l.texto.toLowerCase().includes(needle)).slice(0, 3);
+}
 
 export function HojaVidaLista({
   filas,
@@ -42,30 +55,37 @@ export function HojaVidaLista({
 
   const visibles = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return filas.filter((f) => {
-      if (filtro === "con" && f.eventos <= 0) return false;
-      if (filtro === "sin" && f.eventos > 0) return false;
-      if (!needle) return true;
-      const blob = [
-        f.numero,
-        f.placa,
-        f.marca,
-        f.modelo,
-        f.empresa?.codigo,
-        etiquetaCarroUi(f.empresa?.codigo, f.numero),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
-      return blob.includes(needle);
-    });
+    return filas
+      .map((f) => {
+        const hits = matchHistorial(f.historial, needle);
+        return { f, hits };
+      })
+      .filter(({ f, hits }) => {
+        if (filtro === "con" && f.eventos <= 0) return false;
+        if (filtro === "sin" && f.eventos > 0) return false;
+        if (!needle) return true;
+        const blob = [
+          f.numero,
+          f.placa,
+          f.marca,
+          f.modelo,
+          f.empresa?.codigo,
+          etiquetaCarroUi(f.empresa?.codigo, f.numero),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return blob.includes(needle) || hits.length > 0;
+      });
   }, [filas, q, filtro]);
+
+  const needle = q.trim().toLowerCase();
 
   return (
     <div className="mt-6 space-y-4">
       <FiltersBar
         search={{ value: q, onChange: setQ }}
-        searchPlaceholder="Número, placa, marca…"
+        searchPlaceholder="Carro, placa o palabra del historial (ventilador…)"
         chips={[
           { id: "todas", label: "Todas", count: filas.length },
           { id: "con", label: "Con historial", count: contadores.con },
@@ -84,7 +104,14 @@ export function HojaVidaLista({
       {error ? (
         <EmptyState title="No se pudo cargar la flota" hint={error} />
       ) : visibles.length === 0 ? (
-        <EmptyState title="Ningún carro coincide" hint="Probá otro filtro o búsqueda." />
+        <EmptyState
+          title="Ningún carro coincide"
+          hint={
+            needle
+              ? `No hay eventos ni carros con “${q.trim()}”. Probá otra palabra.`
+              : "Probá otro filtro o búsqueda."
+          }
+        />
       ) : (
         <div className="overflow-x-auto rounded-xl ring-1 ring-line">
           <table className="w-full text-sm">
@@ -99,33 +126,59 @@ export function HojaVidaLista({
               </tr>
             </thead>
             <tbody>
-              {visibles.map((f) => (
-                <tr key={f.id} className="border-b border-line last:border-0 hover:bg-surface-2">
-                  <td className="px-4 py-3 font-semibold tabular-nums">
-                    {etiquetaCarroUi(f.empresa?.codigo, f.numero)}
-                  </td>
-                  <td className="px-4 py-3 tabular-nums text-muted">{f.placa ?? "—"}</td>
-                  <td className="px-4 py-3 text-muted">
-                    {[f.marca, f.modelo, f.anio].filter(Boolean).join(" ") || "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {f.eventos > 0 ? (
-                      <StatusChip tone="azul">{f.eventos}</StatusChip>
-                    ) : (
-                      <span className="text-faint">0</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 tabular-nums text-muted">{f.ultimo ?? "—"}</td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/operaciones/hoja-vida/${f.id}`}
-                      className="text-sm font-medium underline-offset-2 hover:underline"
-                    >
-                      Abrir
-                    </Link>
-                  </td>
-                </tr>
-              ))}
+              {visibles.map(({ f, hits }) => {
+                const href =
+                  needle && hits.length > 0
+                    ? `/operaciones/hoja-vida/${f.id}?q=${encodeURIComponent(q.trim())}`
+                    : `/operaciones/hoja-vida/${f.id}`;
+                return (
+                  <tr key={f.id} className="border-b border-line last:border-0 hover:bg-surface-2">
+                    <td className="px-4 py-3 align-top">
+                      <p className="font-semibold tabular-nums">
+                        {etiquetaCarroUi(f.empresa?.codigo, f.numero)}
+                      </p>
+                      {hits.length > 0 && (
+                        <ul className="mt-1.5 space-y-1">
+                          {hits.map((h, i) => (
+                            <li key={`${h.fecha}-${i}`} className="text-xs text-muted">
+                              <span className="tabular-nums text-faint">{fmtFecha(h.fecha)}</span>
+                              {" · "}
+                              <span className="line-clamp-2">{h.texto}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top tabular-nums text-muted">
+                      {f.placa ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 align-top text-muted">
+                      {[f.marca, f.modelo, f.anio].filter(Boolean).join(" ") || "—"}
+                    </td>
+                    <td className="px-4 py-3 align-top">
+                      {f.eventos > 0 ? (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <StatusChip tone="azul">{f.eventos}</StatusChip>
+                          {hits.length > 0 && <StatusChip tone="warn">En historial</StatusChip>}
+                        </div>
+                      ) : (
+                        <span className="text-faint">0</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 align-top tabular-nums text-muted">
+                      {f.ultimo ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 align-top text-right">
+                      <Link
+                        href={href}
+                        className="text-sm font-medium underline-offset-2 hover:underline"
+                      >
+                        Abrir
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Field, Select } from "@/components/form";
-import { StatusChip } from "@/components/kit";
+import { EmptyState, FiltersBar, StatusChip } from "@/components/kit";
 import {
   TIPOS_EVENTO,
   etiquetaTipo,
@@ -111,11 +111,34 @@ export function FormNuevoEvento({
 export function TimelineEventos({
   vehiculoId,
   eventos,
+  busquedaInicial = "",
 }: {
   vehiculoId: string;
   eventos: EventoHv[];
+  busquedaInicial?: string;
 }) {
   const [editId, setEditId] = useState<string | null>(null);
+  const [q, setQ] = useState(busquedaInicial);
+
+  const visibles = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    if (!needle) return eventos;
+    return eventos.filter((ev) => {
+      const blob = [
+        ev.tipo,
+        etiquetaTipo(ev.tipo),
+        ev.titulo,
+        ev.detalle,
+        ev.lugar,
+        ev.fecha,
+        ev.km != null ? String(ev.km) : null,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return blob.includes(needle);
+    });
+  }, [eventos, q]);
 
   if (eventos.length === 0) {
     return (
@@ -129,57 +152,83 @@ export function TimelineEventos({
   }
 
   return (
-    <div className="overflow-hidden rounded-xl ring-1 ring-line">
-      <ul className="divide-y divide-line">
-        {eventos.map((ev) =>
-          editId === ev.id ? (
-            <li key={ev.id} className="bg-surface-2 p-4">
-              <FormEditarEvento
-                evento={ev}
-                onCancel={() => setEditId(null)}
-                onSaved={() => setEditId(null)}
-              />
-            </li>
-          ) : (
-            <li key={ev.id} className="bg-surface px-4 py-4 hover:bg-surface-2/60">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-semibold tabular-nums">{fmtFecha(ev.fecha)}</span>
-                    <StatusChip tone={tonoTipo(ev.tipo)}>{etiquetaTipo(ev.tipo)}</StatusChip>
-                    {ev.km != null && (
-                      <span className="text-xs tabular-nums text-muted">{fmtKm(ev.km)} km</span>
-                    )}
-                    {ev.valor != null && (
-                      <span className="text-xs tabular-nums text-muted">{fmtValor(ev.valor)}</span>
-                    )}
-                    {ev.origen === "hv_excel" && (
-                      <span className="text-[10px] uppercase tracking-[0.12em] text-faint">
-                        Importado
-                      </span>
-                    )}
+    <div className="space-y-3">
+      <FiltersBar
+        variant="bare"
+        search={{ value: q, onChange: setQ }}
+        searchPlaceholder="Filtrar eventos (ventilador, aceite, chapistería…)"
+        actions={
+          <p className="text-sm text-muted">
+            <span className="font-medium tabular-nums text-ink">{visibles.length}</span> de{" "}
+            {eventos.length}
+          </p>
+        }
+      />
+      {visibles.length === 0 ? (
+        <EmptyState
+          title="Ningún evento coincide"
+          hint={`No hay “${q.trim()}” en este historial.`}
+        />
+      ) : (
+        <div className="overflow-hidden rounded-xl ring-1 ring-line">
+          <ul className="divide-y divide-line">
+            {visibles.map((ev) =>
+              editId === ev.id ? (
+                <li key={ev.id} className="bg-surface-2 p-4">
+                  <FormEditarEvento
+                    evento={ev}
+                    onCancel={() => setEditId(null)}
+                    onSaved={() => setEditId(null)}
+                  />
+                </li>
+              ) : (
+                <li key={ev.id} className="bg-surface px-4 py-4 hover:bg-surface-2/60">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold tabular-nums">
+                          {fmtFecha(ev.fecha)}
+                        </span>
+                        <StatusChip tone={tonoTipo(ev.tipo)}>{etiquetaTipo(ev.tipo)}</StatusChip>
+                        {ev.km != null && (
+                          <span className="text-xs tabular-nums text-muted">
+                            {fmtKm(ev.km)} km
+                          </span>
+                        )}
+                        {ev.valor != null && (
+                          <span className="text-xs tabular-nums text-muted">
+                            {fmtValor(ev.valor)}
+                          </span>
+                        )}
+                        {ev.origen === "hv_excel" && (
+                          <span className="text-[10px] uppercase tracking-[0.12em] text-faint">
+                            Importado
+                          </span>
+                        )}
+                      </div>
+                      {ev.titulo && <p className="mt-1.5 text-sm font-medium">{ev.titulo}</p>}
+                      {ev.detalle && (
+                        <p className="mt-1 whitespace-pre-wrap text-sm text-muted">{ev.detalle}</p>
+                      )}
+                      {ev.lugar && <p className="mt-1 text-xs text-faint">{ev.lugar}</p>}
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEditId(ev.id)}
+                        className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+                      >
+                        Editar
+                      </button>
+                      <BorrarBoton id={ev.id} vehiculoId={vehiculoId} />
+                    </div>
                   </div>
-                  {ev.titulo && <p className="mt-1.5 text-sm font-medium">{ev.titulo}</p>}
-                  {ev.detalle && (
-                    <p className="mt-1 whitespace-pre-wrap text-sm text-muted">{ev.detalle}</p>
-                  )}
-                  {ev.lugar && <p className="mt-1 text-xs text-faint">{ev.lugar}</p>}
-                </div>
-                <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setEditId(ev.id)}
-                    className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-ink ring-1 ring-line hover:bg-surface-2"
-                  >
-                    Editar
-                  </button>
-                  <BorrarBoton id={ev.id} vehiculoId={vehiculoId} />
-                </div>
-              </div>
-            </li>
-          ),
-        )}
-      </ul>
+                </li>
+              ),
+            )}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
