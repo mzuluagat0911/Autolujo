@@ -37,6 +37,8 @@ export const PANTALLAS_ASISTENTE: { href: string; label: string }[] = [
   { href: "/seguros/polizas", label: "Pólizas" },
   { href: "/seguros/registros", label: "Registros vehiculares" },
   { href: "/seguros/registros-publicos", label: "Registros públicos" },
+  { href: "/administrativo", label: "Administrativo" },
+  { href: "/administrativo/inventario", label: "Inventario" },
 ];
 
 const POR_HREF = new Map(PANTALLAS_ASISTENTE.map((p) => [p.href, p.label]));
@@ -104,6 +106,7 @@ const NOMBRE_MODULO: Record<ModuloId, string> = {
   operaciones: "Operaciones",
   comercial: "Comercial",
   seguros: "Seguros",
+  administrativo: "Administrativo",
   configuracion: "Configuración",
   equipo: "Equipo",
 };

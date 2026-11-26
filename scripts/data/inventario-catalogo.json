@@ -1,0 +1,3390 @@
+[
+  {
+    "rubro": "chapisteria",
+    "codigo": "Alfombra del maletero Gi10",
+    "descripcion": "ALFOMBRA DEL MALETERO GRANDI10",
+    "precio_unitario": 25.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Antena gi10 2025",
+    "descripcion": "ANTENA GI10 2025",
+    "precio_unitario": 29.0,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra puerta delantera derecha 2020",
+    "descripcion": "Bisagra puerta delantera derecha 2020",
+    "precio_unitario": 20.0,
+    "proveedor": "rastro panama"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra puerta delantera izquierda 2020",
+    "descripcion": "Bisagra puerta delantera izquierda 2020",
+    "precio_unitario": 20.0,
+    "proveedor": "rastro panama | Hacia Cuenta de ahorros • 04-18-98-949002-9 | BANCO GENERAL RASTRO PANAMA"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra Tm Lh gi10 2020",
+    "descripcion": "BISAGRA TAPA DE MOTOR LH  GI10 2020",
+    "precio_unitario": 8.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra TM Lh gi10 2022",
+    "descripcion": "BISAGRA TAPA DE MOTOR LH GI10 2022",
+    "precio_unitario": 16.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra TM Lh sol",
+    "descripcion": "BISAGRA TAPA DE MOTOR LH SOLUTO",
+    "precio_unitario": 20.33,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra Tm Rh gi10 2020",
+    "descripcion": "BISAGRA TAPA DE MOTOR RH  GI10 2020",
+    "precio_unitario": 8.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra TM Rh gi10 2022",
+    "descripcion": "BISAGRA TAPA DE MOTOR RH GI10 2022",
+    "precio_unitario": 16.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra TM rh sol",
+    "descripcion": "BISAGRA TAPA DE MOTOR RH SOLUTO",
+    "precio_unitario": 20.33,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra tap ma lh gi10 2022",
+    "descripcion": "BISAGRA TAPA MALETERO LH 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bisagra tap mal rh gi10 2022",
+    "descripcion": "BISAGRA TAPA MALETERO RH 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket del corto LH sol",
+    "descripcion": "BRACKET DELANTERO CORTO LH SOLUTO",
+    "precio_unitario": 7.49,
+    "proveedor": "El rastro alessandria"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket del corto RH Sol",
+    "descripcion": "BRACKET DELANTERO CORTO RH SOLUTO",
+    "precio_unitario": 7.49,
+    "proveedor": "El rastro alessandria"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket del Lh Sol",
+    "descripcion": "BRACKET DELANTERO O GUIA DE FAROL LARGO LH SOLUTO",
+    "precio_unitario": 4.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket del Rh Sol",
+    "descripcion": "BRACKET DELANTERO O GUIA DE FAROL  LARGO RH SOLUTO",
+    "precio_unitario": 4.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket Del Lh gi10 2020",
+    "descripcion": "BRACKET DELANTERO LH GI10 2020",
+    "precio_unitario": 3.25,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket Del Lh gi10 2022 al 2027",
+    "descripcion": "BRACKET DELANTERO LH GI10 2022 al 2027",
+    "precio_unitario": 4.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket Del Rh gi10 2020",
+    "descripcion": "BRACKET DELANTERO RH GI10 2020",
+    "precio_unitario": 3.25,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket del Rh gi10 2022 2022 al 2027",
+    "descripcion": "BRACKET DELANTERO RH GI10 2022 al 2027",
+    "precio_unitario": 4.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket tras Lh gi10 2020",
+    "descripcion": "BRACKET TRASERO LH GI10 2020",
+    "precio_unitario": 5.5,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket tras Lh gi10 2022",
+    "descripcion": "BRACKET TRASERO LH GI10 2022",
+    "precio_unitario": 9.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket Tras Lh Sol",
+    "descripcion": "BRACKET TRASERO LH SOLUTO",
+    "precio_unitario": 5.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket tras Rh gi10 2020",
+    "descripcion": "BRACKET TRASERO RH GI10 2020",
+    "precio_unitario": 5.5,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket Tras Rh gi10 2022",
+    "descripcion": "BRACKET TRASERO RH GI10 2022",
+    "precio_unitario": 9.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Bracket tras Rh Sol",
+    "descripcion": "BRACKET TRASERO RH SOLUTO",
+    "precio_unitario": 5.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Caucho puerta del Lh gi10 2020",
+    "descripcion": "CAUCHO PUERTA DELANTERA LH GI10 2020",
+    "precio_unitario": 32.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Caucho puerta del Lh gi10 2022",
+    "descripcion": "CAUCHO PUERTA DELANTERA LH GI10 2022",
+    "precio_unitario": 27.82,
+    "proveedor": "KOREA CARS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cerradura puerta delantera Lh sol",
+    "descripcion": "CERRADURA PUERTA DELANTERA LH SOL",
+    "precio_unitario": 84.53,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cerradura tap malet gi10 2022",
+    "descripcion": "CERRADURA TAPA DE MALETERO GI10 2022",
+    "precio_unitario": 33.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cerradura tap mot gi10 2020",
+    "descripcion": "CERRADURA TAPA DE MOTOR GI10 2020",
+    "precio_unitario": 42.8,
+    "proveedor": "RASTRO REPUESTOS Y PARABRISAS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cerradura tap mot gi10 2022",
+    "descripcion": "CERRADURA TAPA DE MOTOR GI10 2022",
+    "precio_unitario": 48.15,
+    "proveedor": "Repuestos y parabrisas Rastro"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover al lado del retrov lh gi10 2020",
+    "descripcion": "COVER AL LADO DEL RETROVISOR LH GI10 2020",
+    "precio_unitario": 6.28,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover def tras gi10 2020",
+    "descripcion": "COVER DE DEFENSA TRASERA GI10 2020",
+    "precio_unitario": 49.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover hal lh gi10 2020",
+    "descripcion": "COVER DE HALOGENA LH GI10 2020",
+    "precio_unitario": 7.49,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "cover hal gi10 2022",
+    "descripcion": "COVER DE HALOGENA LH GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover hal rh gi10 2020",
+    "descripcion": "COVER DE HALOGENA RH GI10 2020",
+    "precio_unitario": 7.49,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover Halogena Rh gi10 2022",
+    "descripcion": "COVER DE HALOGENA RH GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover rad Gi10 2020",
+    "descripcion": "COVER DE RADIADOR GI10 2020",
+    "precio_unitario": 36.05,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover radiador gi10 2022",
+    "descripcion": "COVER DE RADIADOR GI10 2022",
+    "precio_unitario": 33.07,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover rad gi10 2025",
+    "descripcion": "COVER DE RADIADOR GI10 2025",
+    "precio_unitario": 15.0,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover Rad Sol",
+    "descripcion": "COVER DE RADIADOR SOLUTO",
+    "precio_unitario": 11.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover Hal Lh Sol",
+    "descripcion": "COVER HALOGENA LH SOLUTO",
+    "precio_unitario": 9.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover Hal Rh Sol",
+    "descripcion": "COVER HALOGENA RH SOLUTO",
+    "precio_unitario": 9.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover manigueta delant Lh 2020",
+    "descripcion": "Cover manigueta delantera lh 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cover manigueta delant RH 2020",
+    "descripcion": "Cover manigueta delantera RH2020",
+    "precio_unitario": 9.63,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cubrepol del Lh gi10 2022 al 2027",
+    "descripcion": "CUBREPOLVOS DELANTERO LH GI10 2022 AL 2027",
+    "precio_unitario": 9.0,
+    "proveedor": "Autochasis"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cubrepol Del Lh Sol",
+    "descripcion": "CUBREPOLVOS DELANTERO LH SOLUTO",
+    "precio_unitario": 8.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cubrepol del Rh gi10 2022 al 2027",
+    "descripcion": "CUBREPOLVOS DELANTERO LH GI10 2022 AL 2027",
+    "precio_unitario": 9.0,
+    "proveedor": "Autochasis"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cubrepol Del Rh Sol",
+    "descripcion": "CUBREPOLVOS DELANTERO RH SOLUTO",
+    "precio_unitario": 8.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "cubrepol del Lh gi10 2020",
+    "descripcion": "CUBREPOLVOS DELANTEROS LH GI10 2020",
+    "precio_unitario": 6.96,
+    "proveedor": "Parabrisas y carrocerias"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "cubrepol del Rh gi10 2020",
+    "descripcion": "CUBREPOLVOS DELANTEROS RH GI10 2020",
+    "precio_unitario": 6.96,
+    "proveedor": "Parabrisas y carrocerias"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cubrepol tras Lh gi10 2022",
+    "descripcion": "CUBREPOLVOS TRASERO LH GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Cubrepol tras rh gi10 2022",
+    "descripcion": "CUBREPOLVOS TRASERO RH GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Defensa del gi10 2020",
+    "descripcion": "DEFENSA DELANTERA GI10 2020",
+    "precio_unitario": 44.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Defensa del gi10 2022",
+    "descripcion": "DEFENSA DELANTERA GI10 2022",
+    "precio_unitario": 69.0,
+    "proveedor": "El rastro alessandria"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Defensa delantera gi10 2025",
+    "descripcion": "DEFENSA DELANTERA GI10 2025",
+    "precio_unitario": 157.0,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Defensa del soluto",
+    "descripcion": "DEFENSA DELANTERA SOLUTO",
+    "precio_unitario": 34.24,
+    "proveedor": "El rastro alessandria"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Defensa tras gi10 2020",
+    "descripcion": "DEFENSA TRASERA GI10 2020",
+    "precio_unitario": 44.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Defensa tras inf gi10 2022",
+    "descripcion": "DEFENSA TRASERA INFERIOR GI10 2022",
+    "precio_unitario": 79.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Defensa Tras Sol",
+    "descripcion": "DEFENSA TRASERA SOLUTO",
+    "precio_unitario": 42.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Defensa tras sup gi10 2022",
+    "descripcion": "DEFENSA TRASERA SUPERIOR GI10 2022",
+    "precio_unitario": 79.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Farol LH del 2020 USADO",
+    "descripcion": "FAROL DELANTERO LH GI10 2020 USADO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Farol RH del 2020 USADO",
+    "descripcion": "FAROL DELANTERO RH GI10 2020 USADO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Farol Lh gi10 2020",
+    "descripcion": "FAROL LH GI10 2020",
+    "precio_unitario": 40.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Farol Lh gi10 2022 al 2027",
+    "descripcion": "FAROL LH GI10 2022 al 2027",
+    "precio_unitario": 83.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Farol Lh Sol",
+    "descripcion": "FAROL LH SOLUTO",
+    "precio_unitario": 50.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Farol Rh gi10 2020",
+    "descripcion": "FAROL RH GI10 2020",
+    "precio_unitario": 40.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Farol Rh gi10 2022 al 2027",
+    "descripcion": "FAROL RH GI10 2022 al 2027",
+    "precio_unitario": 83.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Farol Rh Sol",
+    "descripcion": "FAROL RH SOLUTO",
+    "precio_unitario": 50.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Farol Rh Sol USADO",
+    "descripcion": "FAROL RH SOLUTO USADO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guardafango del rh gi10 2020",
+    "descripcion": "GUARDAFANDO DELANTERO RH GI10 2020",
+    "precio_unitario": 41.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guardafango del lh gi10 2020",
+    "descripcion": "GUARDAFANGO DELANTERO LH GI10 2020",
+    "precio_unitario": 41.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guardafan Del Lh gi10 2022",
+    "descripcion": "GUARDAFANGO DELANTERO LH GI10 2022",
+    "precio_unitario": 42.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guardafan Del Lh Sol",
+    "descripcion": "GUARDAFANGO DELANTERO LH SOLUTO",
+    "precio_unitario": 42.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guardafan Del Rh gi10 2022",
+    "descripcion": "GUARDAFANGO DELANTERO RH GI10 2022",
+    "precio_unitario": 42.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guardafan del Rh Sol",
+    "descripcion": "GUARDAFANGO DELANTERO RH SOLUTO",
+    "precio_unitario": 38.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guia lamp LH gi10 2020",
+    "descripcion": "GUIA DE FAROL LH GI10 2020",
+    "precio_unitario": 4.28,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guia lamp LH gi10 2022",
+    "descripcion": "GUIA DE FAROL LH GI10 2022",
+    "precio_unitario": 18.89,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guia lamp RH gi10 2020",
+    "descripcion": "GUIA DE FAROL RH GI10 2020",
+    "precio_unitario": 4.28,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guia de marco de rad lh gi10 2020",
+    "descripcion": "GUIA DE MARCO DE MARCO DE RADIADOR LH GI10 2020",
+    "precio_unitario": 13.92,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Guia de marco de rad rh gi10 2020",
+    "descripcion": "GUIA DE MARCO DE MARCO DE RADIADOR RH GI10 2020",
+    "precio_unitario": 13.92,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp direccional guardaf LH gi2022",
+    "descripcion": "LAMPARA DIRECCIONAL LH HYU GRAND I-10  2022 AL 2027",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp direccional guardaf RH gi2022",
+    "descripcion": "LAMPARA DIRECCIONAL RH  HYU GRAND I-10  2022 AL 2027",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp del guardaf gi10 2020",
+    "descripcion": "LAMPARA DIRECCIONAL DEL GUARDAF GI10 2020",
+    "precio_unitario": 4.5,
+    "proveedor": "Autochasis"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "LAMPARA DE GUARDAFANGO LH SOLUTO",
+    "descripcion": "LAMPARA DE DIRECCIONAL LH SOLUTO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "LAMPARA DE GUARDAFANGO RH SOLUTO",
+    "descripcion": "LAMPARA DE DIRECCIONAL RH SOLUTO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp tras guardaf LH  gi10 2020",
+    "descripcion": "LAMPARA TRASERA DEL GUARDAFANGO LH GI10 2020",
+    "precio_unitario": 40.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp tras guardaf Lh gi10 2022",
+    "descripcion": "LAMPARA TRASERA DEL GUARDAFANGO LH GI10 2022",
+    "precio_unitario": 149.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp tras guardaf RH gi10 2020",
+    "descripcion": "LAMPARA TRASERA DEL GUARDAFANGO RH GI10 2020",
+    "precio_unitario": 40.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp tras guardaf Rh gi10 2022",
+    "descripcion": "LAMPARA TRASERA DEL GUARDAFANGO RH GI10 2022",
+    "precio_unitario": 149.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp tras maletero LH gi10 2020",
+    "descripcion": "LAMPARA TRASERA DEL MALETERO LH GI10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp tras malet Lh gi10 2022",
+    "descripcion": "LAMPARA TRASERA DEL MALETERO LH GI10 2022",
+    "precio_unitario": 165.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp tras maletero RH gi10 2020",
+    "descripcion": "LAMPARA TRASERA DEL MALETERO RH GI10 2020",
+    "precio_unitario": 57.48,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp tras maletero RH gi10 2022",
+    "descripcion": "LAMPARA TRASERA DEL MALETERO RH GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp Tras Lh Sol",
+    "descripcion": "LAMPARA TRASERA LH SOLUTO",
+    "precio_unitario": 30.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Lamp Tras Rh Sol",
+    "descripcion": "LAMPARA TRASERA RH SOLUTO",
+    "precio_unitario": 30.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Laton gi10 2022",
+    "descripcion": "LATON TRASERO GI10 2022",
+    "precio_unitario": 75.0,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Logo del gi10 2020",
+    "descripcion": "LOGO DELANTERO GI10 2020",
+    "precio_unitario": 17.93,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Luneta Lh gi10 2020",
+    "descripcion": "LUNETA O ESPEJO DE RETROVISOR LH GI10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Luneta RH gi10 2022",
+    "descripcion": "LUNETA O ESPEJO DE RETROVISOR RH GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Luneta Lh gi10 2022",
+    "descripcion": "LUNETA O ESPEJO DE RETROVISOR LH GI10 2022",
+    "precio_unitario": 25.27,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Manigueta delantera Lh gi10 2020",
+    "descripcion": "Manigueta delantera Lh gi10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Manigueta delantera Lh gi10 2022",
+    "descripcion": "MANIGUETA DELANTERA LH GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "MANIGUETA TRASERA  LH GI10 2022",
+    "descripcion": "MANIGUETA TRASERA  LH GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Manigueta delantera Rh gi10 2020",
+    "descripcion": "Manigueta delantera Rh gi10 2020",
+    "precio_unitario": 14.98,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Marc rad gi10 2020",
+    "descripcion": "MARCO DE RADIADOR GI10 2020",
+    "precio_unitario": 50.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Marc rad gi10 2022",
+    "descripcion": "MARCO DE RADIADOR GI10 2022",
+    "precio_unitario": 113.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Marco rad sol",
+    "descripcion": "MARCO DE RADIADOR SOLUTO",
+    "precio_unitario": 45.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Mold Maletero gi10 2020",
+    "descripcion": "MOLDURA CROMADA DEL MALETERO GI10 2020",
+    "precio_unitario": 80.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Mold Maletero gi10 2022",
+    "descripcion": "MOLDURA CROMADA DEL MALETERO GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parabrisa gi10 2020",
+    "descripcion": "PARABRISAS GI10 2020",
+    "precio_unitario": 45.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parabrisa gi10 2022",
+    "descripcion": "PARABRISAS GI10 2022",
+    "precio_unitario": 67.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parabrisa Sol",
+    "descripcion": "PARABRISAS SOLUTO",
+    "precio_unitario": 68.0,
+    "proveedor": "está en autochasis pago"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parrilla inf gi10 2020",
+    "descripcion": "PARRILLA DELANTERA INFERIOR GI10 2020",
+    "precio_unitario": 23.54,
+    "proveedor": "Parabrisas y carrocerias"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parrilla inf gi10 2022",
+    "descripcion": "PARRILLA DELANTERA INFERIOR GI10 2022",
+    "precio_unitario": 44.94,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parrilla inf Sol",
+    "descripcion": "PARRILLA DELANTERA INFERIOR NEGRA BRILLANTE SOLUTO",
+    "precio_unitario": 31.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parrilla Sup CM gi10 2020",
+    "descripcion": "PARRILLA DELANTERA SUPERIOR CROMADA GI10 2020",
+    "precio_unitario": 38.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "parrilla sup gi10 2022",
+    "descripcion": "PARRILLA DELANTERA SUPERIOR CROMADA GI10 2022",
+    "precio_unitario": 44.94,
+    "proveedor": "Parabrisas y carrocerias"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parrilla Sup CM Sol",
+    "descripcion": "PARRILLA DELANTERA SUPERIOR CROMADA SOLUTO",
+    "precio_unitario": 28.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parrilla inf gi10 2025",
+    "descripcion": "PARRILLA DELANTERA INFERIOR GI10 2025",
+    "precio_unitario": 75.22,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Parrilla sup gi10 2025",
+    "descripcion": "PARRILLA SUPERIOR (LOGO) GI10 2025",
+    "precio_unitario": null,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "PECHERA HYUNDAI GRAND I10 2022 AL 2027",
+    "descripcion": "PECHERA HYUNDAI GRAND I10 2022 AL 2027",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "PECHERA SOLUTO",
+    "descripcion": "PECHERA SOLUTO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Puerta del LH gi10 2020",
+    "descripcion": "PUERTA DELANTERA LH  GI10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Puerta del Rh gi10 2022",
+    "descripcion": "PUERTA DELANTERA RH GI10 2022",
+    "precio_unitario": 169.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "PUERTA DELANTERA RH GI10 SOLUTO",
+    "descripcion": "PUERTA DELANTERA RH GI10 SOLUTO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "PUERTA DELANTERA LH GI10 SOLUTO",
+    "descripcion": "PUERTA DELANTERA LH GI10 SOLUTO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Puerta tras Lh gi10 2020",
+    "descripcion": "PUERTA TRASERA LH GI10 2020",
+    "precio_unitario": 165.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Puerta trasera Lh gi10 2022",
+    "descripcion": "PUERTA TRASERA LH GI10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Puerta tras Rh gi10 2020",
+    "descripcion": "PUERTA TRASERA RH GI10 2020",
+    "precio_unitario": 169.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Reflector Lh gi10 2020",
+    "descripcion": "REFLECTOR LH GI10 2020",
+    "precio_unitario": 5.5,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Reflector Rh gi10 2020",
+    "descripcion": "REFLECTOR RH GI10 2020",
+    "precio_unitario": 5.5,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Reflector Lh gi10 2022",
+    "descripcion": "REFLECTOR LH GI10 2022",
+    "precio_unitario": 25.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Reflector Lh Sol",
+    "descripcion": "REFLECTOR LH SOLUTO",
+    "precio_unitario": 8.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Reflector Rh gi10 2022",
+    "descripcion": "REFLECTOR RH GI10 2022",
+    "precio_unitario": 25.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Reflector Rh Sol",
+    "descripcion": "REFLECTOR RH SOLUTO",
+    "precio_unitario": 8.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Refuerzo del 2020",
+    "descripcion": "REFUERZO DELANTERO 2020",
+    "precio_unitario": 42.8,
+    "proveedor": "Parabrisas y carrocerias"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Refuerzo del gi10 2022",
+    "descripcion": "REFUERZO DELANTERO GI10 2022",
+    "precio_unitario": 99.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Refuerzo del Sol",
+    "descripcion": "REFUERZO DELANTERO SOLUTO",
+    "precio_unitario": 25.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Refuerzo tras gi10 2020",
+    "descripcion": "REFUERZO TRASERO GI10 2020",
+    "precio_unitario": 33.17,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Refuerzo tras gi10 2022",
+    "descripcion": "REFUERZO TRASERO GI10 2022",
+    "precio_unitario": 33.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Retrovisor lh gi10 2020",
+    "descripcion": "RETROVISOR LH GI10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Retrov Lh gi10 2022",
+    "descripcion": "RETROVISOR LH GI10 2022",
+    "precio_unitario": 44.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Retrov Lh Sol",
+    "descripcion": "RETROVISOR LH SOLUTO",
+    "precio_unitario": 35.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Retrovisor rh gi10 2020",
+    "descripcion": "RETROVISOR RH GI10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Retrov Rh gi10 2022",
+    "descripcion": "RETROVISOR RH GI10 2022",
+    "precio_unitario": 88.81,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Retrov Rh Sol",
+    "descripcion": "RETROVISOR RH SOLUTO",
+    "precio_unitario": 35.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "spray blanco",
+    "descripcion": "SPRAY BLANCO",
+    "precio_unitario": 3.2,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "spray negro",
+    "descripcion": "SPRAY NEGRO",
+    "precio_unitario": 3.2,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "spray plateado",
+    "descripcion": "SPRAY PLATEADO",
+    "precio_unitario": 3.2,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Tap maleter gi10 2020",
+    "descripcion": "TAPA DE MALETERO GI10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "tap mal gi10 2022",
+    "descripcion": "TAPA DE MALETERO GI10 2022",
+    "precio_unitario": 155.15,
+    "proveedor": "El rastro alessandria"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Tap mal sol",
+    "descripcion": "TAPA DE MALETERO SOLUTO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Tap mot gi10 2020",
+    "descripcion": "TAPA DE MOTOR GI10 2020",
+    "precio_unitario": 107.0,
+    "proveedor": "Parabrisas y carrocerias"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "tap mot gi10 2022",
+    "descripcion": "TAPA DE MOTOR GI10 2022",
+    "precio_unitario": 104.86,
+    "proveedor": "El rastro alessandria"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Tapa mot Sol",
+    "descripcion": "TAPA DE MOTOR SOLUTO",
+    "precio_unitario": 104.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Tarro wipper gi10 2022",
+    "descripcion": "TARRO DE WIPPER GI10 2022",
+    "precio_unitario": 30.01,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Tarro wipper Sol",
+    "descripcion": "TARRO DE WIPPER SOLUTO",
+    "precio_unitario": 15.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Tarro coolant gi10 2022",
+    "descripcion": "TARRO O ENVASE DE COOLANT",
+    "precio_unitario": 31.03,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Tarro wipper gi10 2020",
+    "descripcion": "TARRO O ENVASE DE WIPPER GI10 2020",
+    "precio_unitario": 27.07,
+    "proveedor": "PETROAUTOS"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "uretano",
+    "descripcion": "URETANO",
+    "precio_unitario": 9.5,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "PUERTA TRASERA RH GI10 SOLUTO",
+    "descripcion": "PUERTA TRASERA RH GI10 SOLUTO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "PUERTA TRASERA LH GI10 SOLUTO",
+    "descripcion": "PUERTA TRASERA LH GI10 SOLUTO",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Vid Pta Del Lh gi10 2020",
+    "descripcion": "VIDRIO DE PUERTA DELANTERA LH GI10 2020",
+    "precio_unitario": 12.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Vid pta del Rh gi10 2020",
+    "descripcion": "VIDRIO DE PUERTA DELANTERA RH GI10 2020",
+    "precio_unitario": 12.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Vidrio pta del rh sol",
+    "descripcion": "VIDRIO DE PUERTA DELANTERA RH SOLUTO",
+    "precio_unitario": 15.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Vid pta tras Lh gi10 2020",
+    "descripcion": "VIDRIO DE PUERTA TRASERA LH GI10 2020",
+    "precio_unitario": 12.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Vidrio Pta tras Lh gi10 2022",
+    "descripcion": "VIDRIO DE PUERTA TRASERA LH GI10 2022",
+    "precio_unitario": 18.19,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Vid pta tras Rh gi10 2020",
+    "descripcion": "VIDRIO DE PUERTA TRASERA RH GI10 2020",
+    "precio_unitario": 12.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Vidrio Pta tras Rh gi10 2022",
+    "descripcion": "VIDRIO DE PUERTA TRASERA RH GI10 2022",
+    "precio_unitario": 18.19,
+    "proveedor": "El rastro alessandria"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Vidrio trasero gi10 2020",
+    "descripcion": "VIDRIO TRASERO GI10 2020",
+    "precio_unitario": 37.45,
+    "proveedor": "Parabrisas y carrocerias"
+  },
+  {
+    "rubro": "chapisteria",
+    "codigo": "Vid tras gi10 2022",
+    "descripcion": "VIDRIO TRASERO GI10 2022",
+    "precio_unitario": 36.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aban Gi10 2020",
+    "descripcion": "Abanico Grand i10 2020",
+    "precio_unitario": 52.5,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aban Gi10 2022",
+    "descripcion": "Abanico Grand i10 2022/2024",
+    "precio_unitario": 88.0,
+    "proveedor": "Autochasis"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aban Sol",
+    "descripcion": "Abanico Soluto",
+    "precio_unitario": 61.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "abraz",
+    "descripcion": "abrazaderas",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "10w30",
+    "descripcion": "aceite 10w30 BARRIL",
+    "precio_unitario": 4.73,
+    "proveedor": "Terpel"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "10w30 caja",
+    "descripcion": "ACEITE 10W30 CAJAS O CUARTOS",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "20w50",
+    "descripcion": "aceite 20w50",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aceit moto",
+    "descripcion": "Aceite de moto",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aceite refrigeracion",
+    "descripcion": "Aceite de refrigeración 8 Onzas",
+    "precio_unitario": 7.04,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aceit trans Kia Sport",
+    "descripcion": "Aceite de transmición kia sportage",
+    "precio_unitario": 40.07,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aceite de transmisión ATF 4L",
+    "descripcion": "Aceite de transmisión ATF 4L HYUNDAI",
+    "precio_unitario": 31.1,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aceite Trans Aut",
+    "descripcion": "Aceite de transmision automática ATF HYUNDAI",
+    "precio_unitario": 8.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "aceite de transmisión manual 85 W-140-1/4 marca Valvoline",
+    "descripcion": "aceite de transmisión manual 85 W-140-1/4 marca Valvoline",
+    "precio_unitario": 9.1,
+    "proveedor": "REPUESTOS ITSMO"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aceite Trans",
+    "descripcion": "aceite de transmision manual HYUNDAI",
+    "precio_unitario": 6.95,
+    "proveedor": "LA TRANSITMICA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aceite hidraulico piezas",
+    "descripcion": "Aceite hidraulico taller y piezas GOLDEN SUPREME",
+    "precio_unitario": 16.05,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Acid Bat",
+    "descripcion": "acido de bateria",
+    "precio_unitario": 1.86,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Aditivo trans",
+    "descripcion": "Aditivo de transmición",
+    "precio_unitario": 20.87,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu Lh gi10 2020 al 2027",
+    "descripcion": "amortiguador delantero GI10 LH  2020 al 2027",
+    "precio_unitario": 27.65,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu Lh Sol",
+    "descripcion": "amortiguador delantero LH SOLUTO",
+    "precio_unitario": 30.81,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu Del LH Kia sport",
+    "descripcion": "Amortiguador Delantero LH Kia sportage",
+    "precio_unitario": 93.09,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu Rh gi10 2020 al 2027",
+    "descripcion": "amortiguador delantero GI10 RH 2020 al 2027",
+    "precio_unitario": 27.65,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu Del RH Kia sport",
+    "descripcion": "Amortiguador Delantero RH Kia sportage",
+    "precio_unitario": 93.09,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu Rh Sol",
+    "descripcion": "amortiguador delantero RH SOLUTO",
+    "precio_unitario": 30.81,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu trase Lh 2020",
+    "descripcion": "amortiguador trasero LH gi10 2020",
+    "precio_unitario": 20.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu tras LH 2022",
+    "descripcion": "amortiguador trasero LH gi10 2022",
+    "precio_unitario": 60.1,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu trase Lh Kia Sport",
+    "descripcion": "Amortiguador Trasero LH Kia sportage",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu trase Rh 2020",
+    "descripcion": "amortiguador trasero RH gi10 2020",
+    "precio_unitario": 20.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu tras Rh 2022",
+    "descripcion": "amortiguador trasero RH gi10 2022",
+    "precio_unitario": 60.1,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Amortigu trase Rh Kia Sport",
+    "descripcion": "Amortiguador Trasero RH Kia sportage",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Anillos",
+    "descripcion": "Anillos",
+    "precio_unitario": 28.89,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "anillos gi10 2020",
+    "descripcion": "Anillos gi10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "anillos gi10 2022",
+    "descripcion": "Anillos gi10 2023",
+    "precio_unitario": 73.7,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Arandela tapon carter",
+    "descripcion": "Arandela de tapon de carter",
+    "precio_unitario": 0.75,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Axiales",
+    "descripcion": "Axiales",
+    "precio_unitario": 6.63,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Axiales gi10 2020",
+    "descripcion": "Axiales gi10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Axiales gi10 2022",
+    "descripcion": "Axiales gi10 2023",
+    "precio_unitario": 8.43,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Balinera al lado eje piloto Gi10 2023",
+    "descripcion": "Balinera al lado eje piloto Gi10 2023 o conica",
+    "precio_unitario": 26.75,
+    "proveedor": "MA INDUSTRIAL Y AUTOMOTRIZ"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Balinera de base de amortiguador",
+    "descripcion": "Balinera de base de amortiguador",
+    "precio_unitario": 5.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "balinera de rueda delantera KIA SOLUTO",
+    "descripcion": "balinera de rueda delantera KIA SOLUTO",
+    "precio_unitario": 18.06,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Balinera del clutch",
+    "descripcion": "Balinera del Clutch",
+    "precio_unitario": 13.47,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Balinera compresor gi10",
+    "descripcion": "Balinera del compresor gi10",
+    "precio_unitario": 21.4,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Balinera Del",
+    "descripcion": "balinera delantera",
+    "precio_unitario": 21.4,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Balinera eje piloto abajo Gi10 2023",
+    "descripcion": "Balinera eje piloto abajo Gi10 2023",
+    "precio_unitario": 25.55,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Balinera eje piloto arriba Gi10 2023",
+    "descripcion": "Balinera eje piloto arriba Gi10 2023",
+    "precio_unitario": 25.55,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Balinera parte trasera tras Gi10 2023",
+    "descripcion": "Balinera parte trasera tras Gi10 2023",
+    "precio_unitario": 25.55,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "balinera trasera soluto",
+    "descripcion": "Balinera trasera kia soluto",
+    "precio_unitario": 53.75,
+    "proveedor": "Eco rastro"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Balineras Diferencial Gi10 2023",
+    "descripcion": "Balineras Diferencial Gi10 2023",
+    "precio_unitario": 25.55,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bandas traseras Gi10 2020",
+    "descripcion": "Bandas traseras gi10 2020",
+    "precio_unitario": 13.64,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Barra estabilizadora 2020",
+    "descripcion": "Barra estabilizadora 2020",
+    "precio_unitario": 90.24,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Barra estabilizadora 2022",
+    "descripcion": "Barra estabilizadora 2022",
+    "precio_unitario": 76.83,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Base amort Del Kia Sport",
+    "descripcion": "Base amortiguador Delantero Kia Sportage",
+    "precio_unitario": 31.97,
+    "proveedor": "Korea cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Base Amort Del",
+    "descripcion": "base de amortiguador delantero",
+    "precio_unitario": 7.63,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Base de motor Gi10 2020",
+    "descripcion": "Base de motor Gi10 2020 y 2022",
+    "precio_unitario": 36.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Base de transmición Gi10 2020",
+    "descripcion": "Base de transmición (base de avioncito) gi10 2020",
+    "precio_unitario": 35.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Base de transmición i10 2017",
+    "descripcion": "Base de transmición i10 2018",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Base de transmición superior gi10 2022",
+    "descripcion": "Base de transmición superior gi10 2022",
+    "precio_unitario": 76.25,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Base de transmision delantera gi10 2020",
+    "descripcion": "Base LH de transmision gi10 2020",
+    "precio_unitario": 40.39,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bateria Gi10",
+    "descripcion": "Bateria Grand i10",
+    "precio_unitario": 56.33,
+    "proveedor": "La casa de las baterias"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bateria Sol",
+    "descripcion": "Bateria Soluto",
+    "precio_unitario": 59.99,
+    "proveedor": "La casa de las baterias"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Blower AC gi10 2020",
+    "descripcion": "Blower AC Grand i10 2020",
+    "precio_unitario": 22.0,
+    "proveedor": "ASIA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "bocinas gi10 2020",
+    "descripcion": "Bocinas Grand i10 2020",
+    "precio_unitario": 23.75,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb 1 Contac NARANJA NARVA",
+    "descripcion": "Bomb 1 Contac NARANJA NARVA",
+    "precio_unitario": 1.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb Acei",
+    "descripcion": "Bomba de aceite",
+    "precio_unitario": 34.77,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb acei gi10 2020",
+    "descripcion": "Bomba de aceite gi10 2020",
+    "precio_unitario": 30.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomba de aceite Gi10 2022",
+    "descripcion": "Bomba de aceite Grand i10 2023",
+    "precio_unitario": 64.07,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomba de agua gi10 2020",
+    "descripcion": "Bomba de agua gi10 2020",
+    "precio_unitario": 22.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomba de agua gi10 2022",
+    "descripcion": "Bomba de agua gi10 2022",
+    "precio_unitario": 22.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomba de gasolina gi10 2020",
+    "descripcion": "Bomba de gasolina gi10 2020",
+    "precio_unitario": 62.83,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "bomba de vacio",
+    "descripcion": "Bomba de vacio",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb cola pez NARANJA NARVA",
+    "descripcion": "Bombillo cola pez NARANJA NARVA",
+    "precio_unitario": 1.25,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb 1 Contac",
+    "descripcion": "bombillos 1 contacto",
+    "precio_unitario": 0.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb 2 Contac",
+    "descripcion": "bombillos 2 contacto",
+    "precio_unitario": 0.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb Cola pez",
+    "descripcion": "bombillos cola de pescado",
+    "precio_unitario": 0.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb Halog",
+    "descripcion": "bombillos de halogena",
+    "precio_unitario": 2.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb Rever",
+    "descripcion": "bombillos de reversa",
+    "precio_unitario": 0.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb Techo",
+    "descripcion": "bombillos de techo",
+    "precio_unitario": 0.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bomb H4",
+    "descripcion": "bombillos h4",
+    "precio_unitario": 2.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Booster freno gi10 2020",
+    "descripcion": "Booster de freno gi10 2020",
+    "precio_unitario": 93.99,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "bota cremallera",
+    "descripcion": "Bota cremallera gi10",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bota trebol gi10 2020",
+    "descripcion": "Bota trebol gi10 2020",
+    "precio_unitario": 4.41,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bovina de encendido gi10 2020",
+    "descripcion": "Bovina de encendido Gi0 2020",
+    "precio_unitario": 41.88,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Bujes Clutch",
+    "descripcion": "bujes del clutch",
+    "precio_unitario": 3.25,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Buj moto",
+    "descripcion": "Bujía de moto",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Buj",
+    "descripcion": "bujias",
+    "precio_unitario": 3.21,
+    "proveedor": "Korea cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Buj Hb",
+    "descripcion": "bujias hb",
+    "precio_unitario": 2.04,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Buj iridium kia",
+    "descripcion": "Bujias iridium Kia Sportage",
+    "precio_unitario": 35.99,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cab Clutch 2020",
+    "descripcion": "cable de clutch Grand i10 2020",
+    "precio_unitario": 17.1,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cab Clutch 2022",
+    "descripcion": "cable de clutch Grand i10 2022",
+    "precio_unitario": 20.0,
+    "proveedor": "ASIA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cab Clutch Sol",
+    "descripcion": "cable de clutch soluto",
+    "precio_unitario": 0.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "cable freno de mano grand i10",
+    "descripcion": "cable freno de mano grand i10",
+    "precio_unitario": 41.6,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cab Buj",
+    "descripcion": "cables de bujias",
+    "precio_unitario": 20.17,
+    "proveedor": "Korea cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cab buj HB",
+    "descripcion": "Cables de bujias Hatchback",
+    "precio_unitario": 8.35,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Caja filtro Aire gi10 2022",
+    "descripcion": "Caja de filtro Aire gi10 2022",
+    "precio_unitario": 66.34,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Camisas Gi10",
+    "descripcion": "Camisas Gi10",
+    "precio_unitario": 58.02,
+    "proveedor": "Global"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Carb Clean",
+    "descripcion": "carb y cleaner",
+    "precio_unitario": 3.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Casq bancada gi10 2020",
+    "descripcion": "Casquillo bancada gi10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Casq biela gi10 2020",
+    "descripcion": "Casquillo biela gi10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Casq bancada gi10 2022",
+    "descripcion": "Casquillo de bancada gi10 2023",
+    "precio_unitario": 9.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Casq biela",
+    "descripcion": "Casquillo de biela",
+    "precio_unitario": 11.38,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Casq biela gi10 2022",
+    "descripcion": "Casquillo de biela Gi10 2023",
+    "precio_unitario": 8.43,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Casq Bancada",
+    "descripcion": "Casquillos de bancada",
+    "precio_unitario": 18.19,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "cauchos o bujes de la barra estabilizadora",
+    "descripcion": "cauchos o bujes de la barra estabilizadora",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cauchos o bujes del radiador",
+    "descripcion": "Cauchos o bujes del radiador",
+    "precio_unitario": 5.22,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cilindro freno",
+    "descripcion": "Cilindro de freno de grand i10 2020 al 2023",
+    "precio_unitario": 9.07,
+    "proveedor": "ASIA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cilindro gas",
+    "descripcion": "Cilindro de gas 30 Lbs",
+    "precio_unitario": 85.6,
+    "proveedor": "ASIA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cilindros traseros Gi10 2020",
+    "descripcion": "Cilindros traseros Gi10 2020",
+    "precio_unitario": 20.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Clip Bal",
+    "descripcion": "clip de balinera de clutch",
+    "precio_unitario": 5.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "coil brite  (limpiar aluminio)",
+    "descripcion": "coil brite  (limpiar aluminio)",
+    "precio_unitario": 18.45,
+    "proveedor": "ASIA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Coil Kia Sportage",
+    "descripcion": "Coil Kia Sportage",
+    "precio_unitario": 38.03,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Compresor 2020",
+    "descripcion": "compresor 2020",
+    "precio_unitario": 190.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Compresor 2023",
+    "descripcion": "compresor 2023",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Conden Gi10 2020",
+    "descripcion": "Condensador Grand i10 2020",
+    "precio_unitario": 52.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Conden Gi10 2022",
+    "descripcion": "Condensador Grand i10 2022/2024",
+    "precio_unitario": 75.97,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Conden Sol",
+    "descripcion": "Condensador Soluto",
+    "precio_unitario": 55.64,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Contact Clea",
+    "descripcion": "contact cleaner",
+    "precio_unitario": 4.49,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Control de ventana o interruptor conductor kia soluto",
+    "descripcion": "Control de ventana o interruptor conductor kia soluto",
+    "precio_unitario": 134.73,
+    "proveedor": "silaba"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Control conductor gi10 2022",
+    "descripcion": "Control lado del conductor gi10 2022",
+    "precio_unitario": 96.1,
+    "proveedor": "Petroautos"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cool Rojo",
+    "descripcion": "coolan rojo",
+    "precio_unitario": 2.67,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cool Verd",
+    "descripcion": "coolan verde",
+    "precio_unitario": 2.67,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Correa 4pk 1230",
+    "descripcion": "Correa 4pk 1230",
+    "precio_unitario": 7.28,
+    "proveedor": "Global"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Correa Serv Gi10",
+    "descripcion": "correa de servicio GRAND I10",
+    "precio_unitario": 14.98,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Correa Serv Kia Sport",
+    "descripcion": "Correa de servicio Kia Sportage",
+    "precio_unitario": 26.75,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Correa Serv Sol",
+    "descripcion": "correa de servicio SOLUTO",
+    "precio_unitario": 24.28,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Correa Tiempo",
+    "descripcion": "Correa de tiempo",
+    "precio_unitario": 16.4,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cover o base superior amortiguador 2020 y 2022",
+    "descripcion": "cover o base superior amortiguador",
+    "precio_unitario": 7.37,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "crazy glue",
+    "descripcion": "crazy glue",
+    "precio_unitario": 2.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "cremallera 2020",
+    "descripcion": "cremallera 2020",
+    "precio_unitario": 110.73,
+    "proveedor": "istmo y asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "crossmember 2020",
+    "descripcion": "crossmember 2020",
+    "precio_unitario": 190.0,
+    "proveedor": "rastro"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Cuerpo de aceleración gi10 2020",
+    "descripcion": "Cuerpo de aceleración Grand i10 modelo 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Disc Fre",
+    "descripcion": "Discos de freno",
+    "precio_unitario": 20.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Eje punta de flecha soluto",
+    "descripcion": "Eje de punta de flecha Soluto",
+    "precio_unitario": 214.0,
+    "proveedor": "Eco rastro"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Eje punta de flecha RH gi10 2020",
+    "descripcion": "Eje punta de flecha RH gi10 2020",
+    "precio_unitario": 96.73,
+    "proveedor": "Global"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Eje punta de flecha RH gi10 2022",
+    "descripcion": "Eje punta de flecha RH gi10 2022",
+    "precio_unitario": 150.0,
+    "proveedor": "Rastro el gocho 507"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "empaq cabezote asbes",
+    "descripcion": "Empaque de cabezote de asbesto 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Empaque de cabezote 2022",
+    "descripcion": "Empaque de cabezote de asbesto 2022",
+    "precio_unitario": 7.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Emp Tap Val",
+    "descripcion": "empaque tapa valvula",
+    "precio_unitario": 7.5,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "emp tap val HB",
+    "descripcion": "empaque tapa valvula HB",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Escaner Lunch",
+    "descripcion": "Escanner Lunch",
+    "precio_unitario": 337.05,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "escob 14",
+    "descripcion": "escobilla 14",
+    "precio_unitario": 3.79,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Escobilla 16",
+    "descripcion": "Escobilla 16",
+    "precio_unitario": 4.04,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "escob 20",
+    "descripcion": "escobilla 20",
+    "precio_unitario": 4.28,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Escobilla 24",
+    "descripcion": "Escobilla 24",
+    "precio_unitario": 5.49,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Pernos",
+    "descripcion": "esparragos / pernos",
+    "precio_unitario": 0.9,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Espiralesdelanteros gi10 2020",
+    "descripcion": "Espirales delanteros gi10 2020",
+    "precio_unitario": 13.29,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Espirales gi10 2020",
+    "descripcion": "espirales gi10 2020 traseros",
+    "precio_unitario": 11.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "evap 2020",
+    "descripcion": "evaporador 2020",
+    "precio_unitario": 48.15,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "fijador de roscas",
+    "descripcion": "fijador de roscas",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filt AC Gi10",
+    "descripcion": "Filtro A/C Gi10",
+    "precio_unitario": 2.62,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filt AC Sol",
+    "descripcion": "Filtro A/C Soluto",
+    "precio_unitario": 2.57,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "filt ac sportage",
+    "descripcion": "Filtro AC Kia Sportage",
+    "precio_unitario": 5.05,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filt Aceit sportage",
+    "descripcion": "Filtro Aceite Kia Sportage",
+    "precio_unitario": 4.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filt Air Mot Gi10",
+    "descripcion": "Filtro Aire de motor Gi10",
+    "precio_unitario": 3.37,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filt Air Mot i10",
+    "descripcion": "Filtro aire de motor i10",
+    "precio_unitario": 2.73,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filt Air Mot Sol",
+    "descripcion": "Filtro aire de motor Soluto",
+    "precio_unitario": 3.37,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "filt Air mot Sportage",
+    "descripcion": "Filtro Aire motor Kia Sportage",
+    "precio_unitario": 5.3,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filtro de aceite HYUNDAI GENUINE PARTS",
+    "descripcion": "Filtro de aceite HYUNDAI GENUINE PARTS",
+    "precio_unitario": 3.05,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filt aceit Sol",
+    "descripcion": "Filtro de aceite Soluto",
+    "precio_unitario": 2.25,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filt Air MOTO",
+    "descripcion": "filtro de aire moto",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filtro de gasolina gi10 2020",
+    "descripcion": "Filtro de gasolina gi10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "filtro de transmición aut",
+    "descripcion": "Filtro de transmición automática",
+    "precio_unitario": 7.22,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filtro hongo grand i10 2020",
+    "descripcion": "Filtro hongo grand i10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Filt aceit Gi10",
+    "descripcion": "Filtros de aceite hyundai Gi10",
+    "precio_unitario": 1.39,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "flasher direccional o intermitente de grand i10",
+    "descripcion": "flasher direccional o intermitente de grand i10",
+    "precio_unitario": 0.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Formula",
+    "descripcion": "formula",
+    "precio_unitario": 7.2,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Freno Moto",
+    "descripcion": "Freno de moto",
+    "precio_unitario": 14.93,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Fusible 15 amp",
+    "descripcion": "Fusible 15 amperios",
+    "precio_unitario": 0.54,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Fusible 10 amp",
+    "descripcion": "Fusible 10 amperios",
+    "precio_unitario": 0.54,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Fusible 20 amp",
+    "descripcion": "Fusible 20 amperios",
+    "precio_unitario": 0.54,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Fusible 25 amp",
+    "descripcion": "Fusible 25 amperios",
+    "precio_unitario": 0.75,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Fusible 40 amp",
+    "descripcion": "Fusible 40 amperios",
+    "precio_unitario": 3.95,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Fusibles",
+    "descripcion": "fusibles",
+    "precio_unitario": 0.32,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Gato hidraúlico",
+    "descripcion": "Gato hidraúlico",
+    "precio_unitario": 126.94,
+    "proveedor": "Carbone"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Grasa",
+    "descripcion": "Grasa",
+    "precio_unitario": 6.7,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Horquilla de clutch gi10",
+    "descripcion": "Horquilla de clutch gi10  (que va en la transmisión)",
+    "precio_unitario": 108.0,
+    "proveedor": "Suplirekor"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Horquilla de transmision completa (con balinera) 2020",
+    "descripcion": "Horquilla de transmision completa (con balinera) 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Horquilla 1ra Gi10 2022",
+    "descripcion": "Horquilla transmisión 1ra Gi10 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Horquilla 3 y 4 Gi10 2022",
+    "descripcion": "Horquilla transmisión 3 y 4 Gi10 2022",
+    "precio_unitario": 28.62,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Horquilla 5 Gi10 2022",
+    "descripcion": "Horquilla transmisión 5  Gi10 2022",
+    "precio_unitario": 25.19,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Hub balinera trasera kia soluto",
+    "descripcion": "Hub balinera trasera kia soluto",
+    "precio_unitario": 38.88,
+    "proveedor": "ASIA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Hub Del",
+    "descripcion": "hub delantero",
+    "precio_unitario": 13.8,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Jabon exf",
+    "descripcion": "Jabon exfoliante desengrasante",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Kit bota de trebol gi10 2020",
+    "descripcion": "Kit bota de trebol gi10 2020",
+    "precio_unitario": 10.24,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "kit buje horquilla transmision 2020 a 2026",
+    "descripcion": "kit buje horquilla transmision 2020 a 2026",
+    "precio_unitario": 10.2,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Kit balinera transmisión gi10 2022",
+    "descripcion": "Kit de balineras de transmición gi10 2022 (2 abiertas - 2 cerradas (cónicas))",
+    "precio_unitario": 80.25,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Kit de cadena de tiempo gi10 2023",
+    "descripcion": "Kit de cadena de tiempo Gi10 2023",
+    "precio_unitario": 134.69,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Kit Clutch gi10 2020 al 2027",
+    "descripcion": "Kit de clutch 2020 al 2027 (disco, plato, balinera)",
+    "precio_unitario": 77.04,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Kit clutch del compresor gi10",
+    "descripcion": "Kit de clutch del compresor Grandi10",
+    "precio_unitario": 50.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Kit clutch sol",
+    "descripcion": "Kit de clutch soluto (disco, plato, balinera)",
+    "precio_unitario": 85.47,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Kit empaque overhaul",
+    "descripcion": "Kit empaque overhaul",
+    "precio_unitario": 49.09,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Kit overhaul gi10 2020",
+    "descripcion": "Kit overhaul gi10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Kit overhaul gi10 2023",
+    "descripcion": "Kit overhaul gi10 2023",
+    "precio_unitario": 49.09,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Limp Freno",
+    "descripcion": "limpiador de frenos",
+    "precio_unitario": 3.82,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link Del Rh i10 HB",
+    "descripcion": "Link delantero derecho i10 Hatchback",
+    "precio_unitario": null,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link del Lh i10 Hb",
+    "descripcion": "Link delantero izquierdo i10 hatchback",
+    "precio_unitario": null,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link del LH Kia sport",
+    "descripcion": "Link delantero LH Kia Sportage",
+    "precio_unitario": 18.19,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link Del RH Kia Sportage",
+    "descripcion": "Link delantero RH Kia Sportage",
+    "precio_unitario": 18.19,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link Del Rh Gi10",
+    "descripcion": "link delanteros derecho GRAN I10",
+    "precio_unitario": 8.52,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link Del Rh Sol",
+    "descripcion": "Link delanteros derechos SOLUTO",
+    "precio_unitario": 6.81,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link Del Lh Gi10",
+    "descripcion": "link delanteros izquierdo Grand i10",
+    "precio_unitario": 8.52,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link Del Lh Sol",
+    "descripcion": "link delanteros izquierdo SOLUTO",
+    "precio_unitario": 6.81,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link Tras Lh Kia Sport",
+    "descripcion": "Link Trasero Lh Kia Sport",
+    "precio_unitario": 17.12,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Link Tras Rh Kia Sport",
+    "descripcion": "Link Trasero Rh Kia Sport",
+    "precio_unitario": 17.12,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Liqu Fren",
+    "descripcion": "liquido de frenos",
+    "precio_unitario": 6.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Manguera radiador sup 2020",
+    "descripcion": "Manguera de radiador sup 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Manguera rad sup sol",
+    "descripcion": "Manguera de radiador superior Soluto",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Manguera radiador inf 2020",
+    "descripcion": "Manguera radiador inf 2020",
+    "precio_unitario": 9.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Manguera radiador inf 2022 al 2027",
+    "descripcion": "Manguera radiador inf 2022 al 2027",
+    "precio_unitario": 8.56,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Manguera radiador sup 2022 al 2027",
+    "descripcion": "Manguera radiador sup 2022 al 2027",
+    "precio_unitario": 8.56,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Manometro",
+    "descripcion": "Manometro",
+    "precio_unitario": 74.9,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Maquina de soldar + accesorios para taller",
+    "descripcion": "Maquina de soldar + accesorios para taller",
+    "precio_unitario": 138.5,
+    "proveedor": "TOTAL"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Master freno gi10 2020",
+    "descripcion": "Master de freno gi10 2020",
+    "precio_unitario": 80.0,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Motor Aban 2022",
+    "descripcion": "motor abanico 2022",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Mot Aban 2020",
+    "descripcion": "motor de abanico 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Mot Aban Sol",
+    "descripcion": "motor de abanico sol",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Motor de arranque gi10 2020",
+    "descripcion": "Motor de arranque gi10 2020",
+    "precio_unitario": 95.18,
+    "proveedor": "Global"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Multiple de admisión gi10 2022",
+    "descripcion": "Multiple de admision",
+    "precio_unitario": 100.0,
+    "proveedor": "Tecni Piezas"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Muñequilla con abs RH gi10 2023",
+    "descripcion": "Muñequilla delantera rh gi10 2023",
+    "precio_unitario": 123.05,
+    "proveedor": "Eco rastro"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "muñequilla sol Lh",
+    "descripcion": "Muñequilla LH kia soluto",
+    "precio_unitario": 133.75,
+    "proveedor": "Eco rastro"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "muñequilla sol Rh",
+    "descripcion": "Muñequilla RH kia soluto",
+    "precio_unitario": 125.0,
+    "proveedor": "Eco rastro"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Pagatanques",
+    "descripcion": "Pegatanques",
+    "precio_unitario": 8.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "pinos",
+    "descripcion": "pinos",
+    "precio_unitario": 1.07,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Pistola de impacto",
+    "descripcion": "Pistola de impacto",
+    "precio_unitario": 79.01,
+    "proveedor": "Carbone"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Pistones Gi10",
+    "descripcion": "Pistones motor gi10",
+    "precio_unitario": 78.83,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Pito",
+    "descripcion": "pito",
+    "precio_unitario": 6.3,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Polo bateria Chico",
+    "descripcion": "Polo de bateria Chico",
+    "precio_unitario": 2.68,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Portabrochas alternador gi10 2020",
+    "descripcion": "Portabrochas alternador gi10 2020",
+    "precio_unitario": 23.27,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Portabrochas alternador gi10 2022",
+    "descripcion": "Portabrochas o regulador alternador gi10 2022",
+    "precio_unitario": 37.45,
+    "proveedor": "Autorepuestos la transistmica"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Punta flecha aut",
+    "descripcion": "Punta de flecha 2020 automatico",
+    "precio_unitario": 26.75,
+    "proveedor": "Repuestos la transistmica"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Punt Flec",
+    "descripcion": "punta de flecha delantera gi10",
+    "precio_unitario": 25.15,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Punta flecha sol",
+    "descripcion": "Punta de flecha soluto",
+    "precio_unitario": 26.75,
+    "proveedor": "Repuestos la transistmica"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Rad Gi10 2020",
+    "descripcion": "Radiador Grand i10 2020",
+    "precio_unitario": 51.36,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Rad Gi10 2022",
+    "descripcion": "Radiador Grand i10 2022/2024",
+    "precio_unitario": 57.78,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Rad gi10 2022 atf",
+    "descripcion": "Radiador Grand i10 2022/2024 ATF",
+    "precio_unitario": 60.01,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Rad gi10 2020 atf",
+    "descripcion": "Radiador Grandi10 2020 ATF",
+    "precio_unitario": 56.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Rad Sol",
+    "descripcion": "Radiador Soluto",
+    "precio_unitario": 58.85,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Pantalla gi10 2022",
+    "descripcion": "Radio // Pantalla Grandi10 modelo 2022",
+    "precio_unitario": 80.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Reg alternador 2020 y 2022",
+    "descripcion": "regulador de alternador de gi10 2020 y 2022",
+    "precio_unitario": 37.45,
+    "proveedor": "VULKO O TRANSITIMICA GENERICO"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Relay intermitente gi10",
+    "descripcion": "Relay intermitente",
+    "precio_unitario": 5.05,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "retenedora copa caja o de ejes 2020 al 2026",
+    "descripcion": "retenedora copa caja o de ejes 2020 al 2026",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Ret Cig",
+    "descripcion": "retenedora de cigüeñal trasera  gi10 y soluto",
+    "precio_unitario": 5.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Rete Leva",
+    "descripcion": "Retenedora de leva",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "ret del damper delantero",
+    "descripcion": "Retenedora del cigüeñal damper delantero",
+    "precio_unitario": 3.7,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Retenedora eje piloto gi10",
+    "descripcion": "Retenedora eje piloto Gi10",
+    "precio_unitario": 4.5,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Rete cigüeñal i10",
+    "descripcion": "Retenedora trasera de cigüeñal de i10 HB",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Riley",
+    "descripcion": "riley",
+    "precio_unitario": 5.95,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Sello Master freno gi10 2020",
+    "descripcion": "Sello de máster de freno gi10 2020",
+    "precio_unitario": 14.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Sellos de cabezote",
+    "descripcion": "Sellos de cabezote hatcback",
+    "precio_unitario": 0.52,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Sensor de cigüeñal gi10 2022",
+    "descripcion": "Sensor de cigüeñal gi10 2022",
+    "precio_unitario": 42.25,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Sensor de leva hatchback",
+    "descripcion": "Sensor de leva i10 hatchback",
+    "precio_unitario": 17.12,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Sensor de oxigeno gi10 2020",
+    "descripcion": "Sensor de oxigeno gi10 2020",
+    "precio_unitario": 58.85,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Sensor de oxigeno gi10 2022",
+    "descripcion": "Sensor de oxigeno gi10 2022",
+    "precio_unitario": 55.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "sensor de velocidad 2020",
+    "descripcion": "Sensor de velocidad gi10 2020",
+    "precio_unitario": 39.59,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Sensor Map gi10 2022",
+    "descripcion": "Sensor Map gi10 2022",
+    "precio_unitario": 51.79,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Silic Gris",
+    "descripcion": "Silicon gris PERMATEX",
+    "precio_unitario": 3.87,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Soporte base de motor gi10 2020",
+    "descripcion": "Soporte base de motor gi10 2020",
+    "precio_unitario": 60.0,
+    "proveedor": "Rastro el gocho 507"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Soporte base de motor gi10 2022",
+    "descripcion": "Soporte de base de motor Gi10 2022",
+    "precio_unitario": 47.0,
+    "proveedor": "Petroautos"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "spray correa",
+    "descripcion": "spray para correa de servicio",
+    "precio_unitario": 6.42,
+    "proveedor": "Ferreteria"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Swicth pedal de freno gi10 2020",
+    "descripcion": "Swicth pedal de freno gi10 2020",
+    "precio_unitario": 15.0,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Switch temperatura gi10",
+    "descripcion": "Switch temperatura gi10 2020 al 2026",
+    "precio_unitario": 14.85,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tacos Gi10",
+    "descripcion": "tacos de freno Grand i10",
+    "precio_unitario": 16.96,
+    "proveedor": "ASIA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tacos Sol",
+    "descripcion": "tacos de freno Kia Soluto",
+    "precio_unitario": 16.32,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tacos Kia sport",
+    "descripcion": "Tacos delanteros Kia sportage",
+    "precio_unitario": 19.46,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tacos HB",
+    "descripcion": "Tacos Hatchback",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tacos tras Kia Sport",
+    "descripcion": "Tacos traseros Kia sportage",
+    "precio_unitario": 31.03,
+    "proveedor": "GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tambor de freno de grand i10",
+    "descripcion": "Tambor de freno de grand i10",
+    "precio_unitario": 19.0,
+    "proveedor": "ASIA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tapa de amortiguador delantero Gi10 2020",
+    "descripcion": "Tapa de amortiguador delantero Gi10 2020",
+    "precio_unitario": 10.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tap Rad",
+    "descripcion": "tapa radiador",
+    "precio_unitario": 5.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "tape negro",
+    "descripcion": "Tape Negro",
+    "precio_unitario": 2.14,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tape Verde",
+    "descripcion": "Tape verde",
+    "precio_unitario": 3.75,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "tap cart",
+    "descripcion": "Tapón del Carter",
+    "precio_unitario": 2.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tensor de cadena de gi10 2020",
+    "descripcion": "Tensor de cadena de gi10 2020",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term Ext Rh Gi10",
+    "descripcion": "terminal corto delantero  derecho GRAN I10",
+    "precio_unitario": 9.54,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term Ext Rh Sol",
+    "descripcion": "terminal corto delantero derecho SOLUTO",
+    "precio_unitario": 12.65,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Terminal ext  LH HB",
+    "descripcion": "Terminal corto delantero LH i10 Hatchback",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Terminal ext rh HB",
+    "descripcion": "Terminal corto delantero RH i10 Hatchback",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Terminal de pito",
+    "descripcion": "Terminal de pito",
+    "precio_unitario": 0.25,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term ext Lh Kia sport",
+    "descripcion": "Terminal ext LH Kia Soportage",
+    "precio_unitario": 12.59,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term Ext RH Kia sport",
+    "descripcion": "Terminal ext RH Kia Soportage",
+    "precio_unitario": 12.59,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term Ext Lh Gi10",
+    "descripcion": "terminal corto delantero  izquierdo GRAND I10",
+    "precio_unitario": 9.54,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term Ext Lh Sol",
+    "descripcion": "terminal corto delantero  izquierdo SOLUTO",
+    "precio_unitario": 12.65,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term inter Kia Sport",
+    "descripcion": "Terminal interno Kia Sportage",
+    "precio_unitario": 25.19,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term Crema Gi10",
+    "descripcion": "terminal largo / cremallera delantero GRAND I10",
+    "precio_unitario": 9.54,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term Crema Sol",
+    "descripcion": "terminal largo / cremallera delantero SOLUTO",
+    "precio_unitario": 10.24,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Term Crema HB",
+    "descripcion": "terminal largo/ cremallera delantero i10 Hatchback",
+    "precio_unitario": null,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Toma de agua gi10 2020",
+    "descripcion": "Toma de agua gi10 2020",
+    "precio_unitario": 18.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tornillo horquilla de transmisión",
+    "descripcion": "Tornillo horquilla de transmisión",
+    "precio_unitario": 4.15,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Trebol aut gi10 2020",
+    "descripcion": "Trebol de punta de flecha Gi10 2020 ATF",
+    "precio_unitario": 18.0,
+    "proveedor": "Repuestos la transistmica"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "trebol gi10 2020 automatico",
+    "descripcion": "Trebol Grandi10 2020 Automatico",
+    "precio_unitario": 21.35,
+    "proveedor": "Repuestos la transistmica"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Trebol gi10 2020 manual",
+    "descripcion": "Trebol Grandi10 2020 Manual",
+    "precio_unitario": 10.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Tuerca llantas",
+    "descripcion": "Tuerca de llantas",
+    "precio_unitario": 1.0,
+    "proveedor": "Llantas victoria"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "V del LH Kia Sport",
+    "descripcion": "V delantera LH Kia Sportage",
+    "precio_unitario": 51.52,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "V del RH Kia Sport",
+    "descripcion": "V delantera RH Kia Sportage",
+    "precio_unitario": 51.52,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "V Del Rh GI10 2020 AL 2027",
+    "descripcion": "v delantero RH GRAND I10 2020 AL 2027",
+    "precio_unitario": 21.93,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "V Del RH Sol",
+    "descripcion": "v delantero derecha SOLUTO",
+    "precio_unitario": 21.93,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "V Del LH 2020",
+    "descripcion": "v delantero LH GRAND I10 2020 AL 2027",
+    "precio_unitario": 21.93,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "V Del Lh Sol",
+    "descripcion": "v delantero izquierdo SOLUTO",
+    "precio_unitario": 21.93,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Sensor aceite de Admi Gi10",
+    "descripcion": "Valvula de aceite de admisión Gi10",
+    "precio_unitario": 32.72,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Sensor aceit de escap Gi10",
+    "descripcion": "Valvula de aceite de escape Gi10",
+    "precio_unitario": 32.72,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Valvula de expan",
+    "descripcion": "Valvula de Expansión Grandi10 2020",
+    "precio_unitario": 10.7,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Valvula expansion KIA SOLUTO",
+    "descripcion": "Valvula expansion KIA SOLUTO",
+    "precio_unitario": 22.0,
+    "proveedor": "ASIA"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Valvula expansion KIA SPORTAGE",
+    "descripcion": "Valvula expansion KIA SPORTAGE",
+    "precio_unitario": 42.29,
+    "proveedor": "Korea Cars"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Valvula master de freno gi10 2020",
+    "descripcion": "Valvula master de freno gi10 2020",
+    "precio_unitario": 16.05,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Valvula PCV gi10",
+    "descripcion": "Valvula PCV gi10",
+    "precio_unitario": 5.0,
+    "proveedor": null
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Valvula VVT gi10 2023",
+    "descripcion": "Valvula VVT gi10 2023",
+    "precio_unitario": 85.6,
+    "proveedor": "Autorepuestos la transistmica"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Valvulas de admision",
+    "descripcion": "Valvulas de admision Gi10",
+    "precio_unitario": 7.42,
+    "proveedor": "Global"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Valvulas de empaque",
+    "descripcion": "Valvulas de empaque gi10",
+    "precio_unitario": 5.46,
+    "proveedor": "Global"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "WD40",
+    "descripcion": "WD40",
+    "precio_unitario": 5.4,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Yoyo/cinta timon gi10 2020",
+    "descripcion": "Yoyo / cinta del timon gi10 2020",
+    "precio_unitario": 20.0,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Yoyo/cinta timon gi10 2023",
+    "descripcion": "Yoyo / cinta del timon gi10 2023",
+    "precio_unitario": 57.0,
+    "proveedor": "58.85 EN GRK"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "zunchos cortos",
+    "descripcion": "Zunchos cortos",
+    "precio_unitario": 5.35,
+    "proveedor": "Asia"
+  },
+  {
+    "rubro": "mecanica",
+    "codigo": "Zunchos largos",
+    "descripcion": "Zunchos Largos",
+    "precio_unitario": 7.0,
+    "proveedor": "Asia"
+  }
+]

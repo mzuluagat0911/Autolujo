@@ -88,9 +88,10 @@ const NAV: Group[] = [
     ],
   },
   {
-    section: "Módulos del negocio",
+    section: "Administrativo",
     items: [
-      { label: "Administrativo", href: "/administrativo", status: "pronto", modulo: "resumen" },
+      { label: "Panel", href: "/administrativo", status: "active", modulo: "administrativo" },
+      { label: "Inventario", href: "/administrativo/inventario", status: "active", modulo: "administrativo" },
     ],
   },
 ];
@@ -98,7 +99,13 @@ const NAV: Group[] = [
 function isActive(pathname: string, href: string) {
   if (href === "/") return pathname === "/";
   // Paneles raíz: solo exacto (si no, /cartera marca todo Cartera).
-  if (href === "/admin" || href === "/cartera" || href === "/operaciones" || href === "/comercial") {
+  if (
+    href === "/admin" ||
+    href === "/cartera" ||
+    href === "/operaciones" ||
+    href === "/comercial" ||
+    href === "/administrativo"
+  ) {
     return pathname === href;
   }
   if (href === "/seguros") {

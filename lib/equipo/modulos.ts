@@ -29,6 +29,11 @@ export const MODULOS = [
     hint: "Choques, paquete y pólizas.",
   },
   {
+    id: "administrativo",
+    label: "Administrativo",
+    hint: "Inventarios de chapistería y mecánica por sede.",
+  },
+  {
     id: "configuracion",
     label: "Configuración",
     hint: "Empresas, alcance de cartera y meta de cobranza.",
@@ -80,7 +85,7 @@ export function moduloDeRuta(path: string): ModuloId | null {
   if (path === "/operaciones" || path.startsWith("/operaciones/")) return "operaciones";
   if (path === "/comercial" || path.startsWith("/comercial/")) return "comercial";
   if (path === "/seguros" || path.startsWith("/seguros/")) return "seguros";
-  if (path === "/administrativo" || path.startsWith("/administrativo/")) return "resumen";
+  if (path === "/administrativo" || path.startsWith("/administrativo/")) return "administrativo";
   return null;
 }
 
@@ -96,6 +101,7 @@ const CASA: { id: ModuloId; href: string }[] = [
   { id: "operaciones", href: "/operaciones" },
   { id: "comercial", href: "/comercial" },
   { id: "seguros", href: "/seguros" },
+  { id: "administrativo", href: "/administrativo" },
   { id: "configuracion", href: "/cartera/empresas" },
   { id: "equipo", href: "/usuarios" },
 ];
