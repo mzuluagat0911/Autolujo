@@ -363,6 +363,8 @@ export async function registrarMovimiento(input: {
   fecha: string;
   vehiculoNumero?: string | null;
   proveedor?: string | null;
+  /** Solo entradas: precio de esta compra; actualiza el catálogo. */
+  precioUnitario?: number | null;
   notas?: string | null;
 }): Promise<ResultadoInv> {
   const sesion = await exigirAdmin();
@@ -391,6 +393,15 @@ export async function registrarMovimiento(input: {
     vehiculoNumero = veh.numero;
   }
 
+  const proveedor =
+    tipo === "entrada" ? String(input.proveedor ?? "").trim() || null : null;
+  let precioEntrada: number | null = null;
+  if (tipo === "entrada" && input.precioUnitario != null && String(input.precioUnitario) !== "") {
+    const p = n(input.precioUnitario);
+    if (p < 0) return { ok: false, error: "El precio no puede ser negativo." };
+    precioEntrada = Math.round(p * 100) / 100;
+  }
+
   const sb = createServerSupabase();
   const stock = await stockDe(sb, itemId, sede);
   if (!stock.ok) return stock;
@@ -408,15 +419,21 @@ export async function registrarMovimiento(input: {
     fecha,
     vehiculo_id: vehiculoId,
     vehiculo_numero: vehiculoNumero,
-    proveedor: tipo === "entrada" ? String(input.proveedor ?? "").trim() || null : null,
+    proveedor,
     notas: String(input.notas ?? "").trim() || null,
     creado_por: sesion.id,
     cobro_a: null,
   };
+  if (precioEntrada != null) body.precio_unitario = precioEntrada;
 
   let { error: movErr } = await sb.from("inventario_movimientos").insert(body);
+  if (movErr && /precio_unitario/i.test(movErr.message)) {
+    const { precio_unitario: _p, ...sinPrecio } = body;
+    const retry = await sb.from("inventario_movimientos").insert(sinPrecio);
+    movErr = retry.error;
+  }
   if (movErr && /vehiculo_id|cobro_a|sede_destino/i.test(movErr.message)) {
-    const { vehiculo_id: _v, cobro_a: _c, ...sin } = body;
+    const { vehiculo_id: _v, cobro_a: _c, precio_unitario: _p, ...sin } = body;
     const retry = await sb.from("inventario_movimientos").insert(sin);
     movErr = retry.error;
   }
@@ -425,12 +442,21 @@ export async function registrarMovimiento(input: {
   const up = await setStock(sb, itemId, sede, nuevo);
   if (!up.ok) return up;
 
+  if (tipo === "entrada" && (precioEntrada != null || proveedor)) {
+    const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (precioEntrada != null) patch.precio_unitario = precioEntrada;
+    if (proveedor) patch.proveedor = proveedor;
+    await sb.from("inventario_items").update(patch).eq("id", itemId);
+  }
+
   revalidar();
   return {
     ok: true,
     msg:
       tipo === "entrada"
-        ? "Entrada registrada."
+        ? precioEntrada != null
+          ? `Entrada registrada. Precio catálogo: $${precioEntrada}.`
+          : "Entrada registrada."
         : `Salida al carro ${vehiculoNumero}. Cobro pendiente (cliente/empresa).`,
   };
 }

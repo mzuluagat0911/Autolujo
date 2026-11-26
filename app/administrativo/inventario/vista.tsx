@@ -653,11 +653,15 @@ function ModalMovimiento({
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
   const [tipo, setTipo] = useState<"entrada" | "salida">(tipoInicial);
+  const [precio, setPrecio] = useState(
+    item.precio_unitario != null ? String(item.precio_unitario) : "",
+  );
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     setErr(null);
+    const precioRaw = String(fd.get("precio") ?? "").trim();
     start(async () => {
       const r = await registrarMovimiento({
         itemId: item.id,
@@ -667,6 +671,7 @@ function ModalMovimiento({
         fecha: String(fd.get("fecha") ?? ""),
         vehiculoNumero: String(fd.get("vehiculo") ?? ""),
         proveedor: String(fd.get("proveedor") ?? ""),
+        precioUnitario: precioRaw === "" ? null : Number(precioRaw),
         notas: String(fd.get("notas") ?? ""),
       });
       if (!r.ok) {
@@ -715,7 +720,25 @@ function ModalMovimiento({
             autoComplete="off"
           />
         ) : (
-          <Field label="Proveedor" name="proveedor" placeholder="Asia, Terpel…" />
+          <Field
+            label="Proveedor"
+            name="proveedor"
+            placeholder="Asia, Terpel…"
+            defaultValue={item.proveedor ?? ""}
+          />
+        )}
+        {tipo === "entrada" && (
+          <Field
+            label="Precio unitario (USD)"
+            name="precio"
+            type="number"
+            step="0.01"
+            min={0}
+            value={precio}
+            onChange={(e) => setPrecio(e.target.value)}
+            placeholder="0.00"
+            hint="Se guarda en esta entrada y actualiza el precio del catálogo."
+          />
         )}
         {tipo === "salida" ? (
           <input type="hidden" name="proveedor" value="" />
