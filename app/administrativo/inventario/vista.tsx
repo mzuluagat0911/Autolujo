@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { EmptyState, FiltersBar, StatusChip, Toast } from "@/components/kit";
+import { EmptyState, FiltersBar, Kpi, StatusChip, Tabs, Toast } from "@/components/kit";
 import { Field, Select } from "@/components/form";
 import {
   COBROS_INVENTARIO,
@@ -25,6 +25,8 @@ import {
   registrarMovimiento,
   transferirEntreSedes,
 } from "../actions";
+
+type TabId = "stock" | "cobros" | "comprar" | "movimientos";
 
 function money(n: number | null) {
   if (n == null) return "—";
@@ -66,23 +68,33 @@ export function InventarioVista({
 }) {
   const router = useRouter();
   const [q, setQ] = useState("");
+  const [soloSinStock, setSoloSinStock] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabId>(pendientesCobro.length > 0 ? "cobros" : "stock");
   const [movItem, setMovItem] = useState<ItemInventarioVista | null>(null);
+  const [movTipo, setMovTipo] = useState<"entrada" | "salida">("salida");
   const [ajusteItem, setAjusteItem] = useState<ItemInventarioVista | null>(null);
   const [xferItem, setXferItem] = useState<ItemInventarioVista | null>(null);
   const [presupuesto, setPresupuesto] = useState(presupuestoInicial);
 
+  const conStock = useMemo(() => filas.filter((f) => f.cantidad > 0.0005).length, [filas]);
+  const aComprar = useMemo(
+    () => recomendaciones.filter((r) => r.sugerido > 0).length,
+    [recomendaciones],
+  );
+
   const visibles = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    if (!needle) return filasFiltradas;
     return filasFiltradas.filter((f) => {
+      if (soloSinStock && f.cantidad > 0.0005) return false;
+      if (!needle) return true;
       const blob = [f.codigo, f.descripcion, f.proveedor, etiquetaRubro(f.rubro)]
         .filter(Boolean)
         .join(" ")
         .toLowerCase();
       return blob.includes(needle);
     });
-  }, [filasFiltradas, q]);
+  }, [filasFiltradas, q, soloSinStock]);
 
   function ir(next: { sede?: string; rubro?: string; presupuesto?: string }) {
     const sp = new URLSearchParams();
@@ -102,288 +114,432 @@ export function InventarioVista({
     router.refresh();
   }
 
+  function abrirSalida(item: ItemInventarioVista) {
+    setMovTipo("salida");
+    setMovItem(item);
+  }
+
+  function abrirEntrada(item: ItemInventarioVista) {
+    setMovTipo("entrada");
+    setMovItem(item);
+  }
+
   return (
-    <div className="mt-6 space-y-8">
-      <FiltersBar
-        search={{ value: q, onChange: setQ }}
-        searchPlaceholder="Código, descripción, proveedor…"
-        chipGroups={[
-          {
-            chips: SEDES_INVENTARIO.map((s) => ({ id: s.id, label: s.label })),
-            active: sede,
-            onChip: (id) => ir({ sede: id }),
-          },
-          {
-            chips: [
+    <div className="mt-6 space-y-6">
+      {/* Contexto de sede + KPIs */}
+      <div className="rounded-xl bg-surface p-4 ring-1 ring-line sm:p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted">
+              Trabajando en
+            </p>
+            <p className="mt-1 text-xl font-semibold tracking-tight">{etiquetaSedeInventario(sede)}</p>
+            <p className="mt-1 text-sm text-muted">
+              Cambiá de sede con los chips. La lista es la misma; el stock es de esta sede.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {SEDES_INVENTARIO.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => ir({ sede: s.id })}
+                className={`rounded-lg px-4 py-2.5 text-sm font-medium transition ${
+                  sede === s.id
+                    ? "bg-ink text-white"
+                    : "bg-white text-ink ring-1 ring-line hover:bg-surface-2"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <Kpi label="Ítems" value={filas.length} />
+          <Kpi label="Con stock" value={conStock} tone="good" />
+          <button
+            type="button"
+            onClick={() => setTab("cobros")}
+            className="text-left"
+          >
+            <Kpi
+              label="Cobros pendientes"
+              value={pendientesCobro.length}
+              tone={pendientesCobro.length > 0 ? "warn" : "default"}
+              hint={pendientesCobro.length > 0 ? "Tocá para asignar" : undefined}
+            />
+          </button>
+          <button type="button" onClick={() => setTab("comprar")} className="text-left">
+            <Kpi
+              label="Sugeridos a comprar"
+              value={aComprar}
+              tone={aComprar > 0 ? "warn" : "default"}
+              hint="Según salidas 30 días"
+            />
+          </button>
+        </div>
+      </div>
+
+      <Tabs
+        tabs={[
+          { id: "stock", label: "Stock", count: filasFiltradas.length },
+          { id: "cobros", label: "Cobros", count: pendientesCobro.length },
+          { id: "comprar", label: "Qué comprar", count: aComprar },
+          { id: "movimientos", label: "Movimientos", count: movimientos.length },
+        ]}
+        active={tab}
+        onChange={(id) => setTab(id as TabId)}
+      />
+
+      {error && <EmptyState title="No se pudo cargar" hint={error} />}
+
+      {!error && tab === "stock" && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Buscá la pieza y registrá una <span className="font-medium text-ink">salida al carro</span>{" "}
+            (lo más común), una entrada de compra, o transferí a la otra sede.
+          </p>
+          <FiltersBar
+            search={{ value: q, onChange: setQ }}
+            searchPlaceholder="Buscar por código o nombre (ej. farol, aceite…)"
+            chips={[
               { id: "todos", label: "Todos", count: filas.length },
               ...RUBROS_INVENTARIO.map((r) => ({
                 id: r.id,
                 label: r.label,
                 count: filas.filter((f) => f.rubro === r.id).length,
               })),
-            ],
-            active: rubro,
-            onChip: (id) => ir({ rubro: id }),
-          },
-        ]}
-        actions={
-          <p className="text-sm text-muted">
-            <span className="font-medium tabular-nums text-ink">{visibles.length}</span> ítems
-          </p>
-        }
-      />
+              {
+                id: "sin_stock",
+                label: "Sin stock",
+                count: filasFiltradas.filter((f) => f.cantidad <= 0.0005).length,
+              },
+            ]}
+            activeChip={soloSinStock ? "sin_stock" : rubro}
+            onChip={(id) => {
+              if (id === "sin_stock") {
+                setSoloSinStock(true);
+                return;
+              }
+              setSoloSinStock(false);
+              ir({ rubro: id });
+            }}
+            actions={
+              <p className="text-sm text-muted">
+                <span className="font-medium tabular-nums text-ink">{visibles.length}</span> visibles
+              </p>
+            }
+          />
 
-      {error ? (
-        <EmptyState title="No se pudo cargar el inventario" hint={error} />
-      ) : filas.length === 0 ? (
-        <EmptyState
-          title="Catálogo vacío"
-          hint="Corré la migración 0061 y el seed del catálogo (stock en 0)."
-        />
-      ) : visibles.length === 0 ? (
-        <EmptyState title="Ningún ítem coincide" hint="Probá otra búsqueda o rubro." />
-      ) : (
-        <div className="overflow-x-auto rounded-xl ring-1 ring-line">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
-                <th className="px-4 py-3 font-medium">Código</th>
-                <th className="px-4 py-3 font-medium">Descripción</th>
-                <th className="px-4 py-3 font-medium">Rubro</th>
-                <th className="px-4 py-3 font-medium">Stock</th>
-                <th className="px-4 py-3 font-medium">Precio</th>
-                <th className="px-4 py-3 font-medium" />
-              </tr>
-            </thead>
-            <tbody>
-              {visibles.map((f) => (
-                <tr key={f.id} className="border-b border-line last:border-0 hover:bg-surface-2">
-                  <td className="px-4 py-3 font-medium">{f.codigo}</td>
-                  <td className="px-4 py-3">
-                    <p>{f.descripcion}</p>
-                    {f.proveedor && <p className="mt-0.5 text-xs text-muted">{f.proveedor}</p>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusChip tone={f.rubro === "chapisteria" ? "warn" : "azul"}>
-                      {etiquetaRubro(f.rubro)}
-                    </StatusChip>
-                  </td>
-                  <td className="px-4 py-3 tabular-nums font-semibold">{f.cantidad}</td>
-                  <td className="px-4 py-3 tabular-nums text-muted">{money(f.precio_unitario)}</td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex flex-wrap justify-end gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setMovItem(f)}
-                        className="rounded-lg bg-ink px-3 py-1.5 text-xs font-medium text-white hover:bg-black"
-                      >
-                        Entrada / salida
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setXferItem(f)}
-                        className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-ink ring-1 ring-line hover:bg-surface-2"
-                      >
-                        Transferir
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAjusteItem(f)}
-                        className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-ink ring-1 ring-line hover:bg-surface-2"
-                      >
-                        Ajustar
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {filas.length === 0 ? (
+            <EmptyState
+              title="Catálogo vacío"
+              hint="Falta cargar el inventario. Avisá a quien administra el sistema."
+            />
+          ) : visibles.length === 0 ? (
+            <EmptyState title="Nada coincide" hint="Probá otra palabra o quitá el filtro." />
+          ) : (
+            <div className="overflow-x-auto rounded-xl ring-1 ring-line">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
+                    <th className="px-4 py-3 font-medium">Pieza</th>
+                    <th className="px-4 py-3 font-medium">Rubro</th>
+                    <th className="px-4 py-3 font-medium">Stock</th>
+                    <th className="px-4 py-3 font-medium">Precio</th>
+                    <th className="px-4 py-3 font-medium">Qué hacer</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibles.map((f) => (
+                    <tr key={f.id} className="border-b border-line last:border-0 hover:bg-surface-2">
+                      <td className="px-4 py-3.5">
+                        <p className="font-medium text-ink">{f.descripcion}</p>
+                        <p className="mt-0.5 text-xs text-muted">
+                          {f.codigo}
+                          {f.proveedor ? ` · ${f.proveedor}` : ""}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <StatusChip tone={f.rubro === "chapisteria" ? "warn" : "azul"}>
+                          {etiquetaRubro(f.rubro)}
+                        </StatusChip>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <span
+                          className={`text-base font-semibold tabular-nums ${
+                            f.cantidad <= 0.0005 ? "text-rojo" : "text-ink"
+                          }`}
+                        >
+                          {f.cantidad}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3.5 tabular-nums text-muted">
+                        {money(f.precio_unitario)}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => abrirSalida(f)}
+                            disabled={f.cantidad <= 0.0005}
+                            className="rounded-lg bg-ink px-3.5 py-2 text-sm font-medium text-white hover:bg-black disabled:opacity-40"
+                          >
+                            Salida a carro
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => abrirEntrada(f)}
+                            className="rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+                          >
+                            Entrada
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setXferItem(f)}
+                            disabled={f.cantidad <= 0.0005}
+                            className="rounded-lg bg-white px-3.5 py-2 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-40"
+                          >
+                            Transferir
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setAjusteItem(f)}
+                            className="rounded-lg px-3.5 py-2 text-sm font-medium text-muted hover:bg-surface-2 hover:text-ink"
+                          >
+                            Ajustar
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
-      <section>
-        <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">Qué comprar</h2>
-            <p className="mt-1 text-sm text-muted">
-              Según salidas de los últimos 30 días vs stock en {etiquetaSedeInventario(sede)}.
-            </p>
-          </div>
-          <form
-            className="flex flex-wrap items-end gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              ir({ presupuesto });
-            }}
-          >
-            <Field
-              label="Presupuesto (USD)"
-              name="presupuesto"
-              type="number"
-              step="0.01"
-              min={0}
-              value={presupuesto}
-              onChange={(e) => setPresupuesto(e.target.value)}
-              placeholder="ej. 500"
+      {!error && tab === "cobros" && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Estas piezas ya salieron al carro. Ahora elegí quién paga:{" "}
+            <span className="font-medium text-ink">cliente</span> o{" "}
+            <span className="font-medium text-ink">empresa</span>.
+          </p>
+          {pendientesCobro.length === 0 ? (
+            <EmptyState
+              title="Todo al día"
+              hint="Cuando registres una salida, aparece acá hasta que asignes el cobro."
+              action={
+                <button
+                  type="button"
+                  onClick={() => setTab("stock")}
+                  className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
+                >
+                  Ir al stock
+                </button>
+              }
             />
-            <button
-              type="submit"
-              className="rounded-lg bg-white px-3 py-2.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
-            >
-              Filtrar
-            </button>
-          </form>
-        </div>
-        {recomendaciones.length === 0 ? (
-          <EmptyState
-            title="Sin recomendaciones aún"
-            hint="Cuando haya salidas a carros, acá salen los ítems que más se mueven y lo sugerido a reponer."
-          />
-        ) : (
-          <div className="overflow-x-auto rounded-xl ring-1 ring-line">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
-                  <th className="px-4 py-3 font-medium">Ítem</th>
-                  <th className="px-4 py-3 font-medium">Salidas 30d</th>
-                  <th className="px-4 py-3 font-medium">Stock</th>
-                  <th className="px-4 py-3 font-medium">Sugerido</th>
-                  <th className="px-4 py-3 font-medium">Costo</th>
-                  <th className="px-4 py-3 font-medium">Proveedor</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recomendaciones.map((r) => (
-                  <tr key={r.item_id} className="border-b border-line last:border-0">
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{r.codigo}</p>
-                      <p className="text-xs text-muted">{r.descripcion}</p>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums">{r.salidas_periodo}</td>
-                    <td className="px-4 py-3 tabular-nums text-muted">{r.stock}</td>
-                    <td className="px-4 py-3 tabular-nums font-semibold">{r.sugerido}</td>
-                    <td className="px-4 py-3 tabular-nums text-muted">{money(r.costo_sugerido)}</td>
-                    <td className="px-4 py-3 text-muted">{r.proveedor ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section>
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-semibold tracking-tight">Cobro pendiente</h2>
-            <p className="mt-1 text-sm text-muted">
-              Salidas ya hechas al carro; después se define si paga el cliente o la empresa.
-            </p>
-          </div>
-          {pendientesCobro.length > 0 && (
-            <StatusChip tone="warn">{pendientesCobro.length}</StatusChip>
+          ) : (
+            <ul className="divide-y divide-line overflow-hidden rounded-xl ring-1 ring-line">
+              {pendientesCobro.map((m) => (
+                <li
+                  key={m.id}
+                  className="flex flex-col gap-3 bg-surface px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusChip tone="warn">Pendiente</StatusChip>
+                      <span className="text-sm font-semibold tabular-nums">
+                        Carro #{m.vehiculo_numero}
+                      </span>
+                      <span className="text-xs tabular-nums text-muted">{fmtFecha(m.fecha)}</span>
+                    </div>
+                    <p className="mt-1.5 text-sm font-medium">{m.descripcion}</p>
+                    <p className="text-xs text-muted">
+                      {m.codigo} · cantidad {m.cantidad}
+                      {m.notas ? ` · ${m.notas}` : ""}
+                    </p>
+                  </div>
+                  <AsignarCobro
+                    id={m.id}
+                    onOk={(msg) => {
+                      setToast(msg);
+                      router.refresh();
+                    }}
+                  />
+                </li>
+              ))}
+            </ul>
           )}
         </div>
-        {pendientesCobro.length === 0 ? (
-          <EmptyState title="Nada pendiente" hint="Las salidas nuevas aparecen acá hasta asignar el cobro." />
-        ) : (
-          <ul className="divide-y divide-line overflow-hidden rounded-xl ring-1 ring-line">
-            {pendientesCobro.map((m) => (
-              <li key={m.id} className="flex flex-wrap items-center justify-between gap-3 bg-surface px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">
-                    {m.codigo} · #{m.vehiculo_numero ?? "?"} · {m.cantidad}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {fmtFecha(m.fecha)} · {m.descripcion}
-                  </p>
-                </div>
-                <AsignarCobro
-                  id={m.id}
-                  onOk={(msg) => {
-                    setToast(msg);
-                    router.refresh();
-                  }}
-                />
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      )}
 
-      <section>
-        <div className="mb-3 flex items-baseline justify-between gap-3">
-          <h2 className="text-lg font-semibold tracking-tight">Últimos movimientos</h2>
-          <p className="text-xs text-muted">{etiquetaSedeInventario(sede)}</p>
-        </div>
-        {movimientos.length === 0 ? (
-          <EmptyState
-            title="Sin movimientos aún"
-            hint="Entradas, salidas a carro y transferencias entre sedes."
-          />
-        ) : (
-          <div className="overflow-x-auto rounded-xl ring-1 ring-line">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
-                  <th className="px-4 py-3 font-medium">Fecha</th>
-                  <th className="px-4 py-3 font-medium">Tipo</th>
-                  <th className="px-4 py-3 font-medium">Ítem</th>
-                  <th className="px-4 py-3 font-medium">Cant.</th>
-                  <th className="px-4 py-3 font-medium">Detalle</th>
-                </tr>
-              </thead>
-              <tbody>
-                {movimientos.map((m) => (
-                  <tr key={m.id} className="border-b border-line last:border-0">
-                    <td className="px-4 py-3 tabular-nums text-muted">{fmtFecha(m.fecha)}</td>
-                    <td className="px-4 py-3">
-                      <StatusChip
-                        tone={
-                          m.tipo === "entrada"
-                            ? "good"
-                            : m.tipo === "salida"
-                              ? "crit"
-                              : "azul"
-                        }
-                      >
-                        {etiquetaTipoMovimiento(m.tipo)}
-                      </StatusChip>
-                    </td>
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{m.codigo}</p>
-                      <p className="text-xs text-muted">{m.descripcion}</p>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums font-semibold">{m.cantidad}</td>
-                    <td className="px-4 py-3 text-muted">
-                      {m.tipo === "salida" && (
-                        <span>
-                          Carro #{m.vehiculo_numero ?? "—"} · cobro {etiquetaCobro(m.cobro_a).toLowerCase()}
-                        </span>
-                      )}
-                      {m.tipo === "transferencia" && (
-                        <span>
-                          → {etiquetaSedeInventario(m.sede_destino)}
-                          {m.notas ? ` · ${m.notas}` : ""}
-                        </span>
-                      )}
-                      {m.tipo === "entrada" &&
-                        ([m.proveedor, m.notas].filter(Boolean).join(" · ") || "—")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      {!error && tab === "comprar" && (
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <p className="text-sm text-muted max-w-xl">
+              Lo que más salió en 30 días y ya no alcanza el stock. Usá el presupuesto para priorizar
+              la compra de la semana.
+            </p>
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                ir({ presupuesto });
+              }}
+            >
+              <Field
+                label="Presupuesto USD"
+                name="presupuesto"
+                type="number"
+                step="0.01"
+                min={0}
+                value={presupuesto}
+                onChange={(e) => setPresupuesto(e.target.value)}
+                placeholder="500"
+              />
+              <button
+                type="submit"
+                className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black"
+              >
+                Aplicar
+              </button>
+            </form>
           </div>
-        )}
-      </section>
+          {recomendaciones.length === 0 ? (
+            <EmptyState
+              title="Todavía no hay qué sugerir"
+              hint="Cuando haya salidas a carros, acá verás qué reponer primero."
+            />
+          ) : (
+            <div className="overflow-x-auto rounded-xl ring-1 ring-line">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
+                    <th className="px-4 py-3 font-medium">Pieza</th>
+                    <th className="px-4 py-3 font-medium">Salió</th>
+                    <th className="px-4 py-3 font-medium">Stock</th>
+                    <th className="px-4 py-3 font-medium">Comprar</th>
+                    <th className="px-4 py-3 font-medium">Costo</th>
+                    <th className="px-4 py-3 font-medium">Proveedor</th>
+                    <th className="px-4 py-3 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {recomendaciones.map((r) => {
+                    const item = filas.find((f) => f.id === r.item_id);
+                    return (
+                      <tr key={r.item_id} className="border-b border-line last:border-0 hover:bg-surface-2">
+                        <td className="px-4 py-3">
+                          <p className="font-medium">{r.descripcion}</p>
+                          <p className="text-xs text-muted">{r.codigo}</p>
+                        </td>
+                        <td className="px-4 py-3 tabular-nums">{r.salidas_periodo}</td>
+                        <td className="px-4 py-3 tabular-nums text-muted">{r.stock}</td>
+                        <td className="px-4 py-3 tabular-nums font-semibold text-ink">
+                          {r.sugerido}
+                        </td>
+                        <td className="px-4 py-3 tabular-nums text-muted">
+                          {money(r.costo_sugerido)}
+                        </td>
+                        <td className="px-4 py-3 text-muted">{r.proveedor ?? "—"}</td>
+                        <td className="px-4 py-3 text-right">
+                          {item && (
+                            <button
+                              type="button"
+                              onClick={() => abrirEntrada(item)}
+                              className="rounded-lg bg-ink px-3 py-2 text-sm font-medium text-white hover:bg-black"
+                            >
+                              Registrar entrada
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!error && tab === "movimientos" && (
+        <div className="space-y-4">
+          <p className="text-sm text-muted">
+            Historial reciente en {etiquetaSedeInventario(sede)}: entradas, salidas y transferencias.
+          </p>
+          {movimientos.length === 0 ? (
+            <EmptyState title="Sin movimientos" hint="Todavía no se registró nada en esta sede." />
+          ) : (
+            <div className="overflow-x-auto rounded-xl ring-1 ring-line">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line text-left text-[11px] uppercase tracking-[0.1em] text-muted">
+                    <th className="px-4 py-3 font-medium">Fecha</th>
+                    <th className="px-4 py-3 font-medium">Tipo</th>
+                    <th className="px-4 py-3 font-medium">Pieza</th>
+                    <th className="px-4 py-3 font-medium">Cant.</th>
+                    <th className="px-4 py-3 font-medium">Detalle</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {movimientos.map((m) => (
+                    <tr key={m.id} className="border-b border-line last:border-0">
+                      <td className="px-4 py-3 tabular-nums text-muted">{fmtFecha(m.fecha)}</td>
+                      <td className="px-4 py-3">
+                        <StatusChip
+                          tone={
+                            m.tipo === "entrada"
+                              ? "good"
+                              : m.tipo === "salida"
+                                ? "crit"
+                                : "azul"
+                          }
+                        >
+                          {etiquetaTipoMovimiento(m.tipo)}
+                        </StatusChip>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="font-medium">{m.descripcion}</p>
+                        <p className="text-xs text-muted">{m.codigo}</p>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums font-semibold">{m.cantidad}</td>
+                      <td className="px-4 py-3 text-muted">
+                        {m.tipo === "salida" && (
+                          <span>
+                            Carro #{m.vehiculo_numero ?? "—"} ·{" "}
+                            {m.cobro_a ? (
+                              <span className="text-ink">cobra {etiquetaCobro(m.cobro_a).toLowerCase()}</span>
+                            ) : (
+                              <span className="text-ambar">cobro pendiente</span>
+                            )}
+                          </span>
+                        )}
+                        {m.tipo === "transferencia" && (
+                          <span>→ {etiquetaSedeInventario(m.sede_destino)}</span>
+                        )}
+                        {m.tipo === "entrada" &&
+                          ([m.proveedor, m.notas].filter(Boolean).join(" · ") || "—")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {movItem && (
         <ModalMovimiento
           item={movItem}
           sede={sede}
           fechaHoy={fechaHoy}
+          tipoInicial={movTipo}
           onClose={() => setMovItem(null)}
           onOk={afterOk}
         />
@@ -428,29 +584,38 @@ function AsignarCobro({ id, onOk }: { id: string; onOk: (msg: string) => void })
   }
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
-      {COBROS_INVENTARIO.map((c) => (
-        <button
-          key={c.id}
-          type="button"
-          disabled={pending}
-          onClick={() => asignar(c.id)}
-          className="rounded-lg bg-white px-3 py-1.5 text-xs font-medium text-ink ring-1 ring-line hover:bg-surface-2 disabled:opacity-50"
-        >
-          {c.label}
-        </button>
-      ))}
-      {err && <p className="w-full text-xs text-rojo">{err}</p>}
+    <div className="flex flex-col items-stretch gap-2 sm:items-end">
+      <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">¿Quién paga?</p>
+      <div className="flex flex-wrap gap-2">
+        {COBROS_INVENTARIO.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            disabled={pending}
+            onClick={() => asignar(c.id)}
+            className={`rounded-lg px-4 py-2.5 text-sm font-medium disabled:opacity-50 ${
+              c.id === "cliente"
+                ? "bg-ink text-white hover:bg-black"
+                : "bg-white text-ink ring-1 ring-line hover:bg-surface-2"
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+      {err && <p className="text-xs text-rojo">{err}</p>}
     </div>
   );
 }
 
 function ModalShell({
   title,
+  subtitle,
   children,
   onClose,
 }: {
   title: string;
+  subtitle?: string;
   children: ReactNode;
   onClose: () => void;
 }) {
@@ -460,10 +625,11 @@ function ModalShell({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 w-full max-w-lg rounded-t-2xl bg-surface p-5 shadow-xl ring-1 ring-line sm:rounded-xl"
+        className="relative z-10 max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-surface p-5 shadow-xl ring-1 ring-line sm:rounded-xl"
       >
-        <h3 className="text-base font-semibold">{title}</h3>
-        <div className="mt-4">{children}</div>
+        <h3 className="text-lg font-semibold tracking-tight">{title}</h3>
+        {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
+        <div className="mt-5">{children}</div>
       </div>
     </div>
   );
@@ -473,18 +639,20 @@ function ModalMovimiento({
   item,
   sede,
   fechaHoy,
+  tipoInicial,
   onClose,
   onOk,
 }: {
   item: ItemInventarioVista;
   sede: SedeInventario;
   fechaHoy: string;
+  tipoInicial: "entrada" | "salida";
   onClose: () => void;
   onOk: (msg: string) => void;
 }) {
   const [pending, start] = useTransition();
   const [err, setErr] = useState<string | null>(null);
-  const [tipo, setTipo] = useState<"entrada" | "salida">("salida");
+  const [tipo, setTipo] = useState<"entrada" | "salida">(tipoInicial);
 
   function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -510,8 +678,11 @@ function ModalMovimiento({
   }
 
   return (
-    <ModalShell title={`${item.codigo} · stock ${item.cantidad}`} onClose={onClose}>
-      <p className="mb-3 text-sm text-muted">{item.descripcion}</p>
+    <ModalShell
+      title={tipo === "salida" ? "Salida a un carro" : "Entrada de compra"}
+      subtitle={`${item.descripcion} · stock ${item.cantidad} en ${etiquetaSedeInventario(sede)}`}
+      onClose={onClose}
+    >
       <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
         <Select
           label="Tipo *"
@@ -520,22 +691,31 @@ function ModalMovimiento({
           value={tipo}
           onChange={(e) => setTipo(e.target.value as "entrada" | "salida")}
           options={[
-            { value: "salida", label: "Salida (a un carro)" },
+            { value: "salida", label: "Salida (al carro)" },
             { value: "entrada", label: "Entrada (compra)" },
           ]}
         />
-        <Field label="Cantidad *" name="cantidad" type="number" step="0.001" min={0.001} required />
+        <Field
+          label="Cantidad *"
+          name="cantidad"
+          type="number"
+          step="0.001"
+          min={0.001}
+          required
+          defaultValue={1}
+        />
         <Field label="Fecha *" name="fecha" type="date" required defaultValue={fechaHoy} />
         {tipo === "salida" ? (
           <Field
-            label="# carro *"
+            label="Número de carro *"
             name="vehiculo"
             required
-            placeholder="89 o AL89"
-            hint="Obligatorio. El cobro (cliente/empresa) se asigna después."
+            placeholder="89"
+            hint="Solo el número. El cobro (cliente o empresa) lo asignás después."
+            autoComplete="off"
           />
         ) : (
-          <Field label="Proveedor" name="proveedor" placeholder="Asia" />
+          <Field label="Proveedor" name="proveedor" placeholder="Asia, Terpel…" />
         )}
         {tipo === "salida" ? (
           <input type="hidden" name="proveedor" value="" />
@@ -543,10 +723,13 @@ function ModalMovimiento({
           <input type="hidden" name="vehiculo" value="" />
         )}
         <label className="flex flex-col gap-1.5 sm:col-span-2">
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Notas</span>
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+            Notas (opcional)
+          </span>
           <textarea
             name="notas"
             rows={2}
+            placeholder={tipo === "salida" ? "Ej. farol roto en choque" : "Ej. factura 1234"}
             className="rounded-lg bg-surface px-3 py-2.5 text-sm ring-1 ring-line outline-none focus:ring-2 focus:ring-ink/20"
           />
         </label>
@@ -554,9 +737,9 @@ function ModalMovimiento({
           <button
             type="submit"
             disabled={pending}
-            className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
+            className="rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
           >
-            {pending ? "Guardando…" : "Registrar"}
+            {pending ? "Guardando…" : tipo === "salida" ? "Registrar salida" : "Registrar entrada"}
           </button>
           <button
             type="button"
@@ -610,14 +793,16 @@ function ModalTransferencia({
   }
 
   return (
-    <ModalShell title={`Transferir · ${item.codigo}`} onClose={onClose}>
-      <p className="mb-3 text-sm text-muted">
-        De <span className="font-medium text-ink">{etiquetaSedeInventario(sede)}</span> a{" "}
-        <span className="font-medium text-ink">{etiquetaSedeInventario(destino)}</span>. Stock acá:{" "}
-        <span className="tabular-nums font-medium text-ink">{item.cantidad}</span>.
-      </p>
+    <ModalShell
+      title="Transferir a la otra sede"
+      subtitle={`De ${etiquetaSedeInventario(sede)} → ${etiquetaSedeInventario(destino)}`}
+      onClose={onClose}
+    >
+      <div className="mb-4 rounded-lg bg-azul-wash px-3 py-2.5 text-sm text-azul">
+        {item.descripcion}. Stock acá: <span className="font-semibold tabular-nums">{item.cantidad}</span>
+      </div>
       <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
-        <Field label="Cantidad *" name="cantidad" type="number" step="0.001" min={0.001} required />
+        <Field label="Cantidad *" name="cantidad" type="number" step="0.001" min={0.001} required defaultValue={1} />
         <Field label="Fecha *" name="fecha" type="date" required defaultValue={fechaHoy} />
         <label className="flex flex-col gap-1.5 sm:col-span-2">
           <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Notas</span>
@@ -631,9 +816,9 @@ function ModalTransferencia({
           <button
             type="submit"
             disabled={pending}
-            className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
+            className="rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
           >
-            {pending ? "Guardando…" : "Transferir"}
+            {pending ? "Guardando…" : `Enviar a ${etiquetaSedeInventario(destino)}`}
           </button>
           <button
             type="button"
@@ -686,14 +871,14 @@ function ModalAjuste({
   }
 
   return (
-    <ModalShell title={`Ajustar · ${item.codigo}`} onClose={onClose}>
-      <p className="mb-3 text-sm text-muted">
-        Stock actual: <span className="font-medium text-ink tabular-nums">{item.cantidad}</span>. Poné el
-        conteo físico.
-      </p>
+    <ModalShell
+      title="Ajuste de conteo"
+      subtitle="Para cuando el físico no cuadra con el sistema. No es una salida a carro."
+      onClose={onClose}
+    >
       <form onSubmit={onSubmit} className="grid gap-3 sm:grid-cols-2">
         <Field
-          label="Cantidad nueva *"
+          label="Cantidad real *"
           name="cantidad"
           type="number"
           step="0.001"
@@ -703,7 +888,9 @@ function ModalAjuste({
         />
         <Field label="Fecha *" name="fecha" type="date" required defaultValue={fechaHoy} />
         <label className="flex flex-col gap-1.5 sm:col-span-2">
-          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">Motivo</span>
+          <span className="text-[11px] font-medium uppercase tracking-[0.12em] text-muted">
+            Motivo
+          </span>
           <textarea
             name="notas"
             rows={2}
@@ -715,9 +902,9 @@ function ModalAjuste({
           <button
             type="submit"
             disabled={pending}
-            className="rounded-lg bg-ink px-4 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
+            className="rounded-lg bg-ink px-5 py-2.5 text-sm font-medium text-white hover:bg-black disabled:opacity-50"
           >
-            {pending ? "Guardando…" : "Guardar ajuste"}
+            {pending ? "Guardando…" : "Guardar conteo"}
           </button>
           <button
             type="button"

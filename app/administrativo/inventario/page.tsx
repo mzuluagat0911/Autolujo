@@ -53,22 +53,13 @@ export default async function InventarioPage({
   const movimientos = mov.ok ? mov.filas : [];
   const pendientesCobro = cobros.ok ? cobros.filas : [];
   const recomendaciones = reco.ok ? reco.filas : [];
-  const conStock = filas.filter((f) => f.cantidad > 0.0005).length;
 
   return (
     <PageShell width="fluid">
       <PageHeader
         eyebrow="Administrativo"
         title="Inventario"
-        subtitle={`Salidas a carro · transferencias entre sedes · cobro cliente/empresa después · compras según lo que más sale. Stock en ${etiquetaSedeInventario(sede)}.`}
-        action={
-          <div className="hidden text-right sm:block">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted">
-              Con stock
-            </p>
-            <p className="mt-1 text-2xl font-bold tabular-nums">{conStock}</p>
-          </div>
-        }
+        subtitle={`Stock de ${etiquetaSedeInventario(sede)}. Salida a carro primero; el cobro (cliente o empresa) se asigna después.`}
       />
       <InventarioVista
         sede={sede}
