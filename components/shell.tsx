@@ -73,6 +73,7 @@ const NAV: Group[] = [
       { label: "Actividad", href: "/comercial/actividad", status: "active", modulo: "comercial" },
       { label: "Resultados", href: "/comercial/resultados", status: "active", modulo: "comercial" },
       { label: "Crear solicitud", href: "/comercial/contrato", status: "active", modulo: "comercial" },
+      { label: "Contratos aprobados", href: "/comercial/contratos", status: "active", modulo: "comercial" },
       { label: "Datos del cliente", href: "/comercial/clientes", status: "active", modulo: "comercial" },
     ],
   },

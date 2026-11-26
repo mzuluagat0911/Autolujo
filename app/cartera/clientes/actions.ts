@@ -269,7 +269,7 @@ type ParteDesglose = {
  */
 export async function createClienteConContrato(
   formData: FormData,
-): Promise<{ ok: boolean; error?: string; msg?: string; clienteId?: string }> {
+): Promise<{ ok: boolean; error?: string; msg?: string; clienteId?: string; contratoId?: string }> {
   const nombre = String(formData.get("nombre") ?? "").trim();
   if (!nombre) return { ok: false, error: "El nombre es obligatorio." };
   const genero = normalizarGenero(formData.get("genero"));
@@ -790,6 +790,7 @@ export async function createClienteConContrato(
   return {
     ok: true,
     clienteId: cliente.id,
+    contratoId,
     msg: avisoBienvenida ? `${base} ${avisoBienvenida}` : base,
   };
 }

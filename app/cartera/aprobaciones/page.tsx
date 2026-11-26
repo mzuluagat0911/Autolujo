@@ -19,6 +19,7 @@ function chipEstado(estado: string) {
 
 const VISTAS = [
   { id: "pendiente", label: "Pendientes", href: "/cartera/aprobaciones" },
+  { id: "aprobada", label: "Aprobadas", href: "/cartera/aprobaciones?vista=aprobada" },
   { id: "cerradas", label: "Cerradas", href: "/cartera/aprobaciones?vista=cerradas" },
   { id: "todas", label: "Todas", href: "/cartera/aprobaciones?vista=todas" },
 ] as const;
@@ -29,7 +30,8 @@ export default async function AprobacionesPage({
   searchParams: Promise<{ vista?: string; aviso?: string }>;
 }) {
   const sp = await searchParams;
-  const vista = sp.vista === "todas" || sp.vista === "cerradas" ? sp.vista : "pendiente";
+  const vista =
+    sp.vista === "todas" || sp.vista === "cerradas" || sp.vista === "aprobada" ? sp.vista : "pendiente";
   const { filas, error } = await listarSolicitudesContrato(vista);
 
   return (
@@ -68,11 +70,19 @@ export default async function AprobacionesPage({
       {filas.length === 0 && !error ? (
         <div className="mt-8">
           <EmptyState
-            title={vista === "pendiente" ? "Nada pendiente" : "Sin solicitudes"}
+            title={
+              vista === "pendiente"
+                ? "Nada pendiente"
+                : vista === "aprobada"
+                  ? "Nada aprobada"
+                  : "Sin solicitudes"
+            }
             hint={
               vista === "pendiente"
                 ? "Cuando comercial envíe una solicitud, aparece acá."
-                : "Todavía no hay solicitudes en esta vista."
+                : vista === "aprobada"
+                  ? "Las que apruebes quedan acá para imprimir."
+                  : "Todavía no hay solicitudes en esta vista."
             }
           />
         </div>
@@ -105,12 +115,22 @@ export default async function AprobacionesPage({
                   <td className="px-4 py-3 text-muted">{f.solicitanteNombre || "—"}</td>
                   <td className="px-4 py-3">{chipEstado(f.estado)}</td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/cartera/aprobaciones/${f.id}`}
-                      className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
-                    >
-                      {f.estado === "pendiente" ? "Revisar" : "Ver"}
-                    </Link>
+                    <div className="flex flex-wrap items-center justify-end gap-2">
+                      {f.estado === "aprobada" && f.clienteId && f.contratoId ? (
+                        <Link
+                          href={`/cartera/clientes/${f.clienteId}/contrato/${f.contratoId}/ver`}
+                          className="rounded-lg bg-ink px-3 py-1.5 text-sm font-medium text-white hover:bg-black"
+                        >
+                          Imprimir
+                        </Link>
+                      ) : null}
+                      <Link
+                        href={`/cartera/aprobaciones/${f.id}`}
+                        className="rounded-lg px-3 py-1.5 text-sm font-medium text-ink ring-1 ring-line hover:bg-surface-2"
+                      >
+                        {f.estado === "pendiente" ? "Revisar" : "Ver"}
+                      </Link>
+                    </div>
                   </td>
                 </tr>
               ))}

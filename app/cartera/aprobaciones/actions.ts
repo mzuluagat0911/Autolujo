@@ -16,6 +16,7 @@ export type ResultadoAlta = {
   error?: string;
   msg?: string;
   clienteId?: string;
+  contratoId?: string;
   solicitudId?: string;
   redirectTo?: string;
 };
@@ -162,6 +163,7 @@ export async function aprobarSolicitudContrato(
       aprobador_id: sesion.id,
       aprobado_at: new Date().toISOString(),
       cliente_id: alta.clienteId ?? null,
+      contrato_id: alta.contratoId ?? null,
       updated_at: new Date().toISOString(),
       payload: formData ? payloadDesdeFormData(formData) : actual.fila.payload,
     })
@@ -171,6 +173,7 @@ export async function aprobarSolicitudContrato(
     return {
       ok: true,
       clienteId: alta.clienteId,
+      contratoId: alta.contratoId,
       msg: `${alta.msg ?? "Contrato creado."} (No pude marcar la solicitud como aprobada: ${error.message})`,
       redirectTo: alta.clienteId ? `/cartera/clientes/${alta.clienteId}` : undefined,
     };
@@ -179,14 +182,19 @@ export async function aprobarSolicitudContrato(
   revalidatePath("/cartera/aprobaciones");
   revalidatePath(`/cartera/aprobaciones/${id}`);
   revalidatePath("/comercial/contrato");
+  revalidatePath("/comercial/contratos");
   return {
     ok: true,
     clienteId: alta.clienteId,
+    contratoId: alta.contratoId,
     solicitudId: id,
     msg: alta.msg ?? "Solicitud aprobada. Cliente y contrato creados.",
-    redirectTo: alta.clienteId
-      ? `/cartera/clientes/${alta.clienteId}`
-      : `/cartera/aprobaciones?aviso=${encodeURIComponent("Solicitud aprobada.")}`,
+    redirectTo:
+      alta.clienteId && alta.contratoId
+        ? `/cartera/clientes/${alta.clienteId}/contrato/${alta.contratoId}/ver`
+        : alta.clienteId
+          ? `/cartera/clientes/${alta.clienteId}`
+          : `/cartera/aprobaciones?aviso=${encodeURIComponent("Solicitud aprobada.")}`,
   };
 }
 

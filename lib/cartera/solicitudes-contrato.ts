@@ -99,12 +99,17 @@ const SELECT =
   "id, estado, nombre, whatsapp, telefono, wa_norm, vehiculo_id, carro_numero, empresa_codigo, letra_diaria, sucursal, fecha_inicio, payload, solicitante_id, aprobador_id, aprobado_at, motivo_rechazo, notas_internas, cliente_id, contrato_id, created_at, updated_at, solicitante:equipo!solicitudes_contrato_solicitante_id_fkey(nombre), aprobador:equipo!solicitudes_contrato_aprobador_id_fkey(nombre)";
 
 export async function listarSolicitudesContrato(
-  filtro: "pendiente" | "todas" | "cerradas" = "pendiente",
+  filtro: "pendiente" | "aprobada" | "todas" | "cerradas" = "pendiente",
 ): Promise<{ filas: SolicitudContrato[]; error: string | null }> {
   const sb = createServerSupabase();
-  let q = sb.from("solicitudes_contrato").select(SELECT).order("created_at", { ascending: false }).limit(200);
+  let q = sb.from("solicitudes_contrato").select(SELECT).limit(200);
   if (filtro === "pendiente") q = q.eq("estado", "pendiente");
+  if (filtro === "aprobada") q = q.eq("estado", "aprobada");
   if (filtro === "cerradas") q = q.in("estado", ["aprobada", "rechazada", "cancelada"]);
+  q =
+    filtro === "aprobada"
+      ? q.order("aprobado_at", { ascending: false })
+      : q.order("created_at", { ascending: false });
   const { data, error } = await q;
   if (error) {
     if (/solicitudes_contrato|schema cache/i.test(error.message)) {
@@ -112,7 +117,36 @@ export async function listarSolicitudesContrato(
     }
     return { filas: [], error: error.message };
   }
-  return { filas: ((data ?? []) as Record<string, unknown>[]).map(filaDe), error: null };
+  const filas = ((data ?? []) as Record<string, unknown>[]).map(filaDe);
+  if (filtro === "aprobada") await completarContratoIdFaltante(filas);
+  return { filas, error: null };
+}
+
+/** Aprobadas viejas sin contrato_id: toma el contrato más reciente del cliente. */
+async function completarContratoIdFaltante(filas: SolicitudContrato[]): Promise<void> {
+  const faltan = filas.filter((f) => f.clienteId && !f.contratoId);
+  if (faltan.length === 0) return;
+  const sb = createServerSupabase();
+  const clienteIds = [...new Set(faltan.map((f) => f.clienteId!))];
+  const { data } = await sb
+    .from("contratos")
+    .select("id, cliente_id, created_at")
+    .in("cliente_id", clienteIds)
+    .order("created_at", { ascending: false });
+  const porCliente = new Map<string, string>();
+  for (const row of (data ?? []) as { id: string; cliente_id: string }[]) {
+    if (!porCliente.has(row.cliente_id)) porCliente.set(row.cliente_id, row.id);
+  }
+  for (const f of faltan) {
+    const cid = porCliente.get(f.clienteId!);
+    if (!cid) continue;
+    f.contratoId = cid;
+    await sb
+      .from("solicitudes_contrato")
+      .update({ contrato_id: cid, updated_at: new Date().toISOString() })
+      .eq("id", f.id)
+      .is("contrato_id", null);
+  }
 }
 
 export async function obtenerSolicitudContrato(
