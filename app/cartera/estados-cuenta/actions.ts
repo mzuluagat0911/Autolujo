@@ -18,6 +18,7 @@ import {
 import { soltarPaqueteDomingos } from "@/lib/cartera/domingos-aplazados";
 import { sincronizarSalidaReasignada } from "@/lib/cartera/salidas-aplicar";
 import { recalcularRecargo } from "@/lib/cartera/devengo";
+import { esExtension } from "@/lib/cartera/extension";
 import type { EstadoCuentaFila } from "./types";
 import {
   conceptoSinMarca,
@@ -81,6 +82,8 @@ export type AcuerdoEditable = {
   id: string;
   tipo: string;
   descripcion: string;
+  /** De qué es el acuerdo (choque, deducible, etc.). */
+  comentario: string;
   saldo: number;
   cuota_diaria: number;
   cuota_domingo: number;
@@ -88,6 +91,9 @@ export type AcuerdoEditable = {
   activo: boolean;
   frecuencia: FrecuenciaAcuerdo;
   fecha_especifica: string | null;
+  /** Por qué se suspendió o canceló. */
+  motivo_cierre: string;
+  cerrado_at: string | null;
 };
 
 export type LedgerEditable = {
@@ -122,6 +128,7 @@ export type AcuerdoDraft = {
   id: string | null;
   tipo: string;
   descripcion: string;
+  comentario: string;
   saldo: number;
   cuota_diaria: number;
   cuota_domingo: number;
@@ -129,6 +136,8 @@ export type AcuerdoDraft = {
   activo: boolean;
   frecuencia: FrecuenciaAcuerdo;
   fecha_especifica: string | null;
+  motivo_cierre: string;
+  cerrado_at: string | null;
   borrar?: boolean;
 };
 
@@ -230,18 +239,30 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
     (pagosCubiertos ?? []) as { asignaciones: unknown }[],
   );
 
-  const acuSel =
+  const acuSelFull =
+    "id, tipo, descripcion, comentario, saldo, cuota_diaria, cuota_domingo, monto_total, activo, frecuencia, fecha_especifica, motivo_cierre, cerrado_at";
+  const acuSelBase =
     "id, tipo, descripcion, saldo, cuota_diaria, cuota_domingo, monto_total, activo, frecuencia, fecha_especifica";
   let acuData: unknown[] | null = null;
   let acuErr: { message: string } | null = null;
   {
     const res = await sb
       .from("acuerdos")
-      .select(acuSel)
+      .select(acuSelFull)
       .eq("contrato_id", contratoId)
       .order("created_at", { ascending: false });
     acuData = res.data as unknown[] | null;
     acuErr = res.error;
+  }
+
+  if (acuErr && /comentario|motivo_cierre|cerrado_at/i.test(acuErr.message)) {
+    const retry = await sb
+      .from("acuerdos")
+      .select(acuSelBase)
+      .eq("contrato_id", contratoId)
+      .order("created_at", { ascending: false });
+    acuData = retry.data as unknown[] | null;
+    acuErr = retry.error;
   }
 
   if (acuErr && /frecuencia|fecha_especifica/i.test(acuErr.message)) {
@@ -285,6 +306,7 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
         id: a.id,
         tipo: a.tipo,
         descripcion: a.descripcion ?? "",
+        comentario: String((a as { comentario?: string | null }).comentario ?? ""),
         saldo: Number(a.saldo) || 0,
         cuota_diaria: Number(a.cuota_diaria) || 0,
         cuota_domingo: Number(a.cuota_domingo) || 0,
@@ -296,6 +318,8 @@ export async function cargarLedgerEditable(contratoId: string): Promise<
         fecha_especifica: fechaONull(
           (a as { fecha_especifica?: string | null }).fecha_especifica,
         ),
+        motivo_cierre: String((a as { motivo_cierre?: string | null }).motivo_cierre ?? ""),
+        cerrado_at: (a as { cerrado_at?: string | null }).cerrado_at ?? null,
       })),
       prioridadAbono: await prioridadAbonoDe(sb, contratoId),
     },
@@ -400,16 +424,49 @@ export async function guardarLedgerEditable(
   }
 
   for (const a of input.acuerdos ?? []) {
-    if (a.borrar && a.id) {
-      const { error } = await sb
+    const comentario = String(a.comentario ?? "").trim();
+    const motivoCierre = String(a.motivo_cierre ?? "").trim();
+    const cerrar = Boolean(a.borrar) || a.activo === false;
+
+    if (cerrar && a.id) {
+      if (!motivoCierre) {
+        return {
+          ok: false,
+          error: "Para suspender o quitar un acuerdo, indicá el motivo (ej. absolución en audiencia).",
+        };
+      }
+      const cierreBody: Record<string, unknown> = {
+        activo: false,
+        motivo_cierre: motivoCierre,
+        cerrado_at: new Date().toISOString(),
+      };
+      if (comentario) cierreBody.comentario = comentario;
+      let { error } = await sb
         .from("acuerdos")
-        .update({ activo: false })
+        .update(cierreBody)
         .eq("id", a.id)
         .eq("contrato_id", contratoId);
+      if (error && /motivo_cierre|cerrado_at|comentario/i.test(error.message)) {
+        const nota = ` — suspendido: ${motivoCierre}`;
+        const desc = String(a.descripcion || "Acuerdo de pago").replace(/\s*—\s*suspendido:.*/i, "");
+        const retry = await sb
+          .from("acuerdos")
+          .update({ activo: false, descripcion: `${desc}${nota}`.slice(0, 500) })
+          .eq("id", a.id)
+          .eq("contrato_id", contratoId);
+        error = retry.error;
+      }
       if (error) return { ok: false, error: `Desactivar acuerdo: ${error.message}` };
       continue;
     }
     if (a.borrar) continue;
+
+    if (!a.id && !comentario && !esExtension(a.descripcion)) {
+      return {
+        ok: false,
+        error: "En cada acuerdo de pago nuevo poné un comentario: de qué es (choque, deducible, etc.).",
+      };
+    }
 
     const tipo = ["dano", "financiamiento", "otro"].includes(a.tipo) ? a.tipo : "otro";
     const frecuencia = normalizarFrecuencia(a.frecuencia);
@@ -417,6 +474,7 @@ export async function guardarLedgerEditable(
     const body: Record<string, unknown> = {
       tipo,
       descripcion: String(a.descripcion || "").trim() || null,
+      comentario: comentario || null,
       saldo: Math.max(n(a.saldo), 0),
       cuota_diaria: Math.max(n(a.cuota_diaria), 0),
       cuota_domingo: Math.max(n(a.cuota_domingo), 0),
@@ -424,17 +482,33 @@ export async function guardarLedgerEditable(
       activo: a.activo !== false,
       frecuencia,
       fecha_especifica,
+      motivo_cierre: null,
+      cerrado_at: null,
     };
 
     if (a.id) {
-      const { error } = await sb.from("acuerdos").update(body).eq("id", a.id).eq("contrato_id", contratoId);
+      let { error } = await sb.from("acuerdos").update(body).eq("id", a.id).eq("contrato_id", contratoId);
+      if (error && /comentario|motivo_cierre|cerrado_at/i.test(error.message)) {
+        const { comentario: _c, motivo_cierre: _m, cerrado_at: _z, ...sinCom } = body;
+        const desc =
+          comentario && body.descripcion
+            ? `${body.descripcion} — ${comentario}`.slice(0, 500)
+            : body.descripcion;
+        const retry = await sb
+          .from("acuerdos")
+          .update({ ...sinCom, descripcion: desc })
+          .eq("id", a.id)
+          .eq("contrato_id", contratoId);
+        error = retry.error;
+      }
       if (error && /frecuencia|fecha_especifica|check/i.test(error.message)) {
         const fallback = { ...body };
         if (frecuencia === "domingo") {
           fallback.frecuencia = "semana";
           fallback.fecha_especifica = fecha_especifica ?? fechaConDiaSemana(hoyPanama(), 0);
         }
-        const { frecuencia: _f, fecha_especifica: _fe, ...sin } = fallback;
+        const { frecuencia: _f, fecha_especifica: _fe, comentario: _c, motivo_cierre: _m, cerrado_at: _z, ...sin } =
+          fallback;
         const retryFull = await sb.from("acuerdos").update(fallback).eq("id", a.id).eq("contrato_id", contratoId);
         if (retryFull.error) {
           const retry = await sb.from("acuerdos").update(sin).eq("id", a.id).eq("contrato_id", contratoId);
@@ -463,14 +537,24 @@ export async function guardarLedgerEditable(
         monto_total:
           Number(body.monto_total) > 0.009 ? body.monto_total : body.saldo,
       };
-      const { error } = await sb.from("acuerdos").insert(insertBody);
+      let { error } = await sb.from("acuerdos").insert(insertBody);
+      if (error && /comentario|motivo_cierre|cerrado_at/i.test(error.message)) {
+        const { comentario: _c, motivo_cierre: _m, cerrado_at: _z, ...sinCom } = insertBody;
+        const desc =
+          comentario && insertBody.descripcion
+            ? `${insertBody.descripcion} — ${comentario}`.slice(0, 500)
+            : insertBody.descripcion;
+        const retry = await sb.from("acuerdos").insert({ ...sinCom, descripcion: desc });
+        error = retry.error;
+      }
       if (error && /frecuencia|fecha_especifica|check/i.test(error.message)) {
         const fallback = { ...insertBody };
         if (frecuencia === "domingo") {
           fallback.frecuencia = "semana";
           fallback.fecha_especifica = fecha_especifica ?? fechaConDiaSemana(hoyPanama(), 0);
         }
-        const { frecuencia: _f, fecha_especifica: _fe, ...sin } = fallback;
+        const { frecuencia: _f, fecha_especifica: _fe, comentario: _c, motivo_cierre: _m, cerrado_at: _z, ...sin } =
+          fallback;
         const retryFull = await sb.from("acuerdos").insert(fallback);
         if (retryFull.error) {
           const retry = await sb.from("acuerdos").insert(sin);

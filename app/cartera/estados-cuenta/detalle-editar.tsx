@@ -186,6 +186,7 @@ export function EditorLedger({
         id: a.id,
         tipo: a.tipo,
         descripcion: a.descripcion,
+        comentario: a.comentario ?? "",
         saldo: a.saldo,
         cuota_diaria: a.cuota_diaria,
         cuota_domingo: a.cuota_domingo,
@@ -193,6 +194,8 @@ export function EditorLedger({
         activo: a.activo,
         frecuencia: a.frecuencia ?? "dia",
         fecha_especifica: a.fecha_especifica ?? null,
+        motivo_cierre: a.motivo_cierre ?? "",
+        cerrado_at: a.cerrado_at ?? null,
         borrar: false,
       })),
     );
@@ -264,6 +267,7 @@ export function EditorLedger({
         id: null,
         tipo: "otro",
         descripcion: "Acuerdo de pago",
+        comentario: "",
         saldo: 0,
         cuota_diaria: 5,
         cuota_domingo: 0,
@@ -271,6 +275,8 @@ export function EditorLedger({
         activo: true,
         frecuencia: "dia",
         fecha_especifica: null,
+        motivo_cierre: "",
+        cerrado_at: null,
         borrar: false,
       },
       ...prev,
@@ -284,6 +290,7 @@ export function EditorLedger({
         id: null,
         tipo: "otro",
         descripcion: descripcionExtension("seguro_menor"),
+        comentario: "",
         saldo: 0,
         cuota_diaria: 5,
         cuota_domingo: 0,
@@ -291,6 +298,8 @@ export function EditorLedger({
         activo: true,
         frecuencia: "dia",
         fecha_especifica: null,
+        motivo_cierre: "",
+        cerrado_at: null,
         borrar: false,
       },
       ...prev,
@@ -323,7 +332,7 @@ export function EditorLedger({
   }
 
   const cargosVivos = cargos.filter((c) => !c.borrar);
-  const acuerdosVivos = acuerdos.filter((a) => !a.borrar);
+  const acuerdosVivos = acuerdos;
 
   return (
     <div className="space-y-5 px-5 py-5">
@@ -661,15 +670,21 @@ export function EditorLedger({
           </div>
         </div>
         <p className="mb-3 text-[11px] text-muted">
-          La extensión lleva motivo (seguro menor de edad, área geográfica, beneficiario adicional o piratería) y se cobra igual que un acuerdo: saldo, cada cuánto y cuota. Entra a la cola, cuando los planes de adelante llegan a cero. Podés combinar varios. Cada fila tiene su saldo.
+          La extensión lleva motivo (seguro menor de edad, área geográfica, beneficiario adicional o piratería) y se cobra igual que un acuerdo: saldo, cada cuánto y cuota. En cada acuerdo de pago poné un comentario de qué es (choque, deducible…). Para suspenderlo o quitarlo, el motivo de cierre es obligatorio (ej. absolución).
         </p>
         {acuerdosVivos.length === 0 ? (
           <p className="py-3 text-sm text-muted">Sin acuerdos activos.</p>
         ) : (
           <ul className="space-y-2">
-            {acuerdos.map((a) =>
-              a.borrar ? null : (
-                <li key={a.key} className="rounded-xl bg-surface-2/60 p-3 ring-1 ring-line">
+            {acuerdos.map((a) => (
+                <li
+                  key={a.key}
+                  className={`rounded-xl p-3 ring-1 ${
+                    a.borrar || !a.activo
+                      ? "bg-rojo-wash/40 ring-rojo/25"
+                      : "bg-surface-2/60 ring-line"
+                  }`}
+                >
                   <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <label className="flex flex-col gap-1 sm:col-span-2">
                       <span className="text-[11px] text-muted">
@@ -708,6 +723,23 @@ export function EditorLedger({
                         />
                       )}
                     </label>
+                    {!esExtension(a.descripcion) && (
+                      <label className="flex flex-col gap-1 sm:col-span-2">
+                        <span className="text-[11px] text-muted">Comentario (de qué es)</span>
+                        <input
+                          className={INPUT}
+                          value={a.comentario}
+                          placeholder="Ej. choque 27-oct, parte 52078"
+                          onChange={(e) =>
+                            setAcuerdos((prev) =>
+                              prev.map((x) =>
+                                x.key === a.key ? { ...x, comentario: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                    )}
                     <label className="flex flex-col gap-1">
                       <span className="text-[11px] text-muted">
                         {esExtension(a.descripcion) ? "Saldo" : "Saldo del acuerdo"}
@@ -896,36 +928,78 @@ export function EditorLedger({
                     <label className="flex items-center gap-2 pt-2 text-sm">
                       <input
                         type="checkbox"
-                        checked={a.activo}
+                        checked={a.activo && !a.borrar}
                         onChange={(e) =>
                           setAcuerdos((prev) =>
                             prev.map((x) =>
-                              x.key === a.key ? { ...x, activo: e.target.checked } : x,
+                              x.key === a.key
+                                ? {
+                                    ...x,
+                                    activo: e.target.checked,
+                                    borrar: e.target.checked ? false : x.borrar,
+                                  }
+                                : x,
                             ),
                           )
                         }
                       />
                       Activo
                     </label>
-                    <div className="flex items-end">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setAcuerdos((prev) =>
-                            prev.map((x) =>
-                              x.key === a.key ? { ...x, borrar: true } : x,
-                            ),
-                          )
-                        }
-                        className="rounded-lg px-3 py-2 text-sm text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash"
-                      >
-                        Quitar
-                      </button>
+                    <div className="flex items-end gap-2">
+                      {a.borrar || !a.activo ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAcuerdos((prev) =>
+                              prev.map((x) =>
+                                x.key === a.key
+                                  ? { ...x, borrar: false, activo: true, motivo_cierre: "" }
+                                  : x,
+                              ),
+                            )
+                          }
+                          className="rounded-lg px-3 py-2 text-sm text-ink ring-1 ring-line hover:bg-surface-2"
+                        >
+                          Deshacer
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAcuerdos((prev) =>
+                              prev.map((x) =>
+                                x.key === a.key
+                                  ? { ...x, borrar: true, activo: false }
+                                  : x,
+                              ),
+                            )
+                          }
+                          className="rounded-lg px-3 py-2 text-sm text-rojo ring-1 ring-rojo/30 hover:bg-rojo-wash"
+                        >
+                          Suspender
+                        </button>
+                      )}
                     </div>
+                    {(a.borrar || !a.activo) && (
+                      <label className="flex flex-col gap-1 sm:col-span-4">
+                        <span className="text-[11px] text-muted">Motivo de cierre / suspensión (obligatorio)</span>
+                        <textarea
+                          className={`${INPUT} min-h-[4rem] resize-y`}
+                          value={a.motivo_cierre}
+                          placeholder="Ej. Absolución en audiencia: se suspende el acuerdo del choque."
+                          onChange={(e) =>
+                            setAcuerdos((prev) =>
+                              prev.map((x) =>
+                                x.key === a.key ? { ...x, motivo_cierre: e.target.value } : x,
+                              ),
+                            )
+                          }
+                        />
+                      </label>
+                    )}
                   </div>
                 </li>
-              ),
-            )}
+            ))}
           </ul>
         )}
       </section>
